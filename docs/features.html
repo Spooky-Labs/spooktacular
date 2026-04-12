@@ -188,7 +188,7 @@ Spooktacular
 <h4>The Spooktacular solution</h4>
 <ul>
 <li>Run 2 VMs per Mac &mdash; 50% cost reduction, same hardware</li>
-<li>User-data scripts provision on first boot, no golden images needed</li>
+<li>User-data scripts run via SSH provisioning; disk-inject mode in progress</li>
 <li>Ephemeral runners: clone, use, delete, repeat &mdash; zero state leakage</li>
 <li>APFS copy-on-write cloning: 48ms for a 30 GB VM image</li>
 </ul>
@@ -211,8 +211,9 @@ Spooktacular
 <span class="cmd">spook start runner-01 --headless --user-data ./install-gha-runner.sh</span>
 <span class="cmd">spook start runner-02 --headless --user-data ./install-gha-runner.sh</span>
 
-<span class="cmt"># Or use the built-in template</span>
-<span class="cmd">spook create runner --github-runner --github-repo myorg/myapp --github-token $TOKEN</span></pre>
+<span class="cmt"># Or generate a GitHub runner install script from the built-in template</span>
+<span class="cmd">spook create runner --github-runner --github-repo myorg/myapp --github-token $TOKEN</span>
+<span class="cmt"># Then start with: spook start runner --provision ssh</span></pre>
 </div>
 
 <div class="feat-grid">
@@ -221,8 +222,8 @@ Spooktacular
 <p>APFS copy-on-write duplicates a 30 GB VM in 48ms. Both VMs share physical disk blocks. Each clone gets a fresh MachineIdentifier.</p>
 </div>
 <div class="feat-item">
-<h4>4 provisioning modes <span class="badge-s badge-shipped">Shipped</span></h4>
-<p>Disk-inject (zero-touch), SSH, guest agent (vsock), and shared folder. Works on vanilla macOS from IPSW without any pre-configuration.</p>
+<h4>SSH provisioning <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>SSH provisioning waits for IP, connects, and executes a user-data script with streaming output. Disk-inject provisioning is in progress. Guest agent (vsock) and shared-folder modes are planned.</p>
 </div>
 <div class="feat-item">
 <h4>Pool auto-replacement <span class="badge-s badge-planned">Planned</span></h4>
@@ -279,8 +280,8 @@ Spooktacular
 
 <div class="feat-grid">
 <div class="feat-item">
-<h4>Metal GPU passthrough <span class="badge-s badge-shipped">Shipped</span></h4>
-<p>Apple Silicon GPU accessible inside every VM. 1-2 Metal displays per VM. Accelerated compute for ML frameworks.</p>
+<h4>Metal GPU displays <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>1-2 Metal GPU-accelerated displays per VM. Apple Silicon GPU is exposed via the Virtualization framework for rendering.</p>
 </div>
 <div class="feat-item">
 <h4>Shared folders <span class="badge-s badge-shipped">Shipped</span></h4>
@@ -312,10 +313,10 @@ Spooktacular
 <div class="ps-card solution">
 <h4>The Spooktacular solution</h4>
 <ul>
-<li>VNC auto-enabled via provisioning, URL reported in CLI and GUI</li>
+<li>Remote desktop template generates a script to enable Screen Sharing (run via <code>spook start --provision ssh</code>)</li>
 <li>Each developer gets a fresh, isolated macOS VM with full display</li>
-<li>Auto-resize: guest resolution follows the display window or VNC client</li>
-<li>Dual monitor, audio, microphone, and clipboard sharing built in</li>
+<li>Auto-resize: guest resolution follows the display window (macOS 14+)</li>
+<li>Audio, microphone, and clipboard sharing are shipped VM features</li>
 </ul>
 </div>
 </div>
@@ -348,7 +349,7 @@ Spooktacular
 </div>
 <div class="feat-item">
 <h4>4K 60fps HEVC <span class="badge-s badge-planned">Planned</span></h4>
-<p>Hardware-accelerated encoding via VideoToolbox. Adaptive bitrate based on network conditions. Near-native quality at low bandwidth.</p>
+<p>Planned: hardware-accelerated encoding via VideoToolbox with adaptive bitrate. No code exists yet.</p>
 </div>
 </div>
 </div>
@@ -372,10 +373,10 @@ Spooktacular
 <div class="ps-card solution">
 <h4>The Spooktacular solution</h4>
 <ul>
-<li>MacOSVM and MacOSVMPool CRDs &mdash; declare VMs in YAML, apply with kubectl</li>
-<li>Capacity-aware scheduler respects the 2-VM-per-Mac kernel limit</li>
-<li>Three fleet scaling models: AWS ASG, K8s cluster-autoscaler, built-in</li>
-<li>Helm chart for installation, Terraform module for EC2 Mac provisioning</li>
+<li><em>(Planned)</em> MacOSVM and MacOSVMPool CRDs &mdash; declare VMs in YAML, apply with kubectl</li>
+<li><em>(Shipped)</em> 2-VM-per-Mac capacity enforcement via kernel limit detection</li>
+<li><em>(Planned)</em> Fleet scaling models: AWS ASG, K8s cluster-autoscaler, built-in</li>
+<li><em>(Planned)</em> Helm chart for installation, Terraform module for EC2 Mac provisioning</li>
 </ul>
 </div>
 </div>
@@ -447,13 +448,15 @@ Spooktacular
 <div class="status-col shipped">
 <h3><span class="dot-green"></span> Shipped in v0.4</h3>
 <ul>
-<li>VM lifecycle: create, start, stop, clone, delete, snapshots</li>
-<li>IPSW download with version compatibility checking</li>
+<li>VM lifecycle: create from IPSW, start/stop with PID tracking, clone, delete</li>
+<li>Disk-level snapshots (save, restore, list, delete)</li>
 <li>APFS copy-on-write cloning with MachineIdentifier regeneration</li>
-<li>Full hardware configuration (CPU, memory, disk, displays, audio)</li>
-<li>4 networking modes: NAT, bridged, isolated, host-only</li>
-<li>4 provisioning modes: disk-inject, SSH, agent, shared-folder</li>
-<li>Shared folders via VirtIO file system</li>
+<li>2-VM capacity enforcement via kernel limit detection</li>
+<li>SSH provisioning (user-data via SSH with IP resolution)</li>
+<li>IP resolution (DHCP/ARP)</li>
+<li>Template generation: --github-runner, --remote-desktop, --openclaw (generates scripts; user runs via <code>spook start --provision ssh</code>)</li>
+<li>Shared folder management (add/remove/list with persistence)</li>
+<li>LaunchDaemon service install (per-VM)</li>
 <li>SwiftUI GUI with Liquid Glass, inspector, menu bar extra</li>
 <li>CLI with 16 commands, styled output, --json for automation</li>
 <li>Full accessibility: VoiceOver, WCAG 2.1, reduced motion</li>
@@ -463,21 +466,17 @@ Spooktacular
 </ul>
 </div>
 <div class="status-col planned">
-<h3><span class="dot-blue"></span> On the roadmap</h3>
+<h3><span class="dot-blue"></span> In progress &amp; planned</h3>
 <ul>
+<li><strong style="color:var(--yellow);">In progress:</strong> Disk-inject provisioning (mount guest disk, inject LaunchDaemon)</li>
+<li><strong style="color:var(--yellow);">In progress:</strong> Template auto-execution in create flow</li>
 <li>OCI image push/pull (GHCR, Docker Hub, ECR, ACR)</li>
-<li>Official base images (macOS, macOS+Xcode, macOS+ML)</li>
 <li>Kubernetes operator with MacOSVM and MacOSVMPool CRDs</li>
-<li>Helm chart and capacity-aware scheduler</li>
-<li>GitHub webhook autoscaling for runner pools</li>
-<li>AWS ASG and cluster-autoscaler integration</li>
-<li>EC2 Mac one-liner setup script and Terraform module</li>
-<li>Helper daemon with HTTP API and bearer auth</li>
+<li>Fleet autoscaling (webhook, ASG, cluster-autoscaler)</li>
+<li>HTTP control API / helper daemon</li>
 <li>4K 60fps remote desktop via HEVC/VideoToolbox</li>
-<li>Metal GPU performance profiling for ML workloads</li>
+<li>Guest agent (vsock)</li>
 <li>Mac App Store and Homebrew Cask distribution</li>
-<li>Prometheus metrics and Grafana dashboards</li>
-<li>Web dashboard for browser-based management</li>
 </ul>
 </div>
 </div>

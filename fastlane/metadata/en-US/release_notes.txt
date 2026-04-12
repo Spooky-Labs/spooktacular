@@ -1,11 +1,37 @@
-Initial Release
+v1.0.0 - Initial Release
 
-• Create macOS VMs from IPSW restore images
-• Instant APFS cloning
-• Four provisioning modes: disk-inject, SSH, agent, shared-folder
-• NAT, bridged, isolated, and host-only networking
-• Audio, shared folders, clipboard sharing
-• Full CLI with 16 commands
-• Menu bar quick access
-• Comprehensive accessibility support
-• Liquid Glass UI on macOS 26+
+VM Lifecycle
+- Create macOS VMs from IPSW restore images
+- Instant APFS copy-on-write cloning with new MachineIdentifier
+- Start/stop VMs with PID tracking and graceful SIGTERM shutdown
+- 2-VM capacity enforcement (Apple Silicon kernel limit)
+
+Provisioning
+- SSH-based user-data execution with real-time output streaming
+- IP resolution via DHCP leases and ARP table
+- Setup Assistant keyboard automation (macOS 15 and 26)
+
+Templates
+- --github-runner, --remote-desktop, and --openclaw generate provisioning scripts
+- Apply scripts via the 2-step flow: generate, then start with --user-data --provision ssh
+
+Snapshots
+- Save and restore disk-level VM snapshots
+
+Networking
+- NAT (default), bridged (with entitlement), isolated (zero network)
+
+Service
+- spook service install creates a LaunchDaemon for headless servers
+- Shared folder mount persistence across reboots
+
+CLI
+- 16 commands with styled ANSI output
+- --json for automation, --field for scripting, NO_COLOR support
+
+GUI
+- Native SwiftUI app with NavigationSplitView
+- Inspector panel with progressive disclosure
+- Liquid Glass UI on macOS 26+
+- Menu bar extra for quick access
+- Full VoiceOver and WCAG 2.1 accessibility

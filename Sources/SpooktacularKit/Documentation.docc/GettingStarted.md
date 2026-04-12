@@ -6,8 +6,9 @@ Create your first macOS virtual machine in minutes.
 
 Spooktacular runs macOS virtual machines on Apple Silicon using
 Apple's Virtualization framework. You interact with it through the
-GUI app, the `spook` CLI, or the Kubernetes operator --- all backed
-by the same ``SpooktacularKit`` library.
+GUI app or the `spook` CLI --- both backed by the same
+``SpooktacularKit`` library. A Kubernetes operator is planned for
+a future release.
 
 > Important: You need an Apple Silicon Mac (M1 or later) running
 > macOS 14.0 (Sonoma) or later. Each VM requires at least 20 GB of
@@ -73,56 +74,31 @@ spook delete my-vm --force
 
 ### Provisioning with User-Data Scripts
 
-Automate VM setup by running a shell script on first boot:
+Automate VM setup by running a shell script after boot via SSH:
 
 ```bash
-spook create runner --from-ipsw latest \
+spook start runner --headless \
     --user-data ~/setup.sh \
-    --provision disk-inject
+    --provision ssh \
+    --ssh-user admin
 ```
 
-The `disk-inject` mode writes a LaunchDaemon to the guest disk
-before the VM boots --- no SSH, no agent, and no prior configuration
-required. See ``ProvisioningMode`` for all four provisioning
-strategies and <doc:Provisioning> for detailed guidance.
-
-### Kubernetes Integration
-
-Manage VMs as Kubernetes resources using the Spooktacular operator:
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVM
-metadata:
-  name: ci-runner
-spec:
-  image: ghcr.io/spooktacular/macos-xcode:15.4-16.2
-  resources:
-    cpu: 4
-    memory: 8Gi
-    disk: 64Gi
-  provisioning:
-    mode: disk-inject
-    userData: |
-      #!/bin/bash
-      echo "Hello from Kubernetes!"
-```
-
-See <doc:KubernetesGuide> for the complete Kubernetes setup.
+The `ssh` mode waits for the VM to boot, discovers its IP, connects
+via SSH, and executes your script with real-time output streaming.
+Disk-inject provisioning (zero-touch, no SSH required) is in
+progress. See ``ProvisioningMode`` for provisioning strategies and
+<doc:Provisioning> for detailed guidance.
 
 ### EC2 Mac Setup
 
 Deploy Spooktacular on AWS EC2 Mac instances to double your CI
-capacity:
-
-```bash
-curl -sSL https://spooktacular.dev/ec2-setup.sh | bash -s -- \
-    --github-repo myorg/myrepo \
-    --github-token ghp_xxx \
-    --xcode 16.2
-```
+capacity. Install Spooktacular, create VMs from IPSW, clone
+configured bases, and start runners with SSH provisioning.
 
 See <doc:EC2MacDeployment> for detailed EC2 Mac configuration.
+
+> Note: A Kubernetes operator (MacOSVM CRD) is planned for a future
+> release. See <doc:KubernetesGuide> for the planned architecture.
 
 ## Topics
 

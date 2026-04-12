@@ -232,19 +232,20 @@ Spooktacular
 <div class="phase">
 <h3>User-Data Execution</h3>
 <ul>
-<li><span class="wip">&#9675;</span> Disk-inject provisioning (mount guest disk, inject LaunchDaemon)</li>
-<li><span class="wip">&#9675;</span> SSH provisioning (wait for IP, connect, execute script with streaming)</li>
+<li><span class="check">&#10003;</span> SSH provisioning (wait for IP, connect, execute script with streaming) &mdash; <strong>shipped</strong></li>
+<li><span class="wip">&#9675;</span> Disk-inject provisioning (mount guest disk, inject LaunchDaemon) &mdash; <em>in progress</em></li>
+<li><span class="wip">&#9675;</span> Template auto-execution in create flow &mdash; <em>in progress</em></li>
 <li><span class="todo">&#9633;</span> Guest agent over VirtIO socket (vsock)</li>
 <li><span class="todo">&#9633;</span> Shared-folder watcher provisioning</li>
-<li><span class="todo">&#9633;</span> Setup Assistant automation via VZ keyboard input</li>
 </ul>
 </div>
 
 <div class="phase">
 <h3>Built-in Templates</h3>
 <ul>
-<li><span class="wip">&#9675;</span> <code>--github-runner</code> &mdash; configure GitHub Actions runner on first boot</li>
-<li><span class="todo">&#9633;</span> <code>--remote-desktop</code> &mdash; enable Screen Sharing, report VNC URL</li>
+<li><span class="check">&#10003;</span> <code>--github-runner</code> &mdash; generates install script; run with <code>spook start --provision ssh</code> &mdash; <strong>shipped</strong></li>
+<li><span class="check">&#10003;</span> <code>--remote-desktop</code> &mdash; generates Screen Sharing enable script; run with <code>spook start --provision ssh</code> &mdash; <strong>shipped</strong></li>
+<li><span class="check">&#10003;</span> <code>--openclaw</code> &mdash; generates OpenClaw setup script; run with <code>spook start --provision ssh</code> &mdash; <strong>shipped</strong></li>
 <li><span class="todo">&#9633;</span> <code>--buildkite</code> / <code>--circleci</code> &mdash; CI runner templates</li>
 </ul>
 </div>
@@ -252,8 +253,8 @@ Spooktacular
 <div class="phase">
 <h3>Remote Desktop (Foundation)</h3>
 <ul>
-<li><span class="todo">&#9633;</span> Screen Sharing (VNC) auto-enable via provisioning</li>
-<li><span class="todo">&#9633;</span> VNC URL reported in CLI output and GUI detail view</li>
+<li><span class="check">&#10003;</span> <code>--remote-desktop</code> template generates Screen Sharing enable script &mdash; <strong>shipped</strong></li>
+<li><span class="check">&#10003;</span> <code>spook ip</code> reports VM IP for VNC connection &mdash; <strong>shipped</strong></li>
 <li><span class="todo">&#9633;</span> Research: hardware-accelerated VNC encoding via VideoToolbox</li>
 </ul>
 </div>

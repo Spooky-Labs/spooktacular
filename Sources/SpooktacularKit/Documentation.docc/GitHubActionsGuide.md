@@ -36,19 +36,14 @@ Create two working GitHub Actions runners from zero:
 brew install --cask spooktacular
 
 # 2. Create two runner VMs
-spook create runner-01 --from-ipsw latest \
-    --cpu 4 --memory 8 --disk 64 \
-    --user-data ~/github-runner-setup.sh \
-    --provision disk-inject
+spook create runner-01 --from-ipsw latest --cpu 4 --memory 8 --disk 64
+spook create runner-02 --from-ipsw latest --cpu 4 --memory 8 --disk 64
 
-spook create runner-02 --from-ipsw latest \
-    --cpu 4 --memory 8 --disk 64 \
-    --user-data ~/github-runner-setup.sh \
-    --provision disk-inject
-
-# 3. Start both runners headless
-spook start runner-01 --headless
-spook start runner-02 --headless
+# 3. Start both runners headless with SSH provisioning
+spook start runner-01 --headless \
+    --user-data ~/github-runner-setup.sh --provision ssh --ssh-user admin
+spook start runner-02 --headless \
+    --user-data ~/github-runner-setup.sh --provision ssh --ssh-user admin
 ```
 
 Where `github-runner-setup.sh` contains:
@@ -81,23 +76,30 @@ tar xzf actions-runner.tar.gz
 ./svc.sh start
 ```
 
-> Note: The `disk-inject` provisioning mode writes a LaunchDaemon to
-> the guest disk before boot. No SSH, no agent, and no prior
-> configuration is required. See ``ProvisioningMode/diskInject`` for
-> details.
+> Note: SSH provisioning requires Remote Login enabled in the guest.
+> Disk-inject provisioning (zero-touch, no SSH required) is in
+> progress. See <doc:Provisioning> for details on provisioning modes.
 
 ## The --github-runner Template
 
 Spooktacular includes a built-in template (``GitHubRunnerTemplate``)
-that automates all runner setup:
+that **generates** a provisioning script for GitHub Actions runner
+setup. The template does not auto-execute during `spook create` ---
+you apply the generated script using the 2-step flow:
 
 ```bash
+# Step 1: Create VM with the template flag to generate a setup script
 spook create runner-01 --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
     --github-runner --github-repo myorg/myrepo --github-token ghp_xxxx
+
+# Step 2: Start the VM with the generated script via SSH provisioning
+spook start runner-01 --headless \
+    --user-data ~/.spooktacular/vms/runner-01/user-data.sh \
+    --provision ssh --ssh-user admin
 ```
 
-The `--github-runner` flag:
+The `--github-runner` flag generates a script that:
 
 1. Downloads the latest GitHub Actions runner binary
 2. Registers the runner with your repository (or organization)
@@ -105,14 +107,17 @@ The `--github-runner` flag:
 4. Installs the runner as a LaunchDaemon for automatic startup
 5. Optionally configures ephemeral mode for single-use VMs
 
+You then apply this script by starting the VM with `--user-data`
+and `--provision ssh`.
+
 ### GitHub Runner Options
 
 | Option | Required | Description |
 |--------|----------|-------------|
-| `--github-runner` | Yes | Enables GitHub Actions runner setup |
+| `--github-runner` | Yes | Generates a GitHub Actions runner setup script |
 | `--github-repo <org/repo>` | Yes | GitHub repository (e.g., `myorg/myrepo`) |
 | `--github-token <token>` | Yes | GitHub PAT or registration token |
-| `--ephemeral` | No | Runner exits after one job, VM auto-destroys |
+| `--ephemeral` | No | Runner exits after one job |
 
 ## Ephemeral Runners
 
@@ -133,34 +138,20 @@ eliminating "works on my runner" issues.
 ### CLI Setup
 
 ```bash
-# Create an ephemeral runner that auto-replaces
+# Create an ephemeral runner
 spook create runner-01 --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
     --github-runner --github-repo myorg/myrepo --github-token ghp_xxxx \
     --ephemeral
+
+# Start with provisioning
+spook start runner-01 --headless \
+    --user-data ~/.spooktacular/vms/runner-01/user-data.sh \
+    --provision ssh --ssh-user admin
 ```
 
-### Kubernetes Setup
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVMPool
-metadata:
-  name: ephemeral-runners
-spec:
-  replicas: 4
-  image: ghcr.io/spooktacular/macos-xcode:15.4-16.2
-  template: github-runner
-  templateArgs:
-    repo: myorg/myrepo
-    token: ghp_xxxxxxxxxxxx
-    labels: macos,arm64,xcode16
-  ephemeral: true
-  provisioning:
-    mode: agent
-```
-
-The operator automatically replaces each VM after its job completes.
+> Note: Automatic VM replacement after job completion is not yet
+> implemented. Use the pool-manager script below for auto-replacement.
 
 ## Runner Pool with Auto-Replacement
 
@@ -188,62 +179,16 @@ while true; do
 done
 ```
 
-## Webhook-Driven Autoscaling
+## Webhook-Driven Autoscaling (Planned)
+
+> Important: Webhook-driven autoscaling requires the Kubernetes
+> operator, which is planned for a future release. The architecture
+> below describes the planned design.
 
 Scale your runner pool based on actual demand using GitHub webhook
-events.
-
-### Architecture
-
-```
-GitHub ---workflow_job event---> Webhook Receiver ---> Scale MacOSVMPool
-```
-
-When a `workflow_job` event with `action: queued` arrives, the
+events. When a `workflow_job` event with `action: queued` arrives, the
 autoscaler increases the pool size. When `action: completed`, it
 decreases after the idle timeout.
-
-### Kubernetes Configuration
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVMPool
-metadata:
-  name: autoscale-runners
-spec:
-  replicas: 2
-  image: ghcr.io/spooktacular/macos-xcode:15.4-16.2
-  template: github-runner
-  templateArgs:
-    repo: myorg/myrepo
-    token: ghp_xxxxxxxxxxxx
-    labels: macos,arm64
-  ephemeral: true
-  scaling:
-    minReplicas: 0
-    maxReplicas: 8
-    idleTimeout: 5m
-    webhook:
-      path: /webhook/github
-      secret: github-webhook-secret
-```
-
-### GitHub Webhook Setup
-
-1. Go to your repository or organization Settings > Webhooks.
-2. Add a webhook:
-   - **Payload URL:** `https://your-operator.example.com/webhook/github`
-   - **Content type:** `application/json`
-   - **Secret:** The value in your `github-webhook-secret` K8s Secret
-   - **Events:** Select "Workflow jobs"
-
-### Webhook Secret
-
-```bash
-kubectl create secret generic github-webhook-secret \
-    --from-literal=secret="$(openssl rand -hex 32)" \
-    -n spooktacular-system
-```
 
 ## GitHub App vs PAT for Runner Registration
 
@@ -343,99 +288,23 @@ jobs:
       - run: xcodebuild -scheme MyApp -sdk iphoneos build
 ```
 
-## Scaling with Kubernetes
+## Scaling with Kubernetes (Planned)
 
-### MacOSVMPool for GitHub Actions
-
-The most robust scaling approach uses the Kubernetes operator with
-a `MacOSVMPool`:
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVMPool
-metadata:
-  name: xcode16-runners
-  namespace: ci
-spec:
-  replicas: 6
-  image: ghcr.io/spooktacular/macos-xcode:15.4-16.2
-  resources:
-    cpu: 4
-    memory: 8Gi
-    disk: 64Gi
-  template: github-runner
-  templateArgs:
-    org: myorg
-    token: ghp_xxxxxxxxxxxx
-    labels: macos,arm64,xcode16
-  ephemeral: true
-  provisioning:
-    mode: agent
-  scaling:
-    minReplicas: 2
-    maxReplicas: 6
-    idleTimeout: 10m
-    webhook:
-      path: /webhook/github
-      secret: github-webhook-secret
-```
-
-See <doc:KubernetesGuide> for the full Kubernetes setup.
+> Important: The Kubernetes operator is planned for a future release.
+> See <doc:KubernetesGuide> for the planned architecture. For now,
+> use the pool-manager script above or manage runners directly with
+> the CLI.
 
 ## EC2 Mac Fleet for GitHub Actions
 
-A complete production setup using EC2 Mac hosts:
+See <doc:EC2MacDeployment> for the full EC2 Mac setup guide. The
+basic flow is:
 
-### Step 1: Provision EC2 Mac Hosts
-
-```hcl
-# terraform/main.tf
-module "runner_fleet" {
-  source = "spooktacular/ec2-mac/aws"
-
-  host_count       = 5
-  instance_type    = "mac2-m2pro.metal"
-  subnet_ids       = module.vpc.private_subnets
-  security_groups  = [aws_security_group.runners.id]
-  key_name         = aws_key_pair.deploy.key_name
-  vms_per_host     = 2
-  vm_image         = "ghcr.io/spooktacular/macos-xcode:15.4-16.2"
-  github_org       = "myorg"
-  github_token_ssm = aws_ssm_parameter.github_token.name
-}
-```
-
-### Step 2: Install the Kubernetes Operator
-
-```bash
-helm install spooktacular-operator spooktacular/operator \
-    --namespace spooktacular-system \
-    --create-namespace \
-    -f values.yaml
-```
-
-### Step 3: Deploy the Runner Pool
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVMPool
-metadata:
-  name: production-runners
-  namespace: ci
-spec:
-  replicas: 10
-  image: ghcr.io/spooktacular/macos-xcode:15.4-16.2
-  template: github-runner
-  templateArgs:
-    org: myorg
-    token: ghp_xxxxxxxxxxxx
-    labels: macos,arm64,xcode16,production
-  ephemeral: true
-  scaling:
-    minReplicas: 4
-    maxReplicas: 10
-    idleTimeout: 15m
-```
+1. Provision EC2 Mac dedicated hosts
+2. SSH in and install Spooktacular via Homebrew
+3. `spook service install` to create the LaunchDaemon
+4. Create VMs from IPSW, clone configured bases
+5. Start runners with SSH provisioning
 
 ### Capacity Planning
 
@@ -446,8 +315,6 @@ spec:
 | 10 | mac2-m2pro.metal | 20 | ~$7,800 | ~$390 |
 
 Compare to GitHub-hosted macOS runners at ~$2,400/runner/month (L size).
-
-See <doc:EC2MacDeployment> for detailed EC2 Mac cost optimization.
 
 ## Cost Comparison
 

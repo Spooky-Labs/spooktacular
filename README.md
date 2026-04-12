@@ -8,7 +8,7 @@
 2x your EC2 Mac CI capacity. Open source. Self-hosted anywhere.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/Spooky-Labs/spooktacular/ci.yml?style=flat-square&label=build)](https://github.com/Spooky-Labs/spooktacular/actions)
-[![Tests](https://img.shields.io/badge/tests-180%20passed-brightgreen?style=flat-square)](https://github.com/Spooky-Labs/spooktacular/actions)
+[![Tests](https://img.shields.io/badge/tests-234%20passed-brightgreen?style=flat-square)](https://github.com/Spooky-Labs/spooktacular/actions)
 [![Swift](https://img.shields.io/badge/Swift-6.0-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple&logoColor=white)](https://developer.apple.com/macos/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -58,9 +58,15 @@ spook start runner-02 --headless --user-data ./setup.sh --provision ssh
 
 **VM Lifecycle** — Create from IPSW, instant APFS cloning (48ms for 30GB), start/stop with PID tracking, 2-VM capacity enforcement, graceful SIGTERM shutdown.
 
-**Provisioning** — Setup Assistant keyboard automation (macOS 15 & 26). SSH-based user-data execution with output streaming. GitHub Actions runner template. Four modes: disk-inject, SSH, agent, shared-folder.
+**Provisioning** — Setup Assistant keyboard automation (macOS 15 & 26). SSH-based user-data execution with output streaming. IP resolution via DHCP leases + ARP table. Disk-inject provisioning is in progress.
 
-**Networking** — NAT (default), bridged (with entitlement), isolated (zero network). MAC address configuration. IP resolution via DHCP leases + ARP table.
+**Templates** — `--github-runner`, `--remote-desktop`, and `--openclaw` generate provisioning scripts. Apply them via the 2-step flow: generate the script, then start the VM with `--user-data` and `--provision ssh`.
+
+**Snapshots** — Save and restore disk-level VM snapshots.
+
+**Service** — `spook service install` creates a LaunchDaemon for headless servers. Shared folder mount persistence across reboots.
+
+**Networking** — NAT (default), bridged (with entitlement), isolated (zero network). MAC address configuration.
 
 **Hardware** — CPU (4+ cores), memory (4–64 GB), APFS sparse disks, 1–2 Metal GPU displays, audio, shared folders, clipboard, VirtIO socket, memory balloon.
 
@@ -88,7 +94,7 @@ spook start runner-02 --headless --user-data ./setup.sh --provision ssh
 ## CLI
 
 ```
-spook create <name>     Create VM from IPSW (--github-runner, --openclaw, --remote-desktop)
+spook create <name>     Create VM from IPSW (--github-runner, --openclaw, --remote-desktop generate scripts)
 spook start <name>      Boot VM (--headless, --recovery, --user-data, --provision ssh)
 spook stop <name>       Stop via SIGTERM (--force for SIGKILL)
 spook list              List VMs with running state (--json)
@@ -99,8 +105,8 @@ spook ssh <name>        SSH into running VM
 spook exec <name> --    Run command via SSH
 spook get <name>        Show config (--json, --field cpu)
 spook set <name>        Modify config (--cpu, --memory, --displays, --network)
-spook snapshot <name>   Save VM state (planned)
-spook restore <name>    Restore from snapshot (planned)
+spook snapshot <name>   Save/restore disk snapshots
+spook restore <name>    Restore from snapshot
 spook share <name>      Manage shared folders
 ```
 
@@ -128,7 +134,7 @@ spook                   CLI (swift-argument-parser, 16 commands)
 
 | Metric | Value |
 |---|---|
-| Tests | **235** across 33 suites |
+| Tests | **234** across 33 suites |
 | Source | 50+ files, ~8,500 lines of Swift |
 | DocC | 11 guides + full API reference |
 | Force unwraps | **0** |
@@ -154,21 +160,28 @@ We follow [Semantic Versioning](https://semver.org). See the full [versioning gu
 
 **Patch releases** ship within 48 hours of confirmed fixes. **Release candidates** test for a minimum of 1 week.
 
+## In Progress
+
+- **Disk-inject provisioning** — Write a LaunchDaemon to the guest disk before boot (zero-touch, no SSH required)
+
 ## Planned
 
 See the full [roadmap](https://spooktacular.app/roadmap.html):
 
-- **OCI image push/pull** — GHCR, Docker Hub, ECR
 - **Kubernetes operator** — MacOSVM CRD, Helm chart, capacity-aware scheduler
+- **OCI image push/pull** — GHCR, Docker Hub, ECR
 - **Fleet autoscaling** — GitHub webhook scaling, AWS ASG integration
+- **HTTP API** — JSON-over-HTTP control API for remote management
 - **4K 60fps remote desktop** — HEVC via VideoToolbox
+- **Guest agent** — VirtIO socket-based host-guest channel (no network needed)
+- **Shared-folder watcher** — Script delivery and execution via VirtIO shared folders
 
 ## Contributing
 
 ```bash
 git clone https://github.com/Spooky-Labs/spooktacular
 cd spooktacular
-swift test        # 180 tests, ~0.03s
+swift test        # 234 tests, ~0.04s
 ./build-app.sh    # .app bundle with icon
 ```
 

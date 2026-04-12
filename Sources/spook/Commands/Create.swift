@@ -193,6 +193,10 @@ extension Spook {
             let effectiveNetwork = bridgedInterface.map { NetworkMode.bridged(interface: $0) }
                 ?? network
 
+            // Generate a stable MAC address so IP resolution works
+            // immediately after the first boot, without manual setup.
+            let macAddress = DiskInjector.generateMACAddress()
+
             let spec = VirtualMachineSpecification(
                 cpuCount: cpu,
                 memorySizeInBytes: UInt64(memory) * 1024 * 1024 * 1024,
@@ -201,6 +205,7 @@ extension Spook {
                 networkMode: effectiveNetwork,
                 audioEnabled: audio,
                 microphoneEnabled: microphone,
+                macAddress: macAddress,
                 autoResizeDisplay: autoResize
             )
 
@@ -276,11 +281,26 @@ extension Spook {
                 }
 
                 if let script = provisionScript {
-                    print(Style.info("Provisioning VM..."))
-                    // Note: actual execution requires the VM to be booted with
-                    // Setup Assistant completed and SSH available. Print the
-                    // command the user should run next.
-                    print("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh")
+                    switch provision {
+                    case .diskInject:
+                        print(Style.info("Injecting user-data script into guest disk..."))
+                        try DiskInjector.inject(script: script, into: bundle)
+                        print(Style.success("✓ Script injected. It will run automatically on first boot."))
+
+                    case .ssh:
+                        print(Style.info("Provisioning VM..."))
+                        // SSH execution requires the VM to be booted with
+                        // Setup Assistant completed and SSH available.
+                        print("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh")
+
+                    case .agent:
+                        print(Style.warning("⚠ Agent provisioning requires the Spooktacular guest agent (planned for a future release)."))
+                        print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
+
+                    case .sharedFolder:
+                        print(Style.warning("⚠ Shared-folder provisioning requires the watcher daemon (planned for a future release)."))
+                        print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
+                    }
                 }
                 if ephemeral {
                     print(Style.yellow("⟳ Ephemeral mode: VM auto-destroys after main process exits"))
@@ -292,6 +312,7 @@ extension Spook {
                 Style.field("CPU", "\(spec.cpuCount) cores")
                 Style.field("Memory", "\(memory) GB")
                 Style.field("Disk", "\(disk) GB")
+                Style.field("MAC", macAddress)
                 print()
                 print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
 

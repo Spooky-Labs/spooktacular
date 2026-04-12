@@ -4,26 +4,29 @@ import SpooktacularKit
 
 extension Spook {
 
-    /// Manages the Spooktacular LaunchDaemon for headless operation.
+    /// Manages per-VM LaunchDaemons for headless operation.
     ///
-    /// Installs, uninstalls, or checks the status of a system-wide
-    /// LaunchDaemon that starts the Spooktacular daemon at boot.
-    /// The daemon runs `spook start --headless` and logs to
-    /// `/var/log/spooktacular.log`.
+    /// Each virtual machine gets its own LaunchDaemon at
+    /// `/Library/LaunchDaemons/com.spooktacular.vm.<name>.plist`
+    /// that runs `spook start <name> --headless`.
+    ///
+    /// Installing and uninstalling require sudo. Status shows
+    /// all installed VM daemons and their running state.
     struct Service: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Manage the Spooktacular LaunchDaemon.",
+            abstract: "Manage per-VM LaunchDaemons.",
             discussion: """
-                Installs or removes a macOS LaunchDaemon that starts \
-                the Spooktacular daemon automatically at boot.
+                Installs or removes macOS LaunchDaemons that start \
+                individual VMs automatically at boot. Each VM gets \
+                its own daemon.
 
-                The daemon runs in headless mode and listens for API \
-                requests. Installing and uninstalling require sudo.
+                The daemon runs `spook start <name> --headless`.
+                Installing and uninstalling require sudo.
 
                 EXAMPLES:
-                  sudo spook service install
-                  sudo spook service install
-                  sudo spook service uninstall
+                  sudo spook service install runner-01
+                  sudo spook service install runner-02
+                  sudo spook service uninstall runner-01
                   spook service status
                 """,
             subcommands: [
@@ -36,99 +39,60 @@ extension Spook {
     }
 }
 
-// MARK: - Plist Generation
-
-extension Spook.Service {
-
-    /// The LaunchDaemon label used for the plist and `launchctl`.
-    static let daemonLabel = "com.spooktacular.daemon"
-
-    /// The file path for the LaunchDaemon plist.
-    static let plistPath = "/Library/LaunchDaemons/\(daemonLabel).plist"
-
-    /// Generates the LaunchDaemon plist XML for the given executable
-    /// path and bind address.
-    ///
-    /// - Parameters:
-    ///   - executablePath: Absolute path to the `spook` binary.
-    ///   - bind: The address and port for the API server to listen on.
-    /// - Returns: A UTF-8 XML string suitable for writing to disk.
-    static func generatePlist(executablePath: String) -> String {
-        """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(daemonLabel)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>\(executablePath)</string>
-                <string>list</string>
-            </array>
-            <key>RunAtLoad</key>
-            <true/>
-            <key>KeepAlive</key>
-            <false/>
-            <key>StandardOutPath</key>
-            <string>/var/log/spooktacular.log</string>
-            <key>StandardErrorPath</key>
-            <string>/var/log/spooktacular.error.log</string>
-        </dict>
-        </plist>
-        """
-    }
-}
-
 // MARK: - Install
 
 extension Spook.Service {
 
-    /// Installs the Spooktacular LaunchDaemon.
+    /// Installs a per-VM LaunchDaemon.
     ///
-    /// Writes a plist to `/Library/LaunchDaemons/` and loads it
-    /// via `launchctl`. Requires root privileges (sudo).
+    /// Writes a plist to `/Library/LaunchDaemons/com.spooktacular.vm.<name>.plist`
+    /// and loads it via `launchctl`. Requires root privileges (sudo).
     struct Install: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Install the LaunchDaemon.",
+            abstract: "Install a LaunchDaemon for a VM.",
             discussion: """
-                Writes a LaunchDaemon plist and loads it with \
-                launchctl. The daemon runs `spook start --headless` \
+                Writes a per-VM LaunchDaemon plist and loads it with \
+                launchctl. The daemon runs `spook start <name> --headless` \
                 at boot.
 
                 Requires sudo.
 
                 EXAMPLES:
-                  sudo spook service install
-                  sudo spook service install
+                  sudo spook service install runner-01
+                  sudo spook service install runner-02
                 """
         )
 
+        @Argument(help: "Name of the VM to create a daemon for.")
+        var name: String
+
         func run() async throws {
             let executablePath = ProcessInfo.processInfo.arguments[0]
-            let plistContent = Spook.Service.generatePlist(
-                executablePath: executablePath
+            let plistContent = ServicePlist.generate(
+                executablePath: executablePath,
+                vmName: name
             )
+            let plistPath = ServicePlist.plistPath(for: name)
 
-            Log.provision.info("Installing LaunchDaemon at \(Spook.Service.plistPath, privacy: .public)")
+            Log.provision.info("Installing LaunchDaemon at \(plistPath, privacy: .public)")
 
             // Write the plist file.
             do {
                 try plistContent.write(
-                    toFile: Spook.Service.plistPath,
+                    toFile: plistPath,
                     atomically: true,
                     encoding: .utf8
                 )
             } catch {
-                print(Style.error("✗ Failed to write plist to \(Spook.Service.plistPath)."))
-                print(Style.dim("  This command requires sudo. Try: sudo spook service install"))
+                print(Style.error("✗ Failed to write plist to \(plistPath)."))
+                print(Style.dim("  This command requires sudo. Try: sudo spook service install \(name)"))
                 throw ExitCode.failure
             }
 
             // Load the daemon.
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            process.arguments = ["load", Spook.Service.plistPath]
+            process.arguments = ["load", plistPath]
 
             do {
                 try process.run()
@@ -139,13 +103,13 @@ extension Spook.Service {
             }
 
             if process.terminationStatus == 0 {
-                print(Style.success("✓ LaunchDaemon installed and loaded."))
-                Style.field("Plist", Style.dim(Spook.Service.plistPath))
-                Style.field("Log", Style.dim("/var/log/spooktacular.log"))
-                Style.field("Error log", Style.dim("/var/log/spooktacular.error.log"))
+                print(Style.success("✓ LaunchDaemon installed and loaded for VM '\(name)'."))
+                Style.field("Plist", Style.dim(plistPath))
+                Style.field("Log", Style.dim("/var/log/spooktacular.\(name).log"))
+                Style.field("Error log", Style.dim("/var/log/spooktacular.\(name).error.log"))
                 print("")
-                print("The daemon will start automatically at boot.")
-                print("To uninstall: \(Style.bold("sudo spook service uninstall"))")
+                print("The daemon will start '\(name)' automatically at boot.")
+                print("To uninstall: \(Style.bold("sudo spook service uninstall \(name)"))")
             } else {
                 print(Style.error("✗ launchctl load failed (exit \(process.terminationStatus))."))
                 print(Style.dim("  The plist was written but could not be loaded."))
@@ -159,29 +123,32 @@ extension Spook.Service {
 
 extension Spook.Service {
 
-    /// Uninstalls the Spooktacular LaunchDaemon.
+    /// Uninstalls a per-VM LaunchDaemon.
     ///
     /// Unloads the daemon via `launchctl` and removes the plist
     /// file. Requires root privileges (sudo).
     struct Uninstall: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Uninstall the LaunchDaemon.",
+            abstract: "Uninstall a VM's LaunchDaemon.",
             discussion: """
                 Unloads the daemon with launchctl and removes the \
-                plist file.
+                plist file for the specified VM.
 
                 Requires sudo.
 
                 EXAMPLES:
-                  sudo spook service uninstall
+                  sudo spook service uninstall runner-01
                 """
         )
 
+        @Argument(help: "Name of the VM whose daemon to remove.")
+        var name: String
+
         func run() async throws {
-            let plistPath = Spook.Service.plistPath
+            let plistPath = ServicePlist.plistPath(for: name)
 
             guard FileManager.default.fileExists(atPath: plistPath) else {
-                print("LaunchDaemon is not installed (no plist at \(plistPath)).")
+                print("No LaunchDaemon installed for VM '\(name)' (no plist at \(plistPath)).")
                 return
             }
 
@@ -204,12 +171,12 @@ extension Spook.Service {
                 try FileManager.default.removeItem(atPath: plistPath)
             } catch {
                 print(Style.error("✗ Failed to remove plist at \(plistPath)."))
-                print(Style.dim("  This command requires sudo. Try: sudo spook service uninstall"))
+                print(Style.dim("  This command requires sudo. Try: sudo spook service uninstall \(name)"))
                 throw ExitCode.failure
             }
 
-            print(Style.success("✓ LaunchDaemon uninstalled."))
-            print("The daemon will no longer start at boot.")
+            print(Style.success("✓ LaunchDaemon uninstalled for VM '\(name)'."))
+            print("The daemon will no longer start '\(name)' at boot.")
         }
     }
 }
@@ -218,16 +185,17 @@ extension Spook.Service {
 
 extension Spook.Service {
 
-    /// Reports the current status of the Spooktacular LaunchDaemon.
+    /// Reports the status of all installed VM LaunchDaemons.
     ///
-    /// Checks whether the plist file exists and whether the service
-    /// is currently loaded in `launchctl`.
+    /// Scans `/Library/LaunchDaemons/` for any
+    /// `com.spooktacular.vm.*.plist` files and checks whether
+    /// each is currently loaded in `launchctl`.
     struct Status: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Check LaunchDaemon status.",
+            abstract: "Show all installed VM daemons and their status.",
             discussion: """
-                Reports whether the daemon plist is installed and \
-                whether the service is currently loaded.
+                Lists all installed Spooktacular VM LaunchDaemons \
+                and reports whether each is currently running.
 
                 EXAMPLES:
                   spook service status
@@ -235,10 +203,18 @@ extension Spook.Service {
         )
 
         func run() async throws {
-            let plistPath = Spook.Service.plistPath
-            let isInstalled = FileManager.default.fileExists(atPath: plistPath)
+            let daemonsDir = "/Library/LaunchDaemons"
+            let fm = FileManager.default
 
-            // Check if the service is loaded via launchctl list.
+            // Find all Spooktacular VM plists.
+            let prefix = ServicePlist.labelPrefix
+            let allFiles = (try? fm.contentsOfDirectory(atPath: daemonsDir)) ?? []
+            let vmPlists = allFiles
+                .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".plist") }
+                .sorted()
+
+            // Get launchctl list output to check running state.
+            var launchctlOutput = ""
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
             process.arguments = ["list"]
@@ -246,35 +222,37 @@ extension Spook.Service {
             let pipe = Pipe()
             process.standardOutput = pipe
 
-            var isLoaded = false
             do {
                 try process.run()
                 process.waitUntilExit()
-
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8) {
-                    isLoaded = output.contains("spooktacular")
-                }
+                launchctlOutput = String(data: data, encoding: .utf8) ?? ""
             } catch {
-                // If launchctl fails, we just report not loaded.
+                // If launchctl fails, we report all as not running.
             }
 
-            print(Style.bold("Spooktacular LaunchDaemon"))
+            print(Style.bold("Spooktacular VM LaunchDaemons"))
             print("")
 
-            let installStatus = isInstalled
-                ? Style.green("installed")
-                : Style.dim("not installed")
-            Style.field("Plist", installStatus)
-
-            if isInstalled {
-                Style.field("Path", Style.dim(plistPath))
+            if vmPlists.isEmpty {
+                print(Style.dim("No VM daemons installed."))
+                print("")
+                print("Install one with: \(Style.bold("sudo spook service install <vm-name>"))")
+                return
             }
 
-            let loadedStatus = isLoaded
-                ? Style.green("running")
-                : Style.dim("not running")
-            Style.field("Status", loadedStatus)
+            for plistFile in vmPlists {
+                // Extract VM name from filename: com.spooktacular.vm.<name>.plist
+                let label = String(plistFile.dropLast(".plist".count))
+                let vmName = String(label.dropFirst("\(prefix).".count))
+
+                let isRunning = launchctlOutput.contains(label)
+                let status = isRunning
+                    ? Style.green("running")
+                    : Style.dim("not running")
+
+                Style.field(vmName, status)
+            }
         }
     }
 }

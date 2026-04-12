@@ -85,6 +85,31 @@ extension Spook {
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
+            // Disk-inject runs BEFORE the VM boots — it writes directly
+            // to the guest's disk image while the VM is stopped.
+            if provision == .diskInject, let scriptPath = userData {
+                let scriptURL = URL(fileURLWithPath:
+                    NSString(string: scriptPath).expandingTildeInPath
+                )
+                guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+                    print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
+                    print(Style.dim("  Verify the file path exists and is readable."))
+                    throw ExitCode.failure
+                }
+                print(Style.info("Injecting user-data script into guest disk..."))
+                do {
+                    try DiskInjector.inject(script: scriptURL, into: bundle)
+                    print(Style.success("✓ Script injected. It will run automatically on boot."))
+                } catch {
+                    print(Style.error("✗ Disk injection failed: \(error.localizedDescription)"))
+                    if let localizedError = error as? LocalizedError,
+                       let recovery = localizedError.recoverySuggestion {
+                        print(Style.dim("  \(recovery)"))
+                    }
+                    throw ExitCode.failure
+                }
+            }
+
             let modeLabel = recovery ? " in Recovery mode" : ""
             print("Starting VM '\(name)'\(modeLabel)...")
 
@@ -124,46 +149,64 @@ extension Spook {
 
             print(Style.success("✓ VM '\(name)' is running."))
 
-            // Execute user-data script via SSH if requested.
-            if let scriptPath = userData, provision == .ssh {
+            // Post-boot provisioning: handle modes that run after the VM starts.
+            if let scriptPath = userData {
                 Style.field("User-data", scriptPath)
                 Style.field("Provision", provision.label)
 
-                let scriptURL = URL(fileURLWithPath:
-                    NSString(string: scriptPath).expandingTildeInPath
-                )
-                guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-                    print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
-                    print(Style.dim("  Verify the file path exists and is readable."))
+                switch provision {
+                case .diskInject:
+                    // Already handled above (before vm.start). The script
+                    // was injected into the disk and will run via launchd.
+                    break
+
+                case .ssh:
+                    let scriptURL = URL(fileURLWithPath:
+                        NSString(string: scriptPath).expandingTildeInPath
+                    )
+                    guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+                        print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
+                        print(Style.dim("  Verify the file path exists and is readable."))
+                        throw ExitCode.failure
+                    }
+
+                    // Resolve the VM's IP to connect via SSH.
+                    if let macAddress = bundle.spec.macAddress {
+                        print("Resolving VM IP address...")
+                        if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
+                            print("Waiting for SSH on \(ip)...")
+                            try await SSHExecutor.waitForSSH(ip: ip)
+
+                            print("Executing user-data script...")
+                            try await SSHExecutor.execute(
+                                script: scriptURL,
+                                on: ip,
+                                user: sshUser,
+                                key: sshKey
+                            )
+                            print(Style.success("✓ User-data script completed."))
+                        } else {
+                            print(Style.warning("Could not resolve VM IP. Skipping user-data execution."))
+                            print(Style.dim("Ensure the VM has booted and obtained a network address."))
+                        }
+                    } else {
+                        print(Style.warning("No MAC address configured. Cannot resolve IP for SSH provisioning."))
+                        print(Style.dim("Set a MAC address with 'spook set \(name) --mac-address <addr>' for automatic IP resolution."))
+                    }
+
+                case .agent:
+                    print(Style.error("✗ Agent provisioning is not yet available."))
+                    print(Style.dim("  The guest agent communicates over VirtIO socket and requires"))
+                    print(Style.dim("  pre-installation in the VM image. This feature is planned."))
+                    print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
+                    throw ExitCode.failure
+
+                case .sharedFolder:
+                    print(Style.error("✗ Shared-folder provisioning is not yet available."))
+                    print(Style.dim("  This mode requires a watcher daemon in the guest image."))
+                    print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
                     throw ExitCode.failure
                 }
-
-                // Resolve the VM's IP to connect via SSH.
-                if let macAddress = bundle.spec.macAddress {
-                    print("Resolving VM IP address...")
-                    if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
-                        print("Waiting for SSH on \(ip)...")
-                        try await SSHExecutor.waitForSSH(ip: ip)
-
-                        print("Executing user-data script...")
-                        try await SSHExecutor.execute(
-                            script: scriptURL,
-                            on: ip,
-                            user: sshUser,
-                            key: sshKey
-                        )
-                        print(Style.success("✓ User-data script completed."))
-                    } else {
-                        print(Style.warning("Could not resolve VM IP. Skipping user-data execution."))
-                        print(Style.dim("Ensure the VM has booted and obtained a network address."))
-                    }
-                } else {
-                    print(Style.warning("No MAC address configured. Cannot resolve IP for SSH provisioning."))
-                    print(Style.dim("Set a MAC address with 'spook set \(name) --mac-address <addr>' for automatic IP resolution."))
-                }
-            } else if let scriptPath = userData {
-                Style.field("User-data", scriptPath)
-                Style.field("Provision", provision.label)
             }
 
             if !headless {

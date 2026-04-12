@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spooktacular — Enterprise macOS Virtualization for Apple Silicon</title>
-<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Run 2 VMs per Mac, cut EC2 costs 50%, clone in 48ms. Kubernetes-native CI/CD, ML workloads, remote desktop. MIT licensed, $0 forever.">
+<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Run 2 VMs per Mac, cut EC2 costs 50%, clone in 48ms. SSH provisioning, disk snapshots, shared folders. MIT licensed, $0 forever.">
 <meta name="keywords" content="macOS virtualization, Apple Silicon VM, EC2 Mac, CI/CD runners, GitHub Actions, Kubernetes, open source">
 <meta property="og:title" content="Spooktacular — Enterprise macOS Virtualization">
-<meta property="og:description" content="2x your EC2 Mac CI capacity. Open source, MIT licensed, $0 forever.">
+<meta property="og:description" content="Run 2 macOS VMs per Mac. APFS cloning, SSH provisioning, snapshots. Open source, MIT licensed, $0 forever.">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://spooktacular.app/">
 <style>
@@ -192,7 +192,7 @@ Spooktacular
 <div class="container">
 <div class="badge"><span class="dot"></span> Open Source &middot; MIT Licensed &middot; Apple Silicon Native</div>
 <h1>Double your Mac CI capacity.<br><span>Zero additional cost.</span></h1>
-<p class="lead">Run 2 macOS VMs on every Apple Silicon Mac. Cut your EC2 Mac bill in half. Kubernetes-native orchestration. No vendor lock-in, no license fees, no sales calls.</p>
+<p class="lead">Run 2 macOS VMs on every Apple Silicon Mac. Cut your EC2 Mac bill in half. Instant APFS cloning, SSH provisioning, disk snapshots. No vendor lock-in, no license fees, no sales calls.</p>
 <div class="cta">
 <a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Get Started</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
@@ -201,7 +201,7 @@ Spooktacular
 <div class="code-hero">
 <div class="code-header">
 <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
-<span class="title">Terminal &mdash; Double your capacity in 4 commands</span>
+<span class="title">Terminal &mdash; Double your capacity in a few commands</span>
 </div>
 <pre><span class="dim">$</span> <span class="cmd">brew install --cask spooktacular</span>
 <span class="dim">$</span> <span class="cmd">spook create base --from-ipsw latest --cpu 8 --memory 16</span>
@@ -241,7 +241,7 @@ Spooktacular
 <span class="icon">&#128268;</span>
 <div class="tag">vs Anka</div>
 <h3>No vendor lock-in</h3>
-<p>Standard OCI registries (GHCR, Docker Hub, ECR). No proprietary image format. Your images work everywhere.</p>
+<p>MIT licensed. Standard VM bundles on disk. OCI registry push/pull is planned but not yet shipped.</p>
 </div>
 <div class="feature-card">
 <span class="icon">&#9729;</span>
@@ -251,39 +251,39 @@ Spooktacular
 </div>
 <div class="feature-card">
 <span class="icon">&#9096;</span>
-<div class="tag">vs Orka</div>
-<h3>Kubernetes-native</h3>
-<p><code>kubectl apply -f vm.yaml</code> creates macOS runners. Use your existing Helm, Flux, and ArgoCD workflows.</p>
+<div class="tag">Planned</div>
+<h3>Kubernetes-native (planned)</h3>
+<p>Planned: <code>kubectl apply -f vm.yaml</code> to create macOS runners. Kubernetes operator is on the roadmap, not yet shipped.</p>
 </div>
 <div class="feature-card">
 <span class="icon">&#9114;</span>
 <div class="tag">vs Tart</div>
-<h3>GUI + CLI + API</h3>
-<p>Native SwiftUI app with Liquid Glass. 16 CLI commands. HTTP control API. Menu bar extra. Choose your interface.</p>
+<h3>GUI + CLI</h3>
+<p>Native SwiftUI app with Liquid Glass. 16 CLI commands. Menu bar extra. HTTP control API is planned.</p>
 </div>
 <div class="feature-card">
 <span class="icon">&#9889;</span>
 <div class="tag">vs Tart</div>
-<h3>Zero-touch provisioning</h3>
-<p>User-data scripts run on first boot. No golden image required. Four provisioning modes for every deployment.</p>
+<h3>SSH provisioning</h3>
+<p>User-data scripts run via SSH provisioning on first boot. Disk-inject (zero-touch) mode is in progress. Templates generate install scripts for GitHub runner, remote desktop, and OpenClaw.</p>
 </div>
 <div class="feature-card">
 <span class="icon">&#11036;</span>
 <div class="tag">ML Workloads</div>
-<h3>Metal GPU acceleration</h3>
-<p>Apple Silicon GPU via VirtIO. Shared folders for datasets. Host-only networking for federated learning.</p>
+<h3>Metal GPU displays</h3>
+<p>1-2 Metal GPU-accelerated displays per VM. Shared folders for datasets. Host-only networking for isolation.</p>
 </div>
 <div class="feature-card">
 <span class="icon">&#128424;</span>
 <div class="tag">Remote Desktop</div>
-<h3>Screen Sharing built in</h3>
-<p>VNC access to every VM. Auto-resize display. Dual monitor support. Working toward 4K 60fps via HEVC encoding.</p>
+<h3>Remote desktop template</h3>
+<p>Built-in template generates a Screen Sharing enable script. Run via <code>spook start --provision ssh</code>. Auto-resize display on macOS 14+. 4K 60fps HEVC is planned.</p>
 </div>
 <div class="feature-card">
 <span class="icon">&#128200;</span>
 <div class="tag">Enterprise</div>
-<h3>Fleet autoscaling</h3>
-<p>Webhook-driven GitHub Actions scaling. AWS ASG integration. Kubernetes cluster-autoscaler. Pool management.</p>
+<h3>Fleet autoscaling (planned)</h3>
+<p>Planned: webhook-driven GitHub Actions scaling, AWS ASG integration, Kubernetes cluster-autoscaler, pool management. No code exists yet.</p>
 </div>
 </div>
 </div>
@@ -333,14 +333,14 @@ Spooktacular
 </tr>
 <tr>
 <td>Kubernetes-native</td>
-<td class="highlight-col yes">&#10003; CRD + operator</td>
+<td class="highlight-col no">&#10005; Planned</td>
 <td class="partial">Orchard (basic)</td>
 <td class="no">&#10005;</td>
 <td class="yes">&#10003;</td>
 </tr>
 <tr>
 <td>OCI registries</td>
-<td class="highlight-col yes">&#10003; Any registry</td>
+<td class="highlight-col no">&#10005; Planned</td>
 <td class="yes">&#10003;</td>
 <td class="no">Proprietary</td>
 <td class="partial">Docker</td>
@@ -354,21 +354,21 @@ Spooktacular
 </tr>
 <tr>
 <td>User-data provisioning</td>
-<td class="highlight-col yes">&#10003; 4 modes</td>
+<td class="highlight-col yes">&#10003; SSH (disk-inject in progress)</td>
 <td class="partial">SSH only</td>
 <td class="yes">&#10003;</td>
 <td class="partial">Limited</td>
 </tr>
 <tr>
 <td>Fleet autoscaling</td>
-<td class="highlight-col yes">&#10003; ASG + K8s + built-in</td>
+<td class="highlight-col no">&#10005; Planned</td>
 <td class="no">&#10005;</td>
 <td class="partial">Manual</td>
 <td class="yes">&#10003;</td>
 </tr>
 <tr>
 <td>ML workloads (GPU)</td>
-<td class="highlight-col yes">&#10003; Metal GPU</td>
+<td class="highlight-col partial">Metal displays</td>
 <td class="partial">Basic</td>
 <td class="partial">Basic</td>
 <td class="no">&#10005;</td>
@@ -400,12 +400,11 @@ Spooktacular
 <!-- Trusted for -->
 <div class="trusted">
 <div class="container">
-<h3>Built for production workloads</h3>
+<h3>Target use cases</h3>
 <div class="trusted-items">
 <div class="trusted-item"><span class="ti-icon">&#9881;</span> CI/CD Runners</div>
-<div class="trusted-item"><span class="ti-icon">&#129504;</span> ML Training</div>
 <div class="trusted-item"><span class="ti-icon">&#128424;</span> Remote Desktop</div>
-<div class="trusted-item"><span class="ti-icon">&#128172;</span> iMessage Servers</div>
+<div class="trusted-item"><span class="ti-icon">&#129504;</span> ML Workloads</div>
 <div class="trusted-item"><span class="ti-icon">&#128272;</span> Security Testing</div>
 </div>
 </div>
@@ -431,12 +430,9 @@ Spooktacular
 <span class="dim">$</span> <span class="cmd">spook clone dev runner-01</span>
 <span class="dim">$</span> <span class="cmd">spook clone dev runner-02</span>
 
-<span class="cmt"># Start runners headless with user-data provisioning</span>
+<span class="cmt"># Start runners headless with SSH provisioning</span>
 <span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --user-data ./setup-gha.sh</span>
-<span class="dim">$</span> <span class="cmd">spook start runner-02 --headless --user-data ./setup-gha.sh</span>
-
-<span class="cmt"># Or manage your fleet via Kubernetes</span>
-<span class="dim">$</span> <span class="cmd">kubectl apply -f macos-runners.yaml</span></pre>
+<span class="dim">$</span> <span class="cmd">spook start runner-02 --headless --user-data ./setup-gha.sh</span></pre>
 </div>
 </div>
 </section>
@@ -467,7 +463,7 @@ Spooktacular
 <div class="foot-col">
 <h4>Resources</h4>
 <a href="https://spooky-labs.github.io/spooktacular/api/documentation/spooktacularkit/" target="_blank">API Reference</a>
-<a href="features.html#for-devops">Kubernetes Guide</a>
+<a href="roadmap.html">Roadmap</a>
 <a href="features.html">Documentation</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
 </div>

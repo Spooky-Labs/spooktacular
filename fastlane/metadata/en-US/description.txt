@@ -9,28 +9,32 @@ Run 2 VMs per Mac — instantly double your GitHub Actions, Buildkite, or Circle
 ENTERPRISE-READY
 Full CLI for automation, full GUI for visibility. Manage headless servers with the built-in LaunchDaemon service.
 
-PROVISIONING THAT JUST WORKS
-Four ways to run scripts on first boot: disk injection (zero-touch), SSH, guest agent, or shared folders. Your user-data scripts run automatically — no manual setup.
+PROVISIONING
+Two provisioning modes today: SSH-based user-data execution with output streaming, and disk-inject (in progress). Two more planned: guest agent and shared-folder watcher.
+
+TEMPLATES
+Built-in templates for GitHub Actions runners, remote desktop, and OpenClaw generate setup scripts you apply via the CLI. Create the VM, then start it with --user-data and --provision ssh.
 
 BUILT ON APPLE'S VIRTUALIZATION FRAMEWORK
 Native Apple Silicon performance. Metal GPU acceleration for ML workloads. VirtIO networking, shared folders, and audio. Save and restore VM disk snapshots.
 
 KEY FEATURES
-• Create VMs from IPSW restore images
-• Instant APFS copy-on-write cloning
-• GitHub Actions runner setup
-• Remote desktop with Screen Sharing
-• ML workload support (Metal GPU, shared folders for datasets)
-• NAT, bridged, isolated, and host-only networking
-• Save/restore disk-level VM snapshots
-• LaunchDaemon service for headless operation
-• Menu bar quick access
-• Full CLI with styled terminal output
-• Accessibility: complete VoiceOver support
+- Create VMs from IPSW restore images
+- Instant APFS copy-on-write cloning
+- SSH provisioning with user-data scripts
+- IP resolution via DHCP leases and ARP table
+- GitHub Actions runner template (generates setup script)
+- Remote desktop template (generates Screen Sharing setup script)
+- NAT, bridged, and isolated networking
+- Save/restore disk-level VM snapshots
+- 2-VM capacity enforcement
+- LaunchDaemon service for headless operation
+- Menu bar quick access
+- Full CLI with styled terminal output
+- Accessibility: complete VoiceOver support
 
 PERFECT FOR
-• CI/CD runners (GitHub Actions, Buildkite, CircleCI)
-• macOS development and testing across versions
-• ML training and inference on Apple Silicon
-• iMessage servers (BlueBubbles)
-• Remote development environments
+- CI/CD runners (GitHub Actions, Buildkite, CircleCI)
+- macOS development and testing across versions
+- ML training and inference on Apple Silicon
+- Remote development environments
