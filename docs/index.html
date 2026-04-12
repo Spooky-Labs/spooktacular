@@ -103,11 +103,20 @@ tr:hover { background: var(--surface); }
 .price-card li::before { content: "✓ "; color: var(--green); }
 
 /* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; text-align: center; color: var(--dim); font-size: 0.85rem; }
+footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
 footer .links { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 1rem; }
+
+/* Starfield background */
+.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
+.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
+.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
+@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
+nav, section, .container, .hero, footer, main { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
+<div class="stars"></div><div class="stars2"></div><div class="stars3"></div>
 
 <nav>
 <div class="inner">
@@ -350,17 +359,38 @@ Spooktacular
 </section>
 
 <footer>
-<div class="container">
-<div class="links">
+<div class="foot-inner">
+<div class="foot-grid">
+<div class="foot-col">
+<h4>Product</h4>
 <a href="features.html">Features</a>
-<a href="roadmap.html">Roadmap</a>
 <a href="compare.html">Compare</a>
-<a href="privacy.html">Privacy</a>
-<a href="terms.html">Terms</a>
-<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases">Downloads</a>
 </div>
-<p>Made with 🌲🌲🌲 in Cascadia</p><p style="margin-top: 0.5rem;">MIT Licensed. Built by <a href="https://github.com/Spooky-Labs">Spooky Labs</a>.</p>
-<p style="margin-top: 0.5rem;">Apple, macOS, Apple Silicon, and Xcode are trademarks of Apple Inc.</p>
+<div class="foot-col">
+<h4>Resources</h4>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes Guide</a>
+<a href="https://github.com/Spooky-Labs/spooktacular">Documentation</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/issues">Report an Issue</a>
+</div>
+<div class="foot-col">
+<h4>Legal</h4>
+<a href="privacy.html">Privacy Policy</a>
+<a href="terms.html">Terms of Use</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT License</a>
+</div>
+<div class="foot-col">
+<h4>Community</h4>
+<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/discussions">Discussions</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/stargazers">Star on GitHub</a>
+</div>
+</div>
+<div class="foot-bottom">
+<p>Made with 🌲🌲🌲 in Cascadia</p>
+<p>© 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+</div>
 </div>
 </footer>
 
