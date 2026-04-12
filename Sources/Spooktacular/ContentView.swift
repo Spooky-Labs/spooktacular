@@ -241,10 +241,26 @@ struct VMInspectorView: View {
     @ViewBuilder
     private var sharedFoldersSection: some View {
         Section("Shared Folders") {
-            Text("None configured")
-                .foregroundStyle(.secondary)
-                .font(.callout)
-                .accessibilityLabel("No shared folders configured")
+            if bundle.spec.sharedFolders.isEmpty {
+                Text("None configured")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+                    .accessibilityLabel("No shared folders configured")
+            } else {
+                ForEach(bundle.spec.sharedFolders, id: \.tag) { folder in
+                    LabeledContent(folder.tag) {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(folder.hostPath)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                            Text(folder.readOnly ? "read-only" : "read-write")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
         }
     }
 
@@ -253,14 +269,17 @@ struct VMInspectorView: View {
     @ViewBuilder
     private var provisioningSection: some View {
         Section("Provisioning") {
-            LabeledContent("Mode", value: ProvisioningMode.diskInject.label)
-                .accessibilityElement(children: .combine)
-            LabeledContent("Script") {
-                Text("None")
-                    .foregroundStyle(.secondary)
+            LabeledContent("Setup") {
+                Image(systemName: bundle.metadata.setupCompleted
+                      ? "checkmark.circle.fill" : "circle.dashed")
+                .foregroundStyle(
+                    bundle.metadata.setupCompleted ? .green : .secondary
+                )
             }
-            .accessibilityLabel("User data script")
-            .accessibilityValue("None")
+            .accessibilityLabel("Setup status")
+            .accessibilityValue(
+                bundle.metadata.setupCompleted ? "Complete" : "Pending"
+            )
         }
     }
 

@@ -206,7 +206,7 @@ status:
 |-------|------|----------|---------|-------------|
 | `spec.image` | string | Yes (or `fromIPSW`) | - | OCI image reference |
 | `spec.fromIPSW` | string | Yes (or `image`) | - | IPSW source (`latest` or path) |
-| `spec.resources.cpu` | int | No | 4 | CPU cores (min 4, see ``VMSpec/minimumCPUCount``) |
+| `spec.resources.cpu` | int | No | 4 | CPU cores (min 4, see ``VirtualMachineSpecification/minimumCPUCount``) |
 | `spec.resources.memory` | string | No | 8Gi | RAM allocation |
 | `spec.resources.disk` | string | No | 64Gi | Disk size (APFS sparse) |
 | `spec.displays` | int | No | 1 | Virtual displays (1-2) |
@@ -232,7 +232,7 @@ status:
 | `Stopped` | VM is cleanly shut down |
 | `Failed` | An error occurred — check events for details |
 
-These phases map to the ``VMState`` enum in SpooktacularKit.
+These phases map to the ``VirtualMachineState`` enum in SpooktacularKit.
 
 ## MacOSVMPool CRD Reference
 
@@ -693,8 +693,8 @@ See <doc:Provisioning> for guidance on choosing the right
 
 ### Key Types
 
-- ``VMSpec``
+- ``VirtualMachineSpecification``
 - ``NetworkMode``
 - ``ProvisioningMode``
 - ``SharedFolder``
-- ``VMState``
+- ``VirtualMachineState``

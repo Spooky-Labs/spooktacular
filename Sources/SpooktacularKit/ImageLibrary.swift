@@ -108,21 +108,16 @@ public final class ImageLibrary: @unchecked Sendable {
         let destinationURL = directory.appendingPathComponent(url.lastPathComponent)
 
         if url.path != destinationURL.path {
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                try fileManager.removeItem(at: destinationURL)
-            }
+            try? fileManager.removeItem(at: destinationURL)
             try fileManager.copyItem(at: url, to: destinationURL)
         }
 
-        let attrs = try? fileManager.attributesOfItem(atPath: destinationURL.path)
-        let size = attrs?[.size] as? UInt64
-
-        let image = VirtualMachineImage(
+        let size = (try? fileManager.attributesOfItem(atPath: destinationURL.path))?[.size] as? UInt64
+        images.append(VirtualMachineImage(
             name: name,
             source: .ipsw(path: destinationURL.path),
             sizeInBytes: size
-        )
-        images.append(image)
+        ))
         try save()
     }
 

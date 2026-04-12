@@ -31,8 +31,7 @@ extension Spook {
         func run() async throws {
             let bundleURL = try Paths.requireBundle(for: name)
 
-            // Verify the VM is not running.
-            if PIDFile.isRunning(bundleURL: bundleURL) {
+            guard !PIDFile.isRunning(bundleURL: bundleURL) else {
                 print(Style.error("✗ VM '\(name)' is currently running."))
                 print(Style.dim("  Stop the VM first with 'spook stop \(name)'."))
                 throw ExitCode.failure
@@ -52,7 +51,6 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Read back the snapshot info to report size.
             let snapshots = try SnapshotManager.list(bundle: bundle)
             if let info = snapshots.first(where: { $0.label == label }) {
                 let sizeMB = Double(info.sizeInBytes) / (1024 * 1024)
@@ -87,8 +85,7 @@ extension Spook {
         func run() async throws {
             let bundleURL = try Paths.requireBundle(for: name)
 
-            // Verify the VM is not running.
-            if PIDFile.isRunning(bundleURL: bundleURL) {
+            guard !PIDFile.isRunning(bundleURL: bundleURL) else {
                 print(Style.error("✗ VM '\(name)' is currently running."))
                 print(Style.dim("  Stop the VM first with 'spook stop \(name)'."))
                 throw ExitCode.failure

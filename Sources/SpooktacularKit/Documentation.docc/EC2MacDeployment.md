@@ -508,7 +508,7 @@ aws autoscaling put-scheduled-action \
 ### VM Won't Start
 
 **Symptom:** `spook start` hangs or the VM enters the
-``VMState/error`` state.
+``VirtualMachineState/error`` state.
 
 **Cause:** Common causes include insufficient resources (too many
 cores allocated across VMs), corrupt disk image, or the Apple
@@ -529,7 +529,7 @@ log show --predicate 'subsystem == "com.apple.Virtualization"' --last 5m
 
 > Important: Apple's Virtualization framework enforces a hard limit
 > of **2 concurrent VMs** per host. Attempting to start a third VM
-> will fail. See ``VMSpec/minimumCPUCount`` for minimum hardware
+> will fail. See ``VirtualMachineSpecification/minimumCPUCount`` for minimum hardware
 > requirements.
 
 ## Topics
@@ -543,9 +543,9 @@ log show --predicate 'subsystem == "com.apple.Virtualization"' --last 5m
 
 ### Key Types
 
-- ``VMSpec``
-- ``VMBundle``
+- ``VirtualMachineSpecification``
+- ``VirtualMachineBundle``
 - ``CloneManager``
 - ``Compatibility``
 - ``RestoreImageManager``
-- ``VMState``
+- ``VirtualMachineState``

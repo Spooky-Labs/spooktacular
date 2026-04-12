@@ -107,38 +107,45 @@ public enum SnapshotManager {
         try fileManager.createDirectory(at: snapshotURL, withIntermediateDirectories: true)
 
         do {
-            var totalSize: UInt64 = 0
-
-            for fileName in snapshotFiles {
-                let sourceFile = bundle.url.appendingPathComponent(fileName)
-                let destinationFile = snapshotURL.appendingPathComponent(fileName)
-
-                guard fileManager.fileExists(atPath: sourceFile.path) else {
-                    continue
-                }
-
-                try fileManager.copyItem(at: sourceFile, to: destinationFile)
-
-                let attrs = try fileManager.attributesOfItem(atPath: destinationFile.path)
-                totalSize += (attrs[.size] as? UInt64) ?? 0
-            }
-
-            // Write snapshot-info.json.
+            let totalSize = try copySnapshotFiles(
+                from: bundle.url, to: snapshotURL
+            )
             let info = SnapshotInfo(
-                label: label,
-                createdAt: Date(),
-                sizeInBytes: totalSize
+                label: label, createdAt: Date(), sizeInBytes: totalSize
             )
             let data = try VirtualMachineBundle.encoder.encode(info)
             try data.write(to: snapshotURL.appendingPathComponent(infoFileName))
 
             Log.snapshot.notice("Saved snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public) (\(totalSize) bytes)")
         } catch {
-            // Clean up partial snapshot on failure.
             Log.snapshot.error("Snapshot save failed, cleaning up: \(error.localizedDescription, privacy: .public)")
             try? fileManager.removeItem(at: snapshotURL)
             throw error
         }
+    }
+
+    /// Copies snapshot files from a bundle to the snapshot directory.
+    ///
+    /// - Returns: The total size of all copied files in bytes.
+    private static func copySnapshotFiles(
+        from bundleURL: URL,
+        to snapshotURL: URL
+    ) throws -> UInt64 {
+        let fileManager = FileManager.default
+        var totalSize: UInt64 = 0
+
+        for fileName in snapshotFiles {
+            let source = bundleURL.appendingPathComponent(fileName)
+            guard fileManager.fileExists(atPath: source.path) else { continue }
+
+            let destination = snapshotURL.appendingPathComponent(fileName)
+            try fileManager.copyItem(at: source, to: destination)
+
+            let attrs = try fileManager.attributesOfItem(atPath: destination.path)
+            totalSize += (attrs[.size] as? UInt64) ?? 0
+        }
+
+        return totalSize
     }
 
     // MARK: - Restore

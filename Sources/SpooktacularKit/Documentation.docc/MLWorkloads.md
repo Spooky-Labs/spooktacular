@@ -68,7 +68,7 @@ spook create ml-serve \
 | M4 | 10 | 32 GB | 8 CPU / 24 GB | 4+4 CPU / 12+12 GB |
 
 > Note: Always leave at least 2 CPU cores and 4 GB RAM for the host
-> macOS. The minimum VM CPU count is 4 (see ``VMSpec/minimumCPUCount``).
+> macOS. The minimum VM CPU count is 4 (see ``VirtualMachineSpecification/minimumCPUCount``).
 
 ## Metal GPU Access in VMs
 
@@ -79,7 +79,7 @@ GPU device backed by the host's Metal-capable hardware.
 
 ### How It Works
 
-When ``VMConfiguration/applySpec(_:to:)`` configures a VM, it
+When ``VirtualMachineConfiguration/applySpec(_:to:)`` configures a VM, it
 creates a `VZMacGraphicsDeviceConfiguration` with one or two virtual
 displays. The guest macOS sees this as a standard Metal GPU and can
 run any Metal workload: shaders, compute kernels, ML frameworks.
@@ -181,7 +181,7 @@ spec:
       cd /Volumes/imagenet && python3 /opt/train.py
 ```
 
-See ``SharedFolder`` for the API details and ``VMSpec/sharedFolders``
+See ``SharedFolder`` for the API details and ``VirtualMachineSpecification/sharedFolders``
 for how shared folders are configured in the VM specification.
 
 ## MLX Framework
@@ -623,8 +623,8 @@ ls /data/models/
 
 ### Key Types
 
-- ``VMSpec``
-- ``VMConfiguration``
+- ``VirtualMachineSpecification``
+- ``VirtualMachineConfiguration``
 - ``SharedFolder``
 - ``NetworkMode``
 - ``CloneManager``

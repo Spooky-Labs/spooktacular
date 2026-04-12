@@ -70,11 +70,9 @@ final class AppState {
         imageLibrary.load()
 
         do {
-            let fileManager = FileManager.default
-            try fileManager.createDirectory(at: vmsDirectory, withIntermediateDirectories: true)
-            try fileManager.createDirectory(at: ipswCacheDirectory, withIntermediateDirectories: true)
+            try SpooktacularPaths.ensureDirectories()
 
-            let contents = try fileManager.contentsOfDirectory(
+            let contents = try FileManager.default.contentsOfDirectory(
                 at: vmsDirectory,
                 includingPropertiesForKeys: nil
             )
@@ -137,7 +135,6 @@ final class AppState {
     func deleteVM(_ name: String) {
         Task {
             do {
-                // Stop the VM before deleting its bundle.
                 if let vm = runningVMs.removeValue(forKey: name) {
                     Log.vm.info("Stopping running VM '\(name, privacy: .public)' before deletion")
                     try await vm.stop(graceful: false)

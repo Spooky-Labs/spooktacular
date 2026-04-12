@@ -153,8 +153,8 @@ connections from any machine.
 ### Resolution and DPI
 
 By default, each virtual display is configured at
-**1920 x 1200 @ 80 PPI**. This is set by ``VMConfiguration`` when
-applying the ``VMSpec``:
+**1920 x 1200 @ 80 PPI**. This is set by ``VirtualMachineConfiguration`` when
+applying the ``VirtualMachineSpecification``:
 
 ```swift
 VZMacGraphicsDisplayConfiguration(
@@ -180,7 +180,7 @@ spook set design-vm --displays 2
 Each display gets its own VNC session. Connect to the second
 display on port 5901.
 
-The ``VMSpec/displayCount`` property controls the number of
+The ``VirtualMachineSpecification/displayCount`` property controls the number of
 displays (valid range: 1-2).
 
 ### Auto-Resize Display
@@ -262,7 +262,7 @@ macOS is forwarded to the host's speakers.
 
 ### Enabling Audio
 
-Audio is enabled by default in ``VMSpec``. To explicitly control it:
+Audio is enabled by default in ``VirtualMachineSpecification``. To explicitly control it:
 
 ```bash
 # Audio enabled (default)
@@ -480,6 +480,6 @@ kubectl get macosvm -n desktops -o wide
 
 ### Key Types
 
-- ``VMSpec``
-- ``VMConfiguration``
+- ``VirtualMachineSpecification``
+- ``VirtualMachineConfiguration``
 - ``NetworkMode``
