@@ -63,12 +63,7 @@ extension Spook {
 
         @MainActor
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs, or 'spook create \(name)' to create one."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             // Enforce the 2-VM concurrency limit before proceeding.
             try Paths.ensureDirectories()
@@ -103,37 +98,21 @@ extension Spook {
             // Write PID file so other commands can find this process.
             try PIDFile.write(to: bundleURL)
 
-            // Install SIGTERM handler for graceful shutdown.
-            let terminationSignalSource = DispatchSource.makeSignalSource(
-                signal: SIGTERM,
-                queue: .main
-            )
-            signal(SIGTERM, SIG_IGN) // Ignore default handler; dispatch source handles it.
-            terminationSignalSource.setEventHandler {
-                print("\nReceived SIGTERM — stopping VM '\(name)'...")
-                Task { @MainActor in
-                    try? await vm.stop(graceful: false)
-                    PIDFile.remove(from: bundleURL)
-                    Foundation.exit(0)
+            // Graceful shutdown on SIGTERM and SIGINT (Ctrl+C).
+            for sig in [SIGTERM, SIGINT] {
+                signal(sig, SIG_IGN)
+                let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+                source.setEventHandler {
+                    let sigName = sig == SIGTERM ? "SIGTERM" : "SIGINT"
+                    print("\nReceived \(sigName) — stopping VM '\(name)'...")
+                    Task { @MainActor in
+                        try? await vm.stop(graceful: false)
+                        PIDFile.remove(from: bundleURL)
+                        Foundation.exit(0)
+                    }
                 }
+                source.resume()
             }
-            terminationSignalSource.resume()
-
-            // Also handle SIGINT (Ctrl+C) gracefully.
-            let interruptSignalSource = DispatchSource.makeSignalSource(
-                signal: SIGINT,
-                queue: .main
-            )
-            signal(SIGINT, SIG_IGN)
-            interruptSignalSource.setEventHandler {
-                print("\nReceived SIGINT — stopping VM '\(name)'...")
-                Task { @MainActor in
-                    try? await vm.stop(graceful: false)
-                    PIDFile.remove(from: bundleURL)
-                    Foundation.exit(0)
-                }
-            }
-            interruptSignalSource.resume()
 
             if recovery {
                 let options = VZMacOSVirtualMachineStartOptions()

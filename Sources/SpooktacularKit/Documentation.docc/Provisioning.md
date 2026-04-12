@@ -95,3 +95,5 @@ spec:
 - ``ProvisioningMode/ssh``
 - ``ProvisioningMode/agent``
 - ``ProvisioningMode/sharedFolder``
+- ``VirtualMachineSpecification``
+- ``VirtualMachineBundle``

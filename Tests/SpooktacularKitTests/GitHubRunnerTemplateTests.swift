@@ -7,22 +7,23 @@ struct GitHubRunnerTemplateTests {
 
     // MARK: - Script Content
 
-    @Test("Script contains the repository URL")
+    @Test("Script contains the repository name in a shell variable")
     func containsRepoURL() {
         let script = GitHubRunnerTemplate.scriptContent(
             repo: "myorg/myrepo",
             token: "ATOKEN123"
         )
-        #expect(script.contains("https://github.com/myorg/myrepo"))
+        #expect(script.contains("REPO='myorg/myrepo'"))
+        #expect(script.contains("https://github.com/$REPO"))
     }
 
-    @Test("Script contains the registration token")
+    @Test("Script contains the registration token in a shell variable")
     func containsToken() {
         let script = GitHubRunnerTemplate.scriptContent(
             repo: "myorg/myrepo",
             token: "ATOKEN123"
         )
-        #expect(script.contains("ATOKEN123"))
+        #expect(script.contains("TOKEN='ATOKEN123'"))
     }
 
     @Test("Script starts with a shebang line")

@@ -119,8 +119,8 @@ struct VMLaunchView: View {
             }
 
             // Quick spec summary (one line)
-            let memoryInGigabytes = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
-            let diskSizeInGigabytes = bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)
+            let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
+            let diskSizeInGigabytes = bundle.spec.diskSizeInGigabytes
             HStack(spacing: 16) {
                 Label("\(bundle.spec.cpuCount) cores", systemImage: "cpu")
                 Label("\(memoryInGigabytes) GB", systemImage: "memorychip")

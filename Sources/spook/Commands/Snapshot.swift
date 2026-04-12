@@ -29,12 +29,7 @@ extension Spook {
         var label: String
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             // Verify the VM is not running.
             if PIDFile.isRunning(bundleURL: bundleURL) {
@@ -90,12 +85,7 @@ extension Spook {
         var label: String
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             // Verify the VM is not running.
             if PIDFile.isRunning(bundleURL: bundleURL) {
@@ -139,12 +129,7 @@ extension Spook {
         var name: String
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let snapshots = try SnapshotManager.list(bundle: bundle)

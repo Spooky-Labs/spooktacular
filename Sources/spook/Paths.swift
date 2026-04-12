@@ -1,34 +1,51 @@
+import ArgumentParser
 import Foundation
+import SpooktacularKit
 
-/// Standard directory paths for Spooktacular data.
+/// CLI-local alias for ``SpooktacularPaths``.
+///
+/// Delegates all path logic to the shared ``SpooktacularPaths``
+/// in `SpooktacularKit` so the CLI and GUI resolve paths
+/// identically. Also provides the ``requireBundle(for:)`` helper
+/// that prints styled error messages before throwing.
 enum Paths {
 
     /// The root data directory: `~/.spooktacular/`.
-    static let root: URL = {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".spooktacular")
-    }()
+    static var root: URL { SpooktacularPaths.root }
 
     /// The VM bundles directory: `~/.spooktacular/vms/`.
-    static let vms: URL = {
-        root.appendingPathComponent("vms")
-    }()
+    static var vms: URL { SpooktacularPaths.vms }
 
     /// The IPSW cache directory: `~/.spooktacular/cache/ipsw/`.
-    static let ipswCache: URL = {
-        root.appendingPathComponent("cache")
-            .appendingPathComponent("ipsw")
-    }()
+    static var ipswCache: URL { SpooktacularPaths.ipswCache }
 
     /// Resolves a VM name to its bundle URL.
     static func bundleURL(for name: String) -> URL {
-        vms.appendingPathComponent("\(name).vm")
+        SpooktacularPaths.bundleURL(for: name)
     }
 
     /// Ensures the standard directories exist.
     static func ensureDirectories() throws {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(at: vms, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: ipswCache, withIntermediateDirectories: true)
+        try SpooktacularPaths.ensureDirectories()
+    }
+
+    /// Returns the bundle URL for the given VM name, printing a
+    /// styled error and throwing `ExitCode.failure` if the bundle
+    /// does not exist.
+    ///
+    /// This replaces the repeated guard-FileManager pattern across
+    /// all CLI commands.
+    ///
+    /// - Parameter name: The VM name.
+    /// - Returns: The bundle URL.
+    /// - Throws: `ExitCode.failure` if the bundle does not exist.
+    static func requireBundle(for name: String) throws -> URL {
+        let url = bundleURL(for: name)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            print(Style.error("✗ VM '\(name)' not found."))
+            print(Style.dim("  Run 'spook list' to see available virtual machines."))
+            throw ExitCode.failure
+        }
+        return url
     }
 }

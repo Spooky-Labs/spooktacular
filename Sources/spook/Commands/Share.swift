@@ -68,12 +68,7 @@ extension Spook.Share {
         var readOnly: Bool = false
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
@@ -133,12 +128,7 @@ extension Spook.Share {
         var tag: String
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let filtered = bundle.spec.sharedFolders.filter { $0.tag != tag }
@@ -178,12 +168,7 @@ extension Spook.Share {
         var name: String
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let folders = bundle.spec.sharedFolders

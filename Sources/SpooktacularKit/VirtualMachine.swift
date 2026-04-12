@@ -2,6 +2,17 @@ import Foundation
 import os
 import Virtualization
 
+/// An error thrown when an operation is attempted on a
+/// `VirtualMachine` whose underlying `VZVirtualMachine` has
+/// been released or was never created.
+public struct VirtualMachineInvalidatedError: Error, Sendable, LocalizedError {
+
+    /// A human-readable description of the error.
+    public var errorDescription: String? {
+        "The virtual machine has been invalidated and cannot perform operations."
+    }
+}
+
 /// The lifecycle state of a virtual machine.
 ///
 /// Maps to `VZVirtualMachine.State` but is a ``Sendable`` value
@@ -124,7 +135,7 @@ public final class VirtualMachine: NSObject, Sendable {
     ///
     /// - Throws: An error if the VM cannot be started.
     public func start() async throws {
-        guard let vm = vzVM else { return }
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Starting VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.starting)
         try await vm.start()
@@ -144,7 +155,7 @@ public final class VirtualMachine: NSObject, Sendable {
     ///   corruption in the guest. Always attempt a graceful
     ///   shutdown first.
     public func stop(graceful: Bool = false) async throws {
-        guard let vm = vzVM else { return }
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
 
         if graceful {
             Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)'")
@@ -162,7 +173,7 @@ public final class VirtualMachine: NSObject, Sendable {
     /// The guest's execution is suspended. Memory and device
     /// state are preserved. Resume with ``resume()``.
     public func pause() async throws {
-        guard let vm = vzVM else { return }
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Pausing VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.pausing)
         try await vm.pause()
@@ -172,7 +183,7 @@ public final class VirtualMachine: NSObject, Sendable {
 
     /// Resumes a paused virtual machine.
     public func resume() async throws {
-        guard let vm = vzVM else { return }
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Resuming VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.resuming)
         try await vm.resume()
@@ -201,7 +212,7 @@ public final class VirtualMachine: NSObject, Sendable {
     /// > disk image after saving invalidates the state file.
     @available(macOS 14.0, *)
     public func saveState(to url: URL) async throws {
-        guard let vm = vzVM else { return }
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Saving VM state to \(url.lastPathComponent, privacy: .public)")
         try await vm.saveMachineStateTo(url: url)
         Log.vm.notice("VM state saved successfully")
@@ -217,7 +228,7 @@ public final class VirtualMachine: NSObject, Sendable {
     ///   macOS 14+) or if the state file is invalid or incompatible.
     @available(macOS 14.0, *)
     public func restoreState(from url: URL) async throws {
-        guard let vm = vzVM else { return }
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Restoring VM state from \(url.lastPathComponent, privacy: .public)")
         try await vm.restoreMachineStateFrom(url: url)
         updateState(.running)

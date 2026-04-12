@@ -144,7 +144,7 @@ struct VMRow: View {
                     .lineLimit(1)
 
                 if let bundle = appState.vms[name] {
-                    let memoryInGigabytes = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
+                    let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
                     HStack(spacing: 4) {
                         Image(systemName: "cpu").font(.caption2)
                         Text("\(bundle.spec.cpuCount)")
@@ -177,7 +177,7 @@ struct VMRow: View {
         var parts = [name]
         parts.append(isRunning ? "running" : "stopped")
         if let bundle = appState.vms[name] {
-            let memoryInGigabytes = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
+            let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
             parts.append("\(bundle.spec.cpuCount) CPU cores")
             parts.append("\(memoryInGigabytes) gigabytes memory")
         }

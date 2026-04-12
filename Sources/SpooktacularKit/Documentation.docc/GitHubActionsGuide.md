@@ -1,4 +1,4 @@
-# GitHub Actions Runners
+# Configuring GitHub Actions Runners
 
 Run self-hosted macOS GitHub Actions runners in Spooktacular VMs with ephemeral isolation and automatic scaling.
 
@@ -6,8 +6,12 @@ Run self-hosted macOS GitHub Actions runners in Spooktacular VMs with ephemeral 
 
 Spooktacular turns every Apple Silicon Mac into a GitHub Actions
 runner host that supports **2 concurrent runners** instead of 1.
-Each runner runs inside an isolated macOS VM that can be destroyed
-and recreated between jobs for a clean-room guarantee.
+Each runner runs inside an isolated macOS VM that you can destroy
+and recreate between jobs for a clean-room guarantee.
+
+> Important: Apple Silicon supports a maximum of 2 concurrent VMs per
+> host. Plan your runner pools around this limit. See ``CapacityCheck``
+> for details.
 
 ### Why Self-Hosted macOS Runners?
 
@@ -25,7 +29,7 @@ with the clean-environment guarantees of GitHub-hosted runners.
 
 ## Quick Start: One Mac, Two Runners
 
-The fastest path from zero to two working GitHub Actions runners:
+Create two working GitHub Actions runners from zero:
 
 ```bash
 # 1. Install Spooktacular
@@ -77,10 +81,15 @@ tar xzf actions-runner.tar.gz
 ./svc.sh start
 ```
 
+> Note: The `disk-inject` provisioning mode writes a LaunchDaemon to
+> the guest disk before boot. No SSH, no agent, and no prior
+> configuration is required. See ``ProvisioningMode/diskInject`` for
+> details.
+
 ## The --github-runner Template
 
-Spooktacular includes a built-in `github-runner` template that
-automates all runner setup:
+Spooktacular includes a built-in template (``GitHubRunnerTemplate``)
+that automates all runner setup:
 
 ```bash
 spook create runner-01 --from-ipsw latest \
@@ -113,13 +122,13 @@ eliminating "works on my runner" issues.
 
 ### How Ephemeral Mode Works
 
-1. VM boots with a fresh macOS image
-2. Runner registers with GitHub using `--ephemeral` flag
-3. Runner picks up one job and executes it
-4. Job completes, runner deregisters itself
-5. Spooktacular destroys the VM
-6. A new VM is created from the same base image
-7. Cycle repeats
+1. VM boots with a fresh macOS image.
+2. Runner registers with GitHub using the `--ephemeral` flag.
+3. Runner picks up one job and executes it.
+4. Job completes and the runner deregisters itself.
+5. Spooktacular destroys the VM.
+6. A new VM is created from the same base image.
+7. The cycle repeats.
 
 ### CLI Setup
 
@@ -160,7 +169,7 @@ failure:
 
 ```bash
 #!/bin/bash
-# pool-manager.sh — runs on the Mac host
+# pool-manager.sh --- runs on the Mac host
 
 POOL_SIZE=2
 
@@ -187,7 +196,7 @@ events.
 ### Architecture
 
 ```
-GitHub ──workflow_job event──▶ Webhook Receiver ──▶ Scale MacOSVMPool
+GitHub ---workflow_job event---> Webhook Receiver ---> Scale MacOSVMPool
 ```
 
 When a `workflow_job` event with `action: queued` arrives, the
@@ -221,7 +230,7 @@ spec:
 
 ### GitHub Webhook Setup
 
-1. Go to your repository or organization Settings > Webhooks
+1. Go to your repository or organization Settings > Webhooks.
 2. Add a webhook:
    - **Payload URL:** `https://your-operator.example.com/webhook/github`
    - **Content type:** `application/json`
@@ -251,12 +260,12 @@ spook create runner --from-ipsw latest \
     --github-runner --github-repo myorg/myrepo --github-token "$TOKEN"
 ```
 
-> Note: Classic PATs with `repo` scope grant broad access. Prefer
-> fine-grained PATs with only the "Administration" permission.
+> Important: Classic PATs with `repo` scope grant broad access.
+> Use fine-grained PATs with only the "Administration" permission.
 
 ### GitHub App (Recommended for Organizations)
 
-More secure — the app generates short-lived tokens:
+More secure --- the app generates short-lived tokens:
 
 ```bash
 # 1. Create a GitHub App with "Self-hosted runners" organization permission
@@ -308,18 +317,9 @@ spook clone base-xcode15 runner-xcode15-01
 spook clone base-xcode16 runner-xcode16-01
 ```
 
-### Using Clones for Fast Deployment
-
-Clone from a base VM with Xcode pre-installed:
-
-```bash
-# Clone runners from the appropriate base
-spook clone base-xcode15 runner-xcode15-01
-spook clone base-xcode16 runner-xcode16-01
-```
-
 > Note: OCI image pull is on the roadmap. For now, create base VMs
 > from IPSW, install Xcode manually, then clone for fast deployment.
+> See ``CloneManager`` for details on copy-on-write cloning.
 
 ### Workflow Targeting
 
@@ -505,7 +505,7 @@ kubectl logs -n spooktacular-system deployment/spooktacular-operator -f
 
 ```bash
 #!/bin/bash
-# check-runners.sh — verify runners are healthy
+# check-runners.sh --- verify runners are healthy
 
 REPO="myorg/myrepo"
 TOKEN="ghp_xxxx"
@@ -519,7 +519,7 @@ echo "$runners" | while read name status busy; do
     if [ "$status" = "online" ]; then
         echo "  $name: online (busy=$busy)"
     else
-        echo "  $name: OFFLINE — needs attention"
+        echo "  $name: OFFLINE --- needs attention"
     fi
 done
 
@@ -589,7 +589,7 @@ or build artifacts have accumulated.
 # Check disk usage inside the VM
 spook exec runner-01 -- df -h /
 
-# For ephemeral runners, this is self-correcting — the VM is
+# For ephemeral runners, this is self-correcting --- the VM is
 # destroyed after each job. If using persistent runners:
 spook exec runner-01 -- rm -rf /Users/admin/actions-runner/_work/_temp/*
 spook exec runner-01 -- xcrun simctl delete unavailable
@@ -603,8 +603,7 @@ spook create runner --cpu 4 --memory 8 --disk 128
 **Symptom:** `spook list` shows the VM in `starting` state
 indefinitely.
 
-**Cause:** Typically a resource contention issue or a corrupt VM
-bundle.
+**Cause:** Resource contention or a corrupt VM bundle.
 
 **Solution:**
 
@@ -631,8 +630,10 @@ spook start runner-01 --headless
 
 ### Key Types
 
-- ``VMSpec``
-- ``VMBundle``
+- ``VirtualMachineSpecification``
+- ``VirtualMachineBundle``
 - ``CloneManager``
 - ``ProvisioningMode``
-- ``VMState``
+- ``VirtualMachineState``
+- ``GitHubRunnerTemplate``
+- ``CapacityCheck``

@@ -4,34 +4,49 @@ Create and manage macOS virtual machines on Apple Silicon.
 
 ## Overview
 
-SpooktacularKit is the core library powering Spooktacular — a lightweight
-macOS app for running macOS virtual machines. Built directly on Apple's
+SpooktacularKit is the core library powering Spooktacular --- a lightweight
+macOS app for running macOS virtual machines. Built on Apple's
 [Virtualization](https://developer.apple.com/documentation/virtualization)
-framework, it provides a clean Swift API for VM lifecycle management,
+framework, it provides a Swift API for VM lifecycle management,
 IPSW installation, instant APFS cloning, and enterprise provisioning.
 
-### Design Philosophy
+Use SpooktacularKit directly in your Swift project, or interact with it
+through the `spook` CLI, the Spooktacular GUI app, or the Kubernetes
+operator. All interfaces share the same library and produce identical
+behavior.
 
-SpooktacularKit follows Apple's sample code patterns exactly:
+> Important: SpooktacularKit requires an Apple Silicon Mac (M1 or later)
+> running macOS 14.0 (Sonoma) or later.
 
-- Direct use of `VZVirtualMachine` — no unnecessary abstractions
-- Value types (`VMSpec`, `VMMetadata`, `NetworkMode`) for all configuration
+### Design Principles
+
+SpooktacularKit follows Apple's Virtualization framework sample code
+patterns exactly:
+
+- Direct use of `VZVirtualMachine` --- no unnecessary abstractions
+- Value types (``VirtualMachineSpecification``, ``VirtualMachineMetadata``,
+  ``NetworkMode``) for all configuration
 - `Sendable` conformance throughout for Swift 6 strict concurrency
 - Full DocC documentation on every public API
 
-### Quick Start
+### Creating a Virtual Machine
 
 ```swift
-// Create a VM bundle
-let spec = VMSpec(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
-let bundle = try VMBundle.create(at: bundleURL, spec: spec)
+import SpooktacularKit
 
-// Clone it instantly (APFS copy-on-write)
+// Create a VM bundle with a hardware specification.
+let spec = VirtualMachineSpecification(
+    cpuCount: 8,
+    memorySizeInBytes: 16 * 1024 * 1024 * 1024
+)
+let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
+
+// Clone the bundle instantly using APFS copy-on-write.
 let clone = try CloneManager.clone(source: bundle, to: cloneURL)
 
-// Build a Virtualization framework configuration
+// Build a Virtualization framework configuration.
 let config = VZVirtualMachineConfiguration()
-VMConfiguration.applySpec(spec, to: config)
+VirtualMachineConfiguration.applySpec(spec, to: config)
 ```
 
 ## Topics
@@ -52,17 +67,17 @@ VMConfiguration.applySpec(spec, to: config)
 
 ### Virtual Machine Bundles
 
-- ``VMBundle``
-- ``VMSpec``
-- ``VMMetadata``
+- ``VirtualMachineBundle``
+- ``VirtualMachineSpecification``
+- ``VirtualMachineMetadata``
 - ``SharedFolder``
-- ``VMBundleError``
+- ``VirtualMachineBundleError``
 
 ### VM Lifecycle
 
 - ``VirtualMachine``
-- ``VMState``
-- ``VMConfiguration``
+- ``VirtualMachineState``
+- ``VirtualMachineConfiguration``
 
 ### Cloning
 
@@ -94,8 +109,38 @@ VMConfiguration.applySpec(spec, to: config)
 ### Image Library
 
 - ``ImageLibrary``
-- ``VMImage``
+- ``VirtualMachineImage``
 - ``ImageSource``
+
+### Setup Automation
+
+- ``SetupAutomation``
+- ``BootStep``
+- ``BootAction``
+- ``KeyCode``
+- ``Modifier``
+
+### Templates
+
+- ``GitHubRunnerTemplate``
+- ``RemoteDesktopTemplate``
+- ``OpenClawTemplate``
+- ``ScriptFile``
+
+### Capacity
+
+- ``CapacityCheck``
+- ``CapacityError``
+
+### Process Management
+
+- ``PIDFile``
+
+### Networking Utilities
+
+- ``IPResolver``
+- ``SSHExecutor``
+- ``SSHError``
 
 ### Logging
 

@@ -229,18 +229,70 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     /// - Returns: A new specification identical to this one except
     ///   for shared folders.
     public func withSharedFolders(_ folders: [SharedFolder]) -> VirtualMachineSpecification {
+        with(sharedFolders: folders)
+    }
+
+    /// Returns a copy of this specification with any subset of
+    /// fields overridden.
+    ///
+    /// Fields you omit (or pass `nil` for) retain their current
+    /// values. This avoids the fragile full-init pattern when only
+    /// one or two fields need to change.
+    ///
+    /// ```swift
+    /// let updated = spec.with(cpuCount: 8, memorySizeInBytes: 16 * 1024 * 1024 * 1024)
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - cpuCount: Number of CPU cores.
+    ///   - memorySizeInBytes: RAM in bytes.
+    ///   - diskSizeInBytes: Disk image size in bytes.
+    ///   - displayCount: Number of displays.
+    ///   - networkMode: Network mode.
+    ///   - audioEnabled: Attach audio output device.
+    ///   - microphoneEnabled: Attach microphone input.
+    ///   - sharedFolders: Host directories to share.
+    ///   - macAddress: Explicit MAC address string.
+    ///   - autoResizeDisplay: Resize guest display to match host.
+    ///   - clipboardSharingEnabled: Share clipboard.
+    /// - Returns: A new specification with the overridden values.
+    public func with(
+        cpuCount: Int? = nil,
+        memorySizeInBytes: UInt64? = nil,
+        diskSizeInBytes: UInt64? = nil,
+        displayCount: Int? = nil,
+        networkMode: NetworkMode? = nil,
+        audioEnabled: Bool? = nil,
+        microphoneEnabled: Bool? = nil,
+        sharedFolders: [SharedFolder]? = nil,
+        macAddress: String?? = nil,
+        autoResizeDisplay: Bool? = nil,
+        clipboardSharingEnabled: Bool? = nil
+    ) -> VirtualMachineSpecification {
         VirtualMachineSpecification(
-            cpuCount: cpuCount,
-            memorySizeInBytes: memorySizeInBytes,
-            diskSizeInBytes: diskSizeInBytes,
-            displayCount: displayCount,
-            networkMode: networkMode,
-            audioEnabled: audioEnabled,
-            microphoneEnabled: microphoneEnabled,
-            sharedFolders: folders,
-            macAddress: macAddress,
-            autoResizeDisplay: autoResizeDisplay,
-            clipboardSharingEnabled: clipboardSharingEnabled
+            cpuCount: cpuCount ?? self.cpuCount,
+            memorySizeInBytes: memorySizeInBytes ?? self.memorySizeInBytes,
+            diskSizeInBytes: diskSizeInBytes ?? self.diskSizeInBytes,
+            displayCount: displayCount ?? self.displayCount,
+            networkMode: networkMode ?? self.networkMode,
+            audioEnabled: audioEnabled ?? self.audioEnabled,
+            microphoneEnabled: microphoneEnabled ?? self.microphoneEnabled,
+            sharedFolders: sharedFolders ?? self.sharedFolders,
+            macAddress: macAddress ?? self.macAddress,
+            autoResizeDisplay: autoResizeDisplay ?? self.autoResizeDisplay,
+            clipboardSharingEnabled: clipboardSharingEnabled ?? self.clipboardSharingEnabled
         )
+    }
+
+    // MARK: - Convenience Properties
+
+    /// The memory size in whole gigabytes (GiB).
+    public var memorySizeInGigabytes: UInt64 {
+        memorySizeInBytes / (1024 * 1024 * 1024)
+    }
+
+    /// The disk size in whole gigabytes (GiB).
+    public var diskSizeInGigabytes: UInt64 {
+        diskSizeInBytes / (1024 * 1024 * 1024)
     }
 }

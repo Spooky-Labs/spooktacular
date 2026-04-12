@@ -208,22 +208,16 @@ public enum SnapshotManager {
             includingPropertiesForKeys: nil
         )
 
-        var snapshots: [SnapshotInfo] = []
-
-        for dir in contents {
+        let snapshots = try contents.compactMap { dir -> SnapshotInfo? in
             let infoURL = dir.appendingPathComponent(infoFileName)
-            guard fileManager.fileExists(atPath: infoURL.path) else {
-                continue
-            }
-
+            guard fileManager.fileExists(atPath: infoURL.path) else { return nil }
             let data = try Data(contentsOf: infoURL)
-            let info = try VirtualMachineBundle.decoder.decode(SnapshotInfo.self, from: data)
-            snapshots.append(info)
+            return try VirtualMachineBundle.decoder.decode(SnapshotInfo.self, from: data)
         }
+        .sorted { $0.label < $1.label }
 
-        let sorted = snapshots.sorted { $0.label < $1.label }
-        Log.snapshot.debug("Found \(sorted.count) snapshot(s) for \(bundle.url.lastPathComponent, privacy: .public)")
-        return sorted
+        Log.snapshot.debug("Found \(snapshots.count) snapshot(s) for \(bundle.url.lastPathComponent, privacy: .public)")
+        return snapshots
     }
 
     // MARK: - Delete

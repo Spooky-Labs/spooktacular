@@ -31,7 +31,7 @@ import os
 public enum Compatibility {
 
     /// The result of a compatibility check.
-    public enum Result: Sendable, Equatable {
+    public enum Result: Sendable {
 
         /// The image is compatible with the host.
         case compatible
@@ -136,18 +136,22 @@ public enum Compatibility {
     }
 }
 
-// MARK: - OperatingSystemVersion + Equatable
+// MARK: - Equatable
 
-/// `OperatingSystemVersion` doesn't conform to `Equatable` by
-/// default. We add it so ``Compatibility/Result`` can be
-/// `Equatable` for testing.
-extension OperatingSystemVersion: @retroactive Equatable {
-    public static func == (
-        lhs: OperatingSystemVersion,
-        rhs: OperatingSystemVersion
-    ) -> Bool {
-        lhs.majorVersion == rhs.majorVersion
-        && lhs.minorVersion == rhs.minorVersion
-        && lhs.patchVersion == rhs.patchVersion
+extension Compatibility.Result: Equatable {
+    public static func == (lhs: Compatibility.Result, rhs: Compatibility.Result) -> Bool {
+        switch (lhs, rhs) {
+        case (.compatible, .compatible):
+            return true
+        case (.hostTooOld(let lhsHost, let lhsImage), .hostTooOld(let rhsHost, let rhsImage)):
+            return lhsHost.majorVersion == rhsHost.majorVersion
+                && lhsHost.minorVersion == rhsHost.minorVersion
+                && lhsHost.patchVersion == rhsHost.patchVersion
+                && lhsImage.majorVersion == rhsImage.majorVersion
+                && lhsImage.minorVersion == rhsImage.minorVersion
+                && lhsImage.patchVersion == rhsImage.patchVersion
+        default:
+            return false
+        }
     }
 }

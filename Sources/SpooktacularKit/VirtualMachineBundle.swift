@@ -143,36 +143,42 @@ public struct VirtualMachineBundle: Sendable {
     ///   or ``VirtualMachineBundleError/invalidMetadata(url:)`` if the JSON
     ///   files are missing or malformed.
     public static func load(from url: URL) throws -> VirtualMachineBundle {
-        let fileManager = FileManager.default
-
-        guard fileManager.fileExists(atPath: url.path) else {
+        guard FileManager.default.fileExists(atPath: url.path) else {
             Log.vm.error("Bundle not found at \(url.lastPathComponent, privacy: .public)")
             throw VirtualMachineBundleError.notFound(url: url)
         }
 
         Log.vm.debug("Loading bundle from \(url.lastPathComponent, privacy: .public)")
 
-        let configURL = url.appendingPathComponent(configFileName)
-        let spec: VirtualMachineSpecification
-        do {
-            let data = try Data(contentsOf: configURL)
-            spec = try Self.decoder.decode(VirtualMachineSpecification.self, from: data)
-        } catch {
-            Log.vm.error("Invalid configuration in bundle \(url.lastPathComponent, privacy: .public)")
-            throw VirtualMachineBundleError.invalidConfiguration(url: url)
-        }
-
-        let metadataURL = url.appendingPathComponent(metadataFileName)
-        let metadata: VirtualMachineMetadata
-        do {
-            let data = try Data(contentsOf: metadataURL)
-            metadata = try Self.decoder.decode(VirtualMachineMetadata.self, from: data)
-        } catch {
-            Log.vm.error("Invalid metadata in bundle \(url.lastPathComponent, privacy: .public)")
-            throw VirtualMachineBundleError.invalidMetadata(url: url)
-        }
+        let spec = try decodeFile(
+            VirtualMachineSpecification.self,
+            at: url.appendingPathComponent(configFileName),
+            orThrow: .invalidConfiguration(url: url)
+        )
+        let metadata = try decodeFile(
+            VirtualMachineMetadata.self,
+            at: url.appendingPathComponent(metadataFileName),
+            orThrow: .invalidMetadata(url: url)
+        )
 
         Log.vm.info("Loaded bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
         return VirtualMachineBundle(url: url, spec: spec, metadata: metadata)
+    }
+
+    // MARK: - Private
+
+    /// Decodes a JSON file, rethrowing as the specified bundle error on failure.
+    private static func decodeFile<T: Decodable>(
+        _ type: T.Type,
+        at url: URL,
+        orThrow bundleError: VirtualMachineBundleError
+    ) throws -> T {
+        do {
+            let data = try Data(contentsOf: url)
+            return try Self.decoder.decode(type, from: data)
+        } catch {
+            Log.vm.error("Failed to decode \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            throw bundleError
+        }
     }
 }

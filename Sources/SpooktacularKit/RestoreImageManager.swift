@@ -108,13 +108,11 @@ public final class RestoreImageManager: Sendable {
         let fileName = restoreImage.url.lastPathComponent
         let localURL = cacheDirectory.appendingPathComponent(fileName)
 
-        // Return cached file if it exists.
         if fileManager.fileExists(atPath: localURL.path) {
             Log.ipsw.info("Using cached IPSW at \(localURL.lastPathComponent, privacy: .public)")
             return localURL
         }
 
-        // Download the IPSW.
         Log.ipsw.info("Downloading IPSW from \(restoreImage.url.lastPathComponent, privacy: .public)")
         let (tempURL, _) = try await URLSession.shared.download(
             from: restoreImage.url,
@@ -161,25 +159,21 @@ public final class RestoreImageManager: Sendable {
         let bundleURL = directory.appendingPathComponent("\(name).vm")
         let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
 
-        // Save hardware model.
         try requirements.hardwareModel.dataRepresentation.write(
             to: bundleURL.appendingPathComponent("hardware-model.bin")
         )
 
-        // Generate and save a new machine identifier.
         let machineIdentifier = VZMacMachineIdentifier()
         try machineIdentifier.dataRepresentation.write(
             to: bundleURL.appendingPathComponent("machine-identifier.bin")
         )
 
-        // Create auxiliary storage.
         _ = try VZMacAuxiliaryStorage(
             creatingStorageAt: bundleURL.appendingPathComponent("auxiliary.bin"),
             hardwareModel: requirements.hardwareModel,
             options: []
         )
 
-        // Create empty disk image.
         let diskURL = bundleURL.appendingPathComponent("disk.img")
         try createSparseImage(at: diskURL, sizeInBytes: spec.diskSizeInBytes)
 

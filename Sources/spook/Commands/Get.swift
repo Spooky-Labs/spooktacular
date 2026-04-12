@@ -37,11 +37,7 @@ extension Spook {
         var field: String?
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found.") + Style.dim(" Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let spec = bundle.spec
@@ -67,8 +63,8 @@ extension Spook {
             metadata: VirtualMachineMetadata,
             bundle: VirtualMachineBundle
         ) {
-            let memoryInGigabytes = spec.memorySizeInBytes / (1024 * 1024 * 1024)
-            let diskSizeInGigabytes = spec.diskSizeInBytes / (1024 * 1024 * 1024)
+            let memoryInGigabytes = spec.memorySizeInGigabytes
+            let diskSizeInGigabytes = spec.diskSizeInGigabytes
 
             // Header
             print()
@@ -144,8 +140,8 @@ extension Spook {
         ) throws {
             switch field {
             case "cpu": print(spec.cpuCount)
-            case "memory": print(spec.memorySizeInBytes / (1024 * 1024 * 1024))
-            case "disk": print(spec.diskSizeInBytes / (1024 * 1024 * 1024))
+            case "memory": print(spec.memorySizeInGigabytes)
+            case "disk": print(spec.diskSizeInGigabytes)
             case "displays": print(spec.displayCount)
             case "network": print(Style.networkRaw(spec.networkMode))
             case "audio": print(spec.audioEnabled)

@@ -61,29 +61,19 @@ extension Spook {
         var autoResize: Bool?
 
         func run() async throws {
-            let bundleURL = Paths.bundleURL(for: name)
-            guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' not found."))
-                print(Style.dim("  Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let bundleURL = try Paths.requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let oldSpec = bundle.spec
 
-            let newSpec = VirtualMachineSpecification(
-                cpuCount: cpu ?? oldSpec.cpuCount,
-                memorySizeInBytes: memory.map { UInt64($0) * 1024 * 1024 * 1024 }
-                    ?? oldSpec.memorySizeInBytes,
-                diskSizeInBytes: oldSpec.diskSizeInBytes,
-                displayCount: displays ?? oldSpec.displayCount,
-                networkMode: network ?? oldSpec.networkMode,
-                audioEnabled: audio ?? oldSpec.audioEnabled,
-                microphoneEnabled: microphone ?? oldSpec.microphoneEnabled,
-                sharedFolders: oldSpec.sharedFolders,
-                macAddress: oldSpec.macAddress,
-                autoResizeDisplay: autoResize ?? oldSpec.autoResizeDisplay,
-                clipboardSharingEnabled: oldSpec.clipboardSharingEnabled
+            let newSpec = oldSpec.with(
+                cpuCount: cpu,
+                memorySizeInBytes: memory.map { UInt64($0) * 1024 * 1024 * 1024 },
+                displayCount: displays,
+                networkMode: network,
+                audioEnabled: audio,
+                microphoneEnabled: microphone,
+                autoResizeDisplay: autoResize
             )
 
             let data = try VirtualMachineBundle.encoder.encode(newSpec)

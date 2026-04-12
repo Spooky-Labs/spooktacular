@@ -1,13 +1,17 @@
-# CLI Reference
+# Using the spook Command-Line Interface
 
-Complete reference for the `spook` command-line interface.
+Manage macOS virtual machines from the terminal with the `spook` CLI.
 
 ## Overview
 
-The `spook` CLI manages macOS virtual machines on Apple Silicon.
-It provides commands for creating, starting, stopping, cloning,
-and configuring VMs, backed by the same ``SpooktacularKit`` library
-used by the GUI app and Kubernetes operator.
+The `spook` CLI creates, starts, stops, clones, and configures macOS
+virtual machines on Apple Silicon. It uses the same ``SpooktacularKit``
+library as the GUI app and Kubernetes operator, so behavior is
+identical across all interfaces.
+
+> Important: The `spook` CLI requires an Apple Silicon Mac running
+> macOS 14.0 or later. Apple Silicon supports a maximum of 2
+> concurrent VMs per host.
 
 ### Installation
 
@@ -52,7 +56,7 @@ USAGE: spook create <name> [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--from-ipsw <source>` | `latest` | IPSW source: `latest` or path to local `.ipsw` |
-| `--cpu <n>` | 4 | CPU cores (minimum 4, see ``VMSpec/minimumCPUCount``) |
+| `--cpu <n>` | 4 | CPU cores (minimum 4, see ``VirtualMachineSpecification/minimumCPUCount``) |
 | `--memory <n>` | 8 | Memory in GB |
 | `--disk <n>` | 64 | Disk size in GB (APFS sparse) |
 | `--displays <n>` | 1 | Virtual displays (1 or 2) |
@@ -98,9 +102,10 @@ spook create runner --from-ipsw latest \
 spook create ml --cpu 8 --memory 16 \
     --share /data/training \
     --network host-only
-
-> Note: OCI image pull is on the roadmap. For now, use `--from-ipsw` to create VMs.
 ```
+
+> Note: OCI image pull is on the roadmap. For now, use `--from-ipsw`
+> to create VMs.
 
 **Exit codes:** 0 on success, 1 if the VM already exists or
 creation fails.
@@ -159,11 +164,11 @@ spook stop my-vm
 spook stop my-vm --force
 ```
 
-> Note: `spook stop` reads the PID file from the VM bundle and
-> sends SIGTERM to the `spook start` process that owns the VM.
-> That process handles SIGTERM by gracefully stopping the VM,
-> cleaning up the PID file, and exiting. Use `--force` to send
-> SIGKILL if the process is unresponsive.
+> Note: `spook stop` reads the PID file from the VM bundle and sends
+> SIGTERM to the `spook start` process that owns the VM. That process
+> handles SIGTERM by gracefully stopping the VM, cleaning up the PID
+> file, and exiting. Use `--force` to send SIGKILL if the process is
+> unresponsive. See ``PIDFile`` for details on PID file management.
 
 **Exit codes:** 0 on success, 1 if the VM is not found.
 
@@ -372,6 +377,9 @@ spook ip runner-01
 ssh admin@$(spook ip my-vm)
 ```
 
+The IP is resolved from the VM's MAC address using the host's
+DHCP lease file and ARP table. See ``IPResolver`` for details.
+
 **Exit codes:** 0 on success, 1 if the VM is not found or not
 running.
 
@@ -454,7 +462,7 @@ Saves a disk-level snapshot of a VM. Copies `disk.img` and
 the VM bundle, along with a `snapshot-info.json` metadata file.
 
 The VM must be **stopped** before snapshotting. Disk-level
-snapshots work across processes and reboots -- no running VM
+snapshots work across processes and reboots --- no running VM
 process is required, unlike VZ state save.
 
 ```
@@ -514,7 +522,6 @@ USAGE: spook snapshots <name>
 ```bash
 spook snapshots my-vm
 # LABEL            DATE                  SIZE
-# ──────────────   ──────────────────    ──────
 # clean-install    Jan 15, 2025 10:30    2.1 GB
 # before-xcode     Jan 16, 2025 14:22    3.8 GB
 ```
@@ -764,8 +771,8 @@ autoload -Uz compinit && compinit
 spook --generate-completion-script fish > ~/.config/fish/completions/spook.fish
 ```
 
-After installation, pressing Tab will complete command names,
-VM names, and option flags.
+After installation, pressing Tab completes command names, VM names,
+and option flags.
 
 ## Using spook in CI Scripts
 
@@ -876,8 +883,8 @@ All Spooktacular data lives under `~/.spooktacular/`:
 ~/.spooktacular/
 ├── vms/                     VM bundles
 │   ├── runner-01.vm/
-│   │   ├── config.json      VMSpec (CPU, memory, etc.)
-│   │   ├── metadata.json    VMMetadata (ID, dates)
+│   │   ├── config.json      VirtualMachineSpecification (CPU, memory, etc.)
+│   │   ├── metadata.json    VirtualMachineMetadata (ID, dates)
 │   │   ├── disk.img         APFS sparse disk image
 │   │   ├── auxiliary.bin    VZ auxiliary storage
 │   │   ├── hardware-model.bin
@@ -894,8 +901,8 @@ All Spooktacular data lives under `~/.spooktacular/`:
 └── api-token                API bearer token
 ```
 
-See ``VMBundle`` for the bundle directory structure and ``ImageLibrary``
-for the image cache.
+See ``VirtualMachineBundle`` for the bundle directory structure and
+``ImageLibrary`` for the image cache.
 
 ## Topics
 
@@ -908,10 +915,13 @@ for the image cache.
 
 ### Key Types
 
-- ``VMBundle``
-- ``VMSpec``
-- ``VMMetadata``
+- ``VirtualMachineBundle``
+- ``VirtualMachineSpecification``
+- ``VirtualMachineMetadata``
 - ``CloneManager``
 - ``ProvisioningMode``
 - ``NetworkMode``
 - ``ImageLibrary``
+- ``SnapshotManager``
+- ``PIDFile``
+- ``IPResolver``

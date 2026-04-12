@@ -181,9 +181,9 @@ struct VMInspectorView: View {
         Section("Hardware") {
             LabeledContent("CPU", value: "\(bundle.spec.cpuCount) cores")
                 .accessibilityElement(children: .combine)
-            LabeledContent("Memory", value: "\(bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)) GB")
+            LabeledContent("Memory", value: "\(bundle.spec.memorySizeInGigabytes) GB")
                 .accessibilityElement(children: .combine)
-            LabeledContent("Disk", value: "\(bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)) GB")
+            LabeledContent("Disk", value: "\(bundle.spec.diskSizeInGigabytes) GB")
                 .accessibilityElement(children: .combine)
         }
     }

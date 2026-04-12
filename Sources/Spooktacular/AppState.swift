@@ -47,27 +47,20 @@ final class AppState {
 
     /// The local cache of VM images (IPSWs + OCI).
     let imageLibrary = ImageLibrary(
-        directory: FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".spooktacular")
+        directory: SpooktacularPaths.root
             .appendingPathComponent("images")
     )
 
     // MARK: - Paths
 
     /// Root data directory: `~/.spooktacular/`.
-    let rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".spooktacular")
+    var rootDirectory: URL { SpooktacularPaths.root }
 
     /// VM bundles directory: `~/.spooktacular/vms/`.
-    var vmsDirectory: URL {
-        rootDirectory.appendingPathComponent("vms")
-    }
+    var vmsDirectory: URL { SpooktacularPaths.vms }
 
     /// IPSW cache directory: `~/.spooktacular/cache/ipsw/`.
-    var ipswCacheDirectory: URL {
-        rootDirectory.appendingPathComponent("cache")
-            .appendingPathComponent("ipsw")
-    }
+    var ipswCacheDirectory: URL { SpooktacularPaths.ipswCache }
 
     // MARK: - Lifecycle
 

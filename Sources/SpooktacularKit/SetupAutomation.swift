@@ -265,142 +265,161 @@ public enum SetupAutomation {
         password: String
     ) -> [BootStep] {
         var steps: [BootStep] = []
-
-        // --- Wait for VM to boot and show the Hello screen ---
-        steps.append(BootStep(delay: 60, action: .wait(0)))
-
-        // --- Dismiss Hello screen ---
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Select English language ---
-        // Type "italiano" to scroll the list, escape to reset search,
-        // then type "english" and press Enter.
-        steps.append(BootStep(delay: 30, action: .text("italiano")))
-        steps.append(BootStep(delay: 0, action: .key(.escape)))
-        steps.append(BootStep(delay: 0, action: .text("english")))
-        steps.append(BootStep(delay: 0, action: .key(.returnKey)))
-
-        // --- Select country: United States ---
-        steps.append(BootStep(delay: 30, action: .text("united states")))
-        steps.append(BootStep(delay: 0, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Transfer Data (Not Now) ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Additional Languages ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Accessibility ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Data & Privacy ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Create user account ---
-        // Fields: Full Name, Account Name, Password, Verify Password
-        steps.append(BootStep(delay: 10, action: .text(username)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .text(username)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .text(password)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .text(password)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Enable VoiceOver for reliable navigation ---
-        // Account creation takes a long time; wait 120s then toggle VoiceOver.
-        steps.append(BootStep(delay: 120, action: .shortcut(.f5, modifiers: [.option])))
-
-        // --- Skip Apple ID (Set Up Later) ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Confirm Skip Apple ID ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Terms and Conditions: navigate to Agree ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Confirm Terms agreement ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Location Services ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Confirm Skip Location ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Set Timezone to UTC ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .text("UTC")))
-        steps.append(BootStep(delay: 0, action: .key(.returnKey)))
-        steps.append(BootStep(delay: 0, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Analytics ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Screen Time ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Siri ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-        steps.append(BootStep(delay: 0, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Choose Look ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.tab, modifiers: [.shift])))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Skip Auto Update ---
-        steps.append(BootStep(delay: 10, action: .key(.tab)))
-        steps.append(BootStep(delay: 0, action: .key(.space)))
-
-        // --- Welcome to Mac (dismiss) ---
-        steps.append(BootStep(delay: 10, action: .key(.space)))
-
-        // --- Disable VoiceOver ---
-        steps.append(BootStep(delay: 0, action: .shortcut(.f5, modifiers: [.option])))
-
-        // --- Open Terminal via Spotlight ---
-        steps.append(BootStep(delay: 10, action: .shortcut(.space, modifiers: [.option])))
-        steps.append(BootStep(delay: 0, action: .text("Terminal")))
-        steps.append(BootStep(delay: 0, action: .key(.returnKey)))
-
-        // --- Enable SSH (Remote Login) ---
-        steps.append(BootStep(delay: 10, action: .text("sudo systemsetup -setremotelogin on")))
-        steps.append(BootStep(delay: 0, action: .key(.returnKey)))
-
-        // --- Enter sudo password ---
-        steps.append(BootStep(delay: 5, action: .text(password)))
-        steps.append(BootStep(delay: 0, action: .key(.returnKey)))
-
+        steps += languageAndCountrySteps()
+        steps += transferDataSteps()
+        steps += skipScreenSteps()
+        steps += accountCreationSteps(username: username, password: password)
+        steps += postAccountSteps()
+        steps += timezoneSteps()
+        steps += finalScreensSteps()
+        steps += enableSSHSteps(password: password)
         return steps
+    }
+
+    // MARK: - Sequoia Sequence Segments
+
+    /// Shorthand helpers used by each segment.
+    private static let shiftTab = BootAction.shortcut(.tab, modifiers: [.shift])
+    private static let tab = BootAction.key(.tab)
+    private static let space = BootAction.key(.space)
+    private static let enter = BootAction.key(.returnKey)
+    private static let voiceover = BootAction.shortcut(.f5, modifiers: [.option])
+
+    /// Wait for boot, dismiss Hello, select language and country.
+    private static func languageAndCountrySteps() -> [BootStep] {
+        [
+            BootStep(delay: 60, action: .wait(0)),
+            BootStep(delay: 0, action: space),
+            BootStep(delay: 30, action: .text("italiano")),
+            BootStep(delay: 0, action: .key(.escape)),
+            BootStep(delay: 0, action: .text("english")),
+            BootStep(delay: 0, action: enter),
+            BootStep(delay: 30, action: .text("united states")),
+            BootStep(delay: 0, action: shiftTab),
+            BootStep(delay: 0, action: space),
+        ]
+    }
+
+    /// Skip Transfer Data (Not Now).
+    private static func transferDataSteps() -> [BootStep] {
+        [
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: space),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: space),
+        ]
+    }
+
+    /// Skip Additional Languages, Accessibility, Data & Privacy.
+    private static func skipScreenSteps() -> [BootStep] {
+        // Each screen: Shift-Tab to focus Continue, Space to press.
+        (0..<3).flatMap { _ -> [BootStep] in
+            [BootStep(delay: 10, action: shiftTab), BootStep(delay: 0, action: space)]
+        }
+    }
+
+    /// Fill account creation form.
+    private static func accountCreationSteps(
+        username: String,
+        password: String
+    ) -> [BootStep] {
+        [
+            BootStep(delay: 10, action: .text(username)),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: .text(username)),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: .text(password)),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: .text(password)),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: space),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: space),
+            // Account creation takes ~120s; toggle VoiceOver for reliable nav.
+            BootStep(delay: 120, action: voiceover),
+        ]
+    }
+
+    /// Apple ID, Terms, Location screens.
+    private static func postAccountSteps() -> [BootStep] {
+        [
+            // Skip Apple ID (Set Up Later)
+            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 0, action: space),
+            // Confirm Skip Apple ID
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: space),
+            // Terms and Conditions (Agree)
+            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 0, action: space),
+            // Confirm Terms
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: space),
+            // Skip Location Services
+            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 0, action: space),
+            // Confirm Skip Location
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: space),
+        ]
+    }
+
+    /// Set timezone to UTC.
+    private static func timezoneSteps() -> [BootStep] {
+        [
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: tab),
+            BootStep(delay: 0, action: .text("UTC")),
+            BootStep(delay: 0, action: enter),
+            BootStep(delay: 0, action: shiftTab),
+            BootStep(delay: 0, action: shiftTab),
+            BootStep(delay: 0, action: space),
+        ]
+    }
+
+    /// Analytics, Screen Time, Siri, Choose Look, Auto Update, Welcome.
+    private static func finalScreensSteps() -> [BootStep] {
+        [
+            // Skip Analytics
+            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 0, action: space),
+            // Skip Screen Time
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: space),
+            // Skip Siri (two-step)
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: space),
+            BootStep(delay: 0, action: shiftTab),
+            BootStep(delay: 0, action: space),
+            // Skip Choose Look
+            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 0, action: space),
+            // Skip Auto Update
+            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: space),
+            // Welcome to Mac (dismiss)
+            BootStep(delay: 10, action: space),
+            // Disable VoiceOver
+            BootStep(delay: 0, action: voiceover),
+        ]
+    }
+
+    /// Open Terminal via Spotlight and enable SSH.
+    private static func enableSSHSteps(password: String) -> [BootStep] {
+        [
+            BootStep(delay: 10, action: .shortcut(.space, modifiers: [.option])),
+            BootStep(delay: 0, action: .text("Terminal")),
+            BootStep(delay: 0, action: enter),
+            BootStep(delay: 10, action: .text("sudo systemsetup -setremotelogin on")),
+            BootStep(delay: 0, action: enter),
+            BootStep(delay: 5, action: .text(password)),
+            BootStep(delay: 0, action: enter),
+        ]
     }
 
     // MARK: - macOS 26 (Tahoe)

@@ -51,97 +51,91 @@ public enum VirtualMachineConfiguration {
         to configuration: VZVirtualMachineConfiguration
     ) {
         Log.config.info("Applying spec: \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM, \(spec.displayCount) display(s)")
-        // CPU and memory
+
         configuration.cpuCount = spec.cpuCount
         configuration.memorySize = spec.memorySizeInBytes
-
-        // Boot loader
         configuration.bootLoader = VZMacOSBootLoader()
+        configuration.graphicsDevices = [makeGraphics(displayCount: spec.displayCount)]
+        configuration.keyboards = [VZMacKeyboardConfiguration()]
+        configuration.pointingDevices = [VZMacTrackpadConfiguration()]
+        configuration.networkDevices = makeNetworkDevices(
+            for: spec.networkMode, macAddress: spec.macAddress
+        )
+        configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
+        configuration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
+        configuration.memoryBalloonDevices = [
+            VZVirtioTraditionalMemoryBalloonDeviceConfiguration()
+        ]
 
-        // Graphics
+        if spec.audioEnabled {
+            configuration.audioDevices = [makeAudio(microphone: spec.microphoneEnabled)]
+        }
+
+        if !spec.sharedFolders.isEmpty {
+            configuration.directorySharingDevices = [makeSharing(spec.sharedFolders)]
+        }
+    }
+
+    private static func makeGraphics(
+        displayCount: Int
+    ) -> VZMacGraphicsDeviceConfiguration {
         let graphics = VZMacGraphicsDeviceConfiguration()
-        graphics.displays = (0..<spec.displayCount).map { _ in
+        graphics.displays = (0..<displayCount).map { _ in
             VZMacGraphicsDisplayConfiguration(
                 widthInPixels: displayWidth,
                 heightInPixels: displayHeight,
                 pixelsPerInch: displayPPI
             )
         }
-        configuration.graphicsDevices = [graphics]
+        return graphics
+    }
 
-        // Input
-        configuration.keyboards = [VZMacKeyboardConfiguration()]
-        configuration.pointingDevices = [VZMacTrackpadConfiguration()]
-
-        // Network
-        configuration.networkDevices = makeNetworkDevices(
-            for: spec.networkMode,
-            macAddress: spec.macAddress
-        )
-
-        // VirtIO socket — always present for host↔guest communication
-        // (IP discovery, graceful shutdown, provisioning signals).
-        // Apple docs: https://developer.apple.com/documentation/virtualization/sockets
-        configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
-
-        // Entropy — exposes host randomness to guest for
-        // cryptographic operations.
-        // Apple docs: https://developer.apple.com/documentation/virtualization/randomization
-        configuration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
-
-        // Memory balloon — allows the host to dynamically reclaim
-        // unused guest memory. Required for efficient resource use.
-        // Apple docs: https://developer.apple.com/documentation/virtualization/vzvirtiotraditionalmemoryballoondeviceconfiguration
-        configuration.memoryBalloonDevices = [
-            VZVirtioTraditionalMemoryBalloonDeviceConfiguration()
+    private static func makeAudio(
+        microphone: Bool
+    ) -> VZVirtioSoundDeviceConfiguration {
+        let audio = VZVirtioSoundDeviceConfiguration()
+        var streams: [VZVirtioSoundDeviceStreamConfiguration] = [
+            VZVirtioSoundDeviceOutputStreamConfiguration()
         ]
-
-        // Audio — VirtIO sound device with output stream and
-        // optional microphone input.
-        // Apple docs: https://developer.apple.com/documentation/virtualization/vzvirtiosounddeviceconfiguration
-        if spec.audioEnabled {
-            let audio = VZVirtioSoundDeviceConfiguration()
-            var streams: [VZVirtioSoundDeviceStreamConfiguration] = [
-                VZVirtioSoundDeviceOutputStreamConfiguration()
-            ]
-            if spec.microphoneEnabled {
-                streams.append(VZVirtioSoundDeviceInputStreamConfiguration())
-            }
-            audio.streams = streams
-            configuration.audioDevices = [audio]
+        if microphone {
+            streams.append(VZVirtioSoundDeviceInputStreamConfiguration())
         }
+        audio.streams = streams
+        return audio
+    }
 
-        // Shared folders — uses VZMultipleDirectoryShare when
-        // multiple folders are configured, VZSingleDirectoryShare
-        // for a single folder. The macOS guest automount tag makes
-        // folders appear automatically in Finder.
-        // Apple docs: https://developer.apple.com/documentation/virtualization/shared-directories
-        if !spec.sharedFolders.isEmpty {
-            let share: VZDirectoryShare
-            if spec.sharedFolders.count == 1 {
-                let folder = spec.sharedFolders[0]
-                share = VZSingleDirectoryShare(
-                    directory: VZSharedDirectory(
-                        url: URL(fileURLWithPath: folder.hostPath),
-                        readOnly: folder.readOnly
-                    )
+    /// Builds a VirtIO file-system device for shared folders.
+    ///
+    /// Uses `VZSingleDirectoryShare` for one folder,
+    /// `VZMultipleDirectoryShare` for two or more.
+    private static func makeSharing(
+        _ folders: [SharedFolder]
+    ) -> VZVirtioFileSystemDeviceConfiguration {
+        let share: VZDirectoryShare
+        if folders.count == 1 {
+            let folder = folders[0]
+            share = VZSingleDirectoryShare(
+                directory: VZSharedDirectory(
+                    url: URL(fileURLWithPath: folder.hostPath),
+                    readOnly: folder.readOnly
                 )
-            } else {
-                var directories: [String: VZSharedDirectory] = [:]
-                for folder in spec.sharedFolders {
-                    directories[folder.tag] = VZSharedDirectory(
+            )
+        } else {
+            let directories = Dictionary(
+                uniqueKeysWithValues: folders.map { folder in
+                    (folder.tag, VZSharedDirectory(
                         url: URL(fileURLWithPath: folder.hostPath),
                         readOnly: folder.readOnly
-                    )
+                    ))
                 }
-                share = VZMultipleDirectoryShare(directories: directories)
-            }
-            let device = VZVirtioFileSystemDeviceConfiguration(
-                tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
             )
-            device.share = share
-            configuration.directorySharingDevices = [device]
+            share = VZMultipleDirectoryShare(directories: directories)
         }
+        let device = VZVirtioFileSystemDeviceConfiguration(
+            tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
+        )
+        device.share = share
+        return device
     }
 
     /// Applies platform-specific configuration from bundle artifacts.

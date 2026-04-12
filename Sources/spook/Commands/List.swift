@@ -63,8 +63,8 @@ extension Spook {
             var runningCount = 0
 
             for (name, bundle) in bundles {
-                let memoryInGigabytes = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
-                let diskSizeInGigabytes = bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)
+                let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
+                let diskSizeInGigabytes = bundle.spec.diskSizeInGigabytes
                 let setup = bundle.metadata.setupCompleted
                     ? Style.green("✓ ready") : Style.dim("pending")
                 let network = Style.networkLabel(bundle.spec.networkMode)
@@ -111,8 +111,8 @@ extension Spook {
                 entries.append([
                     "name": name,
                     "cpu": bundle.spec.cpuCount,
-                    "memorySizeInGigabytes": bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024),
-                    "diskSizeInGigabytes": bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024),
+                    "memorySizeInGigabytes": bundle.spec.memorySizeInGigabytes,
+                    "diskSizeInGigabytes": bundle.spec.diskSizeInGigabytes,
                     "displays": bundle.spec.displayCount,
                     "network": "\(bundle.spec.networkMode)",
                     "audio": bundle.spec.audioEnabled,

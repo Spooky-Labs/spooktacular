@@ -55,9 +55,9 @@ extension Spook.Service {
     /// - Returns: A UTF-8 XML string suitable for writing to disk.
     static func generatePlist(executablePath: String, bind: String) -> String {
         """
-        <?xml version= "1.0" encoding= "UTF-8"?>
+        <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version= "1.0">
+        <plist version="1.0">
         <dict>
             <key>Label</key>
             <string>\(daemonLabel)</string>

@@ -107,7 +107,6 @@ public enum SSHExecutor {
     ) async throws {
         let remotePath = "/tmp/spook-user-data.sh"
 
-        // Step 1: Copy the script to the VM.
         Log.provision.info("Copying script to \(user, privacy: .public)@\(ip, privacy: .public):\(remotePath, privacy: .public)")
         var scpArgs = sshOptions
         if let key {
@@ -122,7 +121,6 @@ public enum SSHExecutor {
             throw SSHError.scpFailed(exitCode: scpExit)
         }
 
-        // Step 2: Make executable and run.
         Log.provision.info("Executing script on \(ip, privacy: .public)")
         var sshArgs = sshOptions
         if let key {

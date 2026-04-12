@@ -94,14 +94,12 @@ public enum CloneManager {
                 to: destination.appendingPathComponent("machine-identifier.bin")
             )
 
-            // Write config.json (same spec as source)
             let spec = source.spec
             let configData = try VirtualMachineBundle.encoder.encode(spec)
             try configData.write(
                 to: destination.appendingPathComponent(VirtualMachineBundle.configFileName)
             )
 
-            // Write metadata.json with a new ID but inherited state
             var metadata = VirtualMachineMetadata()
             metadata.setupCompleted = source.metadata.setupCompleted
             let metadataData = try VirtualMachineBundle.encoder.encode(metadata)

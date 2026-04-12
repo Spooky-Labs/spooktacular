@@ -29,11 +29,7 @@ extension Spook {
         func run() async throws {
             try Paths.ensureDirectories()
 
-            let sourceURL = Paths.bundleURL(for: source)
-            guard FileManager.default.fileExists(atPath: sourceURL.path) else {
-                print(Style.error("✗ VM '\(source)' not found.") + Style.dim(" Run 'spook list' to see available VMs."))
-                throw ExitCode.failure
-            }
+            let sourceURL = try Paths.requireBundle(for: source)
 
             let destinationURL = Paths.bundleURL(for: destination)
             guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
