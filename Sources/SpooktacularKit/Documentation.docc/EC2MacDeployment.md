@@ -1,0 +1,568 @@
+# Deploying on EC2 Mac
+
+Run Spooktacular on AWS EC2 Mac dedicated hosts to double your macOS CI capacity.
+
+## Overview
+
+AWS EC2 Mac instances provide bare-metal Apple Silicon hardware in the
+cloud. Each EC2 Mac host can run a single macOS instance natively, but
+with Spooktacular you can run **two** macOS virtual machines per host —
+doubling your CI runner capacity without adding hardware.
+
+This guide covers the complete setup: from allocating a dedicated host
+to running a production GitHub Actions fleet on EC2 Mac.
+
+### Prerequisites
+
+Before you begin, ensure you have:
+
+- **AWS account** with EC2 Mac instance access (may require a service
+  quota increase for `mac2.metal` or `mac2-m2.metal`)
+- **EC2 Mac dedicated host** — Mac instances run exclusively on
+  dedicated hosts (not shared tenancy)
+- **VPC with a private subnet** — recommended for security
+- **Security group** allowing:
+  - SSH (port 22) from your bastion or VPN
+  - Spooktacular API (port 9470) from your Kubernetes cluster or
+    management network
+- **SSH key pair** for EC2 access
+- Apple Silicon Mac host types: `mac2.metal` (M1), `mac2-m2.metal`
+  (M2), or `mac2-m2pro.metal` (M2 Pro)
+
+> Important: EC2 Mac dedicated hosts have a **24-hour minimum allocation
+> period**. You are billed for the full 24 hours even if you release the
+> host earlier. Plan your usage accordingly.
+
+## One-Liner Setup
+
+The fastest way to get running on a fresh EC2 Mac instance:
+
+```bash
+curl -sSL https://spooktacular.dev/ec2-setup.sh | bash -s -- \
+    --github-repo myorg/myrepo \
+    --github-token ghp_xxxxxxxxxxxx \
+    --xcode 16.2
+```
+
+This script:
+
+1. Installs Homebrew (if not present)
+2. Installs Spooktacular via `brew install --cask spooktacular`
+3. Configures the control API to listen on all interfaces
+4. Generates a secure API bearer token
+5. Installs and starts the Spooktacular LaunchDaemon
+6. Creates two macOS VMs with Xcode pre-installed
+7. Registers both VMs as GitHub Actions runners
+
+After the script completes you have two self-hosted runners
+picking up jobs immediately.
+
+## Manual Step-by-Step Setup
+
+If you prefer to configure each step yourself, follow this procedure.
+
+### Step 1: Install Spooktacular
+
+SSH into your EC2 Mac instance and install via Homebrew:
+
+```bash
+ssh -i ~/.ssh/my-key.pem ec2-user@<ec2-public-ip>
+
+# Install Homebrew if not already present
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Spooktacular
+brew install --cask spooktacular
+```
+
+Verify the installation:
+
+```bash
+spook --version
+# spook 0.1.0
+```
+
+### Step 2: Configure the Control API
+
+By default, Spooktacular's API listens on `127.0.0.1:9470` (localhost
+only). For remote management you need to bind to all interfaces:
+
+```bash
+# Bind to all interfaces so the K8s operator (or other tools) can
+# reach this host over the VPC network.
+spook config --bind 0.0.0.0:9470
+
+# Generate a secure bearer token for API authentication
+spook config --generate-token
+# Writes token to ~/.spooktacular/api-token
+
+# Verify
+cat ~/.spooktacular/api-token
+```
+
+> Note: Never expose port 9470 to the public internet. Use VPC private
+> subnets and security groups to restrict access. See
+> <doc:KubernetesGuide> for operator-to-host connectivity patterns.
+
+### Step 3: Install the LaunchDaemon
+
+Register Spooktacular as a system service so it starts automatically
+on boot and survives SSH session termination:
+
+```bash
+spook service install
+```
+
+This creates a LaunchDaemon at
+`/Library/LaunchDaemons/dev.spooktacular.daemon.plist` that:
+
+- Starts on system boot
+- Restarts automatically on crash
+- Runs the Spooktacular API server
+- Manages VM lifecycle (start, stop, health checks)
+
+### LaunchDaemon vs LaunchAgent
+
+| Service Type | Runs as | Starts at | Best for |
+|-------------|---------|-----------|----------|
+| LaunchDaemon | root | System boot | Servers, CI hosts, EC2 Mac |
+| LaunchAgent | User | User login | Developer workstations |
+
+For EC2 Mac deployments, always use the LaunchDaemon (`spook service
+install`). LaunchAgents require an active GUI session and are not
+suitable for headless server operation.
+
+```bash
+# LaunchDaemon (recommended for EC2 Mac)
+spook service install
+
+# LaunchAgent (for developer machines)
+spook service install --user
+```
+
+## Configuring the Control API for Remote Access
+
+The Spooktacular control API is a JSON-over-HTTP service that accepts
+commands for creating, starting, stopping, and managing VMs.
+
+### Bind Address
+
+```bash
+# Listen on localhost only (default, for local use)
+spook config --bind 127.0.0.1:9470
+
+# Listen on all interfaces (required for remote access)
+spook config --bind 0.0.0.0:9470
+
+# Listen on a specific interface
+spook config --bind 10.0.1.50:9470
+```
+
+### Bearer Token Authentication
+
+Every API request must include a bearer token:
+
+```bash
+# Generate a cryptographically random token
+spook config --generate-token
+
+# Or set a specific token
+spook config --token "my-secret-token-here"
+
+# Verify connectivity from another machine
+curl -s -H "Authorization: Bearer $(cat token)" \
+    http://10.0.1.50:9470/v1/vms | jq .
+```
+
+### Security Best Practices
+
+1. **VPC private subnet** — Place EC2 Mac hosts in a private subnet
+   with no public IP. Access via VPN, bastion, or VPC peering.
+2. **Security group** — Allow port 9470 only from your Kubernetes
+   cluster's CIDR or management network.
+3. **Token rotation** — Rotate API tokens periodically. Update the
+   Helm values or ConfigMap in your K8s cluster when you rotate.
+4. **TLS termination** — Use an NLB or ALB with TLS in front of the
+   API if traversing untrusted networks.
+5. **IAM** — Use EC2 instance roles for AWS API access. Do not store
+   long-lived AWS credentials on the host.
+
+```bash
+# Rotate the API token
+spook config --generate-token
+
+# Update the K8s operator with the new token
+kubectl create secret generic spook-node-tokens \
+    --from-literal=mac-01="$(ssh ec2-user@10.0.1.50 'cat ~/.spooktacular/api-token')" \
+    --dry-run=client -o yaml | kubectl apply -f -
+```
+
+## Creating VMs on the EC2 Mac
+
+### From an IPSW (Fresh Install)
+
+```bash
+# Download the latest compatible macOS and install
+spook create runner-01 --from-ipsw latest \
+    --cpu 4 --memory 8 --disk 64
+
+# Create a second VM (2 per host maximum)
+spook create runner-02 --from-ipsw latest \
+    --cpu 4 --memory 8 --disk 64
+```
+
+> Note: IPSW installation takes 10-20 minutes per VM. For faster
+> deployment, use OCI images or clone from a base VM.
+
+### From an OCI Image (Recommended)
+
+OCI images are pre-built macOS images with tools already installed.
+They skip the IPSW installation entirely:
+
+```bash
+# Pull and create from an OCI image with Xcode pre-installed
+spook create runner-01 \
+    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
+    --cpu 4 --memory 8 --disk 64
+
+spook create runner-02 \
+    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
+    --cpu 4 --memory 8 --disk 64
+```
+
+### Clone from a Base VM
+
+Create one base VM, configure it, then clone instantly:
+
+```bash
+# Create and configure a base VM
+spook create base --from-ipsw latest --cpu 4 --memory 8 --disk 64
+spook start base
+# ... manually install Xcode, configure settings, etc.
+spook stop base
+
+# Clone instantly (APFS copy-on-write, milliseconds)
+spook clone base runner-01
+spook clone base runner-02
+```
+
+See ``CloneManager`` for details on how APFS copy-on-write cloning
+works.
+
+### Provisioning with User-Data
+
+Automate VM setup with a user-data script:
+
+```bash
+spook create runner-01 --from-ipsw latest \
+    --cpu 4 --memory 8 --disk 64 \
+    --user-data /opt/spooktacular/setup-runner.sh \
+    --provision disk-inject
+```
+
+See <doc:Provisioning> for all four provisioning strategies and
+when to use each.
+
+## Monitoring
+
+### Checking VM Status
+
+```bash
+# List all VMs with status
+spook list
+
+# JSON output for automation
+spook list --json
+
+# Detailed configuration for a specific VM
+spook get runner-01
+
+# Extract a single field for scripting
+spook get runner-01 --field cpu
+```
+
+### Logs
+
+```bash
+# Spooktacular service logs (LaunchDaemon)
+log show --predicate 'subsystem == "dev.spooktacular"' --last 1h
+
+# System-level VM logs
+log show --predicate 'subsystem == "com.apple.Virtualization"' --last 1h
+```
+
+### Disk Usage
+
+Monitor disk space carefully. Each VM's disk image is APFS sparse
+but can grow to its configured maximum:
+
+```bash
+# Check host disk usage
+df -h /
+
+# Check actual disk image sizes (sparse files)
+du -sh ~/.spooktacular/vms/*/disk.img
+
+# Check configured vs actual size
+spook get runner-01 --field disk
+```
+
+## Cost Optimization
+
+### The Math
+
+EC2 Mac dedicated hosts cost approximately **$1.083/hour** (M1,
+`us-east-1`, on-demand pricing as of 2025). With a 24-hour minimum
+allocation:
+
+| Scenario | Hosts | Runners | Monthly cost | Cost per runner |
+|----------|-------|---------|-------------|-----------------|
+| Without Spooktacular | 10 | 10 | ~$7,800 | ~$780 |
+| With Spooktacular | 10 | **20** | ~$7,800 | ~$390 |
+| With Spooktacular | 5 | 10 | ~$3,900 | ~$390 |
+
+Spooktacular halves the per-runner cost by running 2 VMs per host.
+
+### Hardware Allocation
+
+Each EC2 Mac `mac2.metal` (M1) has 8 CPU cores and 16 GB RAM. A
+recommended split for two VMs:
+
+```bash
+# Runner 1: 4 cores, 8 GB RAM
+spook create runner-01 --cpu 4 --memory 8 --disk 64
+
+# Runner 2: 4 cores, 8 GB RAM
+spook create runner-02 --cpu 4 --memory 8 --disk 64
+```
+
+For M2 Pro hosts (`mac2-m2pro.metal`) with 12 cores and 32 GB RAM:
+
+```bash
+# Runner 1: 6 cores, 16 GB RAM
+spook create runner-01 --cpu 6 --memory 16 --disk 100
+
+# Runner 2: 6 cores, 16 GB RAM
+spook create runner-02 --cpu 6 --memory 16 --disk 100
+```
+
+### Savings Plans and Reserved Instances
+
+AWS offers Savings Plans for EC2 Mac dedicated hosts with up to 44%
+discount for a 1-year commitment. Combine Spooktacular's 2x
+capacity with a Savings Plan for maximum cost efficiency.
+
+## Auto Scaling Group Integration
+
+Use an EC2 Auto Scaling Group to manage a fleet of Mac hosts. Each
+host runs the setup script via user-data on launch:
+
+### Launch Template
+
+```bash
+aws ec2 create-launch-template \
+    --launch-template-name spooktacular-mac \
+    --launch-template-data '{
+        "ImageId": "ami-0xxxxxxxxxxxx",
+        "InstanceType": "mac2.metal",
+        "KeyName": "my-key",
+        "SecurityGroupIds": ["sg-0xxxxxxxxxxxx"],
+        "UserData": "'$(base64 -w0 ec2-setup.sh)'"
+    }'
+```
+
+### User-Data Script
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+# Install Spooktacular
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew install --cask spooktacular
+
+# Configure API
+spook config --bind 0.0.0.0:9470
+spook config --generate-token
+
+# Install service
+spook service install
+
+# Create two runners
+spook create runner-01 \
+    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
+    --cpu 4 --memory 8 --disk 64 \
+    --user-data /opt/spooktacular/github-runner.sh \
+    --provision agent
+
+spook create runner-02 \
+    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
+    --cpu 4 --memory 8 --disk 64 \
+    --user-data /opt/spooktacular/github-runner.sh \
+    --provision agent
+
+spook start runner-01 --headless
+spook start runner-02 --headless
+```
+
+## Terraform Module Reference
+
+A Terraform module is available for declarative infrastructure:
+
+```hcl
+module "spooktacular_fleet" {
+  source = "spooktacular/ec2-mac/aws"
+
+  host_count       = 5
+  instance_type    = "mac2-m2pro.metal"
+  subnet_ids       = module.vpc.private_subnets
+  security_groups  = [aws_security_group.spooktacular.id]
+  key_name         = aws_key_pair.deploy.key_name
+
+  vms_per_host     = 2
+  vm_cpu           = 6
+  vm_memory_gb     = 16
+  vm_disk_gb       = 100
+  vm_image         = "ghcr.io/spooktacular/macos-xcode:15.4-16.2"
+
+  github_repo      = "myorg/myrepo"
+  github_token_ssm = aws_ssm_parameter.github_token.name
+
+  tags = {
+    Environment = "production"
+    Team        = "platform"
+  }
+}
+```
+
+Output values:
+
+```hcl
+output "host_ips" {
+  value = module.spooktacular_fleet.host_private_ips
+}
+
+output "runner_count" {
+  value = module.spooktacular_fleet.total_runners
+  # 10 (5 hosts x 2 runners)
+}
+```
+
+## Troubleshooting
+
+### IPSW Version Mismatch
+
+**Symptom:** `spook create` fails with "Your macOS (X.Y) cannot
+install macOS Z.W."
+
+**Cause:** The EC2 Mac host's macOS is older than the IPSW you are
+trying to install. The guest version must be less than or equal to
+the host version.
+
+**Solution:** Update the host macOS, or use a pre-built OCI image
+that matches the host version:
+
+```bash
+# Check host version
+sw_vers --productVersion
+
+# Use an OCI image instead of IPSW
+spook create runner --pull ghcr.io/spooktacular/macos:15.4
+```
+
+See ``Compatibility`` for details on how version checking works.
+
+### Disk Space Exhausted
+
+**Symptom:** VM creation or operation fails with I/O errors.
+
+**Cause:** APFS sparse disk images grow as the guest writes data.
+Two VMs with 100 GB configured disk can consume up to 200 GB.
+
+**Solution:** Monitor disk usage and size VMs appropriately:
+
+```bash
+# Check actual disk usage
+du -sh ~/.spooktacular/vms/*/disk.img
+
+# EC2 Mac root volume is typically 200 GB — resize if needed
+aws ec2 modify-volume --volume-id vol-0xxxx --size 500
+# Then resize the filesystem inside the instance
+sudo diskutil apfs resizeContainer disk1 0
+```
+
+### 24-Hour Minimum Allocation
+
+**Symptom:** You are billed for 24 hours even though you released
+the dedicated host after 2 hours.
+
+**Cause:** EC2 Mac dedicated hosts have a mandatory 24-hour minimum
+allocation period. This is an AWS policy, not a Spooktacular
+limitation.
+
+**Solution:** Plan your usage in 24-hour blocks. Use Auto Scaling
+Groups with scheduled scaling to align host allocation with your
+CI load patterns:
+
+```bash
+# Scale up at 8 AM UTC (start of business)
+aws autoscaling put-scheduled-action \
+    --auto-scaling-group-name spooktacular-fleet \
+    --scheduled-action-name scale-up \
+    --recurrence "0 8 * * MON-FRI" \
+    --desired-capacity 10
+
+# Scale down at 8 PM UTC (end of business)
+# Hosts won't actually release until 24hr mark
+aws autoscaling put-scheduled-action \
+    --auto-scaling-group-name spooktacular-fleet \
+    --scheduled-action-name scale-down \
+    --recurrence "0 20 * * MON-FRI" \
+    --desired-capacity 2
+```
+
+### VM Won't Start
+
+**Symptom:** `spook start` hangs or the VM enters the
+``VMState/error`` state.
+
+**Cause:** Common causes include insufficient resources (too many
+cores allocated across VMs), corrupt disk image, or the Apple
+kernel 2-VM limit.
+
+**Solution:**
+
+```bash
+# Check how many VMs are running (max 2)
+spook list
+
+# Verify resource allocation
+spook get runner-01
+
+# Check system logs
+log show --predicate 'subsystem == "com.apple.Virtualization"' --last 5m
+```
+
+> Important: Apple's Virtualization framework enforces a hard limit
+> of **2 concurrent VMs** per host. Attempting to start a third VM
+> will fail. See ``VMSpec/minimumCPUCount`` for minimum hardware
+> requirements.
+
+## Topics
+
+### Related Guides
+
+- <doc:GettingStarted>
+- <doc:KubernetesGuide>
+- <doc:GitHubActionsGuide>
+- <doc:Provisioning>
+
+### Key Types
+
+- ``VMSpec``
+- ``VMBundle``
+- ``CloneManager``
+- ``Compatibility``
+- ``RestoreImageManager``
+- ``VMState``

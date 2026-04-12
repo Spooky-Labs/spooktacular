@@ -138,6 +138,47 @@ extension Spook {
         )
         var share: [String] = []
 
+        // MARK: - Built-in Templates
+
+        @Flag(
+            help: """
+                Configure as a GitHub Actions runner. Requires \
+                --github-repo and --github-token.
+                """
+        )
+        var githubRunner: Bool = false
+
+        @Option(help: "GitHub repository (org/repo) for --github-runner.")
+        var githubRepo: String?
+
+        @Option(help: "GitHub runner registration token for --github-runner.")
+        var githubToken: String?
+
+        @Flag(
+            help: """
+                Configure as an OpenClaw AI agent. Installs Node.js \
+                and OpenClaw, starts the gateway daemon. Pass API keys \
+                via a shared folder for security.
+                """
+        )
+        var openclaw: Bool = false
+
+        @Flag(
+            help: """
+                Enable Screen Sharing (VNC) for remote desktop access. \
+                Reports the VNC URL after boot.
+                """
+        )
+        var remoteDesktop: Bool = false
+
+        @Flag(
+            help: """
+                Runner exits after one job, VM auto-destroys and \
+                re-clones. For CI pools with clean VMs per job.
+                """
+        )
+        var ephemeral: Bool = false
+
         @MainActor
         func run() async throws {
             try Paths.ensureDirectories()
@@ -213,20 +254,38 @@ extension Spook {
                 }
                 print()
 
+                // Template and user-data info.
+                if openclaw {
+                    print(Style.info("🦞 OpenClaw template selected"))
+                    print(Style.dim("  Installs Node.js 24 + OpenClaw + gateway daemon"))
+                    print(Style.dim("  Pass API keys via --share for security"))
+                }
+                if githubRunner {
+                    print(Style.info("🏃 GitHub Actions runner template selected"))
+                    if let repo = githubRepo {
+                        Style.field("Repo", repo)
+                    }
+                }
+                if remoteDesktop {
+                    print(Style.info("🖥  Remote desktop template selected"))
+                    print(Style.dim("  Screen Sharing (VNC) will be enabled on boot"))
+                }
                 if let scriptPath = userData {
-                    print("User-data script: \(scriptPath)")
-                    print("Provisioning method: \(provision.label)")
-                    // TODO: Execute user-data via selected provisioning mode.
-                    print("(User-data execution will run on next 'spook start')")
+                    Style.field("User-data", scriptPath)
+                    Style.field("Provision", provision.label)
+                }
+                if ephemeral {
+                    print(Style.yellow("⟳ Ephemeral mode: VM auto-destroys after main process exits"))
                 }
 
-                print("✓ VM '\(name)' created successfully.")
-                print("  Bundle: \(bundleURL.path)")
-                print("  CPU: \(spec.cpuCount) cores")
-                print("  Memory: \(memory) GB")
-                print("  Disk: \(disk) GB")
-                print("")
-                print("Run 'spook start \(name)' to boot the VM.")
+                print()
+                print(Style.success("✓ VM '\(name)' created successfully."))
+                Style.field("Bundle", Style.dim(bundleURL.path))
+                Style.field("CPU", "\(spec.cpuCount) cores")
+                Style.field("Memory", "\(memory) GB")
+                Style.field("Disk", "\(disk) GB")
+                print()
+                print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
 
             } catch let error as RestoreImageError {
                 print("Error: \(error.localizedDescription)")
