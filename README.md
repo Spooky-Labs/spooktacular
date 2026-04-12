@@ -8,7 +8,7 @@
 2x your EC2 Mac CI capacity. Open source. Self-hosted anywhere.
 
 [![Build](https://img.shields.io/github/actions/workflow/status/Spooky-Labs/spooktacular/ci.yml?style=flat-square&label=build)](https://github.com/Spooky-Labs/spooktacular/actions)
-[![Tests](https://img.shields.io/badge/tests-234%20passed-brightgreen?style=flat-square)](https://github.com/Spooky-Labs/spooktacular/actions)
+[![Tests](https://img.shields.io/badge/tests-262%20passed-brightgreen?style=flat-square)](https://github.com/Spooky-Labs/spooktacular/actions)
 [![Swift](https://img.shields.io/badge/Swift-6.0-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple&logoColor=white)](https://developer.apple.com/macos/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
@@ -134,7 +134,7 @@ spook                   CLI (swift-argument-parser, 16 commands)
 
 | Metric | Value |
 |---|---|
-| Tests | **234** across 33 suites |
+| Tests | **262** across 34 suites |
 | Source | 50+ files, ~8,500 lines of Swift |
 | DocC | 11 guides + full API reference |
 | Force unwraps | **0** |
@@ -181,7 +181,7 @@ See the full [roadmap](https://spooktacular.app/roadmap.html):
 ```bash
 git clone https://github.com/Spooky-Labs/spooktacular
 cd spooktacular
-swift test        # 234 tests, ~0.04s
+swift test        # 262 tests, ~0.04s
 ./build-app.sh    # .app bundle with icon
 ```
 

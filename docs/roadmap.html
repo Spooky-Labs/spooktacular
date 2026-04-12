@@ -177,6 +177,17 @@ Spooktacular
 <li><span class="check">&#10003;</span> VM bundle format (config.json + platform artifacts + disk image)</li>
 <li><span class="check">&#10003;</span> IPSW version compatibility checking (fails fast, not after 13 GB download)</li>
 <li><span class="check">&#10003;</span> 2-VM capacity enforcement via kernel limit detection</li>
+<li><span class="check">&#10003;</span> Disk-level snapshots (save, restore, list, delete)</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Provisioning &amp; Templates</h3>
+<ul>
+<li><span class="check">&#10003;</span> SSH provisioning (wait for IP, connect, execute user-data script)</li>
+<li><span class="check">&#10003;</span> IP resolution (DHCP/ARP)</li>
+<li><span class="check">&#10003;</span> Template generation: <code>--github-runner</code>, <code>--remote-desktop</code>, <code>--openclaw</code> (generate install scripts; run with <code>spook start --provision ssh</code>)</li>
+<li><span class="check">&#10003;</span> LaunchDaemon service install (per-VM)</li>
 </ul>
 </div>
 
@@ -185,7 +196,7 @@ Spooktacular
 <ul>
 <li><span class="check">&#10003;</span> CPU, memory, disk, 1&ndash;2 Metal GPU displays</li>
 <li><span class="check">&#10003;</span> Audio (speaker + microphone), clipboard sharing</li>
-<li><span class="check">&#10003;</span> Shared folders via VirtIO file system with automount</li>
+<li><span class="check">&#10003;</span> Shared folder management (add/remove/list with persistence)</li>
 <li><span class="check">&#10003;</span> NAT, bridged, isolated, and host-only networking</li>
 <li><span class="check">&#10003;</span> MAC address configuration, auto-resize display (macOS 14+)</li>
 </ul>
@@ -403,8 +414,8 @@ Spooktacular
 <div class="foot-col">
 <h4>Resources</h4>
 <a href="https://spooky-labs.github.io/spooktacular/api/documentation/spooktacularkit/" target="_blank">API Reference</a>
-<a href="features.html#for-devops">Kubernetes Guide</a>
-<a href="features.html">Documentation</a>
+<a href="features.html">Features</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Documentation</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
 </div>
 <div class="foot-col">

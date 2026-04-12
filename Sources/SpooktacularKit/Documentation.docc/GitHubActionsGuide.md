@@ -201,8 +201,14 @@ Simpler to set up, but less secure for organizations:
 # Or classic PAT with "repo" scope
 TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
+# Generate the runner setup script
 spook create runner --from-ipsw latest \
     --github-runner --github-repo myorg/myrepo --github-token "$TOKEN"
+
+# Apply via SSH provisioning
+spook start runner --headless \
+    --user-data ~/.spooktacular/vms/runner/user-data.sh \
+    --provision ssh --ssh-user admin
 ```
 
 > Important: Classic PATs with `repo` scope grant broad access.
@@ -237,6 +243,11 @@ TOKEN=$(curl -s -X POST \
 
 spook create runner --from-ipsw latest \
     --github-runner --github-repo myorg/myrepo --github-token "$TOKEN"
+
+# Apply the generated script
+spook start runner --headless \
+    --user-data ~/.spooktacular/vms/runner/user-data.sh \
+    --provision ssh --ssh-user admin
 ```
 
 ## Xcode Version Management
@@ -354,20 +365,6 @@ curl -s -H "Authorization: token ghp_xxxx" \
     jq '.runners[] | {name, status, busy}'
 ```
 
-### From Kubernetes
-
-```bash
-# Pool health
-kubectl get macosvmpool -n ci
-kubectl describe macosvmpool production-runners -n ci
-
-# Individual runner VMs
-kubectl get macosvm -n ci
-
-# Operator logs
-kubectl logs -n spooktacular-system deployment/spooktacular-operator -f
-```
-
 ### Health Check Script
 
 ```bash
@@ -433,13 +430,13 @@ curl -s -H "Authorization: token ghp_xxxx" \
 # For PATs: generate a new token in GitHub Settings > Developer settings
 # For GitHub Apps: tokens auto-refresh, but check the app installation
 
-# Update the token in your VM pool
-kubectl edit macosvmpool production-runners -n ci
-# Update templateArgs.token
-
-# Or rotate via Helm
-helm upgrade spooktacular-operator spooktacular/operator \
-    --set pools.runners.templateArgs.token=ghp_NEW_TOKEN
+# Recreate the runner VM with a new token
+spook delete runner-01 --force
+spook create runner-01 --from-ipsw latest \
+    --github-runner --github-repo myorg/myrepo --github-token ghp_NEW_TOKEN
+spook start runner-01 --headless \
+    --user-data ~/.spooktacular/vms/runner-01/user-data.sh \
+    --provision ssh --ssh-user admin
 ```
 
 ### Disk Full

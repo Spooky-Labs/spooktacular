@@ -21,10 +21,7 @@ Before you begin, ensure you have:
 - **EC2 Mac dedicated host** — Mac instances run exclusively on
   dedicated hosts (not shared tenancy)
 - **VPC with a private subnet** — recommended for security
-- **Security group** allowing:
-  - SSH (port 22) from your bastion or VPN
-  - Spooktacular API (port 9470) from your Kubernetes cluster or
-    management network
+- **Security group** allowing SSH (port 22) from your bastion or VPN
 - **SSH key pair** for EC2 access
 - Apple Silicon Mac host types: `mac2.metal` (M1), `mac2-m2.metal`
   (M2), or `mac2-m2pro.metal` (M2 Pro)
@@ -33,29 +30,32 @@ Before you begin, ensure you have:
 > period**. You are billed for the full 24 hours even if you release the
 > host earlier. Plan your usage accordingly.
 
-## One-Liner Setup
+## Quick Setup
 
-The fastest way to get running on a fresh EC2 Mac instance:
+SSH into your EC2 Mac instance, install Spooktacular, create VMs,
+and start runners with SSH provisioning:
 
 ```bash
-curl -sSL https://spooktacular.dev/ec2-setup.sh | bash -s -- \
-    --github-repo myorg/myrepo \
-    --github-token ghp_xxxxxxxxxxxx \
-    --xcode 16.2
+# Install Spooktacular
+brew install --cask spooktacular
+
+# Install the LaunchDaemon for headless operation
+spook service install
+
+# Create and configure a base VM
+spook create base --from-ipsw latest --cpu 4 --memory 8 --disk 64
+spook start base
+# ... install Xcode, enable SSH, configure settings
+spook stop base
+
+# Clone runners and start with provisioning
+spook clone base runner-01
+spook clone base runner-02
+spook start runner-01 --headless \
+    --user-data ~/github-runner-setup.sh --provision ssh --ssh-user admin
+spook start runner-02 --headless \
+    --user-data ~/github-runner-setup.sh --provision ssh --ssh-user admin
 ```
-
-This script:
-
-1. Installs Homebrew (if not present)
-2. Installs Spooktacular via `brew install --cask spooktacular`
-3. Configures the control API to listen on all interfaces
-4. Generates a secure API bearer token
-5. Installs and starts the Spooktacular LaunchDaemon
-6. Creates two macOS VMs with Xcode pre-installed
-7. Registers both VMs as GitHub Actions runners
-
-After the script completes you have two self-hosted runners
-picking up jobs immediately.
 
 ## Manual Step-by-Step Setup
 
@@ -82,39 +82,22 @@ spook --version
 # spook 0.1.0
 ```
 
-### Step 2: Configure the Control API
+### Step 2: Install the LaunchDaemon
 
-By default, Spooktacular's API listens on `127.0.0.1:9470` (localhost
-only). For remote management you need to bind to all interfaces:
-
-```bash
-# Install the LaunchDaemon with a custom bind address so the K8s
-# operator (or other tools) can reach this host over the VPC network.
-sudo spook service install --bind 0.0.0.0:9470
-```
-
-> Note: `spook service install` creates a LaunchDaemon for headless servers.
-
-> Important: Never expose port 9470 to the public internet. Use VPC private
-> subnets and security groups to restrict access. See
-> <doc:KubernetesGuide> for operator-to-host connectivity patterns.
-
-### Step 3: Install the LaunchDaemon
-
-Register Spooktacular as a system service so it starts automatically
-on boot and survives SSH session termination:
+Register Spooktacular as a system service for headless operation:
 
 ```bash
 spook service install
 ```
 
-This creates a LaunchDaemon at
-`/Library/LaunchDaemons/dev.spooktacular.daemon.plist` that:
+> Note: `spook service install` creates a LaunchDaemon plist at
+> `/Library/LaunchDaemons/dev.spooktacular.daemon.plist`.
 
-- Starts on system boot
-- Restarts automatically on crash
-- Runs the Spooktacular API server
-- Manages VM lifecycle (start, stop, health checks)
+> Note: An HTTP control API for remote management is planned for a
+> future release. For now, manage VMs via SSH + CLI.
+
+The LaunchDaemon starts on system boot, restarts automatically
+on crash, and ensures VMs survive SSH session termination.
 
 ### LaunchDaemon vs LaunchAgent
 
@@ -135,59 +118,18 @@ spook service install
 spook service install --user
 ```
 
-## Configuring the Control API for Remote Access
-
-The Spooktacular control API is a JSON-over-HTTP service that accepts
-commands for creating, starting, stopping, and managing VMs.
-
-### Bind Address
-
-The bind address is set when installing the LaunchDaemon:
-
-```bash
-# Listen on localhost only (default, for local use)
-sudo spook service install --bind 127.0.0.1:9470
-
-# Listen on all interfaces (required for remote access)
-sudo spook service install --bind 0.0.0.0:9470
-```
-
-To change the bind address, uninstall and reinstall:
-
-```bash
-sudo spook service uninstall
-sudo spook service install --bind 0.0.0.0:9470
-```
-
-### Bearer Token Authentication
-
-Every API request must include a bearer token:
-
-```bash
-# Verify connectivity from another machine
-curl -s -H "Authorization: Bearer $(cat ~/.spooktacular/api-token)" \
-    http://10.0.1.50:9470/v1/vms | jq .
-```
-
-### Security Best Practices
+## Security Best Practices
 
 1. **VPC private subnet** — Place EC2 Mac hosts in a private subnet
    with no public IP. Access via VPN, bastion, or VPC peering.
-2. **Security group** — Allow port 9470 only from your Kubernetes
-   cluster's CIDR or management network.
-3. **Token rotation** — Rotate API tokens periodically. Update the
-   Helm values or ConfigMap in your K8s cluster when you rotate.
-4. **TLS termination** — Use an NLB or ALB with TLS in front of the
-   API if traversing untrusted networks.
-5. **IAM** — Use EC2 instance roles for AWS API access. Do not store
+2. **Security group** — Allow SSH (port 22) only from your bastion
+   or VPN CIDR.
+3. **IAM** — Use EC2 instance roles for AWS API access. Do not store
    long-lived AWS credentials on the host.
 
-```bash
-# Update the K8s operator with a new token
-kubectl create secret generic spook-node-tokens \
-    --from-literal=mac-01="$(ssh ec2-user@10.0.1.50 'cat ~/.spooktacular/api-token')" \
-    --dry-run=client -o yaml | kubectl apply -f -
-```
+> Note: An HTTP control API for remote VM management is planned for a
+> future release. For now, manage VMs by SSH-ing into the host and
+> using the `spook` CLI directly.
 
 ## Creating VMs on the EC2 Mac
 
@@ -204,7 +146,8 @@ spook create runner-02 --from-ipsw latest \
 ```
 
 > Note: IPSW installation takes 10-20 minutes per VM. For faster
-> deployment, use OCI images or clone from a base VM.
+> deployment, create one base VM, configure it, then use
+> `spook clone` for instant copies.
 
 ### From a Clone (Recommended for Fast Deployment)
 
@@ -216,8 +159,7 @@ spook clone base runner-01
 spook clone base runner-02
 ```
 
-> Note: OCI image pull is on the roadmap. For now, use `--from-ipsw`
-> to create VMs, then clone configured bases for fast deployment.
+> Note: OCI image push/pull is planned for a future release.
 
 ### Clone from a Base VM
 
@@ -240,17 +182,15 @@ works.
 
 ### Provisioning with User-Data
 
-Automate VM setup with a user-data script:
+Automate VM setup with a user-data script via SSH provisioning:
 
 ```bash
-spook create runner-01 --from-ipsw latest \
-    --cpu 4 --memory 8 --disk 64 \
+spook start runner-01 --headless \
     --user-data /opt/spooktacular/setup-runner.sh \
-    --provision disk-inject
+    --provision ssh --ssh-user admin
 ```
 
-See <doc:Provisioning> for all four provisioning strategies and
-when to use each.
+See <doc:Provisioning> for available provisioning modes.
 
 ## Monitoring
 
@@ -371,66 +311,27 @@ set -euo pipefail
 eval "$(/opt/homebrew/bin/brew shellenv)"
 brew install --cask spooktacular
 
-# Install service (listens on all interfaces for remote access)
-sudo spook service install --bind 0.0.0.0:9470
+# Install the LaunchDaemon
+sudo spook service install
 
 # Create two runners from IPSW
-spook create runner-01 --from-ipsw latest \
-    --cpu 4 --memory 8 --disk 64 \
+spook create runner-01 --from-ipsw latest --cpu 4 --memory 8 --disk 64
+spook create runner-02 --from-ipsw latest --cpu 4 --memory 8 --disk 64
+
+# Start with SSH provisioning
+spook start runner-01 --headless \
     --user-data /opt/spooktacular/github-runner.sh \
-    --provision disk-inject
-
-spook create runner-02 --from-ipsw latest \
-    --cpu 4 --memory 8 --disk 64 \
+    --provision ssh --ssh-user admin
+spook start runner-02 --headless \
     --user-data /opt/spooktacular/github-runner.sh \
-    --provision disk-inject
-
-spook start runner-01 --headless
-spook start runner-02 --headless
+    --provision ssh --ssh-user admin
 ```
 
-## Terraform Module Reference
+## Terraform Module (Planned)
 
-A Terraform module is available for declarative infrastructure:
-
-```hcl
-module "spooktacular_fleet" {
-  source = "spooktacular/ec2-mac/aws"
-
-  host_count       = 5
-  instance_type    = "mac2-m2pro.metal"
-  subnet_ids       = module.vpc.private_subnets
-  security_groups  = [aws_security_group.spooktacular.id]
-  key_name         = aws_key_pair.deploy.key_name
-
-  vms_per_host     = 2
-  vm_cpu           = 6
-  vm_memory_gb     = 16
-  vm_disk_gb       = 100
-  vm_image         = "ghcr.io/spooktacular/macos-xcode:15.4-16.2"
-
-  github_repo      = "myorg/myrepo"
-  github_token_ssm = aws_ssm_parameter.github_token.name
-
-  tags = {
-    Environment = "production"
-    Team        = "platform"
-  }
-}
-```
-
-Output values:
-
-```hcl
-output "host_ips" {
-  value = module.spooktacular_fleet.host_private_ips
-}
-
-output "runner_count" {
-  value = module.spooktacular_fleet.total_runners
-  # 10 (5 hosts x 2 runners)
-}
-```
+> Note: A Terraform module for declarative EC2 Mac fleet management
+> is planned for a future release. For now, use EC2 Launch Templates
+> with user-data scripts to automate host setup.
 
 ## Troubleshooting
 
