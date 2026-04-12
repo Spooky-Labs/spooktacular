@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import os
 import SpooktacularKit
 
 extension Spook {
@@ -41,8 +42,13 @@ extension Spook {
 
             let bundles: [(String, VMBundle)] = contents.compactMap { url in
                 let name = url.deletingPathExtension().lastPathComponent
-                guard let bundle = try? VMBundle.load(from: url) else { return nil }
-                return (name, bundle)
+                do {
+                    let bundle = try VMBundle.load(from: url)
+                    return (name, bundle)
+                } catch {
+                    Log.vm.error("Failed to load bundle '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                    return nil
+                }
             }.sorted { $0.0 < $1.0 }
 
             if json {

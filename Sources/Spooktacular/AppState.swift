@@ -89,8 +89,11 @@ final class AppState {
             var loaded: [String: VMBundle] = [:]
             for url in contents where url.pathExtension == "vm" {
                 let name = url.deletingPathExtension().lastPathComponent
-                if let bundle = try? VMBundle.load(from: url) {
+                do {
+                    let bundle = try VMBundle.load(from: url)
                     loaded[name] = bundle
+                } catch {
+                    Log.vm.error("Failed to load bundle '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
                 }
             }
             vms = loaded

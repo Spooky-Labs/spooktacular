@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// A cached VM image available for creating new virtual machines.
 ///
@@ -78,16 +79,29 @@ public final class ImageLibrary: @unchecked Sendable {
     /// Loads the image library from disk.
     public func load() {
         let fm = FileManager.default
-        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            Log.images.error("Failed to create image library directory: \(error.localizedDescription, privacy: .public)")
+        }
 
-        guard let data = try? Data(contentsOf: indexURL) else {
+        let data: Data
+        do {
+            data = try Data(contentsOf: indexURL)
+        } catch {
+            Log.images.error("Failed to read image library index: \(error.localizedDescription, privacy: .public)")
             images = []
             return
         }
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        images = (try? decoder.decode([VMImage].self, from: data)) ?? []
+        do {
+            images = try decoder.decode([VMImage].self, from: data)
+        } catch {
+            Log.images.error("Failed to decode image library index: \(error.localizedDescription, privacy: .public)")
+            images = []
+        }
     }
 
     /// Adds a local IPSW file to the library.
@@ -133,7 +147,11 @@ public final class ImageLibrary: @unchecked Sendable {
 
         // Delete the file if it's a local IPSW.
         if case .ipsw(let path) = image.source {
-            try? FileManager.default.removeItem(atPath: path)
+            do {
+                try FileManager.default.removeItem(atPath: path)
+            } catch {
+                Log.images.error("Failed to delete IPSW file at '\(path, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         images.remove(at: index)
