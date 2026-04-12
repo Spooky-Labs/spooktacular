@@ -141,11 +141,9 @@ extension Spook {
             dateFormatter.dateStyle = .medium
             dateFormatter.timeStyle = .short
 
-            var rows: [[String]] = []
-            for info in snapshots {
+            let rows = snapshots.map { info in
                 let sizeMB = String(format: "%.1f MB", Double(info.sizeInBytes) / (1024 * 1024))
-                let date = dateFormatter.string(from: info.createdAt)
-                rows.append([info.label, date, sizeMB])
+                return [info.label, dateFormatter.string(from: info.createdAt), sizeMB]
             }
 
             Style.table(headers: ["LABEL", "DATE", "SIZE"], rows: rows)

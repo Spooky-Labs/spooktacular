@@ -141,12 +141,11 @@ public final class ImageLibrary: @unchecked Sendable {
         let image = images[index]
         Log.images.info("Removing image '\(image.name, privacy: .public)' from library")
 
-        // Delete the file if it's a local IPSW.
         if case .ipsw(let path) = image.source {
             do {
                 try FileManager.default.removeItem(atPath: path)
             } catch {
-                Log.images.error("Failed to delete IPSW file at '\(path, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                Log.images.error("Failed to delete IPSW at '\(path, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             }
         }
 

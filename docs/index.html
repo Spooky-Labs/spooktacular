@@ -3,12 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spooktacular — Enterprise macOS Virtualization</title>
-<meta name="description" content="Open-source macOS virtual machine manager for Apple Silicon. Kubernetes-native CI/CD runners, ML workloads, and remote desktop. 2x your EC2 Mac capacity.">
+<title>Spooktacular — Enterprise macOS Virtualization for Apple Silicon</title>
+<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Run 2 VMs per Mac, cut EC2 costs 50%, clone in 48ms. Kubernetes-native CI/CD, ML workloads, remote desktop. MIT licensed, $0 forever.">
+<meta name="keywords" content="macOS virtualization, Apple Silicon VM, EC2 Mac, CI/CD runners, GitHub Actions, Kubernetes, open source">
+<meta property="og:title" content="Spooktacular — Enterprise macOS Virtualization">
+<meta property="og:description" content="2x your EC2 Mac CI capacity. Open source, MIT licensed, $0 forever.">
+<meta property="og:type" content="website">
+<link rel="canonical" href="https://spooktacular.app/">
 <style>
-:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; }
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --red: #ef4444; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
@@ -44,75 +49,119 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 }
 
 /* Hero */
-.hero { text-align: center; padding: 6rem 0 4rem; }
-.hero .badge { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.3rem 1rem; font-size: 0.8rem; color: var(--dim); margin-bottom: 1.5rem; }
-.hero h1 { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; max-width: 700px; margin: 0 auto; }
-.hero h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.hero p { font-size: 1.25rem; color: var(--dim); margin-top: 1rem; max-width: 600px; margin-left: auto; margin-right: auto; }
-.hero .cta { margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-.hero .cta a { padding: 0.75rem 1.75rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; }
+.hero { text-align: center; padding: 7rem 0 3rem; position: relative; }
+.hero .badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 1.25rem; font-size: 0.8rem; color: var(--dim); margin-bottom: 2rem; }
+.hero .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.hero h1 { font-size: 4rem; font-weight: 800; letter-spacing: -0.035em; line-height: 1.05; max-width: 750px; margin: 0 auto; }
+.hero h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.hero .lead { font-size: 1.3rem; color: var(--dim); margin-top: 1.25rem; max-width: 620px; margin-left: auto; margin-right: auto; line-height: 1.6; }
+.hero .cta { margin-top: 2.5rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.hero .cta a { padding: 0.8rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; transition: all 0.2s; }
 .btn-primary { background: var(--accent); color: #000; }
-.btn-primary:hover { opacity: 0.9; text-decoration: none; }
+.btn-primary:hover { opacity: 0.9; text-decoration: none; transform: translateY(-1px); }
 .btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--fg); }
-.btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+.btn-secondary:hover { border-color: var(--accent); text-decoration: none; transform: translateY(-1px); }
 
 /* Code block */
-.code-block { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem 2rem; max-width: 650px; margin: 2.5rem auto 0; text-align: left; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; overflow-x: auto; }
-.code-block .dim { color: var(--dim); }
-.code-block .cmd { color: var(--accent); }
-.code-block .ok { color: var(--green); }
+.code-hero { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; max-width: 680px; margin: 3rem auto 0; text-align: left; overflow: hidden; }
+.code-hero .code-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border); }
+.code-hero .code-header .dot-r { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; }
+.code-hero .code-header .dot-y { width: 10px; height: 10px; border-radius: 50%; background: #fbbf24; }
+.code-hero .code-header .dot-g { width: 10px; height: 10px; border-radius: 50%; background: #6ee7b7; }
+.code-hero .code-header span.title { margin-left: 0.5rem; font-size: 0.75rem; color: var(--dim); font-family: 'SF Mono', 'Fira Code', monospace; }
+.code-hero pre { padding: 1.25rem 1.5rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; line-height: 1.8; overflow-x: auto; margin: 0; background: transparent; }
+.code-hero .dim { color: var(--dim); }
+.code-hero .cmd { color: var(--accent); }
+.code-hero .ok { color: var(--green); }
+.code-hero .cmt { color: #525262; font-style: italic; }
 
 /* Stats */
-.stats { display: flex; justify-content: center; gap: 3rem; padding: 3rem 0; flex-wrap: wrap; }
-.stat { text-align: center; }
-.stat .num { font-size: 2rem; font-weight: 800; color: var(--accent); }
-.stat .label { font-size: 0.85rem; color: var(--dim); }
+.stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 3.5rem auto; max-width: 800px; }
+.stat-item { text-align: center; padding: 1.75rem 1rem; background: var(--surface); }
+.stat-item .num { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.stat-item .label { font-size: 0.8rem; color: var(--dim); margin-top: 0.25rem; letter-spacing: 0.02em; }
+@media (max-width: 640px) { .stats-bar { grid-template-columns: repeat(2, 1fr); } }
 
 /* Sections */
-section { padding: 4rem 0; }
-section h2 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
-section .subtitle { color: var(--dim); font-size: 1.1rem; margin-bottom: 2rem; }
+section { padding: 5rem 0; }
+section h2 { font-size: 2.25rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+section .subtitle { color: var(--dim); font-size: 1.1rem; margin-bottom: 2.5rem; max-width: 600px; }
 
-/* Features grid */
-.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
-.feature { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
-.feature h3 { font-size: 1.05rem; margin-bottom: 0.5rem; }
-.feature p { color: var(--dim); font-size: 0.9rem; }
-.feature .tag { display: inline-block; background: rgba(167,139,250,0.1); color: var(--accent); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-bottom: 0.5rem; }
+/* Feature cards */
+.features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+.feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; transition: border-color 0.2s; }
+.feature-card:hover { border-color: rgba(167,139,250,0.3); }
+.feature-card .icon { font-size: 1.5rem; margin-bottom: 0.75rem; display: block; }
+.feature-card .tag { display: inline-block; background: rgba(167,139,250,0.1); color: var(--accent); padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.feature-card h3 { font-size: 1.05rem; margin-bottom: 0.5rem; font-weight: 600; }
+.feature-card p { color: var(--dim); font-size: 0.875rem; line-height: 1.6; }
+@media (max-width: 900px) { .features-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .features-grid { grid-template-columns: 1fr; } }
 
 /* Comparison table */
-.comparison { overflow-x: auto; margin: 2rem 0; }
+.comparison { overflow-x: auto; margin: 2rem 0; border-radius: 12px; border: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-th { text-align: left; padding: 0.75rem 1rem; border-bottom: 2px solid var(--border); color: var(--accent); font-weight: 600; }
+th { text-align: left; padding: 0.85rem 1rem; border-bottom: 2px solid var(--border); color: var(--fg); font-weight: 600; background: var(--surface); font-size: 0.85rem; }
+th:first-child { border-radius: 12px 0 0 0; }
+th:last-child { border-radius: 0 12px 0 0; }
+th.hl { color: var(--accent); }
 td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
-td.yes { color: var(--green); }
-td.no { color: #ef4444; }
+td.yes { color: var(--green); font-weight: 600; }
+td.no { color: var(--red); }
 td.partial { color: #fbbf24; }
-tr:hover { background: var(--surface); }
-.highlight-col { background: rgba(167,139,250,0.05); }
+tr:hover { background: rgba(24,24,27,0.5); }
+.highlight-col { background: rgba(167,139,250,0.04); }
 
-/* Pricing */
-.pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
-.price-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; }
-.price-card.featured { border-color: var(--accent); }
-.price-card h3 { font-size: 1.2rem; margin-bottom: 0.25rem; }
-.price-card .price { font-size: 2rem; font-weight: 800; margin: 0.5rem 0; }
-.price-card .price span { font-size: 0.9rem; font-weight: 400; color: var(--dim); }
-.price-card ul { list-style: none; padding: 0; margin-top: 1rem; }
-.price-card li { padding: 0.3rem 0; color: var(--dim); font-size: 0.85rem; }
-.price-card li::before { content: "✓ "; color: var(--green); }
+/* ROI section */
+.roi-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 3rem; margin: 2rem 0; }
+.roi-section h3 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+.roi-section .sub { color: var(--dim); margin-bottom: 2rem; font-size: 1rem; }
+.roi-table { width: 100%; border-collapse: collapse; }
+.roi-table th { text-align: left; padding: 0.75rem 0; border-bottom: 2px solid var(--border); color: var(--dim); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; background: transparent; }
+.roi-table td { padding: 0.75rem 0; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
+.roi-table td.save { color: var(--green); font-weight: 700; font-size: 1.05rem; }
+.roi-note { color: var(--dim); font-size: 0.8rem; margin-top: 1.25rem; line-height: 1.6; }
+
+/* Trusted for */
+.trusted { text-align: center; padding: 3rem 0 1rem; }
+.trusted h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); margin-bottom: 1.5rem; font-weight: 600; }
+.trusted-items { display: flex; justify-content: center; gap: 2.5rem; flex-wrap: wrap; }
+.trusted-item { display: flex; align-items: center; gap: 0.6rem; color: var(--dim); font-size: 0.95rem; font-weight: 500; }
+.trusted-item .ti-icon { font-size: 1.25rem; }
+
+/* Bottom CTA */
+.bottom-cta { text-align: center; padding: 5rem 0 6rem; }
+.bottom-cta h2 { font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.75rem; }
+.bottom-cta p { color: var(--dim); font-size: 1.1rem; margin-bottom: 2rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+.bottom-cta .buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.bottom-cta .buttons a { padding: 0.85rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; }
 
 /* Footer */
 footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .links { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 1rem; }
+footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
+footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
+footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
+footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
+footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
+footer .foot-bottom p { margin: 0; }
+@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
 
-/* Starfield background */
+/* Starfield */
 .stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
 .stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
 .stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
 @keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, section, .container, .hero, footer, main { position: relative; z-index: 1; }
+nav, section, .container, .hero, footer, main, .stats-bar, .bottom-cta, .trusted { position: relative; z-index: 1; }
+
+@media (max-width: 640px) {
+  .hero h1 { font-size: 2.5rem; }
+  .hero .lead { font-size: 1.1rem; }
+  section h2 { font-size: 1.75rem; }
+}
 </style>
 </head>
 <body>
@@ -130,112 +179,133 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="roadmap.html">Roadmap</a>
 <a href="compare.html">Compare</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="versioning.html">Versioning</a>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
 </div>
 </div>
 </nav>
 
+<!-- Hero -->
 <section class="hero">
 <div class="container">
-<div class="badge">Open Source &middot; MIT Licensed &middot; Apple Silicon Native</div>
-<h1>Enterprise macOS CI<br>without the <span>enterprise price tag</span></h1>
-<p>Kubernetes-native macOS virtualization. 2x your EC2 Mac capacity. Open source, vendor-agnostic, self-hosted anywhere.</p>
+<div class="badge"><span class="dot"></span> Open Source &middot; MIT Licensed &middot; Apple Silicon Native</div>
+<h1>Double your Mac CI capacity.<br><span>Zero additional cost.</span></h1>
+<p class="lead">Run 2 macOS VMs on every Apple Silicon Mac. Cut your EC2 Mac bill in half. Kubernetes-native orchestration. No vendor lock-in, no license fees, no sales calls.</p>
 <div class="cta">
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Get Started</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
 </div>
-<div class="code-block">
-<span class="dim">$</span> <span class="cmd">brew install --cask spooktacular</span><br>
-<span class="dim">$</span> <span class="cmd">spook create runner --from-ipsw latest --cpu 8 --memory 16</span><br>
-<span class="ok">✓ VM 'runner' created successfully.</span><br>
-<span class="dim">$</span> <span class="cmd">spook clone runner runner-02</span><br>
-<span class="ok">✓ Clone 'runner-02' created. (48ms)</span><br>
-<span class="dim"># Two runners on one Mac. Same hardware. Half the cost.</span>
+
+<div class="code-hero">
+<div class="code-header">
+<span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+<span class="title">Terminal &mdash; Double your capacity in 4 commands</span>
+</div>
+<pre><span class="dim">$</span> <span class="cmd">brew install --cask spooktacular</span>
+<span class="dim">$</span> <span class="cmd">spook create base --from-ipsw latest --cpu 8 --memory 16</span>
+<span class="dim">$</span> <span class="cmd">spook clone base runner-01 && spook clone base runner-02</span>
+<span class="ok">&#10003; Clone 'runner-01' created in 48ms
+&#10003; Clone 'runner-02' created in 48ms</span>
+<span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --user-data ./setup-gha.sh</span>
+<span class="dim">$</span> <span class="cmd">spook start runner-02 --headless --user-data ./setup-gha.sh</span>
+<span class="cmt"># Two runners. One Mac. Half the cost.</span></pre>
 </div>
 </div>
 </section>
 
+<!-- Stats -->
 <div class="container">
-<div class="stats">
-<div class="stat"><div class="num">2x</div><div class="label">CI capacity per Mac</div></div>
-<div class="stat"><div class="num">50%</div><div class="label">EC2 Mac cost reduction</div></div>
-<div class="stat"><div class="num">48ms</div><div class="label">VM clone time</div></div>
-<div class="stat"><div class="num">$0</div><div class="label">MIT licensed</div></div>
+<div class="stats-bar">
+<div class="stat-item"><div class="num">235</div><div class="label">Tests passing</div></div>
+<div class="stat-item"><div class="num">50%</div><div class="label">Cost reduction</div></div>
+<div class="stat-item"><div class="num">48ms</div><div class="label">VM clone time</div></div>
+<div class="stat-item"><div class="num">$0</div><div class="label">License cost</div></div>
 </div>
 </div>
 
+<!-- Why teams switch -->
 <section>
 <div class="container">
 <h2>Why teams switch to Spooktacular</h2>
-<p class="subtitle">Built for the gaps enterprise teams actually hit with existing tools.</p>
-<div class="features">
-<div class="feature">
+<p class="subtitle">Built for the gaps enterprise teams actually hit with existing macOS virtualization tools.</p>
+<div class="features-grid">
+<div class="feature-card">
+<span class="icon">&#9881;</span>
 <div class="tag">vs Anka</div>
 <h3>Transparent pricing</h3>
-<p>MIT licensed. No sales calls. No per-core licensing. No surprise invoices. See the code, know the cost.</p>
+<p>MIT licensed. No sales calls. No per-core licensing. No surprise invoices. Audit the code, know the cost: $0.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#128268;</span>
 <div class="tag">vs Anka</div>
 <h3>No vendor lock-in</h3>
 <p>Standard OCI registries (GHCR, Docker Hub, ECR). No proprietary image format. Your images work everywhere.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#9729;</span>
 <div class="tag">vs Orka</div>
 <h3>Self-hosted anywhere</h3>
 <p>Your Mac minis. Your EC2 instances. Your data center. Not locked to one cloud provider's infrastructure.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#9096;</span>
 <div class="tag">vs Orka</div>
 <h3>Kubernetes-native</h3>
-<p><code>kubectl apply -f vm.yaml</code> creates macOS runners. Use your existing K8s, Helm, Flux, ArgoCD workflows.</p>
+<p><code>kubectl apply -f vm.yaml</code> creates macOS runners. Use your existing Helm, Flux, and ArgoCD workflows.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#9114;</span>
 <div class="tag">vs Tart</div>
 <h3>GUI + CLI + API</h3>
-<p>Native SwiftUI app with Liquid Glass. 16 CLI commands with styled output. HTTP control API. Menu bar. Your choice.</p>
+<p>Native SwiftUI app with Liquid Glass. 16 CLI commands. HTTP control API. Menu bar extra. Choose your interface.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#9889;</span>
 <div class="tag">vs Tart</div>
 <h3>Zero-touch provisioning</h3>
-<p>User-data scripts run on first boot — no golden image required. Four provisioning modes for every deployment scenario.</p>
+<p>User-data scripts run on first boot. No golden image required. Four provisioning modes for every deployment.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#11036;</span>
 <div class="tag">ML Workloads</div>
 <h3>Metal GPU acceleration</h3>
-<p>Apple Silicon GPU via VirtIO. Shared folders for datasets. Host-only networking for federated learning. MLX, PyTorch MPS, Core ML.</p>
+<p>Apple Silicon GPU via VirtIO. Shared folders for datasets. Host-only networking for federated learning.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#128424;</span>
 <div class="tag">Remote Desktop</div>
 <h3>Screen Sharing built in</h3>
-<p>VNC access to every VM. Auto-resize display. Dual monitor support. Working toward 4K 60fps via hardware-accelerated encoding.</p>
+<p>VNC access to every VM. Auto-resize display. Dual monitor support. Working toward 4K 60fps via HEVC encoding.</p>
 </div>
-<div class="feature">
+<div class="feature-card">
+<span class="icon">&#128200;</span>
 <div class="tag">Enterprise</div>
 <h3>Fleet autoscaling</h3>
-<p>Webhook-driven scaling for GitHub Actions. AWS ASG integration. Kubernetes cluster-autoscaler support. Pool management with auto-replacement.</p>
+<p>Webhook-driven GitHub Actions scaling. AWS ASG integration. Kubernetes cluster-autoscaler. Pool management.</p>
 </div>
 </div>
 </div>
 </section>
 
+<!-- Quick comparison -->
 <section>
 <div class="container">
 <h2>How it compares</h2>
-<p class="subtitle">Honest comparison. We show what we don't have yet too.</p>
+<p class="subtitle">An honest comparison. We show what we don't have yet too.</p>
 <div class="comparison">
 <table>
 <tr>
 <th></th>
-<th class="highlight-col">Spooktacular</th>
+<th class="hl highlight-col">Spooktacular</th>
 <th>Tart</th>
 <th>Anka</th>
 <th>Orka</th>
 </tr>
 <tr>
 <td>License</td>
-<td class="highlight-col"><strong>MIT (free)</strong></td>
+<td class="highlight-col"><strong>MIT (free forever)</strong></td>
 <td>Fair Source</td>
 <td>Proprietary</td>
 <td>Proprietary</td>
@@ -243,20 +313,20 @@ Spooktacular
 <tr>
 <td>Pricing</td>
 <td class="highlight-col"><strong>$0</strong></td>
-<td>$0-$36K/yr</td>
+<td>$0 &ndash; $36K/yr</td>
 <td>Contact sales</td>
 <td>$499+/mo</td>
 </tr>
 <tr>
 <td>GUI app</td>
-<td class="highlight-col yes">&#10003;</td>
+<td class="highlight-col yes">&#10003; SwiftUI + Liquid Glass</td>
 <td class="no">&#10005;</td>
 <td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
+<td class="yes">&#10003; Web UI</td>
 </tr>
 <tr>
 <td>CLI</td>
-<td class="highlight-col yes">&#10003; (16 commands)</td>
+<td class="highlight-col yes">&#10003; 16 commands</td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 <td class="partial">Limited</td>
@@ -272,91 +342,116 @@ Spooktacular
 <td>OCI registries</td>
 <td class="highlight-col yes">&#10003; Any registry</td>
 <td class="yes">&#10003;</td>
-<td class="no">Proprietary only</td>
+<td class="no">Proprietary</td>
 <td class="partial">Docker</td>
 </tr>
 <tr>
 <td>Self-hosted</td>
-<td class="highlight-col yes">&#10003;</td>
+<td class="highlight-col yes">&#10003; Anywhere</td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 <td class="no">MacStadium only</td>
 </tr>
 <tr>
-<td>Mac App Store</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
 <td>User-data provisioning</td>
-<td class="highlight-col yes">&#10003; (4 modes)</td>
+<td class="highlight-col yes">&#10003; 4 modes</td>
 <td class="partial">SSH only</td>
 <td class="yes">&#10003;</td>
 <td class="partial">Limited</td>
 </tr>
 <tr>
-<td>EC2 Mac support</td>
-<td class="highlight-col yes">&#10003; + autoscaling</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
+<td>Fleet autoscaling</td>
+<td class="highlight-col yes">&#10003; ASG + K8s + built-in</td>
+<td class="no">&#10005;</td>
+<td class="partial">Manual</td>
 <td class="yes">&#10003;</td>
 </tr>
 <tr>
-<td>ML workloads</td>
+<td>ML workloads (GPU)</td>
 <td class="highlight-col yes">&#10003; Metal GPU</td>
 <td class="partial">Basic</td>
 <td class="partial">Basic</td>
 <td class="no">&#10005;</td>
 </tr>
-<tr>
-<td>Accessibility</td>
-<td class="highlight-col yes">&#10003; Full VoiceOver</td>
-<td class="no">N/A (no GUI)</td>
-<td class="partial">Partial</td>
-<td class="partial">Partial</td>
-</tr>
 </table>
 </div>
+<p style="text-align: center; margin-top: 1rem;"><a href="compare.html" style="font-weight: 600;">See the full comparison with pricing breakdown &rarr;</a></p>
 </div>
 </section>
 
+<!-- EC2 Mac ROI -->
 <section>
 <div class="container">
-<h2>The EC2 Mac math</h2>
-<p class="subtitle">Double your runners. Same hardware. Half the bill.</p>
-<div class="comparison">
-<table>
+<div class="roi-section">
+<h3>The EC2 Mac math</h3>
+<p class="sub">Double your runners. Same hardware. Half the bill.</p>
+<table class="roi-table">
 <tr><th>EC2 Macs</th><th>Before (bare metal)</th><th>After (Spooktacular)</th><th>Annual savings</th></tr>
-<tr><td>5</td><td>5 runners</td><td><strong>10 runners</strong></td><td>~$47,000</td></tr>
-<tr><td>10</td><td>10 runners</td><td><strong>20 runners</strong></td><td>~$95,000</td></tr>
-<tr><td>20</td><td>20 runners</td><td><strong>40 runners</strong></td><td>~$190,000</td></tr>
+<tr><td>5 hosts</td><td>5 runners</td><td><strong>10 runners</strong></td><td class="save">~$47,000</td></tr>
+<tr><td>10 hosts</td><td>10 runners</td><td><strong>20 runners</strong></td><td class="save">~$95,000</td></tr>
+<tr><td>20 hosts</td><td>20 runners</td><td><strong>40 runners</strong></td><td class="save">~$190,000</td></tr>
+<tr><td>50 hosts</td><td>50 runners</td><td><strong>100 runners</strong></td><td class="save">~$473,000</td></tr>
 </table>
+<p class="roi-note">Based on EC2 mac2-m2pro.metal at $1.08/hr with 24/7 dedicated host allocation. Savings from running 2 VMs per host instead of 1 bare-metal runner, reducing required host count by 50%. Spooktacular license cost: $0.</p>
 </div>
-<p style="color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem;">Based on EC2 Mac m2pro.metal at $1.08/hr. Savings from running 2 VMs per host instead of 1 bare-metal runner, reducing required host count by 50%.</p>
 </div>
 </section>
 
+<!-- Trusted for -->
+<div class="trusted">
+<div class="container">
+<h3>Built for production workloads</h3>
+<div class="trusted-items">
+<div class="trusted-item"><span class="ti-icon">&#9881;</span> CI/CD Runners</div>
+<div class="trusted-item"><span class="ti-icon">&#129504;</span> ML Training</div>
+<div class="trusted-item"><span class="ti-icon">&#128424;</span> Remote Desktop</div>
+<div class="trusted-item"><span class="ti-icon">&#128172;</span> iMessage Servers</div>
+<div class="trusted-item"><span class="ti-icon">&#128272;</span> Security Testing</div>
+</div>
+</div>
+</div>
+
+<!-- Get started -->
 <section>
 <div class="container">
 <h2>Get started in 60 seconds</h2>
-<div class="code-block" style="max-width: 100%;">
-<span class="dim"># Install</span><br>
-<span class="cmd">brew install --cask spooktacular</span><br><br>
-<span class="dim"># Create your first VM</span><br>
-<span class="cmd">spook create dev --from-ipsw latest</span><br><br>
-<span class="dim"># Clone it for CI</span><br>
-<span class="cmd">spook clone dev runner-01</span><br>
-<span class="cmd">spook clone dev runner-02</span><br><br>
-<span class="dim"># Start runners with user-data</span><br>
-<span class="cmd">spook start runner-01 --headless --user-data ./setup-gha.sh</span><br>
-<span class="cmd">spook start runner-02 --headless --user-data ./setup-gha.sh</span><br><br>
-<span class="dim"># Or manage via Kubernetes</span><br>
-<span class="cmd">kubectl apply -f macos-runners.yaml</span>
+<p class="subtitle">Install, create, clone, run. No account required.</p>
+<div class="code-hero" style="max-width: 100%;">
+<div class="code-header">
+<span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+<span class="title">Terminal</span>
+</div>
+<pre><span class="cmt"># Install</span>
+<span class="dim">$</span> <span class="cmd">brew install --cask spooktacular</span>
+
+<span class="cmt"># Create your first VM from the latest macOS IPSW</span>
+<span class="dim">$</span> <span class="cmd">spook create dev --from-ipsw latest</span>
+
+<span class="cmt"># Clone it for CI (48ms per clone, APFS copy-on-write)</span>
+<span class="dim">$</span> <span class="cmd">spook clone dev runner-01</span>
+<span class="dim">$</span> <span class="cmd">spook clone dev runner-02</span>
+
+<span class="cmt"># Start runners headless with user-data provisioning</span>
+<span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --user-data ./setup-gha.sh</span>
+<span class="dim">$</span> <span class="cmd">spook start runner-02 --headless --user-data ./setup-gha.sh</span>
+
+<span class="cmt"># Or manage your fleet via Kubernetes</span>
+<span class="dim">$</span> <span class="cmd">kubectl apply -f macos-runners.yaml</span></pre>
 </div>
 </div>
 </section>
+
+<!-- Bottom CTA -->
+<div class="bottom-cta">
+<div class="container">
+<h2>Ready to cut your Mac CI bill in half?</h2>
+<p>Install in 30 seconds. No account, no license key, no sales call. MIT licensed, open source, yours to keep.</p>
+<div class="buttons">
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Get Started</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
+</div>
+</div>
+</div>
 
 <footer>
 <div class="foot-inner">
@@ -366,10 +461,12 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="compare.html">Compare</a>
 <a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/releases">Downloads</a>
 </div>
 <div class="foot-col">
 <h4>Resources</h4>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes Guide</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">Documentation</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/issues">Report an Issue</a>
@@ -388,8 +485,8 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>Made with 🌲🌲🌲 in Cascadia</p>
-<p>© 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>Made with care in Cascadia</p>
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 </div>
 </div>
 </footer>

@@ -310,6 +310,6 @@ private final class DownloadProgressDelegate: NSObject,
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
     ) {
-        // Handled by the async download call.
+        // Required by protocol; the async `download(from:)` call handles the file.
     }
 }

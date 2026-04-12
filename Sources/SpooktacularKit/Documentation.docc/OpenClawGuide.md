@@ -235,6 +235,7 @@ spook start openclaw-work --headless
 ### Related
 
 - ``ProvisioningMode``
-- ``VMSpec``
+- ``VirtualMachineSpecification``
 - ``NetworkMode``
 - ``SharedFolder``
+- ``OpenClawTemplate``

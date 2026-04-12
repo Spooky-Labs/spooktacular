@@ -185,7 +185,7 @@ displays (valid range: 1-2).
 
 ### Auto-Resize Display
 
-When ``VMSpec/autoResizeDisplay`` is `true` (the default), the
+When ``VirtualMachineSpecification/autoResizeDisplay`` is `true` (the default), the
 guest display resolution adjusts to match the Spooktacular window
 size on the host. This is useful when viewing the VM display
 locally:
@@ -275,7 +275,7 @@ spook create my-vm --disable-audio
 spook create my-vm --enable-microphone
 ```
 
-See ``VMSpec/audioEnabled`` and ``VMSpec/microphoneEnabled`` for the
+See ``VirtualMachineSpecification/audioEnabled`` and ``VirtualMachineSpecification/microphoneEnabled`` for the
 API details.
 
 ### Audio over VNC
@@ -296,7 +296,7 @@ the VM, and vice versa.
 ### Configuration
 
 Clipboard sharing is enabled by default via
-``VMSpec/clipboardSharingEnabled``:
+``VirtualMachineSpecification/clipboardSharingEnabled``:
 
 ```bash
 # Clipboard sharing on (default)
@@ -483,3 +483,4 @@ kubectl get macosvm -n desktops -o wide
 - ``VirtualMachineSpecification``
 - ``VirtualMachineConfiguration``
 - ``NetworkMode``
+- ``RemoteDesktopTemplate``
