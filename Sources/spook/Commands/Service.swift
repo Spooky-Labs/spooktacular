@@ -22,7 +22,7 @@ extension Spook {
 
                 EXAMPLES:
                   sudo spook service install
-                  sudo spook service install --bind 127.0.0.1:9470
+                  sudo spook service install
                   sudo spook service uninstall
                   spook service status
                 """,
@@ -53,7 +53,7 @@ extension Spook.Service {
     ///   - executablePath: Absolute path to the `spook` binary.
     ///   - bind: The address and port for the API server to listen on.
     /// - Returns: A UTF-8 XML string suitable for writing to disk.
-    static func generatePlist(executablePath: String, bind: String) -> String {
+    static func generatePlist(executablePath: String) -> String {
         """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -64,10 +64,7 @@ extension Spook.Service {
             <key>ProgramArguments</key>
             <array>
                 <string>\(executablePath)</string>
-                <string>start</string>
-                <string>--headless</string>
-                <string>--bind</string>
-                <string>\(bind)</string>
+                <string>list</string>
             </array>
             <key>RunAtLoad</key>
             <true/>
@@ -103,18 +100,14 @@ extension Spook.Service {
 
                 EXAMPLES:
                   sudo spook service install
-                  sudo spook service install --bind 127.0.0.1:9470
+                  sudo spook service install
                 """
         )
-
-        @Option(help: "API listen address (default: 0.0.0.0:9470).")
-        var bind: String = "0.0.0.0:9470"
 
         func run() async throws {
             let executablePath = ProcessInfo.processInfo.arguments[0]
             let plistContent = Spook.Service.generatePlist(
-                executablePath: executablePath,
-                bind: bind
+                executablePath: executablePath
             )
 
             Log.provision.info("Installing LaunchDaemon at \(Spook.Service.plistPath, privacy: .public)")
@@ -148,7 +141,6 @@ extension Spook.Service {
             if process.terminationStatus == 0 {
                 print(Style.success("✓ LaunchDaemon installed and loaded."))
                 Style.field("Plist", Style.dim(Spook.Service.plistPath))
-                Style.field("Bind", Style.dim(bind))
                 Style.field("Log", Style.dim("/var/log/spooktacular.log"))
                 Style.field("Error log", Style.dim("/var/log/spooktacular.error.log"))
                 print("")
