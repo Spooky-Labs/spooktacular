@@ -1,0 +1,8 @@
+# Spooktacular — App Store Connect configuration
+#
+# Update these with your Apple Developer account details.
+
+app_identifier "com.spooktacular.app"
+# apple_id "your-apple-id@example.com"
+# team_id "XXXXXXXXXX"
+# itc_team_id "XXXXXXXXXX"

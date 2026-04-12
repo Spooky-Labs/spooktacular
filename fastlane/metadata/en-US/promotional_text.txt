@@ -1,0 +1,1 @@
+The easiest way to run macOS virtual machines. Double your CI capacity on EC2 Mac — 2 VMs per host, same hardware, half the cost.

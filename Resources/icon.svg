@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="glass1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#a78bfa;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:0.3"/>
+    </linearGradient>
+    <linearGradient id="glass2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#818cf8;stop-opacity:0.5"/>
+      <stop offset="100%" style="stop-color:#6366f1;stop-opacity:0.25"/>
+    </linearGradient>
+    <linearGradient id="glass3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#c4b5fd;stop-opacity:0.7"/>
+      <stop offset="100%" style="stop-color:#8b5cf6;stop-opacity:0.4"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" style="stop-color:#a78bfa;stop-opacity:0.4"/>
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square (macOS icon shape) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" ry="228" fill="url(#bg)"/>
+
+  <!-- Subtle radial glow -->
+  <ellipse cx="512" cy="420" rx="300" ry="200" fill="url(#glow)"/>
+
+  <!-- Bottom VM layer (largest, most receded) -->
+  <rect x="220" y="480" width="584" height="340" rx="24" ry="24"
+        fill="url(#glass1)" stroke="#a78bfa" stroke-width="2" stroke-opacity="0.3"/>
+  <!-- Screen line on bottom layer -->
+  <rect x="248" y="508" width="528" height="240" rx="12" ry="12"
+        fill="#1a1a2e" fill-opacity="0.5"/>
+  <rect x="248" y="508" width="528" height="240" rx="12" ry="12"
+        fill="none" stroke="#a78bfa" stroke-width="1" stroke-opacity="0.2"/>
+
+  <!-- Middle VM layer -->
+  <rect x="260" y="380" width="504" height="300" rx="22" ry="22"
+        fill="url(#glass2)" stroke="#818cf8" stroke-width="2" stroke-opacity="0.4"/>
+  <!-- Screen on middle layer -->
+  <rect x="286" y="406" width="452" height="210" rx="10" ry="10"
+        fill="#1a1a2e" fill-opacity="0.6"/>
+  <rect x="286" y="406" width="452" height="210" rx="10" ry="10"
+        fill="none" stroke="#818cf8" stroke-width="1" stroke-opacity="0.3"/>
+
+  <!-- Top VM layer (front, most visible) -->
+  <rect x="300" y="280" width="424" height="260" rx="20" ry="20"
+        fill="url(#glass3)" stroke="#c4b5fd" stroke-width="2.5" stroke-opacity="0.6"/>
+  <!-- Screen on top layer -->
+  <rect x="324" y="304" width="376" height="180" rx="8" ry="8"
+        fill="#0f0f23"/>
+  <rect x="324" y="304" width="376" height="180" rx="8" ry="8"
+        fill="none" stroke="#c4b5fd" stroke-width="1.5" stroke-opacity="0.4"/>
+
+  <!-- Terminal cursor blink on top screen -->
+  <rect x="348" y="340" width="12" height="20" rx="2" ry="2" fill="#a78bfa" opacity="0.9"/>
+  <text x="370" y="358" font-family="SF Mono, Menlo, monospace" font-size="16"
+        fill="#c4b5fd" opacity="0.7">spook start</text>
+
+  <!-- Ghost spirit motif (subtle, top right) -->
+  <g transform="translate(680, 180)" opacity="0.6">
+    <!-- Ghost body -->
+    <path d="M40,10 C18,10 0,30 0,55 L0,90 C0,90 8,82 16,90 C24,98 32,82 40,90 C48,82 56,98 64,90 C72,82 80,90 80,90 L80,55 C80,30 62,10 40,10 Z"
+          fill="#c4b5fd" fill-opacity="0.5" stroke="#e0d4ff" stroke-width="1.5" stroke-opacity="0.4"/>
+    <!-- Ghost eyes -->
+    <circle cx="28" cy="45" r="6" fill="#1a1a2e"/>
+    <circle cx="52" cy="45" r="6" fill="#1a1a2e"/>
+    <circle cx="30" cy="43" r="2.5" fill="#e0d4ff"/>
+    <circle cx="54" cy="43" r="2.5" fill="#e0d4ff"/>
+  </g>
+
+  <!-- Subtle sparkle dots -->
+  <circle cx="200" cy="300" r="3" fill="#c4b5fd" opacity="0.5"/>
+  <circle cx="824" cy="400" r="2.5" fill="#a78bfa" opacity="0.4"/>
+  <circle cx="180" cy="600" r="2" fill="#818cf8" opacity="0.3"/>
+  <circle cx="850" cy="650" r="3" fill="#c4b5fd" opacity="0.35"/>
+</svg>

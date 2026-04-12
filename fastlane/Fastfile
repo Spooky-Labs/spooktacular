@@ -1,0 +1,117 @@
+default_platform(:mac)
+
+platform :mac do
+
+  # ──────────────────────────────────────────────────
+  # Test
+  # ──────────────────────────────────────────────────
+
+  desc "Run all unit tests"
+  lane :test do
+    sh("cd .. && swift test")
+  end
+
+  # ──────────────────────────────────────────────────
+  # Build
+  # ──────────────────────────────────────────────────
+
+  desc "Build the .app bundle (release)"
+  lane :build do
+    sh("cd .. && chmod +x build-app.sh && ./build-app.sh release")
+  end
+
+  # ──────────────────────────────────────────────────
+  # Beta — TestFlight
+  # ──────────────────────────────────────────────────
+
+  desc "Build and upload to TestFlight"
+  lane :beta do |options|
+    test
+    build
+
+    api_key = get_api_key
+
+    pilot(
+      api_key: api_key,
+      app_identifier: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
+      pkg: "../Spooktacular.app",
+      skip_submission: false,
+      skip_waiting_for_build_processing: true,
+      changelog: options[:changelog] || "Bug fixes and improvements."
+    )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Release — App Store
+  # ──────────────────────────────────────────────────
+
+  desc "Build and submit to the App Store"
+  lane :release do |options|
+    test
+    build
+
+    api_key = get_api_key
+
+    deliver(
+      api_key: api_key,
+      app_identifier: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
+      metadata_path: "./metadata",
+      screenshots_path: "./screenshots",
+      pkg: "../Spooktacular.app",
+      skip_binary_upload: false,
+      skip_metadata: false,
+      skip_screenshots: true,  # Enable when screenshots are ready
+      submit_for_review: options[:submit] || false,
+      automatic_release: options[:auto_release] || false,
+      force: true,
+      submission_information: {
+        export_compliance_uses_encryption: false,
+        add_id_info_uses_idfa: false
+      }
+    )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Docs — Generate DocC documentation
+  # ──────────────────────────────────────────────────
+
+  desc "Generate DocC documentation"
+  lane :docs do
+    sh("cd .. && chmod +x scripts/build-docs.sh && ./scripts/build-docs.sh --static")
+  end
+
+  # ──────────────────────────────────────────────────
+  # Lint — Validate metadata
+  # ──────────────────────────────────────────────────
+
+  desc "Validate App Store metadata"
+  lane :lint do
+    check_app_store_metadata(
+      default_rule_level: :error,
+      negative_apple_sentiment: true,
+      placeholder_text: true
+    )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Helpers
+  # ──────────────────────────────────────────────────
+
+  private_lane :get_api_key do
+    app_store_connect_api_key(
+      key_id: ENV["APPLE_API_KEY_ID"],
+      issuer_id: ENV["APPLE_API_ISSUER_ID"],
+      key_content: ENV["APPLE_API_KEY_P8"],
+      is_key_content_base64: true,
+      in_house: false
+    )
+  end
+
+  after_all do |lane|
+    UI.success("✅ Lane '#{lane}' completed successfully.")
+  end
+
+  error do |lane, exception|
+    UI.error("❌ Lane '#{lane}' failed: #{exception.message}")
+  end
+end

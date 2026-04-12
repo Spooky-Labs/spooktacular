@@ -1,0 +1,59 @@
+import ArgumentParser
+import Foundation
+import SpooktacularKit
+
+extension Spook {
+
+    /// Clones an existing virtual machine.
+    struct Clone: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Clone a VM (instant copy-on-write).",
+            discussion: """
+                Creates an instant copy of a VM using APFS copy-on-write. \
+                The clone shares disk blocks with the source — a 30 GB \
+                disk clones in milliseconds. Each clone gets a fresh \
+                machine identifier.
+
+                EXAMPLES:
+                  spook clone base runner-01
+                  spook clone dev-env test-env
+                """
+        )
+
+        @Argument(help: "Name of the source VM.")
+        var source: String
+
+        @Argument(help: "Name for the new clone.")
+        var destination: String
+
+        func run() async throws {
+            try Paths.ensureDirectories()
+
+            let sourceURL = Paths.bundleURL(for: source)
+            guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+                print(Style.error("✗ VM '\(source)' not found.") + Style.dim(" Run 'spook list' to see available VMs."))
+                throw ExitCode.failure
+            }
+
+            let destURL = Paths.bundleURL(for: destination)
+            guard !FileManager.default.fileExists(atPath: destURL.path) else {
+                print(Style.error("✗ VM '\(destination)' already exists."))
+                throw ExitCode.failure
+            }
+
+            let sourceBundle = try VMBundle.load(from: sourceURL)
+            print(Style.info("⤢ Cloning '\(source)' → '\(destination)'..."))
+
+            let clone = try CloneManager.clone(
+                source: sourceBundle,
+                to: destURL
+            )
+
+            print(Style.success("✓ Clone '\(destination)' created."))
+            Style.field("Machine ID", Style.dim("regenerated (unique)"))
+            Style.field("Setup", clone.metadata.setupCompleted
+                        ? Style.green("inherited") : Style.dim("pending"))
+            print()
+        }
+    }
+}

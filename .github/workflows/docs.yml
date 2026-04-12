@@ -1,0 +1,40 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Sources/SpooktacularKit/**"
+      - "Sources/SpooktacularKit/Documentation.docc/**"
+
+permissions:
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Build & Deploy DocC
+    runs-on: macos-15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate static documentation
+        run: |
+          chmod +x scripts/build-docs.sh
+          ./scripts/build-docs.sh --static
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

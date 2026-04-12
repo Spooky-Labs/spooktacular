@@ -1,0 +1,11 @@
+Initial Release
+
+• Create macOS VMs from IPSW restore images
+• Instant APFS cloning
+• Four provisioning modes: disk-inject, SSH, agent, shared-folder
+• NAT, bridged, isolated, and host-only networking
+• Audio, shared folders, clipboard sharing
+• Full CLI with 16 commands
+• Menu bar quick access
+• Comprehensive accessibility support
+• Liquid Glass UI on macOS 26+

@@ -1,0 +1,35 @@
+name: Beta (TestFlight)
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: beta
+  cancel-in-progress: true
+
+jobs:
+  beta:
+    name: Build & Upload to TestFlight
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build .app bundle
+        run: |
+          chmod +x build-app.sh
+          ./build-app.sh release
+
+      - name: Install Fastlane
+        run: gem install fastlane
+
+      - name: Upload to TestFlight
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: fastlane beta
+        working-directory: fastlane

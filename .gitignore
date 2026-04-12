@@ -1,0 +1,29 @@
+# Swift
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+DerivedData/
+
+# App bundle (built artifact)
+Spooktacular.app/
+*.app.zip
+
+# Icon build artifacts
+Resources/AppIcon.iconset/
+Resources/icon_1024.png
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Credentials (never commit)
+*.p8
+*.p12
+*.cer
+*.mobileprovision

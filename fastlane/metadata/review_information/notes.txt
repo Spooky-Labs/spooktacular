@@ -1,0 +1,1 @@
+Spooktacular uses Apple's Virtualization.framework (com.apple.security.virtualization entitlement) to create and manage macOS virtual machines on Apple Silicon Macs. The app requires the virtualization entitlement to function. No VMs can be created on Intel Macs. The app is a native SwiftUI application with a companion CLI tool.
