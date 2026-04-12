@@ -260,10 +260,26 @@ extension Spook {
                     print(Style.dim("  Pass API keys via --share for security"))
                 }
                 if githubRunner {
-                    print(Style.info("🏃 GitHub Actions runner template selected"))
-                    if let repo = githubRepo {
-                        Style.field("Repo", repo)
+                    guard let repo = githubRepo else {
+                        print(Style.error("✗ --github-runner requires --github-repo."))
+                        throw ExitCode.failure
                     }
+                    guard let token = githubToken else {
+                        print(Style.error("✗ --github-runner requires --github-token."))
+                        throw ExitCode.failure
+                    }
+
+                    let scriptURL = try GitHubRunnerTemplate.generate(
+                        repo: repo,
+                        token: token,
+                        ephemeral: ephemeral
+                    )
+
+                    print(Style.info("🏃 GitHub Actions runner template generated"))
+                    Style.field("Repo", repo)
+                    Style.field("Script", Style.dim(scriptURL.path))
+                    print(Style.dim("  The runner will be configured on first boot via user-data."))
+                    print(Style.dim("  Start the VM to begin: spook start \(name) --user-data \(scriptURL.path) --provision ssh"))
                 }
                 if remoteDesktop {
                     print(Style.info("🖥  Remote desktop template selected"))

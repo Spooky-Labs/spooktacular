@@ -60,6 +60,7 @@ extension Spook {
 
         private func printTable(_ bundles: [(String, VMBundle)]) {
             var rows: [[String]] = []
+            var runningCount = 0
 
             for (name, bundle) in bundles {
                 let memGB = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
@@ -70,8 +71,19 @@ extension Spook {
                 let audio = bundle.spec.audioEnabled
                     ? Style.dim("♪") : ""
 
+                // Check if VM is currently running via PID file.
+                let isRunning = PIDFile.isRunning(bundleURL: bundle.url)
+                let runState: String
+                if isRunning {
+                    runState = Style.green("● running")
+                    runningCount += 1
+                } else {
+                    runState = Style.dim("○ stopped")
+                }
+
                 rows.append([
                     Style.bold(name),
+                    runState,
                     "\(bundle.spec.cpuCount) cores",
                     "\(memGB) GB",
                     "\(diskGB) GB",
@@ -82,13 +94,14 @@ extension Spook {
             }
 
             Style.table(
-                headers: ["NAME", "CPU", "MEM", "DISK", "NET", "♪", "STATUS"],
+                headers: ["NAME", "STATE", "CPU", "MEM", "DISK", "NET", "♪", "STATUS"],
                 rows: rows
             )
 
             print()
+            let vmLabel = bundles.count == 1 ? "virtual machine" : "virtual machines"
             print(
-                Style.dim("\(bundles.count) virtual machine\(bundles.count == 1 ? "" : "s")")
+                Style.dim("\(bundles.count) \(vmLabel), \(runningCount) running")
             )
         }
 

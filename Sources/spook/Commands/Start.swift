@@ -55,11 +55,32 @@ extension Spook {
         )
         var provision: ProvisioningMode = .ssh
 
+        @Option(help: "SSH user for --provision ssh.")
+        var sshUser: String = "admin"
+
+        @Option(help: "SSH private key path for --provision ssh.")
+        var sshKey: String = "~/.ssh/id_ed25519"
+
         @MainActor
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
                 print("Error: VM '\(name)' not found.")
+                throw ExitCode.failure
+            }
+
+            // Enforce the 2-VM concurrency limit before proceeding.
+            try Paths.ensureDirectories()
+            do {
+                try CapacityCheck.ensureCapacity(in: Paths.vms)
+            } catch let error as CapacityError {
+                print(Style.error("✗ \(error.localizedDescription)"))
+                throw ExitCode.failure
+            }
+
+            // Check if this specific VM is already running.
+            if PIDFile.isRunning(bundleURL: bundleURL) {
+                print(Style.error("✗ VM '\(name)' is already running."))
                 throw ExitCode.failure
             }
 
@@ -75,6 +96,41 @@ extension Spook {
                 throw ExitCode.failure
             }
 
+            // Write PID file so other commands can find this process.
+            try PIDFile.write(to: bundleURL)
+
+            // Install SIGTERM handler for graceful shutdown.
+            let sigSource = DispatchSource.makeSignalSource(
+                signal: SIGTERM,
+                queue: .main
+            )
+            signal(SIGTERM, SIG_IGN) // Ignore default handler; dispatch source handles it.
+            sigSource.setEventHandler {
+                print("\nReceived SIGTERM — stopping VM '\(name)'...")
+                Task { @MainActor in
+                    try? await vm.stop(graceful: false)
+                    PIDFile.remove(from: bundleURL)
+                    Foundation.exit(0)
+                }
+            }
+            sigSource.resume()
+
+            // Also handle SIGINT (Ctrl+C) gracefully.
+            let intSource = DispatchSource.makeSignalSource(
+                signal: SIGINT,
+                queue: .main
+            )
+            signal(SIGINT, SIG_IGN)
+            intSource.setEventHandler {
+                print("\nReceived SIGINT — stopping VM '\(name)'...")
+                Task { @MainActor in
+                    try? await vm.stop(graceful: false)
+                    PIDFile.remove(from: bundleURL)
+                    Foundation.exit(0)
+                }
+            }
+            intSource.resume()
+
             if recovery {
                 let options = VZMacOSVirtualMachineStartOptions()
                 options.startUpFromMacOSRecovery = true
@@ -85,7 +141,43 @@ extension Spook {
 
             print(Style.success("✓ VM '\(name)' is running."))
 
-            if let scriptPath = userData {
+            // Execute user-data script via SSH if requested.
+            if let scriptPath = userData, provision == .ssh {
+                Style.field("User-data", scriptPath)
+                Style.field("Provision", provision.label)
+
+                let scriptURL = URL(fileURLWithPath:
+                    NSString(string: scriptPath).expandingTildeInPath
+                )
+                guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+                    print(Style.error("✗ User-data script not found: \(scriptPath)"))
+                    throw ExitCode.failure
+                }
+
+                // Resolve the VM's IP to connect via SSH.
+                if let macAddress = bundle.spec.macAddress {
+                    print("Resolving VM IP address...")
+                    if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
+                        print("Waiting for SSH on \(ip)...")
+                        try await SSHExecutor.waitForSSH(ip: ip)
+
+                        print("Executing user-data script...")
+                        try await SSHExecutor.execute(
+                            script: scriptURL,
+                            on: ip,
+                            user: sshUser,
+                            key: sshKey
+                        )
+                        print(Style.success("✓ User-data script completed."))
+                    } else {
+                        print(Style.warning("Could not resolve VM IP. Skipping user-data execution."))
+                        print(Style.dim("Ensure the VM has booted and obtained a network address."))
+                    }
+                } else {
+                    print(Style.warning("No MAC address configured. Cannot resolve IP for SSH provisioning."))
+                    print(Style.dim("Set a MAC address with 'spook set \(name) --mac-address <addr>' for automatic IP resolution."))
+                }
+            } else if let scriptPath = userData {
                 Style.field("User-data", scriptPath)
                 Style.field("Provision", provision.label)
             }
@@ -125,6 +217,9 @@ extension Spook {
                     break
                 }
             }
+
+            // Clean up PID file when VM stops normally.
+            PIDFile.remove(from: bundleURL)
         }
     }
 }

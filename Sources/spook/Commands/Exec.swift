@@ -5,14 +5,17 @@ import SpooktacularKit
 extension Spook {
 
     /// Executes a command inside a running virtual machine.
+    ///
+    /// Resolves the VM's IP address, then runs the specified
+    /// command over SSH. Standard output and error are streamed
+    /// back to the host terminal.
     struct Exec: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "Execute a command inside a running VM.",
             discussion: """
                 Runs a command inside the guest macOS and streams its \
-                output back to the host. This requires either SSH \
-                access or the Spooktacular guest agent installed in \
-                the VM.
+                output back to the host. The VM must have SSH (Remote \
+                Login) enabled.
 
                 Commands are executed in the guest's default shell. \
                 Use '--' to separate spook arguments from the guest \
@@ -31,6 +34,12 @@ extension Spook {
 
         @Option(help: "SSH user name for remote execution.")
         var user: String = "admin"
+
+        @Option(
+            help: "Path to the SSH private key.",
+            transform: { NSString(string: $0).expandingTildeInPath }
+        )
+        var key: String = "~/.ssh/id_ed25519"
 
         @Argument(
             parsing: .captureForPassthrough,
@@ -51,20 +60,46 @@ extension Spook {
                 throw ExitCode.failure
             }
 
+            guard PIDFile.isRunning(bundleURL: bundleURL) else {
+                print("Error: VM '\(name)' is not running. Start it with 'spook start \(name)'.")
+                throw ExitCode.failure
+            }
+
+            let bundle = try VMBundle.load(from: bundleURL)
+            let expandedKey = NSString(string: key).expandingTildeInPath
             let cmdString = command.joined(separator: " ")
 
-            // Remote execution requires either SSH or the guest agent.
-            // For now, show the user the equivalent SSH command.
-            print("To execute '\(cmdString)' in VM '\(name)':")
-            print("")
-            print("  1. Find the VM's IP:")
-            print("     spook ip \(name)")
-            print("")
-            print("  2. Run via SSH:")
-            print("     ssh \(user)@<ip-address> '\(cmdString)'")
-            print("")
-            print("(Direct execution via 'spook exec' requires the VM lifecycle daemon")
-            print("or the Spooktacular guest agent. Coming soon.)")
+            guard let macAddress = bundle.spec.macAddress else {
+                print("VM '\(name)' has no configured MAC address for automatic IP resolution.")
+                print("")
+                print("Find the IP manually, then run:")
+                print("  ssh \(user)@<ip-address> '\(cmdString)'")
+                throw ExitCode.failure
+            }
+
+            guard let ip = try await IPResolver.resolveIP(macAddress: macAddress) else {
+                print("Error: Could not resolve IP for VM '\(name)'.")
+                print("The VM may still be booting. Try again in a few seconds.")
+                throw ExitCode.failure
+            }
+
+            // Build the ssh command with the remote command appended.
+            var args = SSHExecutor.sshOptions
+            args += ["-i", expandedKey, "\(user)@\(ip)", cmdString]
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+            process.arguments = args
+            process.standardInput = FileHandle.standardInput
+            process.standardOutput = FileHandle.standardOutput
+            process.standardError = FileHandle.standardError
+
+            try process.run()
+            process.waitUntilExit()
+
+            if process.terminationStatus != 0 {
+                throw ExitCode(process.terminationStatus)
+            }
         }
     }
 }
