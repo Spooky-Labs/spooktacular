@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Versioning &amp; Releases — Spooktacular</title>
+<meta name="description" content="Spooktacular follows Semantic Versioning 2.0.0. Learn about version format, release process, compatibility guarantees, and how to pin versions for enterprise stability.">
+<style>
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.container { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
+
+/* Nav */
+nav { position: sticky; top: 0; z-index: 100; background: rgba(9,9,11,0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(39,39,42,0.5); padding: 0; }
+nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
+nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
+nav .logo:hover { text-decoration: none; }
+nav .logo svg { width: 24px; height: 24px; }
+nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
+nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
+nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
+nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
+nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
+nav .nav-links a.active { color: var(--fg); }
+nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
+nav .cta-btn { background: var(--accent); color: #000; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
+nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
+nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
+nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
+#nav-toggle { display: none; }
+@media (max-width: 768px) {
+  nav .hamburger { display: flex; }
+  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(9,9,11,0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
+  nav .nav-links a { padding: 0.6rem 0.75rem; }
+  nav .nav-links a::after { display: none; }
+  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
+  #nav-toggle:checked ~ .nav-links { display: flex; }
+  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
+  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
+  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+}
+
+/* Page header */
+.page-header { text-align: center; padding: 5rem 0 2rem; }
+.page-header h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.03em; }
+.page-header h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.page-header p { color: var(--dim); font-size: 1.1rem; margin-top: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+/* Content sections */
+.content { padding-bottom: 4rem; }
+.content h2 { font-size: 1.5rem; font-weight: 700; margin: 3rem 0 0.75rem; color: var(--fg); letter-spacing: -0.01em; }
+.content h3 { font-size: 1.1rem; font-weight: 600; margin: 2rem 0 0.5rem; }
+.content p { color: var(--dim); margin-bottom: 0.75rem; font-size: 0.95rem; line-height: 1.7; }
+.content p strong { color: var(--fg); }
+.content ul { padding-left: 1.5rem; margin-bottom: 1rem; }
+.content li { color: var(--dim); margin-bottom: 0.35rem; font-size: 0.92rem; }
+code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.82em; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+/* Version format visual */
+.version-visual { display: flex; justify-content: center; gap: 0; margin: 2rem 0; flex-wrap: wrap; }
+.ver-segment { text-align: center; padding: 1.25rem 2rem; background: var(--surface); border: 1px solid var(--border); }
+.ver-segment:first-child { border-radius: 12px 0 0 12px; }
+.ver-segment:last-child { border-radius: 0 12px 12px 0; }
+.ver-segment .num { font-size: 2rem; font-weight: 800; display: block; margin-bottom: 0.25rem; }
+.ver-segment .label { font-size: 0.75rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+.ver-segment.major .num { color: var(--red); }
+.ver-segment.minor .num { color: var(--yellow); }
+.ver-segment.patch .num { color: var(--green); }
+.ver-sep { display: flex; align-items: center; padding: 0 0.5rem; font-size: 2rem; font-weight: 800; color: var(--dim); }
+@media (max-width: 500px) { .ver-segment { padding: 1rem 1.25rem; } }
+
+/* Code blocks */
+.code-block { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 1.5rem 0; }
+.code-block .code-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.65rem 1.25rem; border-bottom: 1px solid var(--border); }
+.code-block .code-header .dot-r { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; }
+.code-block .code-header .dot-y { width: 10px; height: 10px; border-radius: 50%; background: #fbbf24; }
+.code-block .code-header .dot-g { width: 10px; height: 10px; border-radius: 50%; background: #6ee7b7; }
+.code-block .code-header span.title { margin-left: 0.5rem; font-size: 0.75rem; color: var(--dim); font-family: 'SF Mono', 'Fira Code', monospace; }
+.code-block pre { padding: 1.25rem 1.5rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.75; overflow-x: auto; margin: 0; color: var(--dim); }
+.code-block .hl { color: var(--accent); }
+.code-block .ok { color: var(--green); }
+.code-block .cmt { color: #525262; font-style: italic; }
+
+/* Release timeline visual */
+.release-flow { display: flex; align-items: center; justify-content: center; gap: 0; margin: 2rem 0; overflow-x: auto; padding: 1rem 0; }
+.flow-step { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1.25rem; text-align: center; white-space: nowrap; }
+.flow-step .step-label { font-size: 0.7rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; display: block; margin-bottom: 0.25rem; }
+.flow-step .step-value { font-size: 0.85rem; font-weight: 600; }
+.flow-arrow { padding: 0 0.5rem; color: var(--dim); font-size: 1.25rem; }
+
+/* Compat table */
+.compat-table { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 1.5rem 0; }
+table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+th { text-align: left; padding: 0.75rem 1rem; border-bottom: 2px solid var(--border); color: var(--accent); font-weight: 600; font-size: 0.8rem; background: var(--surface); }
+td { padding: 0.65rem 1rem; border-bottom: 1px solid var(--border); }
+tr:hover { background: rgba(24,24,27,0.5); }
+
+/* Pre-release cards */
+.prerelease-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1.5rem 0; }
+.prerelease-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.prerelease-card h4 { font-size: 0.95rem; margin-bottom: 0.4rem; }
+.prerelease-card .tag { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: 4px; margin-bottom: 0.4rem; font-family: 'SF Mono', 'Fira Code', monospace; }
+.prerelease-card .tag-alpha { background: rgba(239,68,68,0.15); color: var(--red); }
+.prerelease-card .tag-beta { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.prerelease-card .tag-rc { background: rgba(110,231,183,0.15); color: var(--green); }
+.prerelease-card p { color: var(--dim); font-size: 0.82rem; line-height: 1.6; }
+@media (max-width: 700px) { .prerelease-grid { grid-template-columns: 1fr; } }
+
+/* Current status */
+.status-table { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 1.5rem 0; }
+.status-table td.shipped { color: var(--green); font-weight: 600; }
+.status-table td.upcoming { color: var(--blue); font-weight: 600; }
+
+/* Footer */
+footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
+footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
+footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
+footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
+footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
+footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
+footer .foot-bottom p { margin: 0; }
+@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
+
+/* Starfield */
+.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
+.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
+.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
+@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
+nav, .container, .page-header, footer { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<div class="stars"></div><div class="stars2"></div><div class="stars3"></div>
+
+<nav>
+<div class="inner">
+<a href="index.html" class="logo">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+Spooktacular
+</a>
+<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation">
+<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
+<div class="nav-links">
+<a href="features.html">Features</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="compare.html">Compare</a>
+<a href="versioning.html" class="active">Versioning</a>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
+<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
+</div>
+</div>
+</nav>
+
+<div class="page-header">
+<div class="container">
+<h1>Versioning &amp; <span>releases</span></h1>
+<p>Spooktacular follows <a href="https://semver.org">Semantic Versioning 2.0.0</a> with clearly defined pre-release stages and compatibility guarantees.</p>
+</div>
+</div>
+
+<div class="container content">
+
+<!-- Version format visual -->
+<h2>Version format</h2>
+<div class="version-visual">
+<div class="ver-segment major"><span class="num">1</span><span class="label">Major</span></div>
+<div class="ver-sep">.</div>
+<div class="ver-segment minor"><span class="num">2</span><span class="label">Minor</span></div>
+<div class="ver-sep">.</div>
+<div class="ver-segment patch"><span class="num">3</span><span class="label">Patch</span></div>
+</div>
+
+<h3>MAJOR &mdash; Breaking changes</h3>
+<p>Incremented when we make <strong>breaking changes</strong> to the public API, CLI interface, VM bundle format, or configuration schema. Enterprise teams pinning to a major version can upgrade minor and patch versions without risk.</p>
+<p><strong>What breaks:</strong> command syntax changes, config.json schema changes, removed commands, renamed flags, changed default behavior.</p>
+<p><strong>Promise:</strong> We will not ship a major version bump without a migration guide and at least one release candidate.</p>
+
+<h3>MINOR &mdash; New features</h3>
+<p>Incremented when we add <strong>new backward-compatible features</strong>. Existing VMs, scripts, and CI configurations continue to work unchanged.</p>
+<p><strong>Examples:</strong> new CLI commands, new provisioning modes, new network modes, GUI improvements, new templates.</p>
+
+<h3>PATCH &mdash; Bug fixes</h3>
+<p>Incremented for <strong>bug fixes and security patches</strong>. No new features, no behavior changes. Safe to upgrade immediately.</p>
+<p><strong>Examples:</strong> crash fixes, error message improvements, documentation corrections, dependency updates.</p>
+
+<!-- Pre-release tags -->
+<h2>Pre-release stages</h2>
+<div class="prerelease-grid">
+<div class="prerelease-card">
+<div class="tag tag-alpha">-alpha.N</div>
+<h4>Alpha</h4>
+<p>Early development. APIs may change between alphas. Not recommended for production. Useful for testing new features before they stabilize.</p>
+</div>
+<div class="prerelease-card">
+<div class="tag tag-beta">-beta.N</div>
+<h4>Beta</h4>
+<p>Feature-complete for the target release. APIs are stable but may have bugs. Suitable for staging environments and early adopter testing.</p>
+</div>
+<div class="prerelease-card">
+<div class="tag tag-rc">-rc.N</div>
+<h4>Release Candidate</h4>
+<p>Production-ready candidate. No known bugs. If no issues are found within the testing period, this becomes the stable release. <strong>Enterprise teams should test RCs in staging.</strong></p>
+</div>
+</div>
+
+<!-- Current status -->
+<h2>Current status</h2>
+<div class="status-table">
+<table>
+<tr><th>Version</th><th>Stage</th><th>Date</th><th>Highlights</th></tr>
+<tr><td><code>0.1.0</code></td><td class="shipped">Shipped</td><td>Apr 2026</td><td>Foundation: VM lifecycle, GUI, CLI</td></tr>
+<tr><td><code>0.2.0</code></td><td class="shipped">Shipped</td><td>Apr 2026</td><td>Enterprise: stop, capacity, IP, SSH</td></tr>
+<tr><td><code>0.3.0</code></td><td class="shipped">Shipped</td><td>Apr 2026</td><td>Feature complete: service, snapshots, templates</td></tr>
+<tr><td><code>0.4.0</code></td><td class="shipped">Shipped</td><td>Apr 2026</td><td>Code quality: naming, errors, logging, Fastlane</td></tr>
+<tr><td><code>1.0.0-rc1</code></td><td class="upcoming">Upcoming</td><td>&mdash;</td><td>First production candidate</td></tr>
+<tr><td><code>1.0.0</code></td><td class="upcoming">Upcoming</td><td>&mdash;</td><td>First stable release with semver guarantees</td></tr>
+</table>
+</div>
+<p><strong>0.x.x versions</strong> are development releases. The API may change between minor versions. Use in production at your own discretion.</p>
+<p><strong>1.0.0</strong> will be the first stable release with a full commitment to semantic versioning guarantees across the CLI, API, and VM bundle format.</p>
+
+<!-- Release process -->
+<h2>Release process</h2>
+<div class="release-flow">
+<div class="flow-step"><span class="step-label">Develop</span><span class="step-value">Feature branch</span></div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-step"><span class="step-label">Review</span><span class="step-value">PR + CI (235 tests)</span></div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-step"><span class="step-label">Merge</span><span class="step-value">main branch</span></div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-step"><span class="step-label">Beta</span><span class="step-value">TestFlight (auto)</span></div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-step"><span class="step-label">Tag</span><span class="step-value">vX.Y.Z</span></div>
+<div class="flow-arrow">&rarr;</div>
+<div class="flow-step"><span class="step-label">Ship</span><span class="step-value">GitHub + App Store</span></div>
+</div>
+
+<p><strong>What CI checks on every PR:</strong></p>
+<ul>
+<li><code>swift test --parallel</code> &mdash; all unit tests must pass</li>
+<li><code>swift build -c release</code> &mdash; release build must compile clean</li>
+<li><code>.app</code> bundle structure verification</li>
+</ul>
+<p><strong>What ships on every tag:</strong></p>
+<ul>
+<li>GitHub Release with <code>.app.zip</code> (signed + notarized)</li>
+<li>TestFlight build (via Fastlane pilot)</li>
+<li>App Store submission (via Fastlane deliver)</li>
+<li>DocC documentation update (via GitHub Pages)</li>
+</ul>
+
+<!-- Release schedule -->
+<h2>Release schedule</h2>
+<p>We do not follow a fixed calendar. Releases ship when they are ready, not on arbitrary deadlines.</p>
+<ul>
+<li><strong>Patch releases</strong> ship within 48 hours of a confirmed bug fix</li>
+<li><strong>Minor releases</strong> ship when a meaningful set of features is complete and tested (typically every 2&ndash;4 weeks during active development)</li>
+<li><strong>Major releases</strong> ship only when necessary (breaking changes), with at least 2 weeks of release candidate testing</li>
+<li><strong>Release candidates</strong> remain in testing for a minimum of 1 week. If issues are found, additional RCs ship until clean</li>
+</ul>
+
+<!-- Compatibility guarantees -->
+<h2>Compatibility guarantees</h2>
+<div class="compat-table">
+<table>
+<tr><th>Surface</th><th>Adding</th><th>Removing / renaming</th><th>Changing behavior</th></tr>
+<tr><td>CLI command</td><td>Minor bump</td><td>Major bump</td><td>Major bump</td></tr>
+<tr><td>CLI flag</td><td>Minor bump</td><td>Major bump</td><td>Major bump</td></tr>
+<tr><td><code>--json</code> output field</td><td>Minor bump</td><td>Major bump</td><td>Major bump</td></tr>
+<tr><td>config.json field</td><td>Minor bump</td><td>Major bump + migration</td><td>Major bump</td></tr>
+<tr><td>VM bundle format</td><td>Minor bump</td><td>Major bump + migration</td><td>Major bump</td></tr>
+<tr><td>HTTP API endpoint</td><td>Minor bump</td><td>Major bump</td><td>Major bump</td></tr>
+</table>
+</div>
+
+<h3>VM bundle format</h3>
+<p>The <code>.vm</code> bundle directory structure (<code>config.json</code>, <code>disk.img</code>, platform artifacts) is versioned separately from the tool. If we change the bundle format, we will:</p>
+<ul>
+<li>Support reading old bundles indefinitely</li>
+<li>Provide automatic migration on first access</li>
+<li>Document the changes in release notes</li>
+</ul>
+
+<!-- Pinning versions -->
+<h2>How to pin versions</h2>
+
+<div class="code-block">
+<div class="code-header">
+<span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+<span class="title">Pin to a specific version</span>
+</div>
+<pre><span class="cmt"># Homebrew</span>
+<span class="hl">brew install --cask spooktacular@1.0</span>
+
+<span class="cmt"># GitHub Actions</span>
+<span class="hl">- uses: spooky-labs/setup-spooktacular@v1</span>
+
+<span class="cmt"># Direct download (specific version)</span>
+<span class="hl">curl -L https://github.com/Spooky-Labs/spooktacular/releases/download/v1.0.0/Spooktacular.app.zip</span></pre>
+</div>
+
+<!-- Reporting issues -->
+<h2>Reporting issues</h2>
+<p>If you find a bug in a release:</p>
+<ul>
+<li>Check the <a href="https://github.com/Spooky-Labs/spooktacular/releases">release notes</a> to see if it's already fixed in a newer version</li>
+<li>Open an <a href="https://github.com/Spooky-Labs/spooktacular/issues">issue</a> with your version number, macOS version, and steps to reproduce</li>
+<li>Patch releases ship within 48 hours of confirmed fixes</li>
+</ul>
+
+</div>
+
+<footer>
+<div class="foot-inner">
+<div class="foot-grid">
+<div class="foot-col">
+<h4>Product</h4>
+<a href="features.html">Features</a>
+<a href="compare.html">Compare</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases">Downloads</a>
+</div>
+<div class="foot-col">
+<h4>Resources</h4>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes Guide</a>
+<a href="https://github.com/Spooky-Labs/spooktacular">Documentation</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/issues">Report an Issue</a>
+</div>
+<div class="foot-col">
+<h4>Legal</h4>
+<a href="privacy.html">Privacy Policy</a>
+<a href="terms.html">Terms of Use</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT License</a>
+</div>
+<div class="foot-col">
+<h4>Community</h4>
+<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/discussions">Discussions</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/stargazers">Star on GitHub</a>
+</div>
+</div>
+<div class="foot-bottom">
+<p>Made with care in Cascadia</p>
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+</div>
+</div>
+</footer>
+
+</body>
+</html>

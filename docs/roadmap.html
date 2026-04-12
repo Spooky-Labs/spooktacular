@@ -4,11 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Roadmap — Spooktacular</title>
+<meta name="description" content="Spooktacular development roadmap. See what's shipped, what's in progress, and what's planned for enterprise macOS virtualization.">
 <style>
-:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --card: #18181b; --green: #6ee7b7; --yellow: #fbbf24; --blue: #60a5fa; }
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --yellow: #fbbf24; --blue: #60a5fa; --red: #ef4444; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.container { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
 
 /* Nav */
 nav { position: sticky; top: 0; z-index: 100; background: rgba(9,9,11,0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(39,39,42,0.5); padding: 0; }
@@ -40,37 +43,80 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
   #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
 }
 
-.container { max-width: 800px; margin: 0 auto; padding: 2rem; }
-h1 { font-size: 2.5rem; margin: 2rem 0 0.5rem; background: linear-gradient(135deg, #c4b5fd, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-p { margin-bottom: 0.75rem; }
-.phase { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
-.phase h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
-.status { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
-.done { background: rgba(110,231,183,0.15); color: var(--green); }
-.next { background: rgba(251,191,36,0.15); color: var(--yellow); }
-.planned { background: rgba(96,165,250,0.15); color: var(--blue); }
-.future { background: rgba(107,114,128,0.15); color: var(--dim); }
-ul { padding-left: 1.5rem; margin: 0.5rem 0; }
-li { margin-bottom: 0.4rem; }
-.check { color: var(--green); }
-.wip { color: var(--yellow); }
-.todo { color: var(--dim); }
-.legend { display: flex; gap: 1.5rem; margin: 1rem 0 2rem; flex-wrap: wrap; }
-.legend span { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+/* Page header */
+.page-header { text-align: center; padding: 5rem 0 2rem; }
+.page-header h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.03em; }
+.page-header h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.page-header p { color: var(--dim); font-size: 1.1rem; margin-top: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+/* Legend */
+.legend { display: flex; gap: 2rem; justify-content: center; margin: 1.5rem 0 3rem; flex-wrap: wrap; }
+.legend span { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--dim); }
+.legend .dot { width: 8px; height: 8px; border-radius: 50%; }
+.legend .dot-green { background: var(--green); }
+.legend .dot-yellow { background: var(--yellow); }
+.legend .dot-blue { background: var(--blue); }
+.legend .dot-gray { background: var(--dim); }
+
+/* Timeline */
+.timeline { position: relative; padding-left: 2.5rem; }
+.timeline::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+
+/* Milestone */
+.milestone { position: relative; margin-bottom: 3rem; }
+.milestone .dot-marker { position: absolute; left: -2.5rem; top: 0.35rem; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid; z-index: 2; background: var(--bg); }
+.milestone.shipped .dot-marker { border-color: var(--green); }
+.milestone.shipped .dot-marker::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.milestone.progress .dot-marker { border-color: var(--yellow); }
+.milestone.progress .dot-marker::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.milestone.planned .dot-marker { border-color: var(--blue); }
+.milestone.planned .dot-marker::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--blue); opacity: 0.5; }
+.milestone.future .dot-marker { border-color: var(--dim); }
+.milestone.future .dot-marker::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--dim); opacity: 0.3; }
+
+.milestone .header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+.milestone .header h2 { font-size: 1.35rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.milestone .header .status { display: inline-block; padding: 0.15rem 0.65rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.status-shipped { background: rgba(110,231,183,0.15); color: var(--green); }
+.status-progress { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.status-planned { background: rgba(96,165,250,0.15); color: var(--blue); }
+.status-future { background: rgba(107,114,128,0.15); color: var(--dim); }
+
+.milestone .phase { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
+.milestone .phase h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem; }
+.milestone .phase ul { list-style: none; padding: 0; }
+.milestone .phase li { padding: 0.3rem 0; font-size: 0.87rem; padding-left: 1.5rem; position: relative; }
+.milestone .phase li a { color: inherit; }
+.milestone .phase li a:hover { color: var(--accent); }
+.milestone .phase li .check { position: absolute; left: 0; color: var(--green); font-weight: 700; }
+.milestone .phase li .wip { position: absolute; left: 0; color: var(--yellow); }
+.milestone .phase li .todo { position: absolute; left: 0; color: var(--dim); }
+
+/* Stats ribbon on shipped */
+.shipped-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.shipped-stat { font-size: 0.8rem; color: var(--dim); }
+.shipped-stat strong { color: var(--green); font-weight: 700; }
 
 /* Footer */
 footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
 footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 2rem; } footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; } footer .foot-col h4 { color: var(--fg); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; } footer .foot-col a { color: var(--dim); font-size: 0.85rem; } footer .foot-col a:hover { color: var(--fg); text-decoration: none; } footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; } footer .foot-bottom p { margin: 0; } @media (max-width: 768px) { footer .foot-grid { flex-direction: column; } footer .foot-bottom { flex-direction: column; text-align: center; } }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
+footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
+footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
+footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
+footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
+footer .foot-bottom p { margin: 0; }
+@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
 
-/* Starfield background */
+/* Starfield */
 .stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
 .stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
 .stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
 @keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, section, .container, .hero, footer, main { position: relative; z-index: 1; }
+nav, .container, .page-header, footer { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
@@ -88,212 +134,261 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="roadmap.html" class="active">Roadmap</a>
 <a href="compare.html">Compare</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="versioning.html">Versioning</a>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
 </div>
 </div>
 </nav>
 
+<div class="page-header">
 <div class="container">
-
-<h1>Roadmap</h1>
-<p>What's built, what's next, and where we're headed. Spooktacular serves enterprise CI/CD teams, ML researchers, and remote desktop users.</p>
-
-<div class="legend">
-<span><span class="check">&#10003;</span> Shipped</span>
-<span><span class="wip">&#9675;</span> In progress</span>
-<span><span class="todo">&#9633;</span> Planned</span>
+<h1>Development <span>roadmap</span></h1>
+<p>What's built, what's next, and where we're headed. Updated as milestones ship.</p>
+</div>
 </div>
 
-<h2>v0.1 — Foundation <span class="status done">Shipped</span></h2>
+<div class="container">
+
+<div class="legend">
+<span><span class="dot dot-green"></span> Shipped</span>
+<span><span class="dot dot-yellow"></span> In progress</span>
+<span><span class="dot dot-blue"></span> Planned</span>
+<span><span class="dot dot-gray"></span> Exploring</span>
+</div>
+
+<div class="timeline">
+
+<!-- v0.1–v0.4 Shipped -->
+<div class="milestone shipped">
+<div class="dot-marker"></div>
+<div class="header">
+<h2>v0.1 &ndash; v0.4 &mdash; Foundation</h2>
+<span class="status status-shipped">Shipped</span>
+</div>
 
 <div class="phase">
 <h3>Core VM Lifecycle</h3>
 <ul>
-<li><span class="check">&#10003;</span> Create VMs from IPSW restore images</li>
+<li><span class="check">&#10003;</span> Create VMs from Apple IPSW restore images</li>
 <li><span class="check">&#10003;</span> Instant APFS copy-on-write cloning with MachineIdentifier regeneration</li>
-<li><span class="check">&#10003;</span> Start / stop / delete VMs</li>
+<li><span class="check">&#10003;</span> Start / stop / delete VMs with PID tracking</li>
 <li><span class="check">&#10003;</span> VM bundle format (config.json + platform artifacts + disk image)</li>
 <li><span class="check">&#10003;</span> IPSW version compatibility checking (fails fast, not after 13 GB download)</li>
-<li><span class="check">&#10003;</span> 89 unit tests across 14 test suites</li>
-</ul>
-<h3>Hardware Configuration</h3>
-<ul>
-<li><span class="check">&#10003;</span> CPU, memory, disk, displays (1-2), network mode</li>
-<li><span class="check">&#10003;</span> Audio (speaker + microphone), clipboard sharing</li>
-<li><span class="check">&#10003;</span> Shared folders (VirtIO file system with automount)</li>
-<li><span class="check">&#10003;</span> MAC address configuration</li>
-<li><span class="check">&#10003;</span> Auto-resize display (macOS 14+)</li>
-<li><span class="check">&#10003;</span> NAT, bridged, isolated, host-only networking</li>
-</ul>
-<h3>CLI (16 commands)</h3>
-<ul>
-<li><span class="check">&#10003;</span> create, start, stop, list, clone, delete, ip</li>
-<li><span class="check">&#10003;</span> get, set, snapshot, restore, snapshots</li>
-<li><span class="check">&#10003;</span> share (add/remove/list), ssh, exec</li>
-<li><span class="check">&#10003;</span> Styled ANSI terminal output (respects NO_COLOR)</li>
-<li><span class="check">&#10003;</span> Comprehensive --help with examples on every command</li>
-</ul>
-<h3>SwiftUI GUI</h3>
-<ul>
-<li><span class="check">&#10003;</span> NavigationSplitView with searchable sidebar</li>
-<li><span class="check">&#10003;</span> Two-column Create VM sheet with progressive disclosure</li>
-<li><span class="check">&#10003;</span> Inspector panel for VM configuration</li>
-<li><span class="check">&#10003;</span> VZVirtualMachineView display with auto-resize</li>
-<li><span class="check">&#10003;</span> Menu bar extra for quick VM management</li>
-<li><span class="check">&#10003;</span> Image library in sidebar</li>
-<li><span class="check">&#10003;</span> Liquid Glass on macOS 26+</li>
-<li><span class="check">&#10003;</span> Full accessibility (VoiceOver, WCAG 2.1, reduced motion)</li>
-</ul>
-<h3>Distribution</h3>
-<ul>
-<li><span class="check">&#10003;</span> Proper .app bundle with Info.plist and app icon</li>
-<li><span class="check">&#10003;</span> Fastlane (test, build, beta, release, docs, lint)</li>
-<li><span class="check">&#10003;</span> GitHub Actions CI/CD (GitHub Flow)</li>
-<li><span class="check">&#10003;</span> DocC documentation catalog with articles</li>
-<li><span class="check">&#10003;</span> GitHub Pages site</li>
+<li><span class="check">&#10003;</span> 2-VM capacity enforcement via kernel limit detection</li>
 </ul>
 </div>
-
-<h2>v0.2 — Provisioning Engine <span class="status next">Next</span></h2>
 
 <div class="phase">
-<h3>User Data Execution</h3>
+<h3>Hardware &amp; Networking</h3>
 <ul>
-<li><span class="todo">&#9633;</span> Disk-inject provisioning (mount guest disk, inject LaunchDaemon)</li>
-<li><span class="todo">&#9633;</span> SSH provisioning (wait for IP, connect, execute script)</li>
-<li><span class="todo">&#9633;</span> Guest agent over VirtIO socket (vsock)</li>
-<li><span class="todo">&#9633;</span> Shared-folder watcher provisioning</li>
-<li><span class="todo">&#9633;</span> Setup Assistant automation via VZ keyboard input (windowed mode)</li>
-</ul>
-<h3>Built-in Templates</h3>
-<ul>
-<li><span class="todo">&#9633;</span> <code>--github-runner</code> — configure GitHub Actions runner</li>
-<li><span class="todo">&#9633;</span> <code>--remote-desktop</code> — enable Screen Sharing, report VNC URL</li>
-<li><span class="todo">&#9633;</span> <code>--buildkite</code> / <code>--circleci</code> — CI runner templates</li>
-</ul>
-<h3>Remote Desktop</h3>
-<ul>
-<li><span class="todo">&#9633;</span> Screen Sharing (VNC) auto-enable via provisioning</li>
-<li><span class="todo">&#9633;</span> VNC URL reported in CLI and GUI</li>
-<li><span class="todo">&#9633;</span> Research: Apple Remote Desktop integration for 4K 60fps</li>
-<li><span class="todo">&#9633;</span> Research: hardware-accelerated VNC encoding via VideoToolbox</li>
-<li><span class="todo">&#9633;</span> Research: HEVC/H.265 streaming for near-4K quality at low bandwidth</li>
+<li><span class="check">&#10003;</span> CPU, memory, disk, 1&ndash;2 Metal GPU displays</li>
+<li><span class="check">&#10003;</span> Audio (speaker + microphone), clipboard sharing</li>
+<li><span class="check">&#10003;</span> Shared folders via VirtIO file system with automount</li>
+<li><span class="check">&#10003;</span> NAT, bridged, isolated, and host-only networking</li>
+<li><span class="check">&#10003;</span> MAC address configuration, auto-resize display (macOS 14+)</li>
 </ul>
 </div>
 
-<h2>v0.3 — OCI Distribution <span class="status planned">Planned</span></h2>
+<div class="phase">
+<h3>CLI &amp; GUI</h3>
+<ul>
+<li><span class="check">&#10003;</span> 16 CLI commands with styled ANSI output (respects NO_COLOR)</li>
+<li><span class="check">&#10003;</span> SwiftUI GUI: NavigationSplitView, inspector, create sheet, menu bar extra</li>
+<li><span class="check">&#10003;</span> Liquid Glass on macOS 26+ with automatic fallback</li>
+<li><span class="check">&#10003;</span> Full accessibility: VoiceOver labels, WCAG 2.1, reduced motion</li>
+<li><span class="check">&#10003;</span> Image library browser in sidebar</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Quality &amp; Distribution</h3>
+<ul>
+<li><span class="check">&#10003;</span> 235 tests across 33 suites (TDD throughout)</li>
+<li><span class="check">&#10003;</span> DocC documentation catalog with 11 guides + full API reference</li>
+<li><span class="check">&#10003;</span> Fastlane CI/CD pipeline (test, build, beta, release, docs, lint)</li>
+<li><span class="check">&#10003;</span> GitHub Actions CI with GitHub Flow</li>
+<li><span class="check">&#10003;</span> GitHub Pages site with compare, roadmap, features</li>
+</ul>
+<div class="shipped-stats">
+<div class="shipped-stat"><strong>235</strong> tests</div>
+<div class="shipped-stat"><strong>33</strong> test suites</div>
+<div class="shipped-stat"><strong>16</strong> CLI commands</div>
+<div class="shipped-stat"><strong>11</strong> DocC guides</div>
+<div class="shipped-stat"><strong>0</strong> force unwraps</div>
+</div>
+</div>
+</div>
+
+<!-- v0.5 Provisioning Engine -->
+<div class="milestone progress">
+<div class="dot-marker"></div>
+<div class="header">
+<h2>v0.5 &mdash; Provisioning Engine</h2>
+<span class="status status-progress">In Progress</span>
+</div>
+
+<div class="phase">
+<h3>User-Data Execution</h3>
+<ul>
+<li><span class="wip">&#9675;</span> Disk-inject provisioning (mount guest disk, inject LaunchDaemon)</li>
+<li><span class="wip">&#9675;</span> SSH provisioning (wait for IP, connect, execute script with streaming)</li>
+<li><span class="todo">&#9633;</span> Guest agent over VirtIO socket (vsock)</li>
+<li><span class="todo">&#9633;</span> Shared-folder watcher provisioning</li>
+<li><span class="todo">&#9633;</span> Setup Assistant automation via VZ keyboard input</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Built-in Templates</h3>
+<ul>
+<li><span class="wip">&#9675;</span> <code>--github-runner</code> &mdash; configure GitHub Actions runner on first boot</li>
+<li><span class="todo">&#9633;</span> <code>--remote-desktop</code> &mdash; enable Screen Sharing, report VNC URL</li>
+<li><span class="todo">&#9633;</span> <code>--buildkite</code> / <code>--circleci</code> &mdash; CI runner templates</li>
+</ul>
+</div>
+
+<div class="phase">
+<h3>Remote Desktop (Foundation)</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Screen Sharing (VNC) auto-enable via provisioning</li>
+<li><span class="todo">&#9633;</span> VNC URL reported in CLI output and GUI detail view</li>
+<li><span class="todo">&#9633;</span> Research: hardware-accelerated VNC encoding via VideoToolbox</li>
+</ul>
+</div>
+</div>
+
+<!-- v0.6 OCI Distribution -->
+<div class="milestone planned">
+<div class="dot-marker"></div>
+<div class="header">
+<h2>v0.6 &mdash; OCI Distribution</h2>
+<span class="status status-planned">Planned</span>
+</div>
 
 <div class="phase">
 <ul>
 <li><span class="todo">&#9633;</span> OCI Distribution Spec v2 client (push/pull)</li>
 <li><span class="todo">&#9633;</span> Content-addressed chunked disk layers (64 MB, resumable)</li>
 <li><span class="todo">&#9633;</span> Support for GHCR, Docker Hub, ECR, ACR</li>
-<li><span class="todo">&#9633;</span> Publish official base images:
-  <ul>
-    <li><code>spooktacular/macos:15.4</code> — base macOS, SSH enabled</li>
-    <li><code>spooktacular/macos-xcode:15.4-16.2</code> — + Xcode + CLI tools</li>
-    <li><code>spooktacular/macos-ml:15.4</code> — + Python, MLX, PyTorch MPS</li>
-  </ul>
-</li>
-<li><span class="todo">&#9633;</span> Image build pipeline (GitHub Actions on Apple Silicon)</li>
+<li><span class="todo">&#9633;</span> Official base images: <code>spooktacular/macos:15.4</code>, <code>macos-xcode:15.4-16.2</code>, <code>macos-ml:15.4</code></li>
+<li><span class="todo">&#9633;</span> Image build pipeline on Apple Silicon GitHub Actions runners</li>
 </ul>
 </div>
+</div>
 
-<h2>v0.4 — Kubernetes Operator <span class="status planned">Planned</span></h2>
+<!-- v0.7 Kubernetes Operator -->
+<div class="milestone planned">
+<div class="dot-marker"></div>
+<div class="header">
+<h2>v0.7 &mdash; Kubernetes Operator</h2>
+<span class="status status-planned">Planned</span>
+</div>
 
 <div class="phase">
 <ul>
-<li><span class="todo">&#9633;</span> MacOSVM CRD — single VM as a K8s resource</li>
-<li><span class="todo">&#9633;</span> MacOSVMPool CRD — managed ephemeral runner pool</li>
-<li><span class="todo">&#9633;</span> Swift K8s client (SwiftNIO)</li>
-<li><span class="todo">&#9633;</span> Capacity-aware scheduler (≤2 VMs per Mac)</li>
+<li><span class="todo">&#9633;</span> MacOSVM CRD &mdash; single VM as a Kubernetes resource</li>
+<li><span class="todo">&#9633;</span> MacOSVMPool CRD &mdash; managed ephemeral runner pool</li>
+<li><span class="todo">&#9633;</span> Swift K8s client (SwiftNIO) cross-compiled to Linux ARM64</li>
+<li><span class="todo">&#9633;</span> Capacity-aware scheduler respecting the 2-VM-per-Mac kernel limit</li>
 <li><span class="todo">&#9633;</span> Helm chart for operator installation</li>
-<li><span class="todo">&#9633;</span> Cross-compilation to Linux ARM64</li>
-<li><span class="todo">&#9633;</span> Container image on GHCR</li>
+<li><span class="todo">&#9633;</span> Container image published to GHCR</li>
 </ul>
 </div>
+</div>
 
-<h2>v0.5 — Autoscaling & Fleet Management <span class="status planned">Planned</span></h2>
+<!-- v0.8 Autoscaling -->
+<div class="milestone planned">
+<div class="dot-marker"></div>
+<div class="header">
+<h2>v0.8 &mdash; Autoscaling &amp; Fleet Management</h2>
+<span class="status status-planned">Planned</span>
+</div>
 
 <div class="phase">
 <h3>Per-Host Pool Autoscaling</h3>
 <ul>
 <li><span class="todo">&#9633;</span> Runner pool with auto-replacement on exit</li>
 <li><span class="todo">&#9633;</span> GitHub webhook receiver (workflow_job events)</li>
-<li><span class="todo">&#9633;</span> GitHub API polling (fallback)</li>
+<li><span class="todo">&#9633;</span> GitHub API polling fallback</li>
 <li><span class="todo">&#9633;</span> Configurable min/max replicas and idle timeout</li>
 </ul>
+</div>
+<div class="phase">
 <h3>Fleet Scaling (EC2 Mac)</h3>
 <ul>
-<li><span class="todo">&#9633;</span> AWS ASG integration (launch template + user-data)</li>
+<li><span class="todo">&#9633;</span> AWS Auto Scaling Group integration (launch template + user-data)</li>
 <li><span class="todo">&#9633;</span> Kubernetes cluster-autoscaler integration</li>
 <li><span class="todo">&#9633;</span> Built-in fleet controller (<code>spook fleet</code>)</li>
-<li><span class="todo">&#9633;</span> Terraform module (<code>spooktacular/ec2-mac-runners/aws</code>)</li>
-<li><span class="todo">&#9633;</span> CloudFormation template</li>
+<li><span class="todo">&#9633;</span> Terraform module: <code>spooktacular/ec2-mac-runners/aws</code></li>
 <li><span class="todo">&#9633;</span> EC2 one-liner setup script</li>
 </ul>
 </div>
+</div>
 
-<h2>v1.0 — Enterprise Production <span class="status planned">Planned</span></h2>
+<!-- v1.0 Enterprise Production -->
+<div class="milestone planned">
+<div class="dot-marker"></div>
+<div class="header">
+<h2>v1.0 &mdash; Enterprise Production</h2>
+<span class="status status-planned">Planned</span>
+</div>
 
 <div class="phase">
 <h3>Helper Daemon Architecture</h3>
 <ul>
-<li><span class="todo">&#9633;</span> LaunchAgent (desktop) / LaunchDaemon (server) helper</li>
-<li><span class="todo">&#9633;</span> HTTP control API on configurable interface</li>
-<li><span class="todo">&#9633;</span> Bearer token authentication</li>
+<li><span class="todo">&#9633;</span> LaunchAgent (desktop) / LaunchDaemon (server) helper process</li>
+<li><span class="todo">&#9633;</span> HTTP control API on configurable interface with bearer token auth</li>
 <li><span class="todo">&#9633;</span> Server-Sent Events for real-time state streaming</li>
 <li><span class="todo">&#9633;</span> GUI and CLI as thin HTTP clients to the daemon</li>
 </ul>
+</div>
+<div class="phase">
 <h3>Remote Desktop (Production Quality)</h3>
 <ul>
-<li><span class="todo">&#9633;</span> Target: 4K resolution at 60 fps over LAN</li>
-<li><span class="todo">&#9633;</span> Hardware-accelerated encoding via VideoToolbox (H.265/HEVC)</li>
+<li><span class="todo">&#9633;</span> 4K resolution at 60 fps over LAN via HEVC/H.265</li>
+<li><span class="todo">&#9633;</span> Hardware-accelerated encoding via VideoToolbox</li>
 <li><span class="todo">&#9633;</span> Adaptive bitrate based on network conditions</li>
-<li><span class="todo">&#9633;</span> Low-latency audio sync</li>
-<li><span class="todo">&#9633;</span> Multi-monitor support (2 displays per VM)</li>
-<li><span class="todo">&#9633;</span> Clipboard sync between host and remote client</li>
-<li><span class="todo">&#9633;</span> USB device forwarding research</li>
-</ul>
-<h3>ML Workload Optimization</h3>
-<ul>
-<li><span class="todo">&#9633;</span> Metal GPU performance profiling and tuning</li>
-<li><span class="todo">&#9633;</span> Neural Engine access investigation</li>
-<li><span class="todo">&#9633;</span> Shared memory optimization for large models</li>
-<li><span class="todo">&#9633;</span> MLX / PyTorch MPS benchmarks vs. native</li>
-<li><span class="todo">&#9633;</span> Training checkpoint save/restore via VM snapshots</li>
-<li><span class="todo">&#9633;</span> Federated learning across VM pool (host-only networking)</li>
-</ul>
-<h3>Mac App Store + Homebrew</h3>
-<ul>
-<li><span class="todo">&#9633;</span> Mac App Store submission (App Sandbox + virtualization entitlement)</li>
-<li><span class="todo">&#9633;</span> Homebrew Cask formula with CLI symlink</li>
-<li><span class="todo">&#9633;</span> Developer ID signing + notarization for Homebrew</li>
-<li><span class="todo">&#9633;</span> Separate MAS and Developer ID entitlements</li>
+<li><span class="todo">&#9633;</span> Multi-monitor support (2 displays per VM) with low-latency audio</li>
 </ul>
 </div>
+<div class="phase">
+<h3>Distribution &amp; Quality</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Mac App Store submission (App Sandbox + virtualization entitlement)</li>
+<li><span class="todo">&#9633;</span> Homebrew Cask formula with Developer ID signing + notarization</li>
+<li><span class="todo">&#9633;</span> Metal GPU performance profiling and ML benchmarks</li>
+<li><span class="todo">&#9633;</span> Semantic versioning guarantees on CLI, API, and VM bundle format</li>
+</ul>
+</div>
+</div>
 
-<h2>Future <span class="status future">Exploring</span></h2>
+<!-- Future -->
+<div class="milestone future">
+<div class="dot-marker"></div>
+<div class="header">
+<h2>Future</h2>
+<span class="status status-future">Exploring</span>
+</div>
 
 <div class="phase">
 <ul>
-<li><span class="todo">&#9633;</span> MDM integration — optional embedded Swift MDM server for zero-agent management</li>
-<li><span class="todo">&#9633;</span> BYO MDM — enroll VMs in customer's Jamf/Kandji/Mosyle</li>
-<li><span class="todo">&#9633;</span> Web dashboard — browser-based VM management</li>
-<li><span class="todo">&#9633;</span> REST API documentation (OpenAPI spec)</li>
-<li><span class="todo">&#9633;</span> Prometheus metrics endpoint for fleet monitoring</li>
-<li><span class="todo">&#9633;</span> Grafana dashboard templates</li>
-<li><span class="todo">&#9633;</span> Multi-architecture OCI images (for future Intel support if Apple adds it)</li>
+<li><span class="todo">&#9633;</span> MDM integration &mdash; embedded Swift MDM server or BYO Jamf/Kandji/Mosyle enrollment</li>
+<li><span class="todo">&#9633;</span> Web dashboard for browser-based VM management</li>
+<li><span class="todo">&#9633;</span> OpenAPI spec for the HTTP control API</li>
+<li><span class="todo">&#9633;</span> Prometheus metrics endpoint + Grafana dashboard templates</li>
 <li><span class="todo">&#9633;</span> VM migration between hosts</li>
-<li><span class="todo">&#9633;</span> Nested virtualization on M3+ (run VMs inside VMs)</li>
+<li><span class="todo">&#9633;</span> USB device forwarding research</li>
+<li><span class="todo">&#9633;</span> Nested virtualization on M3+ (VMs inside VMs)</li>
 </ul>
 </div>
-
 </div>
 
-<footer>
+</div><!-- timeline -->
+</div><!-- container -->
+
+<footer style="margin-top: 4rem;">
 <div class="foot-inner">
 <div class="foot-grid">
 <div class="foot-col">
@@ -301,10 +396,12 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="compare.html">Compare</a>
 <a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/releases">Downloads</a>
 </div>
 <div class="foot-col">
 <h4>Resources</h4>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes Guide</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">Documentation</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/issues">Report an Issue</a>
@@ -323,8 +420,8 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>Made with 🌲🌲🌲 in Cascadia</p>
-<p>© 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>Made with care in Cascadia</p>
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 </div>
 </div>
 </footer>

@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Features — Spooktacular</title>
+<meta name="description" content="Explore Spooktacular's features organized by use case: CI/CD teams, ML engineers, remote desktop, and DevOps. See what's implemented and what's planned.">
 <style>
-:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --card: #18181b; --green: #6ee7b7; }
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
@@ -41,31 +42,98 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
   #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
 }
 
-.container { max-width: 800px; margin: 0 auto; padding: 2rem; }
-h1 { font-size: 2.5rem; margin: 2rem 0 0.5rem; background: linear-gradient(135deg, #c4b5fd, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
-p, li { color: var(--fg); margin-bottom: 0.75rem; }
-ul { padding-left: 1.5rem; }
-code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
-pre { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1rem 0; overflow-x: auto; font-family: 'SF Mono', Menlo, monospace; font-size: 0.85rem; }
-.tag { display: inline-block; background: rgba(167,139,250,0.1); color: var(--accent); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.25rem; }
-table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
-th, td { text-align: left; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); }
-th { color: var(--accent); font-weight: 600; }
+.container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+
+/* Page header */
+.page-header { text-align: center; padding: 5rem 0 2rem; }
+.page-header h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.03em; }
+.page-header h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.page-header p { color: var(--dim); font-size: 1.15rem; margin-top: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+/* Use-case sections */
+.use-case { padding: 4rem 0; border-top: 1px solid var(--border); }
+.use-case:first-of-type { border-top: none; }
+.use-case .section-label { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.8rem; font-weight: 600; color: var(--accent); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.use-case h2 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+.use-case .sub { color: var(--dim); font-size: 1.05rem; margin-bottom: 2rem; max-width: 700px; }
+
+/* Problem / Solution layout */
+.ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; }
+.ps-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; }
+.ps-card h4 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.75rem; font-weight: 600; }
+.ps-card.problem h4 { color: var(--red); }
+.ps-card.solution h4 { color: var(--green); }
+.ps-card p { color: var(--dim); font-size: 0.9rem; line-height: 1.65; }
+.ps-card ul { list-style: none; padding: 0; }
+.ps-card ul li { color: var(--dim); font-size: 0.9rem; padding: 0.25rem 0; padding-left: 1.25rem; position: relative; }
+.ps-card ul li::before { content: ''; position: absolute; left: 0; top: 0.65rem; width: 6px; height: 6px; border-radius: 50%; }
+.ps-card.problem ul li::before { background: var(--red); opacity: 0.5; }
+.ps-card.solution ul li::before { background: var(--green); opacity: 0.7; }
+@media (max-width: 700px) { .ps-grid { grid-template-columns: 1fr; } }
+
+/* Code examples */
+.code-example { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 2rem; }
+.code-example .code-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.65rem 1.25rem; border-bottom: 1px solid var(--border); }
+.code-example .code-header .dot-r { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; }
+.code-example .code-header .dot-y { width: 10px; height: 10px; border-radius: 50%; background: #fbbf24; }
+.code-example .code-header .dot-g { width: 10px; height: 10px; border-radius: 50%; background: #6ee7b7; }
+.code-example .code-header span.title { margin-left: 0.5rem; font-size: 0.75rem; color: var(--dim); font-family: 'SF Mono', 'Fira Code', monospace; }
+.code-example pre { padding: 1.25rem 1.5rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.75; overflow-x: auto; margin: 0; }
+.dim { color: var(--dim); }
+.cmd { color: var(--accent); }
+.ok { color: var(--green); }
+.cmt { color: #525262; font-style: italic; }
+
+/* Feature grid */
+.feat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin: 2rem 0; }
+.feat-item { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.feat-item h4 { font-size: 0.95rem; margin-bottom: 0.4rem; }
+.feat-item p { color: var(--dim); font-size: 0.85rem; line-height: 1.6; }
+.feat-item .badge-s { display: inline-block; font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 3px; margin-left: 0.4rem; vertical-align: middle; }
+.badge-shipped { background: rgba(110,231,183,0.15); color: var(--green); }
+.badge-progress { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.badge-planned { background: rgba(96,165,250,0.15); color: var(--blue); }
+
+/* Hardware table */
+.hw-table { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border); margin: 1.5rem 0; }
+table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+th { text-align: left; padding: 0.75rem 1rem; border-bottom: 2px solid var(--border); color: var(--accent); font-weight: 600; font-size: 0.8rem; background: var(--surface); }
+td { padding: 0.65rem 1rem; border-bottom: 1px solid var(--border); }
+code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.82em; font-family: 'SF Mono', 'Fira Code', monospace; }
+tr:hover { background: rgba(24,24,27,0.5); }
+
+/* Status section */
+.status-section { padding: 4rem 0; border-top: 1px solid var(--border); }
+.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+.status-col h3 { font-size: 1.1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+.status-col h3 .dot-green { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.status-col h3 .dot-blue { width: 8px; height: 8px; border-radius: 50%; background: var(--blue); }
+.status-col ul { list-style: none; padding: 0; }
+.status-col ul li { padding: 0.35rem 0; color: var(--dim); font-size: 0.87rem; padding-left: 1.25rem; position: relative; }
+.status-col ul li::before { content: ''; position: absolute; left: 0; top: 0.65rem; width: 6px; height: 6px; border-radius: 50%; }
+.status-col.shipped ul li::before { background: var(--green); }
+.status-col.planned ul li::before { background: var(--blue); opacity: 0.6; }
+@media (max-width: 700px) { .status-grid { grid-template-columns: 1fr; } }
 
 /* Footer */
 footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
 footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 2rem; } footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; } footer .foot-col h4 { color: var(--fg); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; } footer .foot-col a { color: var(--dim); font-size: 0.85rem; } footer .foot-col a:hover { color: var(--fg); text-decoration: none; } footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; } footer .foot-bottom p { margin: 0; } @media (max-width: 768px) { footer .foot-grid { flex-direction: column; } footer .foot-bottom { flex-direction: column; text-align: center; } }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
+footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
+footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
+footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
+footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
+footer .foot-bottom p { margin: 0; }
+@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
 
-/* Starfield background */
+/* Starfield */
 .stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
 .stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
 .stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
 @keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, section, .container, .hero, footer, main { position: relative; z-index: 1; }
+nav, section, .container, .page-header, footer, main, .use-case, .status-section { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
@@ -83,182 +151,339 @@ Spooktacular
 <a href="features.html" class="active">Features</a>
 <a href="roadmap.html">Roadmap</a>
 <a href="compare.html">Compare</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="versioning.html">Versioning</a>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
 </div>
 </div>
 </nav>
 
+<div class="page-header">
+<div class="container">
+<h1>Features built for <span>your workflow</span></h1>
+<p>Every capability in Spooktacular, organized by the problem it solves. Honest about what's shipped and what's planned.</p>
+</div>
+</div>
+
 <div class="container">
 
-<h1>Features</h1>
-<p>An in-depth survey of every capability in Spooktacular.</p>
+<!-- For CI/CD Teams -->
+<div class="use-case">
+<div class="section-label">&#9881; For CI/CD Teams</div>
+<h2>Double your GitHub Actions capacity overnight</h2>
+<p class="sub">Every EC2 Mac or Mac mini becomes two self-hosted runners. Clone VMs in milliseconds, provision with user-data, replace on exit.</p>
 
-<h2>VM Lifecycle Management</h2>
+<div class="ps-grid">
+<div class="ps-card problem">
+<h4>The problem</h4>
+<ul>
+<li>EC2 Mac dedicated hosts cost $26/day each, running one bare-metal runner</li>
+<li>Golden images take hours to build and maintain for each Xcode version</li>
+<li>Runners accumulate state between jobs, causing flaky builds</li>
+<li>No native way to run 2 isolated CI environments on one Mac</li>
+</ul>
+</div>
+<div class="ps-card solution">
+<h4>The Spooktacular solution</h4>
+<ul>
+<li>Run 2 VMs per Mac &mdash; 50% cost reduction, same hardware</li>
+<li>User-data scripts provision on first boot, no golden images needed</li>
+<li>Ephemeral runners: clone, use, delete, repeat &mdash; zero state leakage</li>
+<li>APFS copy-on-write cloning: 48ms for a 30 GB VM image</li>
+</ul>
+</div>
+</div>
 
-<h3>Create from IPSW</h3>
-<p>Download Apple's official macOS restore images and install them into a new VM. The IPSW is cached locally by SHA256 so subsequent VMs skip the download. Spooktacular checks version compatibility before downloading — if the latest IPSW is newer than your host macOS, you get a clear error with actionable guidance instead of a wasted 13 GB download.</p>
-<pre>spook create my-vm --from-ipsw latest --cpu 8 --memory 16 --disk 100</pre>
+<div class="code-example">
+<div class="code-header">
+<span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+<span class="title">setup-gha-runners.sh</span>
+</div>
+<pre><span class="cmt"># Create a base VM with Xcode pre-installed</span>
+<span class="cmd">spook create base --from-ipsw latest --cpu 8 --memory 16 --disk 100</span>
 
-<h3>Instant Cloning</h3>
-<p>APFS copy-on-write cloning duplicates a 30 GB VM in milliseconds. Both VMs share physical disk blocks — space is only consumed when one side writes. Every clone gets a fresh <code>VZMacMachineIdentifier</code> to prevent the Virtualization framework's most documented footgun.</p>
-<pre>spook clone base runner-01    # ~50ms for a 30 GB VM</pre>
+<span class="cmt"># Clone ephemeral runners (48ms each, shares disk blocks via APFS CoW)</span>
+<span class="cmd">spook clone base runner-01</span>
+<span class="cmd">spook clone base runner-02</span>
 
-<h3>Start, Stop, Pause</h3>
-<p>Boot VMs with a display window or headless for CI. Boot into macOS Recovery mode for system repair. Save and restore VM state (macOS 14+ snapshots).</p>
-<pre>spook start my-vm                    # display window
-spook start my-vm --headless          # CI/server mode
-spook start my-vm --recovery          # macOS Recovery
-spook snapshot my-vm checkpoint-1     # save state
-spook restore my-vm checkpoint-1      # restore state</pre>
+<span class="cmt"># Start with GitHub Actions runner provisioning</span>
+<span class="cmd">spook start runner-01 --headless --user-data ./install-gha-runner.sh</span>
+<span class="cmd">spook start runner-02 --headless --user-data ./install-gha-runner.sh</span>
 
-<h3>Configuration Management</h3>
-<p>View and modify VM specs after creation. Machine-readable JSON output for automation pipelines.</p>
-<pre>spook get my-vm                # styled table
-spook get my-vm --json          # JSON for automation
-spook get my-vm --field cpu     # single value: "8"
-spook set my-vm --cpu 12 --memory 32</pre>
+<span class="cmt"># Or use the built-in template</span>
+<span class="cmd">spook create runner --github-runner --github-repo myorg/myapp --github-token $TOKEN</span></pre>
+</div>
 
-<h2>Hardware Configuration</h2>
+<div class="feat-grid">
+<div class="feat-item">
+<h4>Instant cloning <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>APFS copy-on-write duplicates a 30 GB VM in 48ms. Both VMs share physical disk blocks. Each clone gets a fresh MachineIdentifier.</p>
+</div>
+<div class="feat-item">
+<h4>4 provisioning modes <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>Disk-inject (zero-touch), SSH, guest agent (vsock), and shared folder. Works on vanilla macOS from IPSW without any pre-configuration.</p>
+</div>
+<div class="feat-item">
+<h4>Pool auto-replacement <span class="badge-s badge-planned">Planned</span></h4>
+<p>Runners automatically replaced on exit. GitHub webhook receiver for workflow_job events. Configurable min/max replicas and idle timeout.</p>
+</div>
+</div>
+</div>
 
+<!-- For ML Engineers -->
+<div class="use-case">
+<div class="section-label">&#129504; For ML Engineers</div>
+<h2>Apple Silicon GPU in every VM</h2>
+<p class="sub">Metal GPU acceleration, shared folders for terabytes of training data, and host-only networking for federated learning.</p>
+
+<div class="ps-grid">
+<div class="ps-card problem">
+<h4>The problem</h4>
+<ul>
+<li>ML training on Mac needs isolation without sacrificing GPU access</li>
+<li>Copying terabytes of training data into each VM is impractical</li>
+<li>Federated learning requires VM-to-VM communication without internet</li>
+<li>Training runs crash &mdash; restarting from zero wastes GPU hours</li>
+</ul>
+</div>
+<div class="ps-card solution">
+<h4>The Spooktacular solution</h4>
+<ul>
+<li>Metal GPU via VirtIO &mdash; MLX, PyTorch MPS, and Core ML all work</li>
+<li>VirtIO shared folders mount host datasets at native speed, no copying</li>
+<li>Host-only networking: VMs communicate without external access</li>
+<li>VM snapshots save training state, restore in seconds on crash</li>
+</ul>
+</div>
+</div>
+
+<div class="code-example">
+<div class="code-header">
+<span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+<span class="title">ml-training-setup.sh</span>
+</div>
+<pre><span class="cmt"># Create a VM optimized for ML workloads</span>
+<span class="cmd">spook create ml-worker --from-ipsw latest --cpu 10 --memory 32 --disk 200</span>
+
+<span class="cmt"># Mount training data without copying (read-only for safety)</span>
+<span class="cmd">spook share ml-worker add /data/imagenet --tag imagenet --read-only</span>
+<span class="cmd">spook share ml-worker add /data/checkpoints --tag checkpoints</span>
+
+<span class="cmt"># Start with ML environment provisioning</span>
+<span class="cmd">spook start ml-worker --user-data ./install-mlx-pytorch.sh</span>
+
+<span class="cmt"># Save training checkpoint as VM snapshot</span>
+<span class="cmd">spook snapshot ml-worker epoch-50</span></pre>
+</div>
+
+<div class="feat-grid">
+<div class="feat-item">
+<h4>Metal GPU passthrough <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>Apple Silicon GPU accessible inside every VM. 1-2 Metal displays per VM. Accelerated compute for ML frameworks.</p>
+</div>
+<div class="feat-item">
+<h4>Shared folders <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>Mount host directories via VirtIO FS at <code>/Volumes/My Shared Files/</code>. Read-only or read-write per folder. No data duplication.</p>
+</div>
+<div class="feat-item">
+<h4>Host-only networking <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>VMs communicate with each other and the host but have zero internet access. Ideal for federated learning and secure environments.</p>
+</div>
+</div>
+</div>
+
+<!-- For Remote Desktop -->
+<div class="use-case">
+<div class="section-label">&#128424; For Remote Desktop</div>
+<h2>macOS desktops on demand</h2>
+<p class="sub">Spin up isolated macOS environments with VNC access. Auto-resize displays, dual monitor support, clipboard sharing.</p>
+
+<div class="ps-grid">
+<div class="ps-card problem">
+<h4>The problem</h4>
+<ul>
+<li>macOS testing requires real desktops with real display output</li>
+<li>Shared machines accumulate state and configuration conflicts</li>
+<li>Remote desktop solutions require manual setup in each environment</li>
+<li>Display resolution is fixed, doesn't adapt to client window</li>
+</ul>
+</div>
+<div class="ps-card solution">
+<h4>The Spooktacular solution</h4>
+<ul>
+<li>VNC auto-enabled via provisioning, URL reported in CLI and GUI</li>
+<li>Each developer gets a fresh, isolated macOS VM with full display</li>
+<li>Auto-resize: guest resolution follows the display window or VNC client</li>
+<li>Dual monitor, audio, microphone, and clipboard sharing built in</li>
+</ul>
+</div>
+</div>
+
+<div class="code-example">
+<div class="code-header">
+<span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+<span class="title">remote-desktop.sh</span>
+</div>
+<pre><span class="cmt"># Create a desktop VM with dual displays</span>
+<span class="cmd">spook create desktop --from-ipsw latest --cpu 8 --memory 16 --displays 2</span>
+
+<span class="cmt"># Enable Screen Sharing via built-in template</span>
+<span class="cmd">spook start desktop --user-data ./enable-vnc.sh</span>
+
+<span class="cmt"># Get the VNC URL</span>
+<span class="cmd">spook ip desktop</span>
+<span class="ok">192.168.64.3</span>
+<span class="cmt"># Connect via Screen Sharing: vnc://192.168.64.3</span></pre>
+</div>
+
+<div class="feat-grid">
+<div class="feat-item">
+<h4>Auto-resize display <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>Guest resolution automatically follows the host window size on macOS 14+. No manual resolution configuration needed.</p>
+</div>
+<div class="feat-item">
+<h4>Audio + microphone <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>VirtIO sound with optional host microphone passthrough. Enable or disable per VM in the configuration.</p>
+</div>
+<div class="feat-item">
+<h4>4K 60fps HEVC <span class="badge-s badge-planned">Planned</span></h4>
+<p>Hardware-accelerated encoding via VideoToolbox. Adaptive bitrate based on network conditions. Near-native quality at low bandwidth.</p>
+</div>
+</div>
+</div>
+
+<!-- For DevOps -->
+<div class="use-case">
+<div class="section-label">&#9096; For DevOps</div>
+<h2>Kubernetes-native fleet management</h2>
+<p class="sub">Manage macOS VMs like pods. CRDs, operators, Helm charts, autoscaling. Use your existing K8s toolchain.</p>
+
+<div class="ps-grid">
+<div class="ps-card problem">
+<h4>The problem</h4>
+<ul>
+<li>macOS VMs don't fit into Kubernetes-native infrastructure workflows</li>
+<li>EC2 Mac fleet scaling requires custom tooling and manual intervention</li>
+<li>No standard way to declare macOS runner pools as infrastructure-as-code</li>
+<li>Monitoring and lifecycle management are ad-hoc per-host scripts</li>
+</ul>
+</div>
+<div class="ps-card solution">
+<h4>The Spooktacular solution</h4>
+<ul>
+<li>MacOSVM and MacOSVMPool CRDs &mdash; declare VMs in YAML, apply with kubectl</li>
+<li>Capacity-aware scheduler respects the 2-VM-per-Mac kernel limit</li>
+<li>Three fleet scaling models: AWS ASG, K8s cluster-autoscaler, built-in</li>
+<li>Helm chart for installation, Terraform module for EC2 Mac provisioning</li>
+</ul>
+</div>
+</div>
+
+<div class="code-example">
+<div class="code-header">
+<span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+<span class="title">macos-runners.yaml</span>
+</div>
+<pre><span class="dim">apiVersion:</span> <span class="cmd">spooktacular.dev/v1alpha1</span>
+<span class="dim">kind:</span> <span class="cmd">MacOSVMPool</span>
+<span class="dim">metadata:</span>
+  <span class="dim">name:</span> <span class="cmd">ci-runners</span>
+<span class="dim">spec:</span>
+  <span class="dim">replicas:</span> <span class="cmd">4</span>
+  <span class="dim">template:</span>
+    <span class="dim">spec:</span>
+      <span class="dim">image:</span> <span class="cmd">ghcr.io/spooktacular/macos-xcode:15.4-16.2</span>
+      <span class="dim">cpu:</span> <span class="cmd">8</span>
+      <span class="dim">memory:</span> <span class="cmd">16Gi</span>
+      <span class="dim">userData:</span> <span class="cmd">./setup-gha.sh</span>
+      <span class="dim">ephemeral:</span> <span class="cmd">true</span>  <span class="cmt"># Delete and recreate after each job</span></pre>
+</div>
+
+<div class="feat-grid">
+<div class="feat-item">
+<h4>Kubernetes CRDs <span class="badge-s badge-planned">Planned</span></h4>
+<p>MacOSVM and MacOSVMPool custom resources. Swift operator compiled to Linux ARM64. Helm chart for installation.</p>
+</div>
+<div class="feat-item">
+<h4>EC2 Mac one-liner <span class="badge-s badge-planned">Planned</span></h4>
+<p>Single curl command sets up Spooktacular on a fresh EC2 Mac with GitHub Actions runner, Xcode, and autoscaling.</p>
+</div>
+<div class="feat-item">
+<h4>CLI (16 commands) <span class="badge-s badge-shipped">Shipped</span></h4>
+<p>create, start, stop, list, clone, delete, ip, get, set, snapshot, restore, snapshots, share, ssh, exec. Styled ANSI output, <code>--json</code> for automation.</p>
+</div>
+</div>
+</div>
+
+<!-- Hardware specs -->
+<div class="use-case">
+<div class="section-label">&#9881; Hardware Configuration</div>
+<h2>Full control over VM resources</h2>
+<p class="sub">Configure CPU, memory, disk, displays, networking, audio, and peripherals. Modify after creation.</p>
+
+<div class="hw-table">
 <table>
 <tr><th>Option</th><th>Range</th><th>Default</th><th>Notes</th></tr>
-<tr><td>CPU cores</td><td>4 – host max</td><td>4</td><td>Minimum 4 to prevent boot freeze</td></tr>
-<tr><td>Memory</td><td>4 – 64 GB</td><td>8 GB</td><td>From host unified RAM</td></tr>
-<tr><td>Disk</td><td>32 – 500 GB</td><td>64 GB</td><td>APFS sparse (grows on write)</td></tr>
-<tr><td>Displays</td><td>1 – 2</td><td>1</td><td>Metal GPU accelerated</td></tr>
-<tr><td>Audio</td><td>on/off</td><td>on</td><td>VirtIO sound + optional mic</td></tr>
-<tr><td>Microphone</td><td>on/off</td><td>off</td><td>Host mic passthrough</td></tr>
-<tr><td>Clipboard</td><td>on/off</td><td>on</td><td>Host↔guest copy/paste</td></tr>
-<tr><td>Auto-resize</td><td>on/off</td><td>on</td><td>Guest resolution follows window</td></tr>
-<tr><td>MAC address</td><td>auto/custom</td><td>auto</td><td>Stable identity across reboots</td></tr>
+<tr><td>CPU cores</td><td>4 &ndash; host max</td><td>4</td><td>Minimum 4 to prevent boot freeze</td></tr>
+<tr><td>Memory</td><td>4 &ndash; 64 GB</td><td>8 GB</td><td>From host unified memory</td></tr>
+<tr><td>Disk</td><td>32 &ndash; 500 GB</td><td>64 GB</td><td>APFS sparse (grows on write)</td></tr>
+<tr><td>Displays</td><td>1 &ndash; 2</td><td>1</td><td>Metal GPU accelerated</td></tr>
+<tr><td>Networking</td><td>NAT / Bridged / Isolated / Host-only</td><td>NAT</td><td>Bridged requires entitlement</td></tr>
+<tr><td>Audio</td><td>on / off</td><td>on</td><td>VirtIO sound + optional mic</td></tr>
+<tr><td>Clipboard</td><td>on / off</td><td>on</td><td>Host-to-guest copy/paste</td></tr>
+<tr><td>Auto-resize</td><td>on / off</td><td>on</td><td>macOS 14+ display matching</td></tr>
+<tr><td>MAC address</td><td>auto / custom</td><td>auto</td><td>Stable identity across reboots</td></tr>
 </table>
-
-<h2>Networking</h2>
-
-<h3>NAT (Default)</h3>
-<p>Guest reaches the internet through the host. Host reaches the guest via DHCP-assigned IP. No entitlement needed. Works in the Mac App Store build.</p>
-
-<h3>Bridged</h3>
-<p>Guest gets its own IP on the host's LAN. Full bidirectional connectivity. Requires <code>com.apple.vm.networking</code> entitlement (Developer ID build only).</p>
-
-<h3>Isolated</h3>
-<p>No network interface attached. Zero connectivity. Use for secure builds where network exfiltration must be impossible.</p>
-
-<h3>Host-Only</h3>
-<p>Guest communicates with the host and other VMs but not the internet. Perfect for federated ML training where VMs need to coordinate without external access.</p>
-
-<h2>Provisioning (User Data)</h2>
-
-<p>Four strategies for running scripts on first boot, consistent across CLI, GUI, and Kubernetes:</p>
-
-<h3>Disk Inject <span class="tag">zero-touch</span></h3>
-<p>Mounts the guest disk before boot and injects a standard macOS LaunchDaemon. The script runs automatically when macOS starts. No SSH, no agent, no network needed. The <strong>only</strong> mode that works on a completely vanilla macOS from IPSW.</p>
-
-<h3>SSH</h3>
-<p>Waits for the VM to boot, discovers its IP, connects via SSH, and runs the script. Real-time output streaming. Requires Remote Login enabled in the guest.</p>
-
-<h3>Guest Agent <span class="tag">fastest</span></h3>
-<p>A lightweight agent inside the guest communicates over VirtIO socket (vsock). No networking required. Pre-installed in all Spooktacular OCI images.</p>
-
-<h3>Shared Folder</h3>
-<p>Script delivered via VirtIO shared folder. A watcher daemon in the guest executes new scripts automatically. No networking, no disk modification.</p>
-
-<h2>Shared Folders</h2>
-
-<p>Mount host directories into the guest at <code>/Volumes/My Shared Files/</code> via VirtIO file system. Read-only or read-write per folder. Essential for:</p>
-<ul>
-<li>CI build artifacts</li>
-<li>ML training datasets (mount terabytes of data without copying into the VM)</li>
-<li>Configuration files and scripts</li>
-<li>Test fixtures and test data</li>
-</ul>
-<pre>spook share my-vm add ~/Projects --tag projects
-spook share my-vm add /data/models --tag models --read-only
-spook share my-vm list</pre>
-
-<h2>Image Library</h2>
-
-<p>Cache IPSW and OCI images locally. Browse available images in the GUI sidebar. Add images by local file path or OCI registry reference.</p>
-<pre>spook pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 base
-spook create runner --clone-from base</pre>
-
-<h2>GUI Application</h2>
-
-<ul>
-<li><strong>NavigationSplitView</strong> with searchable sidebar (VMs + images)</li>
-<li><strong>Inspector panel</strong> for VM configuration details</li>
-<li><strong>Launch screen</strong> with prominent Start button and hardware summary</li>
-<li><strong>Live VM display</strong> via <code>VZVirtualMachineView</code> with auto-resize</li>
-<li><strong>Create VM sheet</strong> — two-column layout with controls + explanations</li>
-<li><strong>Progressive disclosure</strong> — essentials visible, advanced in DisclosureGroups</li>
-<li><strong>Menu bar extra</strong> — quick VM status and start/stop from the menu bar</li>
-<li><strong>Liquid Glass</strong> on macOS 26+ (automatic fallback on older versions)</li>
-<li><strong>Full accessibility</strong> — VoiceOver labels, hints, identifiers; WCAG 2.1 color compliance; reduced motion support</li>
-<li><strong>Dark mode</strong> — semantic colors throughout</li>
-</ul>
-
-<h2>CLI (spook)</h2>
-
-<p>16 commands with styled terminal output, ANSI color coding (respects <code>NO_COLOR</code>), comprehensive <code>--help</code> on every command.</p>
-
-<table>
-<tr><th>Command</th><th>Purpose</th></tr>
-<tr><td><code>create</code></td><td>Create a VM from IPSW with all hardware + provisioning options</td></tr>
-<tr><td><code>start</code></td><td>Boot a VM (display, headless, or recovery mode)</td></tr>
-<tr><td><code>stop</code></td><td>Stop a running VM</td></tr>
-<tr><td><code>list</code></td><td>List all VMs with status table (or <code>--json</code>)</td></tr>
-<tr><td><code>clone</code></td><td>Instant APFS copy-on-write clone</td></tr>
-<tr><td><code>delete</code></td><td>Remove a VM (with confirmation)</td></tr>
-<tr><td><code>ip</code></td><td>Show a running VM's IP address</td></tr>
-<tr><td><code>get</code></td><td>Show VM configuration (table, JSON, or single field)</td></tr>
-<tr><td><code>set</code></td><td>Modify VM configuration</td></tr>
-<tr><td><code>snapshot</code></td><td>Save VM state</td></tr>
-<tr><td><code>restore</code></td><td>Restore VM from snapshot</td></tr>
-<tr><td><code>snapshots</code></td><td>List saved snapshots</td></tr>
-<tr><td><code>share</code></td><td>Manage shared folders (add/remove/list)</td></tr>
-<tr><td><code>ssh</code></td><td>SSH into a running VM</td></tr>
-<tr><td><code>exec</code></td><td>Execute a command inside a VM</td></tr>
-</table>
-
-<h2>Kubernetes Integration</h2>
-
-<p>Full Kubernetes-native VM management via custom resources:</p>
-<ul>
-<li><strong>MacOSVM</strong> CRD — single VM with full spec</li>
-<li><strong>MacOSVMPool</strong> CRD — managed pool of ephemeral runners with auto-replacement</li>
-<li><strong>Operator</strong> — Swift binary, watches resources, schedules onto Mac hosts</li>
-<li><strong>Capacity-aware scheduler</strong> — respects 2-VM kernel limit per host</li>
-<li><strong>Helm chart</strong> for installation</li>
-</ul>
-
-<h2>EC2 Mac Fleet Management</h2>
-
-<p>One-liner setup on AWS EC2 Mac dedicated hosts. Three fleet scaling models:</p>
-<ul>
-<li><strong>AWS Auto Scaling Groups</strong> — ASG manages host count, Spooktacular manages VMs</li>
-<li><strong>Kubernetes cluster-autoscaler</strong> — operator signals when capacity is needed</li>
-<li><strong>Built-in fleet controller</strong> — <code>spook fleet</code> talks to AWS API directly</li>
-</ul>
-<pre>curl -sSL https://spooktacular.dev/ec2-setup.sh | bash -s -- \
-    --github-repo myorg/myrepo --github-token ghp_xxx --xcode 16.2</pre>
-
-<h2>Testing</h2>
-
-<p>89 tests across 14 suites. TDD throughout. Swift Testing framework with parameterized tests, typed error assertions, and accessibility identifier validation.</p>
-
-<h2>Distribution</h2>
-
-<ul>
-<li><strong>Mac App Store</strong> — via Fastlane with full metadata</li>
-<li><strong>Homebrew Cask</strong> — signed + notarized .app with CLI symlink</li>
-<li><strong>TestFlight</strong> — automatic on push to main</li>
-<li><strong>GitHub Releases</strong> — automatic on version tags</li>
-<li><strong>DocC documentation</strong> — auto-deployed to GitHub Pages</li>
-</ul>
-
 </div>
+</div>
+
+<!-- What's Implemented vs Planned -->
+<div class="status-section">
+<h2 style="font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem;">What's implemented vs. planned</h2>
+<p style="color: var(--dim); font-size: 1.05rem; margin-bottom: 2rem;">We are transparent about where we are. Green items are shipping today. Blue items are on the roadmap.</p>
+
+<div class="status-grid">
+<div class="status-col shipped">
+<h3><span class="dot-green"></span> Shipped in v0.4</h3>
+<ul>
+<li>VM lifecycle: create, start, stop, clone, delete, snapshots</li>
+<li>IPSW download with version compatibility checking</li>
+<li>APFS copy-on-write cloning with MachineIdentifier regeneration</li>
+<li>Full hardware configuration (CPU, memory, disk, displays, audio)</li>
+<li>4 networking modes: NAT, bridged, isolated, host-only</li>
+<li>4 provisioning modes: disk-inject, SSH, agent, shared-folder</li>
+<li>Shared folders via VirtIO file system</li>
+<li>SwiftUI GUI with Liquid Glass, inspector, menu bar extra</li>
+<li>CLI with 16 commands, styled output, --json for automation</li>
+<li>Full accessibility: VoiceOver, WCAG 2.1, reduced motion</li>
+<li>235 tests across 33 suites</li>
+<li>DocC API documentation with 11 guides</li>
+<li>Fastlane CI/CD pipeline (test, build, beta, release, docs)</li>
+</ul>
+</div>
+<div class="status-col planned">
+<h3><span class="dot-blue"></span> On the roadmap</h3>
+<ul>
+<li>OCI image push/pull (GHCR, Docker Hub, ECR, ACR)</li>
+<li>Official base images (macOS, macOS+Xcode, macOS+ML)</li>
+<li>Kubernetes operator with MacOSVM and MacOSVMPool CRDs</li>
+<li>Helm chart and capacity-aware scheduler</li>
+<li>GitHub webhook autoscaling for runner pools</li>
+<li>AWS ASG and cluster-autoscaler integration</li>
+<li>EC2 Mac one-liner setup script and Terraform module</li>
+<li>Helper daemon with HTTP API and bearer auth</li>
+<li>4K 60fps remote desktop via HEVC/VideoToolbox</li>
+<li>Metal GPU performance profiling for ML workloads</li>
+<li>Mac App Store and Homebrew Cask distribution</li>
+<li>Prometheus metrics and Grafana dashboards</li>
+<li>Web dashboard for browser-based management</li>
+</ul>
+</div>
+</div>
+</div>
+
+</div><!-- container -->
 
 <footer>
 <div class="foot-inner">
@@ -268,10 +493,12 @@ spook create runner --clone-from base</pre>
 <a href="features.html">Features</a>
 <a href="compare.html">Compare</a>
 <a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/releases">Downloads</a>
 </div>
 <div class="foot-col">
 <h4>Resources</h4>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes Guide</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">Documentation</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/issues">Report an Issue</a>
@@ -290,8 +517,8 @@ spook create runner --clone-from base</pre>
 </div>
 </div>
 <div class="foot-bottom">
-<p>Made with 🌲🌲🌲 in Cascadia</p>
-<p>© 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>Made with care in Cascadia</p>
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 </div>
 </div>
 </footer>

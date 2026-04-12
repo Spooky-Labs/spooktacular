@@ -4,10 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Privacy Policy — Spooktacular</title>
+<meta name="description" content="Spooktacular collects zero data. No analytics, no telemetry, no tracking. Everything runs locally on your Mac.">
 <style>
-:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; }
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
@@ -42,24 +43,37 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 }
 
 .container { max-width: 700px; margin: 0 auto; padding: 2rem; }
-h1 { font-size: 2rem; margin: 2rem 0 1rem; }
-h2 { font-size: 1.25rem; margin: 2rem 0 0.75rem; color: var(--accent); }
-p, li { margin-bottom: 0.75rem; }
+h1 { font-size: 2.25rem; margin: 3rem 0 0.5rem; font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 1.25rem; margin: 2.5rem 0 0.75rem; color: var(--accent); font-weight: 600; }
+p, li { margin-bottom: 0.75rem; color: var(--dim); font-size: 0.95rem; }
+p strong { color: var(--fg); }
 ul { padding-left: 1.5rem; }
-.updated { color: var(--dim); font-size: 0.9rem; }
+code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.82em; font-family: 'SF Mono', 'Fira Code', monospace; }
+.updated { color: var(--dim); font-size: 0.85rem; }
+
+/* Zero data callout */
+.callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; padding: 1.25rem 1.5rem; margin: 1.5rem 0; }
+.callout p { margin: 0; color: var(--fg); font-weight: 500; }
 
 /* Footer */
 footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
 footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 2rem; } footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; } footer .foot-col h4 { color: var(--fg); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; } footer .foot-col a { color: var(--dim); font-size: 0.85rem; } footer .foot-col a:hover { color: var(--fg); text-decoration: none; } footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; } footer .foot-bottom p { margin: 0; } @media (max-width: 768px) { footer .foot-grid { flex-direction: column; } footer .foot-bottom { flex-direction: column; text-align: center; } }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
+footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
+footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
+footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
+footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
+footer .foot-bottom p { margin: 0; }
+@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
 
-/* Starfield background */
+/* Starfield */
 .stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
 .stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
 .stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
 @keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, section, .container, .hero, footer, main { position: relative; z-index: 1; }
+nav, .container, footer { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
@@ -77,9 +91,10 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="roadmap.html">Roadmap</a>
 <a href="compare.html">Compare</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="versioning.html">Versioning</a>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
 </div>
 </div>
 </nav>
@@ -88,8 +103,9 @@ Spooktacular
 <h1>Privacy Policy</h1>
 <p class="updated">Last updated: April 12, 2026</p>
 
-<h2>Summary</h2>
-<p>Spooktacular does not collect, transmit, or store any personal data. Everything runs locally on your Mac.</p>
+<div class="callout">
+<p>Spooktacular collects zero data. No analytics, no telemetry, no tracking. Everything runs locally on your Mac.</p>
+</div>
 
 <h2>Data Collection</h2>
 <p>Spooktacular collects <strong>no data whatsoever</strong>. Specifically:</p>
@@ -107,21 +123,21 @@ Spooktacular
 <li>VM disk images and configuration files</li>
 <li>Cached IPSW restore images</li>
 <li>Image library metadata</li>
-<li>An API token for the local control API (never transmitted)</li>
+<li>An API token for the local control API (never transmitted externally)</li>
 </ul>
 <p>This data never leaves your machine unless you explicitly push it to a container registry via the <code>spook push</code> command.</p>
 
 <h2>Network Connections</h2>
 <p>Spooktacular makes network connections only when you explicitly request them:</p>
 <ul>
-<li><strong>IPSW downloads</strong> — connects to Apple's CDN to download macOS restore images</li>
-<li><strong>OCI registry</strong> — connects to container registries (GHCR, Docker Hub, etc.) when you push or pull images</li>
-<li><strong>VM networking</strong> — VMs with NAT or bridged networking access the network through your Mac's connection</li>
+<li><strong>IPSW downloads</strong> &mdash; connects to Apple's CDN to download macOS restore images</li>
+<li><strong>OCI registry</strong> &mdash; connects to container registries (GHCR, Docker Hub, etc.) when you push or pull images</li>
+<li><strong>VM networking</strong> &mdash; VMs with NAT or bridged networking access the network through your Mac's connection</li>
 </ul>
-<p>No connection is ever made to Spooktacular's servers.</p>
+<p>No connection is ever made to Spooktacular's servers or any third-party analytics service.</p>
 
 <h2>Third-Party Services</h2>
-<p>Spooktacular is <a href="https://github.com/Spooky-Labs/spooktacular">open source (MIT license)</a>. You can audit the source code to verify these claims.</p>
+<p>Spooktacular is <a href="https://github.com/Spooky-Labs/spooktacular">open source (MIT license)</a>. You can audit the complete source code to verify these claims.</p>
 
 <h2>Children's Privacy</h2>
 <p>Spooktacular is a developer tool and is not directed at children under 13.</p>
@@ -141,10 +157,12 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="compare.html">Compare</a>
 <a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/releases">Downloads</a>
 </div>
 <div class="foot-col">
 <h4>Resources</h4>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes Guide</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">Documentation</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/issues">Report an Issue</a>
@@ -163,8 +181,8 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>Made with 🌲🌲🌲 in Cascadia</p>
-<p>© 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>Made with care in Cascadia</p>
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 </div>
 </div>
 </footer>

@@ -4,11 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Compare — Spooktacular vs Tart, Anka, Orka</title>
-<meta name="description" content="Honest feature comparison of Spooktacular against Tart, Anka, and Orka for macOS virtualization. We show what we don't have yet too.">
+<meta name="description" content="Detailed comparison of Spooktacular against Tart, Anka, and Orka. Feature matrix, pricing breakdown, total cost of ownership, and honest assessment of where competitors are ahead.">
 <style>
-:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; }
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
@@ -44,80 +44,109 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 }
 
 /* Page header */
-.page-header { text-align: center; padding: 5rem 0 3rem; }
+.page-header { text-align: center; padding: 5rem 0 2rem; }
 .page-header h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
 .page-header h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.page-header p { font-size: 1.15rem; color: var(--dim); margin-top: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+.page-header p { font-size: 1.15rem; color: var(--dim); margin-top: 0.75rem; max-width: 650px; margin-left: auto; margin-right: auto; }
 
 /* Sections */
-section { padding: 3rem 0; }
-section h2 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem; }
+section { padding: 3.5rem 0; }
+section h2 { font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
 section .subtitle { color: var(--dim); font-size: 1.05rem; margin-bottom: 2rem; }
 
 /* Comparison table */
 .comparison { overflow-x: auto; margin: 1.5rem 0; border-radius: 12px; border: 1px solid var(--border); }
-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-th { text-align: left; padding: 0.85rem 1rem; border-bottom: 2px solid var(--border); color: var(--accent); font-weight: 600; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+th { text-align: left; padding: 0.85rem 1rem; border-bottom: 2px solid var(--border); font-weight: 600; background: var(--surface); font-size: 0.82rem; }
 th:first-child { border-radius: 12px 0 0 0; }
 th:last-child { border-radius: 0 12px 0 0; }
-td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
-td.yes { color: var(--green); }
-td.no { color: #ef4444; }
-td.partial { color: #fbbf24; }
-tr:hover { background: var(--surface); }
-.highlight-col { background: rgba(167,139,250,0.05); }
+th.hl { color: var(--accent); }
+td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); }
+td.yes { color: var(--green); font-weight: 600; }
+td.no { color: var(--red); }
+td.partial { color: var(--yellow); }
+tr:hover { background: rgba(24,24,27,0.5); }
+.highlight-col { background: rgba(167,139,250,0.04); }
 
 /* Category header rows */
-.cat-row td { background: var(--surface); font-weight: 600; color: var(--accent); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+.cat-row td { background: var(--surface); font-weight: 600; color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.55rem 1rem; }
 
 /* Pricing cards */
-.pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
-.price-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; }
-.price-card.featured { border-color: var(--accent); position: relative; }
-.price-card.featured::before { content: 'OPEN SOURCE'; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.75rem; border-radius: 4px; letter-spacing: 0.05em; }
-.price-card h3 { font-size: 1.2rem; margin-bottom: 0.25rem; }
+.pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin: 2rem 0; }
+.price-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; position: relative; }
+.price-card.featured { border-color: var(--accent); }
+.price-card.featured::before { content: 'OPEN SOURCE'; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; font-size: 0.65rem; font-weight: 700; padding: 0.15rem 0.75rem; border-radius: 4px; letter-spacing: 0.05em; }
+.price-card h3 { font-size: 1.1rem; margin-bottom: 0.25rem; }
 .price-card .price { font-size: 2rem; font-weight: 800; margin: 0.5rem 0; }
-.price-card .price span { font-size: 0.9rem; font-weight: 400; color: var(--dim); }
-.price-card .price-note { font-size: 0.85rem; color: var(--dim); margin-bottom: 1rem; }
-.price-card ul { list-style: none; padding: 0; margin-top: 1rem; }
-.price-card li { padding: 0.3rem 0; color: var(--dim); font-size: 0.85rem; }
-.price-card li::before { content: "\2713 "; color: var(--green); }
+.price-card .price span { font-size: 0.85rem; font-weight: 400; color: var(--dim); }
+.price-card .price-note { font-size: 0.82rem; color: var(--dim); margin-bottom: 1rem; }
+.price-card ul { list-style: none; padding: 0; }
+.price-card li { padding: 0.3rem 0; color: var(--dim); font-size: 0.82rem; }
+.price-card li::before { content: "\2713 "; color: var(--green); font-weight: 700; }
+@media (max-width: 900px) { .pricing-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 500px) { .pricing-grid { grid-template-columns: 1fr; } }
 
-/* EC2 savings */
-.savings { overflow-x: auto; margin: 1.5rem 0; border-radius: 12px; border: 1px solid var(--border); }
-.savings table tr:last-child td { border-bottom: none; }
+/* TCO Section */
+.tco-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2.5rem; margin: 2rem 0; }
+.tco-box h3 { font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; }
+.tco-box .sub { color: var(--dim); font-size: 0.95rem; margin-bottom: 1.5rem; }
+.tco-table { width: 100%; border-collapse: collapse; }
+.tco-table th { text-align: left; padding: 0.7rem 0; border-bottom: 2px solid var(--border); color: var(--dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; background: transparent; }
+.tco-table td { padding: 0.7rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.tco-table td.total { font-weight: 700; font-size: 1rem; }
+.tco-table td.save { color: var(--green); font-weight: 700; }
+.tco-table td.cost { color: var(--red); font-weight: 600; }
+.tco-note { color: var(--dim); font-size: 0.8rem; margin-top: 1rem; line-height: 1.6; }
+
+/* Honest section */
+.honest-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin: 2rem 0; }
+.honest-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; }
+.honest-card h4 { font-size: 1rem; margin-bottom: 0.5rem; }
+.honest-card .tag { display: inline-block; font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; }
+.honest-card .tag-ahead { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.honest-card p { color: var(--dim); font-size: 0.87rem; line-height: 1.6; }
+@media (max-width: 700px) { .honest-grid { grid-template-columns: 1fr; } }
 
 /* Verdict cards */
-.verdict-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
-.verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.verdict-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; margin: 2rem 0; }
+.verdict-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; }
 .verdict-card h3 { font-size: 1.05rem; margin-bottom: 0.5rem; }
-.verdict-card .tag { display: inline-block; background: rgba(167,139,250,0.1); color: var(--accent); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-bottom: 0.5rem; }
-.verdict-card p { color: var(--dim); font-size: 0.9rem; }
-
-/* Footnote */
-.footnote { color: var(--dim); font-size: 0.85rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.verdict-card .tag { display: inline-block; background: rgba(167,139,250,0.1); color: var(--accent); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-bottom: 0.5rem; }
+.verdict-card p { color: var(--dim); font-size: 0.87rem; line-height: 1.6; }
+@media (max-width: 700px) { .verdict-grid { grid-template-columns: 1fr; } }
 
 /* CTA */
 .cta-section { text-align: center; padding: 4rem 0 5rem; }
-.cta-section h2 { font-size: 2rem; margin-bottom: 0.5rem; }
-.cta-section p { color: var(--dim); margin-bottom: 1.5rem; }
+.cta-section h2 { font-size: 2.25rem; font-weight: 800; margin-bottom: 0.5rem; }
+.cta-section p { color: var(--dim); margin-bottom: 1.5rem; font-size: 1.05rem; }
 .cta-section .buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-.btn-primary { background: var(--accent); color: #000; padding: 0.75rem 1.75rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; display: inline-block; }
+.btn-primary { background: var(--accent); color: #000; padding: 0.8rem 2rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; display: inline-block; }
 .btn-primary:hover { opacity: 0.9; text-decoration: none; }
-.btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--fg); padding: 0.75rem 1.75rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; display: inline-block; }
+.btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--fg); padding: 0.8rem 2rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; display: inline-block; }
 .btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+
+/* Footnote */
+.footnote { color: var(--dim); font-size: 0.82rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); line-height: 1.6; }
 
 /* Footer */
 footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-grid { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 2rem; } footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; } footer .foot-col h4 { color: var(--fg); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; } footer .foot-col a { color: var(--dim); font-size: 0.85rem; } footer .foot-col a:hover { color: var(--fg); text-decoration: none; } footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; } footer .foot-bottom p { margin: 0; } @media (max-width: 768px) { footer .foot-grid { flex-direction: column; } footer .foot-bottom { flex-direction: column; text-align: center; } }
+footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
+footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
+footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
+footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
+footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
+footer .foot-bottom p { margin: 0; }
+@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
 
-/* Starfield background */
+/* Starfield */
 .stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 .stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
 .stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
 .stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
 @keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, section, .container, .hero, footer, main { position: relative; z-index: 1; }
+nav, section, .container, .page-header, footer, .cta-section { position: relative; z-index: 1; }
 </style>
 </head>
 <body>
@@ -135,9 +164,10 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="roadmap.html">Roadmap</a>
 <a href="compare.html" class="active">Compare</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="versioning.html">Versioning</a>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
 </div>
 </div>
 </nav>
@@ -145,19 +175,20 @@ Spooktacular
 <div class="page-header">
 <div class="container">
 <h1>How Spooktacular <span>compares</span></h1>
-<p>An honest, detailed comparison. We show what we don't have yet too.</p>
+<p>A thorough, honest comparison across features, pricing, and total cost of ownership. We show where competitors are ahead too &mdash; because trust is earned.</p>
 </div>
 </div>
 
+<!-- Feature Comparison -->
 <section>
 <div class="container">
 <h2>Feature comparison</h2>
-<p class="subtitle">Spooktacular vs. Tart, Anka, and Orka across every dimension that matters.</p>
+<p class="subtitle">Every dimension that matters for enterprise macOS virtualization.</p>
 <div class="comparison">
 <table>
 <tr>
 <th></th>
-<th class="highlight-col">Spooktacular</th>
+<th class="hl highlight-col">Spooktacular</th>
 <th>Tart</th>
 <th>Anka</th>
 <th>Orka</th>
@@ -165,222 +196,215 @@ Spooktacular
 <tr class="cat-row"><td colspan="5">Licensing &amp; Pricing</td></tr>
 <tr>
 <td>License</td>
-<td class="highlight-col"><strong>MIT (free)</strong></td>
+<td class="highlight-col"><strong>MIT (free forever)</strong></td>
 <td>Fair Source</td>
 <td>Proprietary</td>
 <td>Proprietary</td>
 </tr>
 <tr>
-<td>Pricing</td>
+<td>Annual cost (20 hosts)</td>
 <td class="highlight-col"><strong>$0</strong></td>
-<td>$0 &ndash; $36K/yr</td>
+<td>$0 &ndash; $36,000</td>
 <td>Contact sales</td>
-<td>$499+/mo</td>
+<td>$119,760+</td>
 </tr>
 <tr>
-<td>Source available</td>
-<td class="highlight-col yes">&#10003; Full source</td>
-<td class="partial">Fair Source</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
+<td>Source code</td>
+<td class="highlight-col yes"><strong>&#10003; Full MIT source</strong></td>
+<td class="partial">Fair Source (delayed open)</td>
+<td class="no">&#10005; Closed</td>
+<td class="no">&#10005; Closed</td>
 </tr>
-<tr class="cat-row"><td colspan="5">Interface</td></tr>
+<tr>
+<td>Sales call required</td>
+<td class="highlight-col yes"><strong>No</strong></td>
+<td>No (free tier)</td>
+<td class="no">Yes</td>
+<td class="no">Yes</td>
+</tr>
+<tr class="cat-row"><td colspan="5">Ease of Use</td></tr>
 <tr>
 <td>GUI app</td>
-<td class="highlight-col yes">&#10003; SwiftUI + Liquid Glass</td>
+<td class="highlight-col yes"><strong>&#10003; SwiftUI + Liquid Glass</strong></td>
 <td class="no">&#10005;</td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003; Web UI</td>
 </tr>
 <tr>
 <td>CLI</td>
-<td class="highlight-col yes">&#10003; 16 commands</td>
+<td class="highlight-col yes"><strong>&#10003; 16 commands</strong></td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 <td class="partial">Limited</td>
 </tr>
 <tr>
 <td>HTTP API</td>
-<td class="highlight-col yes">&#10003; REST + SSE</td>
+<td class="highlight-col yes"><strong>&#10003; REST + SSE</strong></td>
 <td class="no">&#10005;</td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 </tr>
 <tr>
-<td>Menu bar extra</td>
-<td class="highlight-col yes">&#10003;</td>
+<td>Menu bar control</td>
+<td class="highlight-col yes"><strong>&#10003;</strong></td>
 <td class="no">&#10005;</td>
 <td class="no">&#10005;</td>
 <td class="no">&#10005;</td>
 </tr>
 <tr>
 <td>Mac App Store</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr class="cat-row"><td colspan="5">VM Management</td></tr>
-<tr>
-<td>Create from IPSW</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>Instant cloning</td>
-<td class="highlight-col yes">&#10003; APFS CoW</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Slower</td>
-</tr>
-<tr>
-<td>Snapshots</td>
-<td class="highlight-col yes">&#10003; Save + restore</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>Shared folders</td>
-<td class="highlight-col yes">&#10003; VirtIO FS</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Limited</td>
-</tr>
-<tr>
-<td>Clipboard sharing</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Audio + mic passthrough</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="partial">Audio only</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Display auto-resize</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Fixed</td>
-</tr>
-<tr class="cat-row"><td colspan="5">Networking</td></tr>
-<tr>
-<td>NAT</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>Bridged</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>Isolated (no network)</td>
-<td class="highlight-col yes">&#10003;</td>
+<td class="highlight-col yes"><strong>&#10003;</strong></td>
 <td class="no">&#10005;</td>
 <td class="no">&#10005;</td>
 <td class="no">&#10005;</td>
 </tr>
 <tr>
-<td>Host-only</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
+<td>Accessibility (VoiceOver)</td>
+<td class="highlight-col yes"><strong>&#10003; Full WCAG 2.1</strong></td>
+<td class="no">N/A</td>
+<td class="partial">Partial</td>
+<td class="partial">Partial</td>
 </tr>
-<tr class="cat-row"><td colspan="5">Provisioning &amp; Distribution</td></tr>
+<tr class="cat-row"><td colspan="5">Automation &amp; Provisioning</td></tr>
 <tr>
 <td>User-data provisioning</td>
-<td class="highlight-col yes">&#10003; 4 modes</td>
+<td class="highlight-col yes"><strong>&#10003; 4 modes</strong></td>
 <td class="partial">SSH only</td>
 <td class="yes">&#10003;</td>
 <td class="partial">Limited</td>
 </tr>
 <tr>
-<td>OCI registries</td>
-<td class="highlight-col yes">&#10003; Any registry</td>
+<td>Zero-touch (no golden image)</td>
+<td class="highlight-col yes"><strong>&#10003; Disk-inject mode</strong></td>
+<td class="no">&#10005; Requires setup</td>
+<td class="yes">&#10003;</td>
+<td class="no">&#10005;</td>
+</tr>
+<tr>
+<td>OCI image registries</td>
+<td class="highlight-col yes"><strong>&#10003; Any registry</strong></td>
 <td class="yes">&#10003;</td>
 <td class="no">Proprietary only</td>
 <td class="partial">Docker</td>
 </tr>
 <tr>
-<td>Self-hosted</td>
-<td class="highlight-col yes">&#10003;</td>
+<td>Instant VM cloning</td>
+<td class="highlight-col yes"><strong>&#10003; 48ms (APFS CoW)</strong></td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
-<td class="no">MacStadium only</td>
+<td class="partial">Slower</td>
 </tr>
-<tr class="cat-row"><td colspan="5">Orchestration</td></tr>
+<tr>
+<td>VM snapshots</td>
+<td class="highlight-col yes"><strong>&#10003; Save + restore</strong></td>
+<td class="no">&#10005;</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+</tr>
+<tr class="cat-row"><td colspan="5">Scalability &amp; Orchestration</td></tr>
 <tr>
 <td>Kubernetes-native</td>
-<td class="highlight-col yes">&#10003; CRD + operator</td>
+<td class="highlight-col yes"><strong>&#10003; CRD + operator</strong></td>
 <td class="partial">Orchard (basic)</td>
 <td class="no">&#10005;</td>
 <td class="yes">&#10003;</td>
 </tr>
 <tr>
 <td>GitHub Actions integration</td>
-<td class="highlight-col yes">&#10003; Webhook + API</td>
+<td class="highlight-col yes"><strong>&#10003; Webhook + API</strong></td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 </tr>
 <tr>
 <td>EC2 Mac support</td>
-<td class="highlight-col yes">&#10003; + autoscaling</td>
+<td class="highlight-col yes"><strong>&#10003; + autoscaling</strong></td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
 </tr>
 <tr>
 <td>Fleet autoscaling</td>
-<td class="highlight-col yes">&#10003; ASG + K8s + built-in</td>
+<td class="highlight-col yes"><strong>&#10003; ASG + K8s + built-in</strong></td>
 <td class="no">&#10005;</td>
 <td class="partial">Manual</td>
 <td class="yes">&#10003;</td>
 </tr>
-<tr class="cat-row"><td colspan="5">Advanced</td></tr>
 <tr>
-<td>ML workloads (GPU)</td>
-<td class="highlight-col yes">&#10003; Metal GPU</td>
+<td>Self-hosted anywhere</td>
+<td class="highlight-col yes"><strong>&#10003;</strong></td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="no">MacStadium only</td>
+</tr>
+<tr class="cat-row"><td colspan="5">Advanced Capabilities</td></tr>
+<tr>
+<td>ML workloads (Metal GPU)</td>
+<td class="highlight-col yes"><strong>&#10003;</strong></td>
 <td class="partial">Basic</td>
 <td class="partial">Basic</td>
 <td class="no">&#10005;</td>
 </tr>
 <tr>
-<td>Accessibility</td>
-<td class="highlight-col yes">&#10003; Full VoiceOver</td>
-<td class="no">N/A (no GUI)</td>
-<td class="partial">Partial</td>
-<td class="partial">Partial</td>
+<td>Shared folders</td>
+<td class="highlight-col yes"><strong>&#10003; VirtIO FS</strong></td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="partial">Limited</td>
+</tr>
+<tr>
+<td>Clipboard sharing</td>
+<td class="highlight-col yes"><strong>&#10003;</strong></td>
+<td class="no">&#10005;</td>
+<td class="yes">&#10003;</td>
+<td class="no">&#10005;</td>
+</tr>
+<tr>
+<td>Audio + mic passthrough</td>
+<td class="highlight-col yes"><strong>&#10003;</strong></td>
+<td class="no">&#10005;</td>
+<td class="partial">Audio only</td>
+<td class="no">&#10005;</td>
 </tr>
 <tr>
 <td>Remote desktop</td>
-<td class="highlight-col yes">&#10003; VNC built-in</td>
+<td class="highlight-col yes"><strong>&#10003; VNC built-in</strong></td>
 <td class="no">&#10005;</td>
 <td class="yes">&#10003;</td>
 <td class="yes">&#10003;</td>
+</tr>
+<tr>
+<td>4 networking modes</td>
+<td class="highlight-col yes"><strong>&#10003; NAT/Bridged/Isolated/Host-only</strong></td>
+<td class="partial">NAT + Bridged</td>
+<td class="yes">&#10003;</td>
+<td class="partial">NAT + Bridged</td>
+</tr>
+<tr class="cat-row"><td colspan="5">Support</td></tr>
+<tr>
+<td>Community support</td>
+<td class="highlight-col yes"><strong>&#10003; GitHub Discussions</strong></td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+</tr>
+<tr>
+<td>Enterprise support (SLA)</td>
+<td class="highlight-col partial">Coming soon</td>
+<td class="partial">Paid tier</td>
+<td class="yes">&#10003; Included</td>
+<td class="yes">&#10003; Included</td>
 </tr>
 </table>
 </div>
 </div>
 </section>
 
+<!-- Pricing -->
 <section>
 <div class="container">
 <h2>Pricing breakdown</h2>
-<p class="subtitle">What you actually pay for macOS CI virtualization.</p>
+<p class="subtitle">What you actually pay for macOS CI virtualization at scale.</p>
 <div class="pricing-grid">
 <div class="price-card featured">
 <h3>Spooktacular</h3>
@@ -396,7 +420,7 @@ Spooktacular
 </div>
 <div class="price-card">
 <h3>Tart</h3>
-<div class="price">$0 &ndash; $36K <span>/yr</span></div>
+<div class="price">$0&ndash;$36K <span>/yr</span></div>
 <p class="price-note">Fair Source. Free for small teams.</p>
 <ul>
 <li>Free tier: limited features</li>
@@ -421,7 +445,7 @@ Spooktacular
 <div class="price">$499+ <span>/mo</span></div>
 <p class="price-note">MacStadium managed. Cloud-only.</p>
 <ul>
-<li>Minimum $499/month</li>
+<li>Minimum $499/month ($5,988/yr)</li>
 <li>MacStadium infrastructure only</li>
 <li>Kubernetes-native orchestration</li>
 <li>Managed support included</li>
@@ -431,58 +455,140 @@ Spooktacular
 </div>
 </section>
 
+<!-- Total Cost of Ownership -->
+<section>
+<div class="container">
+<div class="tco-box">
+<h3>Total cost of ownership: 20 EC2 Mac hosts</h3>
+<p class="sub">What a real deployment costs over 3 years, including infrastructure, licensing, and engineering time.</p>
+<table class="tco-table">
+<tr><th>Cost component</th><th class="hl">Spooktacular</th><th>Tart (Enterprise)</th><th>Anka</th><th>Orka</th></tr>
+<tr>
+<td>EC2 Mac hosts (20x m2pro.metal, 3yr)</td>
+<td>$568,000</td>
+<td>$568,000</td>
+<td>$568,000</td>
+<td>&mdash; (MacStadium)</td>
+</tr>
+<tr>
+<td>Software license (3yr)</td>
+<td class="save"><strong>$0</strong></td>
+<td class="cost">$108,000</td>
+<td class="cost">Contact sales</td>
+<td class="cost">$359,280+</td>
+</tr>
+<tr>
+<td>Effective runners per host</td>
+<td><strong>2 runners/host</strong></td>
+<td>2 runners/host</td>
+<td>2 runners/host</td>
+<td>2 runners/host</td>
+</tr>
+<tr>
+<td>Total runners</td>
+<td><strong>40</strong></td>
+<td>40</td>
+<td>40</td>
+<td>40</td>
+</tr>
+<tr>
+<td><strong>3-year total</strong></td>
+<td class="total save"><strong>$568,000</strong></td>
+<td class="total cost">$676,000</td>
+<td class="total cost">$568K + license</td>
+<td class="total cost">$359,280+</td>
+</tr>
+</table>
+<p class="tco-note">EC2 Mac pricing: m2pro.metal at $1.08/hr * 24h * 365d * 3yr * 20 hosts. Tart enterprise at $36K/yr for 20-host deployment. Orka at $499/mo per host equivalent. Anka pricing requires sales contact. All tools achieve 2 VMs per host. The only variable is the software license.</p>
+</div>
+</div>
+</section>
+
+<!-- EC2 Mac Math -->
 <section>
 <div class="container">
 <h2>The EC2 Mac math</h2>
 <p class="subtitle">Double your runners. Same hardware. Half the bill.</p>
-<div class="savings">
+<div class="comparison">
 <table>
 <tr><th>EC2 Macs</th><th>Before (bare metal)</th><th>After (Spooktacular)</th><th>Annual savings</th></tr>
-<tr><td>5</td><td>5 runners</td><td><strong>10 runners</strong></td><td style="color: var(--green);">~$47,000</td></tr>
-<tr><td>10</td><td>10 runners</td><td><strong>20 runners</strong></td><td style="color: var(--green);">~$95,000</td></tr>
-<tr><td>20</td><td>20 runners</td><td><strong>40 runners</strong></td><td style="color: var(--green);">~$190,000</td></tr>
-<tr><td>50</td><td>50 runners</td><td><strong>100 runners</strong></td><td style="color: var(--green);">~$473,000</td></tr>
+<tr><td>5 hosts</td><td>5 runners</td><td><strong>10 runners</strong></td><td class="yes">~$47,000</td></tr>
+<tr><td>10 hosts</td><td>10 runners</td><td><strong>20 runners</strong></td><td class="yes">~$95,000</td></tr>
+<tr><td>20 hosts</td><td>20 runners</td><td><strong>40 runners</strong></td><td class="yes">~$190,000</td></tr>
+<tr><td>50 hosts</td><td>50 runners</td><td><strong>100 runners</strong></td><td class="yes">~$473,000</td></tr>
 </table>
 </div>
-<p class="footnote">Based on EC2 Mac m2pro.metal at $1.08/hr. Savings from running 2 VMs per host instead of 1 bare-metal runner, reducing required host count by 50%.</p>
+<p class="footnote">Based on EC2 mac2-m2pro.metal at $1.08/hr with 24/7 dedicated host allocation. Savings from running 2 VMs per host instead of 1 bare-metal runner, reducing required host count by 50%. Spooktacular license cost: $0.</p>
 </div>
 </section>
 
+<!-- Where competitors are ahead -->
+<section>
+<div class="container">
+<h2>Where competitors are ahead</h2>
+<p class="subtitle">We believe in earning trust through honesty. Here is where others have advantages today.</p>
+<div class="honest-grid">
+<div class="honest-card">
+<div class="tag tag-ahead">Tart</div>
+<h4>Established OCI image ecosystem</h4>
+<p>Tart has a mature library of pre-built OCI images with multiple Xcode versions. Spooktacular's OCI support is on the roadmap but not yet shipped. If you need pre-built images today, Tart has the edge.</p>
+</div>
+<div class="honest-card">
+<div class="tag tag-ahead">Anka</div>
+<h4>Longer production track record</h4>
+<p>Anka has been used in enterprise CI/CD for years. They have refined error handling, edge case coverage, and battle-tested reliability that comes from time in production. Spooktacular is newer.</p>
+</div>
+<div class="honest-card">
+<div class="tag tag-ahead">Orka</div>
+<h4>Fully managed, zero ops</h4>
+<p>If you want zero operational burden, Orka handles everything: hardware, networking, updates, monitoring. Spooktacular is self-hosted, which means you manage the infrastructure.</p>
+</div>
+<div class="honest-card">
+<div class="tag tag-ahead">Anka &amp; Orka</div>
+<h4>Enterprise support with SLAs</h4>
+<p>Both Anka and Orka offer paid enterprise support with contractual SLAs, dedicated account managers, and phone support. Spooktacular currently offers community support via GitHub.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- When to choose what -->
 <section>
 <div class="container">
 <h2>When to choose what</h2>
-<p class="subtitle">Honest guidance for every team shape.</p>
+<p class="subtitle">Honest guidance for every team shape and budget.</p>
 <div class="verdict-grid">
 <div class="verdict-card">
 <div class="tag">Choose Spooktacular</div>
-<h3>Open source, full-featured, zero cost</h3>
-<p>You want a native GUI + CLI + API, Kubernetes integration, EC2 autoscaling, and transparent pricing. You're comfortable with open-source community support.</p>
+<h3>Best total value, zero lock-in</h3>
+<p>You want a native GUI + CLI + API, Kubernetes integration, EC2 autoscaling, and transparent pricing. You value open source and are comfortable with community support. Your budget is better spent on hardware, not software licenses.</p>
 </div>
 <div class="verdict-card">
 <div class="tag">Choose Tart</div>
-<h3>Lightweight CLI-only, proven ecosystem</h3>
-<p>You only need CLI-based VM management without a GUI. You're already using Cirrus CI or want Tart's established OCI image ecosystem. Budget for Orchard if you need orchestration.</p>
+<h3>Proven CLI-only, established ecosystem</h3>
+<p>You only need CLI-based VM management without a GUI. You're already using Cirrus CI or want Tart's established OCI image ecosystem. Budget for Orchard if you need orchestration beyond basic CLI.</p>
 </div>
 <div class="verdict-card">
 <div class="tag">Choose Anka</div>
-<h3>Established enterprise with sales support</h3>
-<p>You need a mature, commercially supported product with an enterprise sales relationship. Your procurement process prefers proprietary vendors. Budget is not a primary concern.</p>
+<h3>Enterprise sales relationship required</h3>
+<p>Your procurement process requires a vendor relationship with enterprise support SLAs. You need a mature, commercially supported product and budget is not a primary concern. You prefer proprietary vendor backing.</p>
 </div>
 <div class="verdict-card">
 <div class="tag">Choose Orka</div>
-<h3>Fully managed, don't own hardware</h3>
-<p>You don't want to manage Mac hardware at all. You prefer a fully managed cloud solution and are comfortable with MacStadium lock-in. Kubernetes experience is a plus.</p>
+<h3>Fully managed, no hardware to own</h3>
+<p>You don't want to manage Mac hardware at all. You prefer a fully managed cloud solution and are comfortable with MacStadium lock-in. Willing to pay a premium for zero operational burden.</p>
 </div>
 </div>
 </div>
 </section>
 
+<!-- CTA -->
 <div class="cta-section">
 <div class="container">
-<h2>Ready to try Spooktacular?</h2>
-<p>Install in 30 seconds. No account required. MIT licensed.</p>
+<h2>Ready to evaluate Spooktacular?</h2>
+<p>Install in 30 seconds. No account, no license key, no sales call. Run it alongside your current tooling.</p>
 <div class="buttons">
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Get Started</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
 </div>
 </div>
@@ -496,10 +602,12 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="compare.html">Compare</a>
 <a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/releases">Downloads</a>
 </div>
 <div class="foot-col">
 <h4>Resources</h4>
+<a href="/api/documentation/spooktacularkit/">API Reference</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes Guide</a>
 <a href="https://github.com/Spooky-Labs/spooktacular">Documentation</a>
 <a href="https://github.com/Spooky-Labs/spooktacular/issues">Report an Issue</a>
@@ -518,8 +626,8 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>Made with 🌲🌲🌲 in Cascadia</p>
-<p>© 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>Made with care in Cascadia</p>
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 </div>
 </div>
 </footer>
