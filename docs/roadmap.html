@@ -5,15 +5,46 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Roadmap — Spooktacular</title>
 <style>
-:root { --bg: #0f0f23; --fg: #e0d4ff; --accent: #a78bfa; --dim: #6b7280; --card: #1a1a2e; --green: #6ee7b7; --yellow: #fbbf24; --blue: #60a5fa; }
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --card: #18181b; --green: #6ee7b7; --yellow: #fbbf24; --blue: #60a5fa; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
-.container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
 a { color: var(--accent); text-decoration: none; }
+
+/* Nav */
+nav { position: sticky; top: 0; z-index: 100; background: rgba(9,9,11,0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(39,39,42,0.5); padding: 0; }
+nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
+nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
+nav .logo:hover { text-decoration: none; }
+nav .logo svg { width: 24px; height: 24px; }
+nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
+nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
+nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
+nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
+nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
+nav .nav-links a.active { color: var(--fg); }
+nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
+nav .cta-btn { background: var(--accent); color: #000; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
+nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
+nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
+nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
+#nav-toggle { display: none; }
+@media (max-width: 768px) {
+  nav .hamburger { display: flex; }
+  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(9,9,11,0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
+  nav .nav-links a { padding: 0.6rem 0.75rem; }
+  nav .nav-links a::after { display: none; }
+  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
+  #nav-toggle:checked ~ .nav-links { display: flex; }
+  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
+  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
+  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+}
+
+.container { max-width: 800px; margin: 0 auto; padding: 2rem; }
 h1 { font-size: 2.5rem; margin: 2rem 0 0.5rem; background: linear-gradient(135deg, #c4b5fd, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid #2a2a4a; padding-bottom: 0.5rem; }
+h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
 p { margin-bottom: 0.75rem; }
-.phase { background: var(--card); border: 1px solid #2a2a4a; border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
+.phase { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
 .phase h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
 .status { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
 .done { background: rgba(110,231,183,0.15); color: var(--green); }
@@ -25,15 +56,38 @@ li { margin-bottom: 0.4rem; }
 .check { color: var(--green); }
 .wip { color: var(--yellow); }
 .todo { color: var(--dim); }
-.back { display: inline-block; margin-bottom: 2rem; }
 .legend { display: flex; gap: 1.5rem; margin: 1rem 0 2rem; flex-wrap: wrap; }
 .legend span { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+
+/* Footer */
+footer { border-top: 1px solid var(--border); padding: 3rem 0; text-align: center; color: var(--dim); font-size: 0.85rem; }
+footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+footer .links { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 1rem; flex-wrap: wrap; }
 </style>
 </head>
 <body>
+
+<nav>
+<div class="inner">
+<a href="index.html" class="logo">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+Spooktacular
+</a>
+<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation">
+<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
+<div class="nav-links">
+<a href="features.html">Features</a>
+<a href="roadmap.html" class="active">Roadmap</a>
+<a href="compare.html">Compare</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Download</a>
+</div>
+</div>
+</nav>
+
 <div class="container">
 
-<a href="index.html" class="back">&larr; Back to Spooktacular</a>
 <h1>Roadmap</h1>
 <p>What's built, what's next, and where we're headed. Spooktacular serves enterprise CI/CD teams, ML researchers, and remote desktop users.</p>
 
@@ -229,5 +283,21 @@ li { margin-bottom: 0.4rem; }
 </div>
 
 </div>
+
+<footer>
+<div class="foot-inner">
+<div class="links">
+<a href="features.html">Features</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="compare.html">Compare</a>
+<a href="privacy.html">Privacy</a>
+<a href="terms.html">Terms</a>
+<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+</div>
+<p>Made with 🌲🌲🌲 in Cascadia</p><p style="margin-top: 0.5rem;">MIT Licensed. Built by <a href="https://github.com/Spooky-Labs">Spooky Labs</a>.</p>
+<p style="margin-top: 0.5rem;">Apple, macOS, Apple Silicon, and Xcode are trademarks of Apple Inc.</p>
+</div>
+</footer>
+
 </body>
 </html>
