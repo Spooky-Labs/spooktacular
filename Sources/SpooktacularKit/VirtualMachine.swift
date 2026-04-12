@@ -135,10 +135,11 @@ public final class VirtualMachine: NSObject, Sendable {
     ///
     /// - Throws: An error if the VM cannot be started.
     public func start() async throws {
-        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard let virtualMachine = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Starting VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.starting)
-        try await vm.start()
+        nonisolated(unsafe) let unsafeVM = virtualMachine
+        try await unsafeVM.start()
         Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' is running")
         updateState(.running)
     }
@@ -162,7 +163,8 @@ public final class VirtualMachine: NSObject, Sendable {
             try vm.requestStop()
         } else {
             Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
-            try await vm.stop()
+            nonisolated(unsafe) let unsafeVM = vm
+            try await unsafeVM.stop()
             updateState(.stopped)
             Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' stopped")
         }
@@ -176,7 +178,8 @@ public final class VirtualMachine: NSObject, Sendable {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Pausing VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.pausing)
-        try await vm.pause()
+        nonisolated(unsafe) let unsafeVM = vm
+        try await unsafeVM.pause()
         updateState(.paused)
         Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' paused")
     }
@@ -186,7 +189,8 @@ public final class VirtualMachine: NSObject, Sendable {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Resuming VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.resuming)
-        try await vm.resume()
+        nonisolated(unsafe) let unsafeVM = vm
+        try await unsafeVM.resume()
         updateState(.running)
         Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' resumed")
     }
@@ -214,7 +218,8 @@ public final class VirtualMachine: NSObject, Sendable {
     public func saveState(to url: URL) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Saving VM state to \(url.lastPathComponent, privacy: .public)")
-        try await vm.saveMachineStateTo(url: url)
+        nonisolated(unsafe) let unsafeVM = vm
+        try await unsafeVM.saveMachineStateTo(url: url)
         Log.vm.notice("VM state saved successfully")
     }
 
@@ -230,7 +235,8 @@ public final class VirtualMachine: NSObject, Sendable {
     public func restoreState(from url: URL) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Restoring VM state from \(url.lastPathComponent, privacy: .public)")
-        try await vm.restoreMachineStateFrom(url: url)
+        nonisolated(unsafe) let unsafeVM = vm
+        try await unsafeVM.restoreMachineStateFrom(url: url)
         updateState(.running)
         Log.vm.notice("VM state restored — running")
     }

@@ -180,7 +180,8 @@ extension Spook {
             if recovery {
                 let options = VZMacOSVirtualMachineStartOptions()
                 options.startUpFromMacOSRecovery = true
-                try await underlyingVM.start(options: options)
+                nonisolated(unsafe) let unsafeVM = underlyingVM
+                try await unsafeVM.start(options: options)
             } else {
                 try await vm.start()
             }
