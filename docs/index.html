@@ -3,90 +3,338 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spooktacular — macOS Virtual Machines, Simplified</title>
+<title>Spooktacular — Enterprise macOS Virtualization</title>
+<meta name="description" content="Open-source macOS virtual machine manager for Apple Silicon. Kubernetes-native CI/CD runners, ML workloads, and remote desktop. 2x your EC2 Mac capacity.">
 <style>
-:root { --bg: #0f0f23; --fg: #e0d4ff; --accent: #a78bfa; --dim: #6b7280; --card: #1a1a2e; }
+:root { --bg: #09090b; --surface: #18181b; --border: #27272a; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; }
-.container { max-width: 900px; margin: 0 auto; padding: 2rem; }
-header { text-align: center; padding: 4rem 0 3rem; }
-header h1 { font-size: 3rem; font-weight: 700; background: linear-gradient(135deg, #c4b5fd, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-header p { font-size: 1.25rem; color: var(--dim); margin-top: 0.5rem; }
-.hero-code { background: var(--card); border: 1px solid #2a2a4a; border-radius: 12px; padding: 1.5rem; margin: 2rem 0; font-family: 'SF Mono', Menlo, monospace; font-size: 0.9rem; overflow-x: auto; }
-.hero-code .prompt { color: var(--dim); }
-.hero-code .cmd { color: var(--accent); }
-.hero-code .output { color: #6ee7b7; }
-nav { display: flex; gap: 1rem; justify-content: center; margin: 2rem 0; flex-wrap: wrap; }
-nav a { color: var(--accent); text-decoration: none; padding: 0.5rem 1.25rem; border: 1px solid #2a2a4a; border-radius: 8px; transition: all 0.2s; }
-nav a:hover { background: #1a1a2e; border-color: var(--accent); }
-section { margin: 3rem 0; }
-section h2 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--accent); }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
-.card { background: var(--card); border: 1px solid #2a2a4a; border-radius: 12px; padding: 1.5rem; }
-.card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
-.card p { color: var(--dim); font-size: 0.9rem; }
-footer { text-align: center; padding: 3rem 0; color: var(--dim); font-size: 0.85rem; border-top: 1px solid #2a2a4a; margin-top: 3rem; }
-code { background: #2a2a4a; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+
+/* Nav */
+nav { border-bottom: 1px solid var(--border); padding: 1rem 0; }
+nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--fg); }
+nav .links { display: flex; gap: 1.5rem; font-size: 0.9rem; }
+nav .links a { color: var(--dim); }
+nav .links a:hover { color: var(--fg); text-decoration: none; }
+
+/* Hero */
+.hero { text-align: center; padding: 6rem 0 4rem; }
+.hero .badge { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.3rem 1rem; font-size: 0.8rem; color: var(--dim); margin-bottom: 1.5rem; }
+.hero h1 { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; max-width: 700px; margin: 0 auto; }
+.hero h1 span { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero p { font-size: 1.25rem; color: var(--dim); margin-top: 1rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+.hero .cta { margin-top: 2rem; display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.hero .cta a { padding: 0.75rem 1.75rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; }
+.btn-primary { background: var(--accent); color: #000; }
+.btn-primary:hover { opacity: 0.9; text-decoration: none; }
+.btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--fg); }
+.btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+
+/* Code block */
+.code-block { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem 2rem; max-width: 650px; margin: 2.5rem auto 0; text-align: left; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; overflow-x: auto; }
+.code-block .dim { color: var(--dim); }
+.code-block .cmd { color: var(--accent); }
+.code-block .ok { color: var(--green); }
+
+/* Stats */
+.stats { display: flex; justify-content: center; gap: 3rem; padding: 3rem 0; flex-wrap: wrap; }
+.stat { text-align: center; }
+.stat .num { font-size: 2rem; font-weight: 800; color: var(--accent); }
+.stat .label { font-size: 0.85rem; color: var(--dim); }
+
+/* Sections */
+section { padding: 4rem 0; }
+section h2 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+section .subtitle { color: var(--dim); font-size: 1.1rem; margin-bottom: 2rem; }
+
+/* Features grid */
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+.feature { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.feature h3 { font-size: 1.05rem; margin-bottom: 0.5rem; }
+.feature p { color: var(--dim); font-size: 0.9rem; }
+.feature .tag { display: inline-block; background: rgba(167,139,250,0.1); color: var(--accent); padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-bottom: 0.5rem; }
+
+/* Comparison table */
+.comparison { overflow-x: auto; margin: 2rem 0; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th { text-align: left; padding: 0.75rem 1rem; border-bottom: 2px solid var(--border); color: var(--accent); font-weight: 600; }
+td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
+td.yes { color: var(--green); }
+td.no { color: #ef4444; }
+td.partial { color: #fbbf24; }
+tr:hover { background: var(--surface); }
+.highlight-col { background: rgba(167,139,250,0.05); }
+
+/* Pricing */
+.pricing { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+.price-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; }
+.price-card.featured { border-color: var(--accent); }
+.price-card h3 { font-size: 1.2rem; margin-bottom: 0.25rem; }
+.price-card .price { font-size: 2rem; font-weight: 800; margin: 0.5rem 0; }
+.price-card .price span { font-size: 0.9rem; font-weight: 400; color: var(--dim); }
+.price-card ul { list-style: none; padding: 0; margin-top: 1rem; }
+.price-card li { padding: 0.3rem 0; color: var(--dim); font-size: 0.85rem; }
+.price-card li::before { content: "✓ "; color: var(--green); }
+
+/* Footer */
+footer { border-top: 1px solid var(--border); padding: 3rem 0; text-align: center; color: var(--dim); font-size: 0.85rem; }
+footer .links { display: flex; gap: 1.5rem; justify-content: center; margin-bottom: 1rem; }
 </style>
 </head>
 <body>
-<div class="container">
-
-<header>
-<h1>Spooktacular</h1>
-<p>macOS Virtual Machines, Simplified</p>
-</header>
-
-<div class="hero-code">
-<span class="prompt">$</span> <span class="cmd">brew install --cask spooktacular</span><br>
-<span class="prompt">$</span> <span class="cmd">spook create runner --from-ipsw latest --cpu 8 --memory 16</span><br>
-<span class="output">✓ VM 'runner' created successfully.</span><br>
-<span class="prompt">$</span> <span class="cmd">spook start runner --headless --user-data ./setup.sh</span><br>
-<span class="output">✓ VM 'runner' is running.</span>
-</div>
 
 <nav>
+<div class="inner">
+<div class="logo">Spooktacular</div>
+<div class="links">
 <a href="features.html">Features</a>
 <a href="roadmap.html">Roadmap</a>
-<a href="https://github.com/WikipediaBrown/spooktacular">GitHub</a>
-<a href="https://github.com/WikipediaBrown/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="compare.html">Compare</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+</div>
+</div>
 </nav>
 
+<section class="hero">
+<div class="container">
+<div class="badge">Open Source &middot; MIT Licensed &middot; Apple Silicon Native</div>
+<h1>Enterprise macOS CI<br>without the <span>enterprise price tag</span></h1>
+<p>Kubernetes-native macOS virtualization. 2x your EC2 Mac capacity. Open source, vendor-agnostic, self-hosted anywhere.</p>
+<div class="cta">
+<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Download</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
+</div>
+<div class="code-block">
+<span class="dim">$</span> <span class="cmd">brew install --cask spooktacular</span><br>
+<span class="dim">$</span> <span class="cmd">spook create runner --from-ipsw latest --cpu 8 --memory 16</span><br>
+<span class="ok">✓ VM 'runner' created successfully.</span><br>
+<span class="dim">$</span> <span class="cmd">spook clone runner runner-02</span><br>
+<span class="ok">✓ Clone 'runner-02' created. (48ms)</span><br>
+<span class="dim"># Two runners on one Mac. Same hardware. Half the cost.</span>
+</div>
+</div>
+</section>
+
+<div class="container">
+<div class="stats">
+<div class="stat"><div class="num">2x</div><div class="label">CI capacity per Mac</div></div>
+<div class="stat"><div class="num">50%</div><div class="label">EC2 Mac cost reduction</div></div>
+<div class="stat"><div class="num">48ms</div><div class="label">VM clone time</div></div>
+<div class="stat"><div class="num">$0</div><div class="label">MIT licensed</div></div>
+</div>
+</div>
+
 <section>
-<h2>Why Spooktacular?</h2>
-<div class="grid">
-<div class="card">
-<h3>2x Your CI Capacity</h3>
-<p>Run 2 macOS VMs per Mac — double your GitHub Actions runners on EC2 Mac for the same cost.</p>
+<div class="container">
+<h2>Why teams switch to Spooktacular</h2>
+<p class="subtitle">Built for the gaps enterprise teams actually hit with existing tools.</p>
+<div class="features">
+<div class="feature">
+<div class="tag">vs Anka</div>
+<h3>Transparent pricing</h3>
+<p>MIT licensed. No sales calls. No per-core licensing. No surprise invoices. See the code, know the cost.</p>
 </div>
-<div class="card">
-<h3>Enterprise Kubernetes</h3>
-<p>Manage VMs as K8s resources. <code>kubectl apply</code> creates runners. Scale from 2 to 200.</p>
+<div class="feature">
+<div class="tag">vs Anka</div>
+<h3>No vendor lock-in</h3>
+<p>Standard OCI registries (GHCR, Docker Hub, ECR). No proprietary image format. Your images work everywhere.</p>
 </div>
-<div class="card">
-<h3>Zero-Touch Provisioning</h3>
-<p>User-data scripts run automatically on boot. No SSH, no agent, no manual setup required.</p>
+<div class="feature">
+<div class="tag">vs Orka</div>
+<h3>Self-hosted anywhere</h3>
+<p>Your Mac minis. Your EC2 instances. Your data center. Not locked to one cloud provider's infrastructure.</p>
 </div>
-<div class="card">
-<h3>ML on Apple Silicon</h3>
-<p>Metal GPU acceleration, shared folders for datasets, host-only networking for federated learning.</p>
+<div class="feature">
+<div class="tag">vs Orka</div>
+<h3>Kubernetes-native</h3>
+<p><code>kubectl apply -f vm.yaml</code> creates macOS runners. Use your existing K8s, Helm, Flux, ArgoCD workflows.</p>
 </div>
-<div class="card">
-<h3>Remote Desktop</h3>
-<p>Screen Sharing built in. Connect from anywhere via VNC.</p>
+<div class="feature">
+<div class="tag">vs Tart</div>
+<h3>GUI + CLI + API</h3>
+<p>Native SwiftUI app with Liquid Glass. 16 CLI commands with styled output. HTTP control API. Menu bar. Your choice.</p>
 </div>
-<div class="card">
-<h3>CLI + GUI + API</h3>
-<p>16 CLI commands, native SwiftUI app, HTTP control API, menu bar extra. Your choice.</p>
+<div class="feature">
+<div class="tag">vs Tart</div>
+<h3>Zero-touch provisioning</h3>
+<p>User-data scripts run on first boot — no golden image required. Four provisioning modes for every deployment scenario.</p>
+</div>
+<div class="feature">
+<div class="tag">ML Workloads</div>
+<h3>Metal GPU acceleration</h3>
+<p>Apple Silicon GPU via VirtIO. Shared folders for datasets. Host-only networking for federated learning. MLX, PyTorch MPS, Core ML.</p>
+</div>
+<div class="feature">
+<div class="tag">Remote Desktop</div>
+<h3>Screen Sharing built in</h3>
+<p>VNC access to every VM. Auto-resize display. Dual monitor support. Working toward 4K 60fps via hardware-accelerated encoding.</p>
+</div>
+<div class="feature">
+<div class="tag">Enterprise</div>
+<h3>Fleet autoscaling</h3>
+<p>Webhook-driven scaling for GitHub Actions. AWS ASG integration. Kubernetes cluster-autoscaler support. Pool management with auto-replacement.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<h2>How it compares</h2>
+<p class="subtitle">Honest comparison. We show what we don't have yet too.</p>
+<div class="comparison">
+<table>
+<tr>
+<th></th>
+<th class="highlight-col">Spooktacular</th>
+<th>Tart</th>
+<th>Anka</th>
+<th>Orka</th>
+</tr>
+<tr>
+<td>License</td>
+<td class="highlight-col"><strong>MIT (free)</strong></td>
+<td>Fair Source</td>
+<td>Proprietary</td>
+<td>Proprietary</td>
+</tr>
+<tr>
+<td>Pricing</td>
+<td class="highlight-col"><strong>$0</strong></td>
+<td>$0-$36K/yr</td>
+<td>Contact sales</td>
+<td>$499+/mo</td>
+</tr>
+<tr>
+<td>GUI app</td>
+<td class="highlight-col yes">&#10003;</td>
+<td class="no">&#10005;</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+</tr>
+<tr>
+<td>CLI</td>
+<td class="highlight-col yes">&#10003; (16 commands)</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="partial">Limited</td>
+</tr>
+<tr>
+<td>Kubernetes-native</td>
+<td class="highlight-col yes">&#10003; CRD + operator</td>
+<td class="partial">Orchard (basic)</td>
+<td class="no">&#10005;</td>
+<td class="yes">&#10003;</td>
+</tr>
+<tr>
+<td>OCI registries</td>
+<td class="highlight-col yes">&#10003; Any registry</td>
+<td class="yes">&#10003;</td>
+<td class="no">Proprietary only</td>
+<td class="partial">Docker</td>
+</tr>
+<tr>
+<td>Self-hosted</td>
+<td class="highlight-col yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="no">MacStadium only</td>
+</tr>
+<tr>
+<td>Mac App Store</td>
+<td class="highlight-col yes">&#10003;</td>
+<td class="no">&#10005;</td>
+<td class="no">&#10005;</td>
+<td class="no">&#10005;</td>
+</tr>
+<tr>
+<td>User-data provisioning</td>
+<td class="highlight-col yes">&#10003; (4 modes)</td>
+<td class="partial">SSH only</td>
+<td class="yes">&#10003;</td>
+<td class="partial">Limited</td>
+</tr>
+<tr>
+<td>EC2 Mac support</td>
+<td class="highlight-col yes">&#10003; + autoscaling</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+</tr>
+<tr>
+<td>ML workloads</td>
+<td class="highlight-col yes">&#10003; Metal GPU</td>
+<td class="partial">Basic</td>
+<td class="partial">Basic</td>
+<td class="no">&#10005;</td>
+</tr>
+<tr>
+<td>Accessibility</td>
+<td class="highlight-col yes">&#10003; Full VoiceOver</td>
+<td class="no">N/A (no GUI)</td>
+<td class="partial">Partial</td>
+<td class="partial">Partial</td>
+</tr>
+</table>
+</div>
+</div>
+</section>
+
+<section>
+<div class="container">
+<h2>The EC2 Mac math</h2>
+<p class="subtitle">Double your runners. Same hardware. Half the bill.</p>
+<div class="comparison">
+<table>
+<tr><th>EC2 Macs</th><th>Before (bare metal)</th><th>After (Spooktacular)</th><th>Annual savings</th></tr>
+<tr><td>5</td><td>5 runners</td><td><strong>10 runners</strong></td><td>~$47,000</td></tr>
+<tr><td>10</td><td>10 runners</td><td><strong>20 runners</strong></td><td>~$95,000</td></tr>
+<tr><td>20</td><td>20 runners</td><td><strong>40 runners</strong></td><td>~$190,000</td></tr>
+</table>
+</div>
+<p style="color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem;">Based on EC2 Mac m2pro.metal at $1.08/hr. Savings from running 2 VMs per host instead of 1 bare-metal runner, reducing required host count by 50%.</p>
+</div>
+</section>
+
+<section>
+<div class="container">
+<h2>Get started in 60 seconds</h2>
+<div class="code-block" style="max-width: 100%;">
+<span class="dim"># Install</span><br>
+<span class="cmd">brew install --cask spooktacular</span><br><br>
+<span class="dim"># Create your first VM</span><br>
+<span class="cmd">spook create dev --from-ipsw latest</span><br><br>
+<span class="dim"># Clone it for CI</span><br>
+<span class="cmd">spook clone dev runner-01</span><br>
+<span class="cmd">spook clone dev runner-02</span><br><br>
+<span class="dim"># Start runners with user-data</span><br>
+<span class="cmd">spook start runner-01 --headless --user-data ./setup-gha.sh</span><br>
+<span class="cmd">spook start runner-02 --headless --user-data ./setup-gha.sh</span><br><br>
+<span class="dim"># Or manage via Kubernetes</span><br>
+<span class="cmd">kubectl apply -f macos-runners.yaml</span>
 </div>
 </div>
 </section>
 
 <footer>
-Built with Apple's Virtualization.framework. Swift 6. 89 tests. DocC documented.<br>
-Copyright &copy; 2026 Spooktacular.
+<div class="container">
+<div class="links">
+<a href="features.html">Features</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="compare.html">Compare</a>
+<a href="privacy.html">Privacy</a>
+<a href="terms.html">Terms</a>
+<a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+</div>
+<p>MIT Licensed. Built by <a href="https://github.com/Spooky-Labs">Spooky Labs</a>.</p>
+<p style="margin-top: 0.5rem;">Apple, macOS, Apple Silicon, and Xcode are trademarks of Apple Inc.</p>
+</div>
 </footer>
 
-</div>
 </body>
 </html>
