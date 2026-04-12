@@ -63,14 +63,15 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let oldSpec = bundle.spec
 
-            let newSpec = VMSpec(
+            let newSpec = VirtualMachineSpecification(
                 cpuCount: cpu ?? oldSpec.cpuCount,
                 memorySizeInBytes: memory.map { UInt64($0) * 1024 * 1024 * 1024 }
                     ?? oldSpec.memorySizeInBytes,
@@ -85,12 +86,12 @@ extension Spook {
                 clipboardSharingEnabled: oldSpec.clipboardSharingEnabled
             )
 
-            let data = try VMBundle.encoder.encode(newSpec)
-            try data.write(to: bundleURL.appendingPathComponent(VMBundle.configFileName))
+            let data = try VirtualMachineBundle.encoder.encode(newSpec)
+            try data.write(to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName))
 
             print("Updated VM '\(name)' configuration.")
 
-            if let c = cpu { print("  CPU: \(max(c, VMSpec.minimumCPUCount)) cores") }
+            if let c = cpu { print("  CPU: \(max(c, VirtualMachineSpecification.minimumCPUCount)) cores") }
             if let m = memory { print("  Memory: \(m) GB") }
             if let d = displays { print("  Displays: \(min(max(d, 1), 2))") }
             if let n = network { print("  Network: \(n)") }

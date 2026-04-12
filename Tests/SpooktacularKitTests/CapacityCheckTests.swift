@@ -24,12 +24,12 @@ struct CapacityCheckTests {
         )
 
         // Write a minimal config.json and metadata.json so it's a valid bundle dir.
-        let spec = VMSpec()
-        let configData = try VMBundle.encoder.encode(spec)
+        let spec = VirtualMachineSpecification()
+        let configData = try VirtualMachineBundle.encoder.encode(spec)
         try configData.write(to: bundleURL.appendingPathComponent("config.json"))
 
-        let metadata = VMMetadata()
-        let metadataData = try VMBundle.encoder.encode(metadata)
+        let metadata = VirtualMachineMetadata()
+        let metadataData = try VirtualMachineBundle.encoder.encode(metadata)
         try metadataData.write(to: bundleURL.appendingPathComponent("metadata.json"))
 
         if let pid {
@@ -174,7 +174,8 @@ struct CapacityCheckTests {
         #expect(description.contains("2 concurrent VMs"))
         #expect(description.contains("runner-1"))
         #expect(description.contains("runner-2"))
-        #expect(description.contains("Stop a running VM"))
+        let recovery = error.recoverySuggestion ?? ""
+        #expect(recovery.contains("Stop a running VM"))
     }
 
     @Test("CapacityError is equatable")

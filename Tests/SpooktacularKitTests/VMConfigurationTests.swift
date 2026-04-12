@@ -3,23 +3,23 @@ import Foundation
 import Virtualization
 @testable import SpooktacularKit
 
-@Suite("VMConfiguration")
-struct VMConfigurationTests {
+@Suite("VirtualMachineConfiguration")
+struct VirtualMachineConfigurationTests {
 
     @Test("Sets CPU count from spec")
     func cpuCount() {
-        let spec = VMSpec(cpuCount: 8)
+        let spec = VirtualMachineSpecification(cpuCount: 8)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.cpuCount == 8)
     }
 
     @Test("Enforces minimum CPU count")
     func minimumCPU() {
-        let spec = VMSpec(cpuCount: 2)
+        let spec = VirtualMachineSpecification(cpuCount: 2)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.cpuCount == 4)
     }
@@ -27,18 +27,18 @@ struct VMConfigurationTests {
     @Test("Sets memory size from spec")
     func memorySize() {
         let memory: UInt64 = 16 * 1024 * 1024 * 1024
-        let spec = VMSpec(memorySizeInBytes: memory)
+        let spec = VirtualMachineSpecification(memorySizeInBytes: memory)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.memorySize == memory)
     }
 
     @Test("Creates one graphics device with correct display count")
     func singleDisplay() throws {
-        let spec = VMSpec(displayCount: 1)
+        let spec = VirtualMachineSpecification(displayCount: 1)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.graphicsDevices.count == 1)
         let macGraphics = try #require(
@@ -49,9 +49,9 @@ struct VMConfigurationTests {
 
     @Test("Creates two displays when requested")
     func dualDisplay() throws {
-        let spec = VMSpec(displayCount: 2)
+        let spec = VirtualMachineSpecification(displayCount: 2)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let macGraphics = try #require(
             config.graphicsDevices.first as? VZMacGraphicsDeviceConfiguration
@@ -61,9 +61,9 @@ struct VMConfigurationTests {
 
     @Test("Configures NAT networking")
     func natNetwork() throws {
-        let spec = VMSpec(networkMode: .nat)
+        let spec = VirtualMachineSpecification(networkMode: .nat)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.networkDevices.count == 1)
         let virtioNet = try #require(
@@ -74,18 +74,18 @@ struct VMConfigurationTests {
 
     @Test("Configures isolated networking (no devices)")
     func isolatedNetwork() {
-        let spec = VMSpec(networkMode: .isolated)
+        let spec = VirtualMachineSpecification(networkMode: .isolated)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.networkDevices.isEmpty)
     }
 
     @Test("Bridged mode falls back to NAT when interface is not found")
     func bridgedFallback() throws {
-        let spec = VMSpec(networkMode: .bridged(interface: "nonexistent99"))
+        let spec = VirtualMachineSpecification(networkMode: .bridged(interface: "nonexistent99"))
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         // Should have one device (NAT fallback), not crash.
         #expect(config.networkDevices.count == 1)
@@ -100,9 +100,9 @@ struct VMConfigurationTests {
 
     @Test("Host-only mode currently produces a NAT device")
     func hostOnlyFallback() throws {
-        let spec = VMSpec(networkMode: .hostOnly)
+        let spec = VirtualMachineSpecification(networkMode: .hostOnly)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.networkDevices.count == 1)
         let virtioNet = try #require(
@@ -116,18 +116,18 @@ struct VMConfigurationTests {
 
     @Test("Sets macOS boot loader")
     func bootLoader() {
-        let spec = VMSpec()
+        let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.bootLoader is VZMacOSBootLoader)
     }
 
     @Test("Adds keyboard and trackpad")
     func inputDevices() {
-        let spec = VMSpec()
+        let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.keyboards.count == 1)
         #expect(config.keyboards.first is VZMacKeyboardConfiguration)
@@ -137,9 +137,9 @@ struct VMConfigurationTests {
 
     @Test("Always includes a VirtIO socket device")
     func socketDevice() {
-        let spec = VMSpec()
+        let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let hasSocket = config.socketDevices.contains {
             $0 is VZVirtioSocketDeviceConfiguration
@@ -149,18 +149,18 @@ struct VMConfigurationTests {
 
     @Test("Always includes an entropy device")
     func entropyDevice() {
-        let spec = VMSpec()
+        let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(!config.entropyDevices.isEmpty)
     }
 
     @Test("Always includes a memory balloon device")
     func memoryBalloon() {
-        let spec = VMSpec()
+        let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(
             !config.memoryBalloonDevices.isEmpty,
@@ -170,11 +170,11 @@ struct VMConfigurationTests {
 
     @Test("Single shared folder uses VZSingleDirectoryShare")
     func singleSharedFolder() throws {
-        let spec = VMSpec(sharedFolders: [
+        let spec = VirtualMachineSpecification(sharedFolders: [
             SharedFolder(hostPath: "/tmp", tag: "single"),
         ])
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let device = try #require(
             config.directorySharingDevices.first as? VZVirtioFileSystemDeviceConfiguration
@@ -184,9 +184,9 @@ struct VMConfigurationTests {
 
     @Test("Configures audio output when audioEnabled")
     func audioOutput() throws {
-        let spec = VMSpec(audioEnabled: true)
+        let spec = VirtualMachineSpecification(audioEnabled: true)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.audioDevices.count == 1)
         let sound = try #require(
@@ -198,9 +198,9 @@ struct VMConfigurationTests {
 
     @Test("Includes microphone input when microphoneEnabled")
     func microphoneInput() throws {
-        let spec = VMSpec(audioEnabled: true, microphoneEnabled: true)
+        let spec = VirtualMachineSpecification(audioEnabled: true, microphoneEnabled: true)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let sound = try #require(
             config.audioDevices.first as? VZVirtioSoundDeviceConfiguration
@@ -211,21 +211,21 @@ struct VMConfigurationTests {
 
     @Test("No audio devices when audioEnabled is false")
     func noAudio() {
-        let spec = VMSpec(audioEnabled: false)
+        let spec = VirtualMachineSpecification(audioEnabled: false)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.audioDevices.isEmpty)
     }
 
     @Test("Multiple shared folders use a single device with VZMultipleDirectoryShare")
     func sharedFolders() throws {
-        let spec = VMSpec(sharedFolders: [
+        let spec = VirtualMachineSpecification(sharedFolders: [
             SharedFolder(hostPath: "/tmp", tag: "first"),
             SharedFolder(hostPath: "/var", tag: "second", readOnly: true),
         ])
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         // Apple's pattern: one VZVirtioFileSystemDeviceConfiguration
         // with a VZMultipleDirectoryShare, not one device per folder.
@@ -239,11 +239,11 @@ struct VMConfigurationTests {
 
     @Test("First shared folder uses macOSGuestAutomountTag")
     func firstFolderAutomountTag() throws {
-        let spec = VMSpec(sharedFolders: [
+        let spec = VirtualMachineSpecification(sharedFolders: [
             SharedFolder(hostPath: "/tmp", tag: "ignored"),
         ])
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let device = try #require(
             config.directorySharingDevices.first as? VZVirtioFileSystemDeviceConfiguration
@@ -257,9 +257,9 @@ struct VMConfigurationTests {
     @Test("Sets custom MAC address when specified")
     func customMACAddress() throws {
         let macString = "AA:BB:CC:DD:EE:FF"
-        let spec = VMSpec(macAddress: macString)
+        let spec = VirtualMachineSpecification(macAddress: macString)
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(spec, to: config)
+        VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let virtioNet = try #require(
             config.networkDevices.first as? VZVirtioNetworkDeviceConfiguration

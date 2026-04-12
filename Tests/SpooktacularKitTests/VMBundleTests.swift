@@ -2,17 +2,17 @@ import Testing
 import Foundation
 @testable import SpooktacularKit
 
-@Suite("VMBundle")
-struct VMBundleTests {
+@Suite("VirtualMachineBundle")
+struct VirtualMachineBundleTests {
 
-    // MARK: - VMSpec Defaults and Clamping
+    // MARK: - VirtualMachineSpecification Defaults and Clamping
 
-    @Suite("VMSpec defaults and clamping")
-    struct VMSpecDefaultsTests {
+    @Suite("VirtualMachineSpecification defaults and clamping")
+    struct VirtualMachineSpecificationDefaultsTests {
 
         @Test("Default spec has expected values")
         func defaultValues() {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
             #expect(spec.cpuCount == 4)
             #expect(spec.memorySizeInBytes == 8 * 1024 * 1024 * 1024)
             #expect(spec.diskSizeInBytes == 64 * 1024 * 1024 * 1024)
@@ -22,87 +22,87 @@ struct VMBundleTests {
 
         @Test("Respects the 4-CPU minimum for macOS VMs")
         func minimumCPUCount() {
-            let spec = VMSpec(cpuCount: 2)
+            let spec = VirtualMachineSpecification(cpuCount: 2)
             #expect(spec.cpuCount == 4)
         }
 
         @Test("CPU count at exactly the minimum passes through")
         func cpuCountAtMinimum() {
-            let spec = VMSpec(cpuCount: 4)
+            let spec = VirtualMachineSpecification(cpuCount: 4)
             #expect(spec.cpuCount == 4)
         }
 
         @Test("CPU count above minimum passes through unchanged")
         func cpuCountAboveMinimum() {
-            let spec = VMSpec(cpuCount: 12)
+            let spec = VirtualMachineSpecification(cpuCount: 12)
             #expect(spec.cpuCount == 12)
         }
 
         @Test("Display count is clamped to minimum of 1")
         func displayCountFloor() {
-            let spec = VMSpec(displayCount: 0)
+            let spec = VirtualMachineSpecification(displayCount: 0)
             #expect(spec.displayCount == 1)
         }
 
         @Test("Display count is clamped to maximum of 2")
         func displayCountCeiling() {
-            let spec = VMSpec(displayCount: 5)
+            let spec = VirtualMachineSpecification(displayCount: 5)
             #expect(spec.displayCount == 2)
         }
 
         @Test("Negative display count is clamped to 1")
         func negativeDisplayCount() {
-            let spec = VMSpec(displayCount: -1)
+            let spec = VirtualMachineSpecification(displayCount: -1)
             #expect(spec.displayCount == 1)
         }
 
         @Test("Two specs with identical parameters are equal")
         func equatable() {
-            let a = VMSpec(cpuCount: 6, memorySizeInBytes: 8_000_000_000)
-            let b = VMSpec(cpuCount: 6, memorySizeInBytes: 8_000_000_000)
+            let a = VirtualMachineSpecification(cpuCount: 6, memorySizeInBytes: 8_000_000_000)
+            let b = VirtualMachineSpecification(cpuCount: 6, memorySizeInBytes: 8_000_000_000)
             #expect(a == b)
         }
 
         @Test("Two specs with different parameters are not equal")
         func notEquatable() {
-            let a = VMSpec(cpuCount: 6)
-            let b = VMSpec(cpuCount: 8)
+            let a = VirtualMachineSpecification(cpuCount: 6)
+            let b = VirtualMachineSpecification(cpuCount: 8)
             #expect(a != b)
         }
 
         @Test("Default spec has audio enabled")
         func defaultAudioEnabled() {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
             #expect(spec.audioEnabled == true)
         }
 
         @Test("Default spec has microphone disabled")
         func defaultMicrophoneDisabled() {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
             #expect(spec.microphoneEnabled == false)
         }
 
         @Test("Default spec has no shared folders")
         func defaultNoSharedFolders() {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
             #expect(spec.sharedFolders.isEmpty)
         }
 
         @Test("Default spec has no custom MAC address")
         func defaultNoMacAddress() {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
             #expect(spec.macAddress == nil)
         }
 
         @Test("Default spec has auto-resize enabled")
         func defaultAutoResizeEnabled() {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
             #expect(spec.autoResizeDisplay == true)
         }
 
         @Test("Default spec has clipboard sharing enabled")
         func defaultClipboardSharingEnabled() {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
             #expect(spec.clipboardSharingEnabled == true)
         }
     }
@@ -119,8 +119,8 @@ struct VMBundleTests {
                 tag: "myshare",
                 readOnly: true
             )
-            let data = try VMBundle.encoder.encode(folder)
-            let decoded = try VMBundle.decoder.decode(SharedFolder.self, from: data)
+            let data = try VirtualMachineBundle.encoder.encode(folder)
+            let decoded = try VirtualMachineBundle.decoder.decode(SharedFolder.self, from: data)
             #expect(decoded == folder)
         }
 
@@ -138,24 +138,24 @@ struct VMBundleTests {
         }
     }
 
-    // MARK: - VMSpec Serialization
+    // MARK: - VirtualMachineSpecification Serialization
 
-    @Suite("VMSpec JSON round-trip")
-    struct VMSpecSerializationTests {
+    @Suite("VirtualMachineSpecification JSON round-trip")
+    struct VirtualMachineSpecificationSerializationTests {
 
-        @Test("Round-trips a default spec through VMBundle's encoder")
+        @Test("Round-trips a default spec through VirtualMachineBundle's encoder")
         func defaultSpecRoundTrip() throws {
-            let spec = VMSpec()
+            let spec = VirtualMachineSpecification()
 
-            let data = try VMBundle.encoder.encode(spec)
-            let decoded = try VMBundle.decoder.decode(VMSpec.self, from: data)
+            let data = try VirtualMachineBundle.encoder.encode(spec)
+            let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineSpecification.self, from: data)
 
             #expect(decoded == spec)
         }
 
         @Test("Round-trips custom spec values")
         func customSpecValues() throws {
-            let spec = VMSpec(
+            let spec = VirtualMachineSpecification(
                 cpuCount: 8,
                 memorySizeInBytes: 16 * 1024 * 1024 * 1024,
                 diskSizeInBytes: 100 * 1024 * 1024 * 1024,
@@ -163,8 +163,8 @@ struct VMBundleTests {
                 networkMode: .bridged(interface: "en0")
             )
 
-            let data = try VMBundle.encoder.encode(spec)
-            let decoded = try VMBundle.decoder.decode(VMSpec.self, from: data)
+            let data = try VirtualMachineBundle.encoder.encode(spec)
+            let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineSpecification.self, from: data)
 
             #expect(decoded == spec)
         }
@@ -179,29 +179,29 @@ struct VMBundleTests {
             ]
         )
         func networkModeRoundTrip(mode: NetworkMode) throws {
-            let spec = VMSpec(networkMode: mode)
-            let data = try VMBundle.encoder.encode(spec)
-            let decoded = try VMBundle.decoder.decode(VMSpec.self, from: data)
+            let spec = VirtualMachineSpecification(networkMode: mode)
+            let data = try VirtualMachineBundle.encoder.encode(spec)
+            let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineSpecification.self, from: data)
             #expect(decoded.networkMode == mode)
         }
     }
 
-    // MARK: - VMMetadata Serialization
+    // MARK: - VirtualMachineMetadata Serialization
 
-    @Suite("VMMetadata")
-    struct VMMetadataTests {
+    @Suite("VirtualMachineMetadata")
+    struct VirtualMachineMetadataTests {
 
         @Test("Generates a unique ID on creation")
         func uniqueID() {
-            let a = VMMetadata()
-            let b = VMMetadata()
+            let a = VirtualMachineMetadata()
+            let b = VirtualMachineMetadata()
             #expect(a.id != b.id)
         }
 
         @Test("Records creation date")
         func creationDate() {
             let before = Date()
-            let metadata = VMMetadata()
+            let metadata = VirtualMachineMetadata()
             let after = Date()
 
             #expect(metadata.createdAt >= before)
@@ -210,19 +210,19 @@ struct VMBundleTests {
 
         @Test("Defaults setupCompleted to false and lastBootedAt to nil")
         func defaults() {
-            let metadata = VMMetadata()
+            let metadata = VirtualMachineMetadata()
             #expect(metadata.setupCompleted == false)
             #expect(metadata.lastBootedAt == nil)
         }
 
-        @Test("Round-trips all fields through VMBundle's encoder including createdAt")
+        @Test("Round-trips all fields through VirtualMachineBundle's encoder including createdAt")
         func fullRoundTrip() throws {
-            var metadata = VMMetadata()
+            var metadata = VirtualMachineMetadata()
             metadata.setupCompleted = true
             metadata.lastBootedAt = Date()
 
-            let data = try VMBundle.encoder.encode(metadata)
-            let decoded = try VMBundle.decoder.decode(VMMetadata.self, from: data)
+            let data = try VirtualMachineBundle.encoder.encode(metadata)
+            let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineMetadata.self, from: data)
 
             #expect(decoded.id == metadata.id)
             #expect(decoded.setupCompleted == true)
@@ -240,7 +240,7 @@ struct VMBundleTests {
 
         @Test("Tracks setup completion state")
         func setupCompletion() {
-            var metadata = VMMetadata()
+            var metadata = VirtualMachineMetadata()
             #expect(metadata.setupCompleted == false)
 
             metadata.setupCompleted = true
@@ -265,24 +265,24 @@ struct VMBundleTests {
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            let bundle = try VMBundle.create(at: bundleURL, spec: VMSpec())
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             #expect(FileManager.default.fileExists(atPath: bundleURL.path))
             #expect(bundle.url == bundleURL)
             #expect(bundle.spec.cpuCount == 4)
         }
 
-        @Test("Writes config.json readable by VMBundle.decoder")
+        @Test("Writes config.json readable by VirtualMachineBundle.decoder")
         func writesValidConfig() throws {
             let tempDir = makeTempDir()
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            let spec = VMSpec(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
-            _ = try VMBundle.create(at: bundleURL, spec: spec)
+            let spec = VirtualMachineSpecification(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
 
             let data = try Data(contentsOf: bundleURL.appendingPathComponent("config.json"))
-            let decoded = try VMBundle.decoder.decode(VMSpec.self, from: data)
+            let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineSpecification.self, from: data)
             #expect(decoded == spec)
         }
 
@@ -292,13 +292,13 @@ struct VMBundleTests {
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            _ = try VMBundle.create(at: bundleURL, spec: VMSpec())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             let metadataURL = bundleURL.appendingPathComponent("metadata.json")
             #expect(FileManager.default.fileExists(atPath: metadataURL.path))
 
             let data = try Data(contentsOf: metadataURL)
-            let decoded = try VMBundle.decoder.decode(VMMetadata.self, from: data)
+            let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineMetadata.self, from: data)
             #expect(decoded.setupCompleted == false)
         }
 
@@ -308,12 +308,12 @@ struct VMBundleTests {
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            let original = try VMBundle.create(
+            let original = try VirtualMachineBundle.create(
                 at: bundleURL,
-                spec: VMSpec(cpuCount: 6)
+                spec: VirtualMachineSpecification(cpuCount: 6)
             )
 
-            let loaded = try VMBundle.load(from: bundleURL)
+            let loaded = try VirtualMachineBundle.load(from: bundleURL)
             #expect(loaded.spec == original.spec)
             #expect(loaded.metadata.id == original.metadata.id)
         }
@@ -324,14 +324,14 @@ struct VMBundleTests {
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            let bundle = try VMBundle.create(at: bundleURL, spec: VMSpec())
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
             #expect(bundle.metadata.setupCompleted == false)
 
             var updated = bundle.metadata
             updated.setupCompleted = true
-            try VMBundle.writeMetadata(updated, to: bundleURL)
+            try VirtualMachineBundle.writeMetadata(updated, to: bundleURL)
 
-            let reloaded = try VMBundle.load(from: bundleURL)
+            let reloaded = try VirtualMachineBundle.load(from: bundleURL)
             #expect(reloaded.metadata.setupCompleted == true)
             #expect(reloaded.metadata.id == bundle.metadata.id)
         }
@@ -340,9 +340,9 @@ struct VMBundleTests {
         func loadNonexistent() {
             let bogus = URL(fileURLWithPath: "/tmp/nonexistent-\(UUID()).vm")
             #expect {
-                try VMBundle.load(from: bogus)
+                try VirtualMachineBundle.load(from: bogus)
             } throws: { error in
-                guard let bundleError = error as? VMBundleError else { return false }
+                guard let bundleError = error as? VirtualMachineBundleError else { return false }
                 return bundleError == .notFound(url: bogus)
             }
         }
@@ -353,7 +353,7 @@ struct VMBundleTests {
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            _ = try VMBundle.create(at: bundleURL, spec: VMSpec())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             // Corrupt config.json
             try Data("not-json".utf8).write(
@@ -361,9 +361,9 @@ struct VMBundleTests {
             )
 
             #expect {
-                try VMBundle.load(from: bundleURL)
+                try VirtualMachineBundle.load(from: bundleURL)
             } throws: { error in
-                guard let bundleError = error as? VMBundleError else { return false }
+                guard let bundleError = error as? VirtualMachineBundleError else { return false }
                 return bundleError == .invalidConfiguration(url: bundleURL)
             }
         }
@@ -374,7 +374,7 @@ struct VMBundleTests {
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            _ = try VMBundle.create(at: bundleURL, spec: VMSpec())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             // Corrupt metadata.json
             try Data("not-json".utf8).write(
@@ -382,9 +382,9 @@ struct VMBundleTests {
             )
 
             #expect {
-                try VMBundle.load(from: bundleURL)
+                try VirtualMachineBundle.load(from: bundleURL)
             } throws: { error in
-                guard let bundleError = error as? VMBundleError else { return false }
+                guard let bundleError = error as? VirtualMachineBundleError else { return false }
                 return bundleError == .invalidMetadata(url: bundleURL)
             }
         }
@@ -395,12 +395,12 @@ struct VMBundleTests {
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             let bundleURL = tempDir.appendingPathComponent("test.vm")
-            _ = try VMBundle.create(at: bundleURL, spec: VMSpec())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             #expect {
-                try VMBundle.create(at: bundleURL, spec: VMSpec())
+                try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
             } throws: { error in
-                guard let bundleError = error as? VMBundleError else { return false }
+                guard let bundleError = error as? VirtualMachineBundleError else { return false }
                 return bundleError == .alreadyExists(url: bundleURL)
             }
         }

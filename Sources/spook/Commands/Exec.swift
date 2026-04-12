@@ -50,42 +50,43 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
             guard !command.isEmpty else {
-                print("Error: No command specified. Use '--' followed by the command.")
-                print("  Example: spook exec \(name) -- uname -a")
+                print(Style.error("✗ No command specified."))
+                print(Style.dim("  Use '--' followed by the command. Example: spook exec \(name) -- uname -a"))
                 throw ExitCode.failure
             }
 
             guard PIDFile.isRunning(bundleURL: bundleURL) else {
-                print("Error: VM '\(name)' is not running. Start it with 'spook start \(name)'.")
+                print(Style.error("✗ VM '\(name)' is not running."))
+                print(Style.dim("  Start it with 'spook start \(name)'."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let expandedKey = NSString(string: key).expandingTildeInPath
-            let cmdString = command.joined(separator: " ")
+            let commandString = command.joined(separator: " ")
 
             guard let macAddress = bundle.spec.macAddress else {
-                print("VM '\(name)' has no configured MAC address for automatic IP resolution.")
-                print("")
-                print("Find the IP manually, then run:")
-                print("  ssh \(user)@<ip-address> '\(cmdString)'")
+                print(Style.error("✗ VM '\(name)' has no configured MAC address for automatic IP resolution."))
+                print(Style.dim("  Find the IP manually, then run:"))
+                print(Style.dim("  ssh \(user)@<ip-address> '\(commandString)'"))
                 throw ExitCode.failure
             }
 
             guard let ip = try await IPResolver.resolveIP(macAddress: macAddress) else {
-                print("Error: Could not resolve IP for VM '\(name)'.")
-                print("The VM may still be booting. Try again in a few seconds.")
+                print(Style.error("✗ Could not resolve IP for VM '\(name)'."))
+                print(Style.dim("  The VM may still be booting. Try again in a few seconds."))
                 throw ExitCode.failure
             }
 
             // Build the ssh command with the remote command appended.
             var args = SSHExecutor.sshOptions
-            args += ["-i", expandedKey, "\(user)@\(ip)", cmdString]
+            args += ["-i", expandedKey, "\(user)@\(ip)", commandString]
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")

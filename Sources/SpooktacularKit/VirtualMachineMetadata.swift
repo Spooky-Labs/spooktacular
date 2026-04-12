@@ -2,7 +2,7 @@ import Foundation
 
 /// Runtime metadata for a virtual machine.
 ///
-/// `VMMetadata` tracks the identity and lifecycle state of a VM
+/// `VirtualMachineMetadata` tracks the identity and lifecycle state of a VM
 /// bundle. It is persisted as `metadata.json` inside the bundle
 /// directory and updated as the VM progresses through its
 /// lifecycle.
@@ -14,13 +14,13 @@ import Foundation
 /// ## Example
 ///
 /// ```swift
-/// var metadata = VMMetadata()
+/// var metadata = VirtualMachineMetadata()
 /// print(metadata.id)              // unique UUID
 /// print(metadata.setupCompleted)  // false
 ///
 /// metadata.setupCompleted = true
 /// ```
-public struct VMMetadata: Sendable, Codable, Equatable {
+public struct VirtualMachineMetadata: Sendable, Codable, Equatable {
 
     /// A unique identifier for this virtual machine.
     ///

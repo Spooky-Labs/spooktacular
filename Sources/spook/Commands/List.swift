@@ -26,8 +26,8 @@ extension Spook {
         func run() async throws {
             try Paths.ensureDirectories()
 
-            let fm = FileManager.default
-            let contents = try fm.contentsOfDirectory(
+            let fileManager = FileManager.default
+            let contents = try fileManager.contentsOfDirectory(
                 at: Paths.vms,
                 includingPropertiesForKeys: nil
             ).filter { $0.pathExtension == "vm" }
@@ -40,10 +40,10 @@ extension Spook {
                 return
             }
 
-            let bundles: [(String, VMBundle)] = contents.compactMap { url in
+            let bundles: [(String, VirtualMachineBundle)] = contents.compactMap { url in
                 let name = url.deletingPathExtension().lastPathComponent
                 do {
-                    let bundle = try VMBundle.load(from: url)
+                    let bundle = try VirtualMachineBundle.load(from: url)
                     return (name, bundle)
                 } catch {
                     Log.vm.error("Failed to load bundle '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
@@ -58,13 +58,13 @@ extension Spook {
             }
         }
 
-        private func printTable(_ bundles: [(String, VMBundle)]) {
+        private func printTable(_ bundles: [(String, VirtualMachineBundle)]) {
             var rows: [[String]] = []
             var runningCount = 0
 
             for (name, bundle) in bundles {
-                let memGB = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
-                let diskGB = bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)
+                let memoryInGigabytes = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
+                let diskSizeInGigabytes = bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)
                 let setup = bundle.metadata.setupCompleted
                     ? Style.green("✓ ready") : Style.dim("pending")
                 let network = Style.networkLabel(bundle.spec.networkMode)
@@ -85,8 +85,8 @@ extension Spook {
                     Style.bold(name),
                     runState,
                     "\(bundle.spec.cpuCount) cores",
-                    "\(memGB) GB",
-                    "\(diskGB) GB",
+                    "\(memoryInGigabytes) GB",
+                    "\(diskSizeInGigabytes) GB",
                     network,
                     audio,
                     setup,
@@ -105,14 +105,14 @@ extension Spook {
             )
         }
 
-        private func printJSON(_ bundles: [(String, VMBundle)]) {
+        private func printJSON(_ bundles: [(String, VirtualMachineBundle)]) {
             var entries: [[String: Any]] = []
             for (name, bundle) in bundles {
                 entries.append([
                     "name": name,
                     "cpu": bundle.spec.cpuCount,
-                    "memoryGB": bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024),
-                    "diskGB": bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024),
+                    "memorySizeInGigabytes": bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024),
+                    "diskSizeInGigabytes": bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024),
                     "displays": bundle.spec.displayCount,
                     "network": "\(bundle.spec.networkMode)",
                     "audio": bundle.spec.audioEnabled,

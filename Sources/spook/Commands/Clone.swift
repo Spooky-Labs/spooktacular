@@ -35,18 +35,18 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            let destURL = Paths.bundleURL(for: destination)
-            guard !FileManager.default.fileExists(atPath: destURL.path) else {
+            let destinationURL = Paths.bundleURL(for: destination)
+            guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
                 print(Style.error("✗ VM '\(destination)' already exists."))
                 throw ExitCode.failure
             }
 
-            let sourceBundle = try VMBundle.load(from: sourceURL)
+            let sourceBundle = try VirtualMachineBundle.load(from: sourceURL)
             print(Style.info("⤢ Cloning '\(source)' → '\(destination)'..."))
 
             let clone = try CloneManager.clone(
                 source: sourceBundle,
-                to: destURL
+                to: destinationURL
             )
 
             print(Style.success("✓ Clone '\(destination)' created."))

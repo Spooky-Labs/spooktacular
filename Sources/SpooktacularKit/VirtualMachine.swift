@@ -7,7 +7,7 @@ import Virtualization
 /// Maps to `VZVirtualMachine.State` but is a ``Sendable`` value
 /// type that can be safely shared across actors and published
 /// via ``AsyncStream``.
-public enum VMState: String, Sendable, Codable {
+public enum VirtualMachineState: String, Sendable, Codable {
     /// The VM is not running.
     case stopped
     /// The VM is booting.
@@ -54,7 +54,7 @@ public final class VirtualMachine: NSObject, Sendable {
     // MARK: - Properties
 
     /// The bundle this VM was created from.
-    public let bundle: VMBundle
+    public let bundle: VirtualMachineBundle
 
     /// The underlying Virtualization framework VM.
     ///
@@ -62,15 +62,15 @@ public final class VirtualMachine: NSObject, Sendable {
     public private(set) var vzVM: VZVirtualMachine?
 
     /// The current state of the virtual machine.
-    public private(set) var state: VMState = .stopped
+    public private(set) var state: VirtualMachineState = .stopped
 
     /// An asynchronous stream of state changes.
     ///
     /// Subscribe to this stream to observe VM lifecycle events.
     /// The stream yields a new value each time the VM transitions
     /// between states (starting, running, paused, stopped, error).
-    public let stateStream: AsyncStream<VMState>
-    private let stateContinuation: AsyncStream<VMState>.Continuation
+    public let stateStream: AsyncStream<VirtualMachineState>
+    private let stateContinuation: AsyncStream<VirtualMachineState>.Continuation
 
     // MARK: - Initialization
 
@@ -79,32 +79,35 @@ public final class VirtualMachine: NSObject, Sendable {
     /// This initializer builds the `VZVirtualMachineConfiguration`
     /// from the bundle's spec and platform artifacts, validates it,
     /// and creates the underlying `VZVirtualMachine`. The VM is
-    /// created in the ``VMState/stopped`` state.
+    /// created in the ``VirtualMachineState/stopped`` state.
     ///
     /// - Parameter bundle: A VM bundle with a valid disk image
     ///   and platform artifacts (hardware model, machine identifier,
     ///   auxiliary storage).
-    /// - Throws: ``VMBundleError`` if platform artifacts are
+    /// - Throws: ``VirtualMachineBundleError`` if platform artifacts are
     ///   missing or invalid, or `VZError` if the configuration
     ///   fails validation.
-    public init(bundle: VMBundle) throws {
+    public init(bundle: VirtualMachineBundle) throws {
         self.bundle = bundle
 
-        let (stream, continuation) = AsyncStream<VMState>.makeStream()
+        let (stream, continuation) = AsyncStream<VirtualMachineState>.makeStream()
         self.stateStream = stream
         self.stateContinuation = continuation
 
         super.init()
 
+        Log.vm.info("Initializing VM from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(bundle.spec, to: config)
-        try VMConfiguration.applyPlatform(from: bundle, to: config)
-        try VMConfiguration.applyStorage(from: bundle, to: config)
+        VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
+        try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
+        try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
         try config.validate()
+        Log.vm.debug("VM configuration validated for '\(bundle.url.lastPathComponent, privacy: .public)'")
 
         let vm = VZVirtualMachine(configuration: config)
         vm.delegate = self
         self.vzVM = vm
+        Log.vm.notice("VM initialized: '\(bundle.url.lastPathComponent, privacy: .public)'")
     }
 
     deinit {
@@ -115,8 +118,8 @@ public final class VirtualMachine: NSObject, Sendable {
 
     /// Starts the virtual machine.
     ///
-    /// The VM transitions from ``VMState/stopped`` to
-    /// ``VMState/starting``, then to ``VMState/running``
+    /// The VM transitions from ``VirtualMachineState/stopped`` to
+    /// ``VirtualMachineState/starting``, then to ``VirtualMachineState/running``
     /// once the guest OS begins executing.
     ///
     /// - Throws: An error if the VM cannot be started.
@@ -144,10 +147,13 @@ public final class VirtualMachine: NSObject, Sendable {
         guard let vm = vzVM else { return }
 
         if graceful {
+            Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             try vm.requestStop()
         } else {
+            Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             try await vm.stop()
             updateState(.stopped)
+            Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' stopped")
         }
     }
 
@@ -157,17 +163,21 @@ public final class VirtualMachine: NSObject, Sendable {
     /// state are preserved. Resume with ``resume()``.
     public func pause() async throws {
         guard let vm = vzVM else { return }
+        Log.vm.info("Pausing VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.pausing)
         try await vm.pause()
         updateState(.paused)
+        Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' paused")
     }
 
     /// Resumes a paused virtual machine.
     public func resume() async throws {
         guard let vm = vzVM else { return }
+        Log.vm.info("Resuming VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.resuming)
         try await vm.resume()
         updateState(.running)
+        Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' resumed")
     }
 
     // MARK: - Save and Restore State
@@ -216,7 +226,7 @@ public final class VirtualMachine: NSObject, Sendable {
 
     // MARK: - Private
 
-    private func updateState(_ newState: VMState) {
+    private func updateState(_ newState: VirtualMachineState) {
         Log.vm.debug("State transition: \(self.state.rawValue, privacy: .public) → \(newState.rawValue, privacy: .public)")
         state = newState
         stateContinuation.yield(newState)

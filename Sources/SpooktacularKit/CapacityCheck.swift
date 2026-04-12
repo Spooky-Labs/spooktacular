@@ -41,18 +41,22 @@ public enum CapacityCheck {
     ///   (typically `~/.spooktacular/vms/`).
     /// - Returns: The number of bundles with a live process.
     public static func runningCount(in directory: URL) -> Int {
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(
+        let fileManager = FileManager.default
+        guard let contents = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
         ) else {
+            Log.capacity.debug("No VM directory found at \(directory.path, privacy: .public)")
             return 0
         }
 
-        return contents
+        let count = contents
             .filter { $0.pathExtension == "vm" }
             .filter { PIDFile.isRunning(bundleURL: $0) }
             .count
+
+        Log.capacity.debug("Running VM count: \(count) (limit \(maxConcurrentVMs))")
+        return count
     }
 
     /// Returns the names of all currently running VMs in the
@@ -61,8 +65,8 @@ public enum CapacityCheck {
     /// - Parameter directory: The directory containing `.vm` bundles.
     /// - Returns: An array of VM names (without the `.vm` extension).
     public static func runningVMs(in directory: URL) -> [String] {
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(
+        let fileManager = FileManager.default
+        guard let contents = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
         ) else {
@@ -85,12 +89,14 @@ public enum CapacityCheck {
     /// - Throws: ``CapacityError/limitReached(running:)`` if
     ///   ``maxConcurrentVMs`` or more VMs are already running.
     public static func ensureCapacity(in directory: URL) throws {
+        Log.capacity.info("Checking VM capacity in \(directory.lastPathComponent, privacy: .public)")
         let count = runningCount(in: directory)
         if count >= maxConcurrentVMs {
             let names = runningVMs(in: directory)
-            Log.vm.error("Capacity check failed: \(count) VMs running (limit \(maxConcurrentVMs))")
+            Log.capacity.error("Capacity check failed: \(count) VMs running (limit \(maxConcurrentVMs))")
             throw CapacityError.limitReached(running: names)
         }
+        Log.capacity.debug("Capacity OK: \(count)/\(maxConcurrentVMs) slots used")
     }
 }
 
@@ -107,7 +113,17 @@ public enum CapacityError: Error, Sendable, LocalizedError, Equatable {
         case .limitReached(let running):
             let names = running.joined(separator: ", ")
             return "Cannot start VM: Apple Silicon limit of \(CapacityCheck.maxConcurrentVMs) concurrent VMs reached. "
-                + "Running: \(names). Stop a running VM first."
+                + "Currently running: \(names)."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .limitReached(let running):
+            if let first = running.first {
+                return "Stop a running VM first with 'spook stop \(first)', then retry."
+            }
+            return "Stop a running VM first with 'spook stop <name>', then retry."
         }
     }
 }

@@ -70,9 +70,11 @@ public enum SSHExecutor {
                 Log.provision.notice("SSH is available on \(ip, privacy: .public):\(port)")
                 return
             }
+            Log.provision.debug("SSH not yet available on \(ip, privacy: .public):\(port), retrying in 3s")
             try await Task.sleep(nanoseconds: pollInterval)
         }
 
+        Log.provision.error("SSH connection to \(ip, privacy: .public) timed out after \(Int(timeout)) seconds")
         throw SSHError.timeout(ip: ip, seconds: Int(timeout))
     }
 
@@ -116,6 +118,7 @@ public enum SSHExecutor {
 
         let scpExit = try await runStreamingProcess("/usr/bin/scp", arguments: scpArgs)
         guard scpExit == 0 else {
+            Log.provision.error("scp failed with exit code \(scpExit) copying script to \(ip, privacy: .public)")
             throw SSHError.scpFailed(exitCode: scpExit)
         }
 
@@ -130,6 +133,7 @@ public enum SSHExecutor {
 
         let sshExit = try await runStreamingProcess("/usr/bin/ssh", arguments: sshArgs)
         guard sshExit == 0 else {
+            Log.provision.error("Remote script execution failed with exit code \(sshExit) on \(ip, privacy: .public)")
             throw SSHError.executionFailed(exitCode: sshExit)
         }
 
@@ -216,12 +220,24 @@ public enum SSHError: Error, Sendable, LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .timeout(let ip, let seconds):
-            "SSH connection to \(ip) timed out after \(seconds) seconds. "
-            + "Ensure Remote Login (SSH) is enabled in the VM."
+            "SSH connection to \(ip) timed out after \(seconds) seconds."
         case .scpFailed(let exitCode):
-            "Failed to copy script to VM (scp exit code \(exitCode))."
+            "Failed to copy script to VM via scp (exit code \(exitCode))."
         case .executionFailed(let exitCode):
-            "Script execution failed on VM (exit code \(exitCode))."
+            "Remote script execution failed on VM (exit code \(exitCode))."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .timeout:
+            "Ensure Remote Login (SSH) is enabled in the VM's System Settings > General > Sharing. "
+            + "Verify the VM has finished booting and has a network connection."
+        case .scpFailed:
+            "Check that the SSH key is correct and the remote user has write access to /tmp. "
+            + "Verify the VM is reachable with 'spook ip <name>'."
+        case .executionFailed:
+            "Review the script output above for errors. Connect manually with 'spook ssh <name>' to debug."
         }
     }
 }

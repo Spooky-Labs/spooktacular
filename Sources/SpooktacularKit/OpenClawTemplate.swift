@@ -67,8 +67,8 @@ public enum OpenClawTemplate {
 
         # Install Node.js 24.
         brew install node@24
-        export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
-        echo 'export PATH="/opt/homebrew/opt/node@24/bin:$PATH"' >> ~/.zshrc
+        export PATH= "/opt/homebrew/opt/node@24/bin:$PATH"
+        echo 'export PATH= "/opt/homebrew/opt/node@24/bin:$PATH"' >> ~/.zshrc
 
         # Install OpenClaw.
         npm install -g openclaw@latest

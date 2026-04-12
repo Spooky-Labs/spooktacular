@@ -16,7 +16,7 @@ import Virtualization
 /// ## Example
 ///
 /// ```swift
-/// let source = try VMBundle.load(from: sourceURL)
+/// let source = try VirtualMachineBundle.load(from: sourceURL)
 /// let clone = try CloneManager.clone(source: source, to: destURL)
 ///
 /// // clone.spec == source.spec (preserved)
@@ -47,18 +47,18 @@ public enum CloneManager {
     ///   - destination: The file URL for the new `.vm` directory.
     ///     Must not already exist.
     /// - Returns: The newly created clone bundle.
-    /// - Throws: ``VMBundleError/alreadyExists(url:)`` if the
+    /// - Throws: ``VirtualMachineBundleError/alreadyExists(url:)`` if the
     ///   destination already exists. File system errors if the
     ///   source files cannot be read.
     public static func clone(
-        source: VMBundle,
+        source: VirtualMachineBundle,
         to destination: URL
-    ) throws -> VMBundle {
+    ) throws -> VirtualMachineBundle {
         let fileManager = FileManager.default
 
         guard !fileManager.fileExists(atPath: destination.path) else {
             Log.clone.error("Clone destination already exists: \(destination.lastPathComponent, privacy: .public)")
-            throw VMBundleError.alreadyExists(url: destination)
+            throw VirtualMachineBundleError.alreadyExists(url: destination)
         }
 
         Log.clone.info("Cloning '\(source.url.lastPathComponent, privacy: .public)' → '\(destination.lastPathComponent, privacy: .public)'")
@@ -73,13 +73,15 @@ public enum CloneManager {
             // Uses clonefile(2) where APFS is available (COW clone).
             for fileName in filesToCopy {
                 let sourceFile = source.url.appendingPathComponent(fileName)
-                let destFile = destination.appendingPathComponent(fileName)
+                let destinationFile = destination.appendingPathComponent(fileName)
 
                 guard fileManager.fileExists(atPath: sourceFile.path) else {
+                    Log.clone.debug("Skipping \(fileName, privacy: .public) — not present in source")
                     continue
                 }
 
-                try fileManager.copyItem(at: sourceFile, to: destFile)
+                Log.clone.debug("Copying \(fileName, privacy: .public) (COW clonefile where APFS)")
+                try fileManager.copyItem(at: sourceFile, to: destinationFile)
             }
 
             // Generate a fresh machine identifier. Every VM must
@@ -94,20 +96,21 @@ public enum CloneManager {
 
             // Write config.json (same spec as source)
             let spec = source.spec
-            let configData = try VMBundle.encoder.encode(spec)
+            let configData = try VirtualMachineBundle.encoder.encode(spec)
             try configData.write(
-                to: destination.appendingPathComponent(VMBundle.configFileName)
+                to: destination.appendingPathComponent(VirtualMachineBundle.configFileName)
             )
 
             // Write metadata.json with a new ID but inherited state
-            var metadata = VMMetadata()
+            var metadata = VirtualMachineMetadata()
             metadata.setupCompleted = source.metadata.setupCompleted
-            let metadataData = try VMBundle.encoder.encode(metadata)
+            let metadataData = try VirtualMachineBundle.encoder.encode(metadata)
             try metadataData.write(
-                to: destination.appendingPathComponent(VMBundle.metadataFileName)
+                to: destination.appendingPathComponent(VirtualMachineBundle.metadataFileName)
             )
 
-            return VMBundle(
+            Log.clone.notice("Clone complete: '\(destination.lastPathComponent, privacy: .public)'")
+            return VirtualMachineBundle(
                 url: destination,
                 spec: spec,
                 metadata: metadata

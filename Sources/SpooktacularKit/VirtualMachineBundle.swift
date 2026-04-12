@@ -3,7 +3,7 @@ import os
 
 /// A virtual machine bundle stored on disk.
 ///
-/// A `VMBundle` represents the on-disk directory structure for a
+/// A `VirtualMachineBundle` represents the on-disk directory structure for a
 /// single macOS virtual machine. Each bundle is a `.vm` directory
 /// containing the configuration, disk image, and platform-specific
 /// artifacts required to boot and run the VM.
@@ -24,18 +24,18 @@ import os
 ///
 /// ```swift
 /// let url = URL(fileURLWithPath: "~/.spooktacular/vms/my-vm.vm")
-/// let spec = VMSpec(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
-/// let bundle = try VMBundle.create(at: url, spec: spec)
+/// let spec = VirtualMachineSpecification(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
+/// let bundle = try VirtualMachineBundle.create(at: url, spec: spec)
 /// ```
 ///
 /// ## Loading an Existing Bundle
 ///
 /// ```swift
-/// let bundle = try VMBundle.load(from: url)
+/// let bundle = try VirtualMachineBundle.load(from: url)
 /// print(bundle.spec.cpuCount)     // 8
 /// print(bundle.metadata.id)       // unique UUID
 /// ```
-public struct VMBundle: Sendable {
+public struct VirtualMachineBundle: Sendable {
 
     // MARK: - Constants
 
@@ -66,10 +66,10 @@ public struct VMBundle: Sendable {
     public let url: URL
 
     /// The hardware specification for this VM.
-    public let spec: VMSpec
+    public let spec: VirtualMachineSpecification
 
     /// The runtime metadata for this VM.
-    public let metadata: VMMetadata
+    public let metadata: VirtualMachineMetadata
 
     // MARK: - Creating Bundles
 
@@ -85,14 +85,14 @@ public struct VMBundle: Sendable {
     ///     created. Must not already exist.
     ///   - spec: The hardware specification for the VM.
     /// - Returns: The newly created bundle.
-    /// - Throws: ``VMBundleError/alreadyExists(url:)`` if a file
+    /// - Throws: ``VirtualMachineBundleError/alreadyExists(url:)`` if a file
     ///   or directory already exists at `url`.
-    public static func create(at url: URL, spec: VMSpec) throws -> VMBundle {
+    public static func create(at url: URL, spec: VirtualMachineSpecification) throws -> VirtualMachineBundle {
         let fileManager = FileManager.default
 
         guard !fileManager.fileExists(atPath: url.path) else {
             Log.vm.error("Bundle already exists at \(url.lastPathComponent, privacy: .public)")
-            throw VMBundleError.alreadyExists(url: url)
+            throw VirtualMachineBundleError.alreadyExists(url: url)
         }
 
         try fileManager.createDirectory(
@@ -100,7 +100,7 @@ public struct VMBundle: Sendable {
             withIntermediateDirectories: true
         )
 
-        let metadata = VMMetadata()
+        let metadata = VirtualMachineMetadata()
 
         let configData = try Self.encoder.encode(spec)
         try configData.write(to: url.appendingPathComponent(configFileName))
@@ -109,7 +109,7 @@ public struct VMBundle: Sendable {
         try metadataData.write(to: url.appendingPathComponent(metadataFileName))
 
         Log.vm.info("Created bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
-        return VMBundle(url: url, spec: spec, metadata: metadata)
+        return VirtualMachineBundle(url: url, spec: spec, metadata: metadata)
     }
 
     // MARK: - Updating Bundles
@@ -122,7 +122,8 @@ public struct VMBundle: Sendable {
     /// - Parameters:
     ///   - metadata: The updated metadata to write.
     ///   - url: The file URL of the `.vm` bundle directory.
-    public static func writeMetadata(_ metadata: VMMetadata, to url: URL) throws {
+    public static func writeMetadata(_ metadata: VirtualMachineMetadata, to url: URL) throws {
+        Log.vm.debug("Writing metadata to \(url.lastPathComponent, privacy: .public)")
         let data = try Self.encoder.encode(metadata)
         try data.write(to: url.appendingPathComponent(metadataFileName))
     }
@@ -137,35 +138,41 @@ public struct VMBundle: Sendable {
     /// - Parameter url: The file URL of an existing `.vm` bundle
     ///   directory.
     /// - Returns: The loaded bundle.
-    /// - Throws: ``VMBundleError/notFound(url:)`` if the directory
-    ///   does not exist. ``VMBundleError/invalidConfiguration(url:)``
-    ///   or ``VMBundleError/invalidMetadata(url:)`` if the JSON
+    /// - Throws: ``VirtualMachineBundleError/notFound(url:)`` if the directory
+    ///   does not exist. ``VirtualMachineBundleError/invalidConfiguration(url:)``
+    ///   or ``VirtualMachineBundleError/invalidMetadata(url:)`` if the JSON
     ///   files are missing or malformed.
-    public static func load(from url: URL) throws -> VMBundle {
+    public static func load(from url: URL) throws -> VirtualMachineBundle {
         let fileManager = FileManager.default
 
         guard fileManager.fileExists(atPath: url.path) else {
-            throw VMBundleError.notFound(url: url)
+            Log.vm.error("Bundle not found at \(url.lastPathComponent, privacy: .public)")
+            throw VirtualMachineBundleError.notFound(url: url)
         }
 
+        Log.vm.debug("Loading bundle from \(url.lastPathComponent, privacy: .public)")
+
         let configURL = url.appendingPathComponent(configFileName)
-        let spec: VMSpec
+        let spec: VirtualMachineSpecification
         do {
             let data = try Data(contentsOf: configURL)
-            spec = try Self.decoder.decode(VMSpec.self, from: data)
+            spec = try Self.decoder.decode(VirtualMachineSpecification.self, from: data)
         } catch {
-            throw VMBundleError.invalidConfiguration(url: url)
+            Log.vm.error("Invalid configuration in bundle \(url.lastPathComponent, privacy: .public)")
+            throw VirtualMachineBundleError.invalidConfiguration(url: url)
         }
 
         let metadataURL = url.appendingPathComponent(metadataFileName)
-        let metadata: VMMetadata
+        let metadata: VirtualMachineMetadata
         do {
             let data = try Data(contentsOf: metadataURL)
-            metadata = try Self.decoder.decode(VMMetadata.self, from: data)
+            metadata = try Self.decoder.decode(VirtualMachineMetadata.self, from: data)
         } catch {
-            throw VMBundleError.invalidMetadata(url: url)
+            Log.vm.error("Invalid metadata in bundle \(url.lastPathComponent, privacy: .public)")
+            throw VirtualMachineBundleError.invalidMetadata(url: url)
         }
 
-        return VMBundle(url: url, spec: spec, metadata: metadata)
+        Log.vm.info("Loaded bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
+        return VirtualMachineBundle(url: url, spec: spec, metadata: metadata)
     }
 }

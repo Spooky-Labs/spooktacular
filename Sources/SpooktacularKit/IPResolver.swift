@@ -4,7 +4,7 @@ import os
 /// Resolves the IP address of a running VM by its MAC address.
 ///
 /// The Virtualization framework assigns each VM a MAC address
-/// (either random or explicit via ``VMSpec/macAddress``). When
+/// (either random or explicit via ``VirtualMachineSpecification/macAddress``). When
 /// the VM boots and obtains an IP via DHCP, the host's ARP table
 /// and DHCP lease database contain the MAC-to-IP mapping.
 ///
@@ -45,14 +45,17 @@ public enum IPResolver {
     ///   was found.
     public static func resolveIP(macAddress: String) async throws -> String? {
         let normalizedMAC = macAddress.lowercased()
+        Log.network.info("Resolving IP for MAC \(normalizedMAC)")
 
         // Strategy 1: DHCP lease file (best for NAT VMs)
+        Log.network.debug("Trying DHCP leases for MAC \(normalizedMAC)")
         if let ip = try resolveFromLeases(macAddress: normalizedMAC) {
             Log.network.info("Resolved IP \(ip, privacy: .public) from DHCP leases for MAC \(normalizedMAC, privacy: .public)")
             return ip
         }
 
         // Strategy 2: ARP table (best for bridged VMs)
+        Log.network.debug("Trying ARP table for MAC \(normalizedMAC)")
         if let ip = try await resolveFromARP(macAddress: normalizedMAC) {
             Log.network.info("Resolved IP \(ip, privacy: .public) from ARP table for MAC \(normalizedMAC, privacy: .public)")
             return ip

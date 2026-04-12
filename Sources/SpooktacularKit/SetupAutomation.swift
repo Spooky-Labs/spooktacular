@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - Boot Step Types
 
@@ -233,14 +234,18 @@ public enum SetupAutomation {
         username: String = "admin",
         password: String = "admin"
     ) -> [BootStep] {
+        Log.provision.info("Selecting Setup Assistant sequence for macOS \(macOSVersion, privacy: .public)")
         switch macOSVersion {
         case 15:
+            Log.provision.debug("Using Sequoia (macOS 15) automation sequence")
             return sequoiaSequence(username: username, password: password)
         case 26:
             // Tahoe uses the same Setup Assistant layout as Sequoia.
             // This will be updated when Tahoe ships with layout changes.
+            Log.provision.debug("Using Tahoe (macOS 26) automation sequence")
             return tahoeSequence(username: username, password: password)
         default:
+            Log.provision.error("No automation sequence available for macOS \(macOSVersion, privacy: .public)")
             return []
         }
     }

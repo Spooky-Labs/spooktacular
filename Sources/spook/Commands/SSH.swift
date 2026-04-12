@@ -43,31 +43,31 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
             guard PIDFile.isRunning(bundleURL: bundleURL) else {
-                print("Error: VM '\(name)' is not running. Start it with 'spook start \(name)'.")
+                print(Style.error("✗ VM '\(name)' is not running."))
+                print(Style.dim("  Start it with 'spook start \(name)'."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let expandedKey = NSString(string: key).expandingTildeInPath
 
             guard let macAddress = bundle.spec.macAddress else {
-                // Fall back to manual instructions if no MAC is set.
-                print("VM '\(name)' has no configured MAC address for automatic IP resolution.")
-                print("")
-                print("Find the IP manually in the guest's System Settings > Network,")
-                print("then connect with:")
-                print("  ssh -i \(expandedKey) \(user)@<ip-address>")
+                print(Style.error("✗ VM '\(name)' has no configured MAC address for automatic IP resolution."))
+                print(Style.dim("  Find the IP manually in the guest's System Settings > Network,"))
+                print(Style.dim("  then connect with:"))
+                print(Style.dim("  ssh -i \(expandedKey) \(user)@<ip-address>"))
                 throw ExitCode.failure
             }
 
             guard let ip = try await IPResolver.resolveIP(macAddress: macAddress) else {
-                print("Error: Could not resolve IP for VM '\(name)'.")
-                print("The VM may still be booting. Try again in a few seconds.")
+                print(Style.error("✗ Could not resolve IP for VM '\(name)'."))
+                print(Style.dim("  The VM may still be booting. Try again in a few seconds."))
                 throw ExitCode.failure
             }
 

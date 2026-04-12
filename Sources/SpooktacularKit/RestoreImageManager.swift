@@ -21,7 +21,7 @@ import Virtualization
 ///     named: "my-vm",
 ///     in: vmsDirectory,
 ///     from: ipsw,
-///     spec: VMSpec(cpuCount: 8)
+///     spec: VirtualMachineSpecification(cpuCount: 8)
 /// )
 ///
 /// // 3. Install macOS into the bundle.
@@ -70,18 +70,18 @@ public final class RestoreImageManager: Sendable {
         Log.ipsw.info("Fetching latest supported restore image from Apple")
         let image = try await VZMacOSRestoreImage.latestSupported
 
-        let v = image.operatingSystemVersion
-        Log.ipsw.info("Latest IPSW: macOS \(v.majorVersion, privacy: .public).\(v.minorVersion, privacy: .public).\(v.patchVersion, privacy: .public) (build \(image.buildVersion, privacy: .public))")
+        let version = image.operatingSystemVersion
+        Log.ipsw.info("Latest IPSW: macOS \(version.majorVersion, privacy: .public).\(version.minorVersion, privacy: .public).\(version.patchVersion, privacy: .public) (build \(image.buildVersion, privacy: .public))")
 
         let result = Compatibility.check(
             imageVersion: image.operatingSystemVersion
         )
         if let message = result.errorMessage {
-            Log.compat.error("Version mismatch: \(message, privacy: .public)")
+            Log.compatibility.error("Version mismatch: \(message, privacy: .public)")
             throw RestoreImageError.incompatibleHost(message: message)
         }
 
-        Log.compat.info("Host version compatible with IPSW")
+        Log.compatibility.info("Host version compatible with IPSW")
         return image
     }
 
@@ -110,16 +110,19 @@ public final class RestoreImageManager: Sendable {
 
         // Return cached file if it exists.
         if fileManager.fileExists(atPath: localURL.path) {
+            Log.ipsw.info("Using cached IPSW at \(localURL.lastPathComponent, privacy: .public)")
             return localURL
         }
 
         // Download the IPSW.
+        Log.ipsw.info("Downloading IPSW from \(restoreImage.url.lastPathComponent, privacy: .public)")
         let (tempURL, _) = try await URLSession.shared.download(
             from: restoreImage.url,
             delegate: DownloadProgressDelegate(handler: progress)
         )
 
         try fileManager.moveItem(at: tempURL, to: localURL)
+        Log.ipsw.notice("IPSW download complete: \(localURL.lastPathComponent, privacy: .public)")
         return localURL
     }
 
@@ -143,17 +146,20 @@ public final class RestoreImageManager: Sendable {
         named name: String,
         in directory: URL,
         from restoreImage: VZMacOSRestoreImage,
-        spec: VMSpec
-    ) throws -> VMBundle {
+        spec: VirtualMachineSpecification
+    ) throws -> VirtualMachineBundle {
         guard let requirements = restoreImage.mostFeaturefulSupportedConfiguration else {
+            Log.ipsw.error("No supported configuration found in restore image for this host")
             throw RestoreImageError.unsupportedHost
         }
         guard requirements.hardwareModel.isSupported else {
+            Log.ipsw.error("Hardware model from restore image is not supported on this Mac")
             throw RestoreImageError.unsupportedHardwareModel
         }
 
+        Log.ipsw.info("Creating bundle '\(name, privacy: .public)' with platform artifacts")
         let bundleURL = directory.appendingPathComponent("\(name).vm")
-        let bundle = try VMBundle.create(at: bundleURL, spec: spec)
+        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
 
         // Save hardware model.
         try requirements.hardwareModel.dataRepresentation.write(
@@ -177,6 +183,7 @@ public final class RestoreImageManager: Sendable {
         let diskURL = bundleURL.appendingPathComponent("disk.img")
         try createSparseImage(at: diskURL, sizeInBytes: spec.diskSizeInBytes)
 
+        Log.ipsw.notice("Bundle '\(name, privacy: .public)' created with platform artifacts")
         return bundle
     }
 
@@ -196,14 +203,15 @@ public final class RestoreImageManager: Sendable {
     ///     fraction completed (0.0–1.0).
     @MainActor
     public func install(
-        bundle: VMBundle,
+        bundle: VirtualMachineBundle,
         from ipswURL: URL,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws {
+        Log.ipsw.info("Starting macOS installation into '\(bundle.url.lastPathComponent, privacy: .public)' from \(ipswURL.lastPathComponent, privacy: .public)")
         let config = VZVirtualMachineConfiguration()
-        VMConfiguration.applySpec(bundle.spec, to: config)
-        try VMConfiguration.applyPlatform(from: bundle, to: config)
-        try VMConfiguration.applyStorage(from: bundle, to: config)
+        VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
+        try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
+        try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
         try config.validate()
 
         let vm = VZVirtualMachine(configuration: config)
@@ -222,6 +230,7 @@ public final class RestoreImageManager: Sendable {
 
         try await installer.install()
         observation.invalidate()
+        Log.ipsw.notice("macOS installation complete for '\(bundle.url.lastPathComponent, privacy: .public)'")
     }
 
     // MARK: - Private
@@ -263,6 +272,17 @@ public enum RestoreImageError: Error, Sendable, LocalizedError {
             "The hardware model from the restore image is not supported on this Mac."
         case .incompatibleHost(let message):
             message
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .unsupportedHost:
+            "Check Apple's supported hardware list. You may need a newer Apple Silicon Mac to run this macOS version."
+        case .unsupportedHardwareModel:
+            "The IPSW restore image targets hardware not present on this Mac. Try downloading a different macOS version."
+        case .incompatibleHost:
+            "Update your Mac to a macOS version equal to or newer than the guest version, then retry."
         }
     }
 }

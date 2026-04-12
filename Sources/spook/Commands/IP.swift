@@ -31,23 +31,24 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
             guard PIDFile.isRunning(bundleURL: bundleURL) else {
-                print("Error: VM '\(name)' is not running. Start it with 'spook start \(name)'.")
+                print(Style.error("✗ VM '\(name)' is not running."))
+                print(Style.dim("  Start it with 'spook start \(name)'."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
             guard let macAddress = bundle.spec.macAddress else {
-                print("Error: VM '\(name)' has no configured MAC address.")
-                print("The Virtualization framework assigns a random MAC at runtime.")
-                print("")
-                print("To enable IP resolution, set a stable MAC address:")
-                print("  spook set \(name) --mac-address $(uuidgen | sed 's/-//g' | head -c 12 | sed 's/../&:/g;s/:$//' | sed 's/^../02/')")
+                print(Style.error("✗ VM '\(name)' has no configured MAC address."))
+                print(Style.dim("  The Virtualization framework assigns a random MAC at runtime."))
+                print(Style.dim("  To enable IP resolution, set a stable MAC address:"))
+                print(Style.dim("  spook set \(name) --mac-address $(uuidgen | sed 's/-//g' | head -c 12 | sed 's/../&:/g;s/:$//' | sed 's/^../02/')"))
                 throw ExitCode.failure
             }
 
@@ -56,8 +57,8 @@ extension Spook {
             if let ip {
                 print(ip)
             } else {
-                print("Error: Could not resolve IP for VM '\(name)' (MAC: \(macAddress)).")
-                print("The VM may still be booting or may not have a network address yet.")
+                print(Style.error("✗ Could not resolve IP for VM '\(name)' (MAC: \(macAddress))."))
+                print(Style.dim("  The VM may still be booting or may not have a network address yet."))
                 throw ExitCode.failure
             }
         }

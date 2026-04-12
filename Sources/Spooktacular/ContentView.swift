@@ -120,7 +120,7 @@ struct ContentView: View {
 struct VMInspectorView: View {
 
     let name: String
-    let bundle: VMBundle
+    let bundle: VirtualMachineBundle
 
     var body: some View {
         Form {
@@ -298,7 +298,7 @@ struct VMInspectorView: View {
     private var networkLabel: String {
         switch bundle.spec.networkMode {
         case .nat: "NAT"
-        case .bridged(let iface): "Bridged (\(iface))"
+        case .bridged(let interface): "Bridged (\(interface))"
         case .isolated: "Isolated"
         case .hostOnly: "Host-only"
         }

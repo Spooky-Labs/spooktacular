@@ -6,32 +6,40 @@ on:
 
 jobs:
   release:
-    name: Build & Submit to App Store
+    name: Build, Notarize & Submit to App Store
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run tests
-        run: swift test
-
-      - name: Build .app bundle
-        run: |
-          chmod +x build-app.sh
-          ./build-app.sh release
-
-      - name: Package for distribution
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
-
       - name: Install Fastlane
         run: gem install fastlane
 
-      - name: Submit to App Store
+      - name: Sync code signing via match
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+        run: fastlane signing
+        working-directory: fastlane
+
+      - name: Submit to App Store (test + sign + build + notarize + deliver)
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
         run: fastlane release submit:true
+        working-directory: fastlane
+
+      - name: Build Homebrew package (notarized zip)
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: fastlane homebrew
         working-directory: fastlane
 
       - name: Create GitHub Release

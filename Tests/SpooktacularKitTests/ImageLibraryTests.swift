@@ -27,10 +27,10 @@ struct ImageLibraryTests {
         defer { try? FileManager.default.removeItem(at: dir) }
 
         // Create a small temp file to act as the IPSW.
-        let fm = FileManager.default
-        let ipswDir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try fm.createDirectory(at: ipswDir, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: ipswDir) }
+        let fileManager = FileManager.default
+        let ipswDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fileManager.createDirectory(at: ipswDir, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: ipswDir) }
 
         let ipswURL = ipswDir.appendingPathComponent("test.ipsw")
         try Data("fake-ipsw-content".utf8).write(to: ipswURL)
@@ -45,14 +45,14 @@ struct ImageLibraryTests {
 
         if case .ipsw(let path) = library.images[0].source {
             #expect(path.hasSuffix("test.ipsw"))
-            #expect(fm.fileExists(atPath: path))
+            #expect(fileManager.fileExists(atPath: path))
         } else {
             Issue.record("Expected .ipsw source")
         }
 
         // Verify persistence: the file was copied into the library directory.
         let copiedPath = dir.appendingPathComponent("test.ipsw").path
-        #expect(fm.fileExists(atPath: copiedPath))
+        #expect(fileManager.fileExists(atPath: copiedPath))
 
         // Verify size was captured.
         #expect(library.images[0].sizeInBytes != nil)

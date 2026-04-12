@@ -34,8 +34,8 @@ enum Style {
 
     // MARK: - ANSI Codes
 
-    private static let esc = "\u{001B}["
-    private static let reset = "\(esc)0m"
+    private static let escapePrefix = "\u{001B}["
+    private static let reset = "\u{001B}[0m"
 
     // MARK: - Semantic Styles
 
@@ -137,12 +137,12 @@ enum Style {
         let empty = width - filled
         let bar = String(repeating: "█", count: filled)
             + String(repeating: "░", count: empty)
-        let pct = String(format: "%3.0f%%", fraction * 100)
+        let percentage = String(format: "%3.0f%%", fraction * 100)
 
         if label.isEmpty {
-            return "\(info(bar)) \(pct)"
+            return "\(info(bar)) \(percentage)"
         } else {
-            return "\(label) \(info(bar)) \(pct)"
+            return "\(label) \(info(bar)) \(percentage)"
         }
     }
 
@@ -183,7 +183,7 @@ enum Style {
     static func networkLabel(_ mode: NetworkMode) -> String {
         switch mode {
         case .nat: dim("nat")
-        case .bridged(let iface): info("bridged:\(iface)")
+        case .bridged(let interface): info("bridged:\(interface)")
         case .isolated: yellow("isolated")
         case .hostOnly: dim("host-only")
         }
@@ -193,7 +193,7 @@ enum Style {
     static func networkRaw(_ mode: NetworkMode) -> String {
         switch mode {
         case .nat: "nat"
-        case .bridged(let iface): "bridged:\(iface)"
+        case .bridged(let interface): "bridged:\(interface)"
         case .isolated: "isolated"
         case .hostOnly: "host-only"
         }
@@ -203,6 +203,6 @@ enum Style {
 
     private static func styled(_ text: String, codes: String) -> String {
         guard isEnabled else { return text }
-        return "\(esc)\(codes)m\(text)\(reset)"
+        return "\(escapePrefix)\(codes)m\(text)\(reset)"
     }
 }

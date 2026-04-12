@@ -27,8 +27,8 @@ enum Paths {
 
     /// Ensures the standard directories exist.
     static func ensureDirectories() throws {
-        let fm = FileManager.default
-        try fm.createDirectory(at: vms, withIntermediateDirectories: true)
-        try fm.createDirectory(at: ipswCache, withIntermediateDirectories: true)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: vms, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: ipswCache, withIntermediateDirectories: true)
     }
 }

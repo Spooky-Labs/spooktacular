@@ -70,30 +70,33 @@ extension Spook.Share {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
-                print("Error: Directory not found at '\(path)'.")
+                print(Style.error("✗ Directory not found at '\(path)'."))
+                print(Style.dim("  Verify the path exists and is accessible."))
                 throw ExitCode.failure
             }
             guard isDir.boolValue else {
-                print("Error: '\(path)' is not a directory.")
+                print(Style.error("✗ '\(path)' is not a directory."))
+                print(Style.dim("  Shared folders must be directories, not files."))
                 throw ExitCode.failure
             }
 
             let shareTag = tag ?? URL(fileURLWithPath: path).lastPathComponent
 
             // Load the bundle and append the new shared folder.
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let newFolder = SharedFolder(
                 hostPath: path,
                 tag: shareTag,
                 readOnly: readOnly
             )
-            let updatedSpec = VMSpec(
+            let updatedSpec = VirtualMachineSpecification(
                 cpuCount: bundle.spec.cpuCount,
                 memorySizeInBytes: bundle.spec.memorySizeInBytes,
                 diskSizeInBytes: bundle.spec.diskSizeInBytes,
@@ -106,9 +109,9 @@ extension Spook.Share {
                 autoResizeDisplay: bundle.spec.autoResizeDisplay,
                 clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
             )
-            let configData = try VMBundle.encoder.encode(updatedSpec)
+            let configData = try VirtualMachineBundle.encoder.encode(updatedSpec)
             try configData.write(
-                to: bundleURL.appendingPathComponent(VMBundle.configFileName)
+                to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName)
             )
 
             print(Style.success("✓ Added shared folder '\(shareTag)' to VM '\(name)'."))
@@ -143,20 +146,22 @@ extension Spook.Share {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
             // Load the bundle and filter out the matching shared folder.
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let filtered = bundle.spec.sharedFolders.filter { $0.tag != tag }
 
             guard filtered.count < bundle.spec.sharedFolders.count else {
                 print(Style.error("✗ No shared folder with tag '\(tag)' found on VM '\(name)'."))
+                print(Style.dim("  Run 'spook share \(name) list' to see configured shared folders."))
                 throw ExitCode.failure
             }
 
-            let updatedSpec = VMSpec(
+            let updatedSpec = VirtualMachineSpecification(
                 cpuCount: bundle.spec.cpuCount,
                 memorySizeInBytes: bundle.spec.memorySizeInBytes,
                 diskSizeInBytes: bundle.spec.diskSizeInBytes,
@@ -169,9 +174,9 @@ extension Spook.Share {
                 autoResizeDisplay: bundle.spec.autoResizeDisplay,
                 clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
             )
-            let configData = try VMBundle.encoder.encode(updatedSpec)
+            let configData = try VirtualMachineBundle.encoder.encode(updatedSpec)
             try configData.write(
-                to: bundleURL.appendingPathComponent(VMBundle.configFileName)
+                to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName)
             )
 
             print(Style.success("✓ Removed shared folder '\(tag)' from VM '\(name)'."))
@@ -199,11 +204,12 @@ extension Spook.Share {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let folders = bundle.spec.sharedFolders
 
             guard !folders.isEmpty else {

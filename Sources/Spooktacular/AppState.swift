@@ -19,7 +19,7 @@ final class AppState {
     // MARK: - VM Management
 
     /// All known VM bundles, keyed by name.
-    var vms: [String: VMBundle] = [:]
+    var vms: [String: VirtualMachineBundle] = [:]
 
     /// The currently selected VM name in the sidebar.
     var selectedVM: String?
@@ -77,20 +77,20 @@ final class AppState {
         imageLibrary.load()
 
         do {
-            let fm = FileManager.default
-            try fm.createDirectory(at: vmsDirectory, withIntermediateDirectories: true)
-            try fm.createDirectory(at: ipswCacheDirectory, withIntermediateDirectories: true)
+            let fileManager = FileManager.default
+            try fileManager.createDirectory(at: vmsDirectory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: ipswCacheDirectory, withIntermediateDirectories: true)
 
-            let contents = try fm.contentsOfDirectory(
+            let contents = try fileManager.contentsOfDirectory(
                 at: vmsDirectory,
                 includingPropertiesForKeys: nil
             )
 
-            var loaded: [String: VMBundle] = [:]
+            var loaded: [String: VirtualMachineBundle] = [:]
             for url in contents where url.pathExtension == "vm" {
                 let name = url.deletingPathExtension().lastPathComponent
                 do {
-                    let bundle = try VMBundle.load(from: url)
+                    let bundle = try VirtualMachineBundle.load(from: url)
                     loaded[name] = bundle
                 } catch {
                     Log.vm.error("Failed to load bundle '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
@@ -169,8 +169,8 @@ final class AppState {
     func cloneVM(_ source: String, to destination: String) {
         do {
             guard let sourceBundle = vms[source] else { return }
-            let destURL = vmsDirectory.appendingPathComponent("\(destination).vm")
-            let clone = try CloneManager.clone(source: sourceBundle, to: destURL)
+            let destinationURL = vmsDirectory.appendingPathComponent("\(destination).vm")
+            let clone = try CloneManager.clone(source: sourceBundle, to: destinationURL)
             vms[destination] = clone
 
             AccessibilityNotification.Announcement(

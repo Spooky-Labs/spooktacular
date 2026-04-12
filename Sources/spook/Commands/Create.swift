@@ -185,14 +185,15 @@ extension Spook {
 
             let bundleURL = Paths.bundleURL(for: name)
             guard !FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' already exists.")
+                print(Style.error("✗ VM '\(name)' already exists."))
+                print(Style.dim("  Choose a different name, or delete the existing VM with 'spook delete \(name)'."))
                 throw ExitCode.failure
             }
 
             let effectiveNetwork = bridgedInterface.map { NetworkMode.bridged(interface: $0) }
                 ?? network
 
-            let spec = VMSpec(
+            let spec = VirtualMachineSpecification(
                 cpuCount: cpu,
                 memorySizeInBytes: UInt64(memory) * 1024 * 1024 * 1024,
                 diskSizeInBytes: UInt64(disk) * 1024 * 1024 * 1024,
@@ -221,15 +222,16 @@ extension Spook {
                     ipswURL = try await manager.downloadIPSW(
                         from: restoreImage
                     ) { fraction in
-                        let pct = Int(fraction * 100)
-                        print("\r  Progress: \(pct)%", terminator: "")
+                        let percentage = Int(fraction * 100)
+                        print("\r  Progress: \(percentage)%", terminator: "")
                         fflush(stdout)
                     }
                     print()
                 } else {
                     ipswURL = URL(fileURLWithPath: fromIpsw)
                     guard FileManager.default.fileExists(atPath: ipswURL.path) else {
-                        print("Error: IPSW file not found at '\(fromIpsw)'.")
+                        print(Style.error("✗ IPSW file not found at '\(fromIpsw)'."))
+                        print(Style.dim("  Verify the file path exists, or use '--from-ipsw latest' to download automatically."))
                         throw ExitCode.failure
                     }
                 }
@@ -247,8 +249,8 @@ extension Spook {
                     bundle: bundle,
                     from: ipswURL
                 ) { fraction in
-                    let pct = Int(fraction * 100)
-                    print("\r  Installing: \(pct)%", terminator: "")
+                    let percentage = Int(fraction * 100)
+                    print("\r  Installing: \(percentage)%", terminator: "")
                     fflush(stdout)
                 }
                 print()
@@ -258,7 +260,8 @@ extension Spook {
 
                 if githubRunner {
                     guard let repo = githubRepo, let token = githubToken else {
-                        print(Style.error("✗ --github-runner requires --github-repo and --github-token"))
+                        print(Style.error("✗ --github-runner requires --github-repo and --github-token."))
+                        print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token <token>"))
                         throw ExitCode.failure
                     }
                     provisionScript = try GitHubRunnerTemplate.generate(
@@ -293,7 +296,11 @@ extension Spook {
                 print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
 
             } catch {
-                print("Error: \(error.localizedDescription)")
+                print(Style.error("✗ \(error.localizedDescription)"))
+                if let localizedError = error as? LocalizedError,
+                   let recovery = localizedError.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
                 try? FileManager.default.removeItem(at: bundleURL)
                 throw ExitCode.failure
             }

@@ -45,7 +45,7 @@ public enum Log {
     public static let ipsw = Logger(subsystem: subsystem, category: "ipsw")
 
     /// Compatibility checking: host vs image version.
-    public static let compat = Logger(subsystem: subsystem, category: "compat")
+    public static let compatibility = Logger(subsystem: subsystem, category: "compat")
 
     /// Networking: NAT, bridged, isolated, host-only.
     public static let network = Logger(subsystem: subsystem, category: "network")
@@ -58,4 +58,10 @@ public enum Log {
 
     /// App UI: SwiftUI views, sheets, navigation.
     public static let ui = Logger(subsystem: subsystem, category: "ui")
+
+    /// Snapshots: save, restore, list, delete disk-level snapshots.
+    public static let snapshot = Logger(subsystem: subsystem, category: "snapshot")
+
+    /// Capacity: concurrent VM limit enforcement.
+    public static let capacity = Logger(subsystem: subsystem, category: "capacity")
 }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Checks version compatibility between the host macOS
 /// and a macOS restore image (IPSW).
@@ -66,11 +67,9 @@ public enum Compatibility {
             case .hostTooOld(let host, let image):
                 let hostStr = versionString(host)
                 let imageStr = versionString(image)
-                return """
-                    Your macOS (\(hostStr)) cannot install macOS \(imageStr). \
-                    The guest version must be ≤ the host version. \
-                    Update your Mac to macOS \(imageStr) or newer.
-                    """
+                return "Your macOS (\(hostStr)) cannot install macOS \(imageStr). "
+                    + "The guest version must be \u{2264} the host version. "
+                    + "Update your Mac to macOS \(imageStr) or newer."
             }
         }
     }
@@ -98,9 +97,19 @@ public enum Compatibility {
     ) -> Result {
         let host = hostVersion ?? self.hostVersion
 
-        return compare(host, isAtLeast: imageVersion)
+        Log.compatibility.info("Checking compatibility: host \(host.majorVersion, privacy: .public).\(host.minorVersion, privacy: .public).\(host.patchVersion, privacy: .public) vs image \(imageVersion.majorVersion, privacy: .public).\(imageVersion.minorVersion, privacy: .public).\(imageVersion.patchVersion, privacy: .public)")
+
+        let result: Result = compare(host, isAtLeast: imageVersion)
             ? .compatible
             : .hostTooOld(hostVersion: host, imageVersion: imageVersion)
+
+        if result.isCompatible {
+            Log.compatibility.debug("Compatibility check passed")
+        } else {
+            Log.compatibility.error("Compatibility check failed: host too old")
+        }
+
+        return result
     }
 
     // MARK: - Private
@@ -121,9 +130,9 @@ public enum Compatibility {
 
     /// Formats a version as "major.minor.patch".
     private static func versionString(
-        _ v: OperatingSystemVersion
+        _ version: OperatingSystemVersion
     ) -> String {
-        "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+        "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
     }
 }
 

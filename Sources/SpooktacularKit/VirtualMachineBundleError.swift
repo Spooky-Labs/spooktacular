@@ -7,7 +7,7 @@ import Foundation
 /// Conforms to `LocalizedError` so that `.localizedDescription`
 /// returns the same user-facing message in the CLI, GUI, API,
 /// and Kubernetes operator.
-public enum VMBundleError: Error, Sendable, Equatable, LocalizedError {
+public enum VirtualMachineBundleError: Error, Sendable, Equatable, LocalizedError {
 
     /// The bundle directory does not exist at the given URL.
     ///
@@ -17,7 +17,7 @@ public enum VMBundleError: Error, Sendable, Equatable, LocalizedError {
 
     /// A bundle already exists at the given URL.
     ///
-    /// Returned when ``VMBundle/create(at:spec:)`` is called
+    /// Returned when ``VirtualMachineBundle/create(at:spec:)`` is called
     /// with a path that is already occupied.
     ///
     /// - Parameter url: The path where the bundle already exists.
@@ -40,13 +40,26 @@ public enum VMBundleError: Error, Sendable, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .notFound(let url):
-            "VM bundle not found at \(url.lastPathComponent)."
+            "VM bundle not found at '\(url.lastPathComponent)'."
         case .alreadyExists(let url):
-            "A VM bundle already exists at \(url.lastPathComponent)."
+            "A VM bundle already exists at '\(url.lastPathComponent)'."
         case .invalidConfiguration(let url):
-            "Invalid configuration in VM bundle \(url.lastPathComponent). The config.json file is missing or corrupt."
+            "Invalid configuration in VM bundle '\(url.lastPathComponent)'. The config.json file is missing or corrupt."
         case .invalidMetadata(let url):
-            "Invalid metadata in VM bundle \(url.lastPathComponent). The metadata.json file is missing or corrupt."
+            "Invalid metadata in VM bundle '\(url.lastPathComponent)'. The metadata.json file is missing or corrupt."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .notFound:
+            "Run 'spook list' to see available virtual machines, or 'spook create <name>' to create a new one."
+        case .alreadyExists:
+            "Choose a different name, or delete the existing bundle with 'spook delete <name>'."
+        case .invalidConfiguration:
+            "The bundle's config.json may be corrupted. Delete the bundle with 'spook delete <name>' and recreate it."
+        case .invalidMetadata:
+            "The bundle's metadata.json may be corrupted. Delete the bundle with 'spook delete <name>' and recreate it."
         }
     }
 }

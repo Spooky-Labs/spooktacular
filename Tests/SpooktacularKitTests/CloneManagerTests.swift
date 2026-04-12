@@ -6,11 +6,11 @@ import Foundation
 struct CloneManagerTests {
 
     /// Creates a temporary bundle with a fake disk image for testing.
-    private func makeTestBundle() throws -> (VMBundle, URL) {
+    private func makeTestBundle() throws -> (VirtualMachineBundle, URL) {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let bundleURL = tempDir.appendingPathComponent("source.vm")
-        let bundle = try VMBundle.create(at: bundleURL, spec: VMSpec(cpuCount: 6))
+        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(cpuCount: 6))
 
         // Write fake disk.img and platform artifacts
         let diskURL = bundleURL.appendingPathComponent("disk.img")
@@ -72,11 +72,11 @@ struct CloneManagerTests {
         // Simulate a source where setup is already done
         var updatedMetadata = source.metadata
         updatedMetadata.setupCompleted = true
-        try VMBundle.writeMetadata(updatedMetadata, to: source.url)
+        try VirtualMachineBundle.writeMetadata(updatedMetadata, to: source.url)
 
         let destURL = tempDir.appendingPathComponent("clone.vm")
         let clone = try CloneManager.clone(
-            source: try VMBundle.load(from: source.url),
+            source: try VirtualMachineBundle.load(from: source.url),
             to: destURL
         )
 
@@ -147,7 +147,7 @@ struct CloneManagerTests {
                 "Machine identifier MUST differ — reusing causes undefined behavior")
     }
 
-    @Test("Clone can be loaded back as a valid VMBundle")
+    @Test("Clone can be loaded back as a valid VirtualMachineBundle")
     func cloneIsLoadable() throws {
         let (source, tempDir) = try makeTestBundle()
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -155,7 +155,7 @@ struct CloneManagerTests {
         let destURL = tempDir.appendingPathComponent("clone.vm")
         _ = try CloneManager.clone(source: source, to: destURL)
 
-        let loaded = try VMBundle.load(from: destURL)
+        let loaded = try VirtualMachineBundle.load(from: destURL)
         #expect(loaded.spec == source.spec)
         #expect(loaded.metadata.id != source.metadata.id)
     }
@@ -171,7 +171,7 @@ struct CloneManagerTests {
         #expect {
             try CloneManager.clone(source: source, to: destURL)
         } throws: { error in
-            guard let bundleError = error as? VMBundleError else { return false }
+            guard let bundleError = error as? VirtualMachineBundleError else { return false }
             return bundleError == .alreadyExists(url: destURL)
         }
     }
@@ -184,7 +184,7 @@ struct CloneManagerTests {
 
         // Create a minimal bundle with NO disk.img or auxiliary.bin
         let sourceURL = tempDir.appendingPathComponent("sparse.vm")
-        let source = try VMBundle.create(at: sourceURL, spec: VMSpec())
+        let source = try VirtualMachineBundle.create(at: sourceURL, spec: VirtualMachineSpecification())
 
         // Only write machine-identifier.bin (required for clone to write new one)
         try Data("fake-mid".utf8).write(

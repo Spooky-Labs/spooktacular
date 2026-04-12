@@ -41,7 +41,7 @@ import os
 /// ## Example
 ///
 /// ```swift
-/// let bundle = try VMBundle.load(from: bundleURL)
+/// let bundle = try VirtualMachineBundle.load(from: bundleURL)
 ///
 /// // Save a snapshot
 /// try SnapshotManager.save(bundle: bundle, label: "clean-install")
@@ -85,39 +85,41 @@ public enum SnapshotManager {
     ///   snapshot with this label already exists.
     ///   ``SnapshotError/fileNotFound(path:)`` if `disk.img` is
     ///   missing from the bundle.
-    public static func save(bundle: VMBundle, label: String) throws {
-        let fm = FileManager.default
+    public static func save(bundle: VirtualMachineBundle, label: String) throws {
+        Log.snapshot.info("Saving snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public)")
+        let fileManager = FileManager.default
 
         let savedStatesURL = bundle.url.appendingPathComponent(savedStatesDirectory)
         let snapshotURL = savedStatesURL.appendingPathComponent(label)
 
-        guard !fm.fileExists(atPath: snapshotURL.path) else {
-            Log.vm.error("Snapshot '\(label, privacy: .public)' already exists for \(bundle.url.lastPathComponent, privacy: .public)")
+        guard !fileManager.fileExists(atPath: snapshotURL.path) else {
+            Log.snapshot.error("Snapshot '\(label, privacy: .public)' already exists for \(bundle.url.lastPathComponent, privacy: .public)")
             throw SnapshotError.alreadyExists(label: label)
         }
 
         // Verify disk.img exists before creating anything.
         let diskURL = bundle.url.appendingPathComponent("disk.img")
-        guard fm.fileExists(atPath: diskURL.path) else {
+        guard fileManager.fileExists(atPath: diskURL.path) else {
+            Log.snapshot.error("Snapshot failed: disk.img not found at \(diskURL.path, privacy: .public)")
             throw SnapshotError.fileNotFound(path: diskURL.path)
         }
 
-        try fm.createDirectory(at: snapshotURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: snapshotURL, withIntermediateDirectories: true)
 
         do {
             var totalSize: UInt64 = 0
 
             for fileName in snapshotFiles {
                 let sourceFile = bundle.url.appendingPathComponent(fileName)
-                let destFile = snapshotURL.appendingPathComponent(fileName)
+                let destinationFile = snapshotURL.appendingPathComponent(fileName)
 
-                guard fm.fileExists(atPath: sourceFile.path) else {
+                guard fileManager.fileExists(atPath: sourceFile.path) else {
                     continue
                 }
 
-                try fm.copyItem(at: sourceFile, to: destFile)
+                try fileManager.copyItem(at: sourceFile, to: destinationFile)
 
-                let attrs = try fm.attributesOfItem(atPath: destFile.path)
+                let attrs = try fileManager.attributesOfItem(atPath: destinationFile.path)
                 totalSize += (attrs[.size] as? UInt64) ?? 0
             }
 
@@ -127,14 +129,14 @@ public enum SnapshotManager {
                 createdAt: Date(),
                 sizeInBytes: totalSize
             )
-            let data = try VMBundle.encoder.encode(info)
+            let data = try VirtualMachineBundle.encoder.encode(info)
             try data.write(to: snapshotURL.appendingPathComponent(infoFileName))
 
-            Log.vm.info("Saved snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public) (\(totalSize) bytes)")
+            Log.snapshot.notice("Saved snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public) (\(totalSize) bytes)")
         } catch {
             // Clean up partial snapshot on failure.
-            Log.vm.error("Snapshot save failed, cleaning up: \(error.localizedDescription, privacy: .public)")
-            try? fm.removeItem(at: snapshotURL)
+            Log.snapshot.error("Snapshot save failed, cleaning up: \(error.localizedDescription, privacy: .public)")
+            try? fileManager.removeItem(at: snapshotURL)
             throw error
         }
     }
@@ -151,13 +153,15 @@ public enum SnapshotManager {
     ///   - label: The label of the snapshot to restore.
     /// - Throws: ``SnapshotError/notFound(label:)`` if no snapshot
     ///   with the given label exists.
-    public static func restore(bundle: VMBundle, label: String) throws {
-        let fm = FileManager.default
+    public static func restore(bundle: VirtualMachineBundle, label: String) throws {
+        Log.snapshot.info("Restoring snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public)")
+        let fileManager = FileManager.default
 
         let savedStatesURL = bundle.url.appendingPathComponent(savedStatesDirectory)
         let snapshotURL = savedStatesURL.appendingPathComponent(label)
 
-        guard fm.fileExists(atPath: snapshotURL.path) else {
+        guard fileManager.fileExists(atPath: snapshotURL.path) else {
+            Log.snapshot.error("Snapshot '\(label, privacy: .public)' not found for \(bundle.url.lastPathComponent, privacy: .public)")
             throw SnapshotError.notFound(label: label)
         }
 
@@ -165,19 +169,19 @@ public enum SnapshotManager {
             let snapshotFile = snapshotURL.appendingPathComponent(fileName)
             let bundleFile = bundle.url.appendingPathComponent(fileName)
 
-            guard fm.fileExists(atPath: snapshotFile.path) else {
+            guard fileManager.fileExists(atPath: snapshotFile.path) else {
                 continue
             }
 
             // Remove the current file, then copy from snapshot.
-            if fm.fileExists(atPath: bundleFile.path) {
-                try fm.removeItem(at: bundleFile)
+            if fileManager.fileExists(atPath: bundleFile.path) {
+                try fileManager.removeItem(at: bundleFile)
             }
 
-            try fm.copyItem(at: snapshotFile, to: bundleFile)
+            try fileManager.copyItem(at: snapshotFile, to: bundleFile)
         }
 
-        Log.vm.info("Restored snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public)")
+        Log.snapshot.notice("Restored snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public)")
     }
 
     // MARK: - List
@@ -189,15 +193,17 @@ public enum SnapshotManager {
     ///
     /// - Parameter bundle: The VM bundle to list snapshots for.
     /// - Returns: An array of ``SnapshotInfo`` sorted by label.
-    public static func list(bundle: VMBundle) throws -> [SnapshotInfo] {
-        let fm = FileManager.default
+    public static func list(bundle: VirtualMachineBundle) throws -> [SnapshotInfo] {
+        Log.snapshot.debug("Listing snapshots for \(bundle.url.lastPathComponent, privacy: .public)")
+        let fileManager = FileManager.default
         let savedStatesURL = bundle.url.appendingPathComponent(savedStatesDirectory)
 
-        guard fm.fileExists(atPath: savedStatesURL.path) else {
+        guard fileManager.fileExists(atPath: savedStatesURL.path) else {
+            Log.snapshot.debug("No SavedStates directory for \(bundle.url.lastPathComponent, privacy: .public)")
             return []
         }
 
-        let contents = try fm.contentsOfDirectory(
+        let contents = try fileManager.contentsOfDirectory(
             at: savedStatesURL,
             includingPropertiesForKeys: nil
         )
@@ -206,16 +212,18 @@ public enum SnapshotManager {
 
         for dir in contents {
             let infoURL = dir.appendingPathComponent(infoFileName)
-            guard fm.fileExists(atPath: infoURL.path) else {
+            guard fileManager.fileExists(atPath: infoURL.path) else {
                 continue
             }
 
             let data = try Data(contentsOf: infoURL)
-            let info = try VMBundle.decoder.decode(SnapshotInfo.self, from: data)
+            let info = try VirtualMachineBundle.decoder.decode(SnapshotInfo.self, from: data)
             snapshots.append(info)
         }
 
-        return snapshots.sorted { $0.label < $1.label }
+        let sorted = snapshots.sorted { $0.label < $1.label }
+        Log.snapshot.debug("Found \(sorted.count) snapshot(s) for \(bundle.url.lastPathComponent, privacy: .public)")
+        return sorted
     }
 
     // MARK: - Delete
@@ -230,18 +238,20 @@ public enum SnapshotManager {
     ///   - label: The label of the snapshot to delete.
     /// - Throws: ``SnapshotError/notFound(label:)`` if no snapshot
     ///   with the given label exists.
-    public static func delete(bundle: VMBundle, label: String) throws {
-        let fm = FileManager.default
+    public static func delete(bundle: VirtualMachineBundle, label: String) throws {
+        Log.snapshot.info("Deleting snapshot '\(label, privacy: .public)' from \(bundle.url.lastPathComponent, privacy: .public)")
+        let fileManager = FileManager.default
 
         let savedStatesURL = bundle.url.appendingPathComponent(savedStatesDirectory)
         let snapshotURL = savedStatesURL.appendingPathComponent(label)
 
-        guard fm.fileExists(atPath: snapshotURL.path) else {
+        guard fileManager.fileExists(atPath: snapshotURL.path) else {
+            Log.snapshot.error("Snapshot '\(label, privacy: .public)' not found for deletion in \(bundle.url.lastPathComponent, privacy: .public)")
             throw SnapshotError.notFound(label: label)
         }
 
-        try fm.removeItem(at: snapshotURL)
-        Log.vm.info("Deleted snapshot '\(label, privacy: .public)' from \(bundle.url.lastPathComponent, privacy: .public)")
+        try fileManager.removeItem(at: snapshotURL)
+        Log.snapshot.info("Deleted snapshot '\(label, privacy: .public)' from \(bundle.url.lastPathComponent, privacy: .public)")
     }
 }
 
@@ -300,9 +310,22 @@ public enum SnapshotError: Error, Sendable, Equatable, LocalizedError {
         case .notFound(let label):
             "Snapshot '\(label)' not found."
         case .fileNotFound(let path):
-            "Required file not found: \(path)"
+            "Required file not found: \(path)."
         case .vmIsRunning:
-            "Cannot snapshot a running VM. Stop the VM first."
+            "Cannot snapshot a running VM."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .alreadyExists(let label):
+            "Choose a different label, or delete the existing snapshot with 'spook snapshot delete <vm> \(label)'."
+        case .notFound:
+            "Run 'spook snapshots <vm>' to see available snapshots."
+        case .fileNotFound:
+            "The VM bundle may be corrupted. Recreate it with 'spook delete <name>' and 'spook create <name>'."
+        case .vmIsRunning:
+            "Stop the VM first with 'spook stop <name>', then retry the snapshot operation."
         }
     }
 }

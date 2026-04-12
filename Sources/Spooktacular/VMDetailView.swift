@@ -89,7 +89,7 @@ struct VMDisplayView: NSViewRepresentable {
 struct VMLaunchView: View {
 
     let name: String
-    let bundle: VMBundle
+    let bundle: VirtualMachineBundle
     @Environment(AppState.self) private var appState
 
     var body: some View {
@@ -119,12 +119,12 @@ struct VMLaunchView: View {
             }
 
             // Quick spec summary (one line)
-            let memGB = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
-            let diskGB = bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)
+            let memoryInGigabytes = bundle.spec.memorySizeInBytes / (1024 * 1024 * 1024)
+            let diskSizeInGigabytes = bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)
             HStack(spacing: 16) {
                 Label("\(bundle.spec.cpuCount) cores", systemImage: "cpu")
-                Label("\(memGB) GB", systemImage: "memorychip")
-                Label("\(diskGB) GB", systemImage: "internaldrive")
+                Label("\(memoryInGigabytes) GB", systemImage: "memorychip")
+                Label("\(diskSizeInGigabytes) GB", systemImage: "internaldrive")
                 Label(
                     "\(bundle.spec.displayCount)",
                     systemImage: "display"

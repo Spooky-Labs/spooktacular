@@ -24,8 +24,8 @@ struct CreateVMSheet: View {
 
     @State private var name = ""
     @State private var cpuCount: Double = 4
-    @State private var memoryGB: Double = 8
-    @State private var diskGB: Double = 64
+    @State private var memorySizeInGigabytes: Double = 8
+    @State private var diskSizeInGigabytes: Double = 64
     @State private var displayCount = 1
     @State private var autoResizeDisplay = true
     @State private var networkMode = NetworkMode.nat
@@ -140,8 +140,8 @@ struct CreateVMSheet: View {
                     HStack {
                         Text("Memory")
                             .frame(width: 70, alignment: .leading)
-                        Slider(value: $memoryGB, in: 4...64, step: 4)
-                        Text("\(Int(memoryGB)) GB")
+                        Slider(value: $memorySizeInGigabytes, in: 4...64, step: 4)
+                        Text("\(Int(memorySizeInGigabytes)) GB")
                             .monospacedDigit()
                             .frame(width: 45, alignment: .trailing)
                     }
@@ -149,8 +149,8 @@ struct CreateVMSheet: View {
                     HStack {
                         Text("Disk")
                             .frame(width: 70, alignment: .leading)
-                        Slider(value: $diskGB, in: 32...500, step: 32)
-                        Text("\(Int(diskGB)) GB")
+                        Slider(value: $diskSizeInGigabytes, in: 32...500, step: 32)
+                        Text("\(Int(diskSizeInGigabytes)) GB")
                             .monospacedDigit()
                             .frame(width: 45, alignment: .trailing)
                     }
@@ -394,10 +394,10 @@ struct CreateVMSheet: View {
         isCreating = true
         errorMessage = nil
 
-        let spec = VMSpec(
+        let spec = VirtualMachineSpecification(
             cpuCount: Int(cpuCount),
-            memorySizeInBytes: UInt64(memoryGB) * 1024 * 1024 * 1024,
-            diskSizeInBytes: UInt64(diskGB) * 1024 * 1024 * 1024,
+            memorySizeInBytes: UInt64(memorySizeInGigabytes) * 1024 * 1024 * 1024,
+            diskSizeInBytes: UInt64(diskSizeInGigabytes) * 1024 * 1024 * 1024,
             displayCount: displayCount,
             networkMode: networkMode,
             audioEnabled: audioEnabled,
@@ -415,15 +415,15 @@ struct CreateVMSheet: View {
             statusMessage = "Fetching restore image info…"
             progress = 0
             let restoreImage = try await manager.fetchLatestSupported()
-            let v = restoreImage.operatingSystemVersion
-            statusMessage = "Found macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+            let version = restoreImage.operatingSystemVersion
+            statusMessage = "Found macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
             progress = 0.05
 
             statusMessage = "Downloading IPSW…"
-            let ipswURL = try await manager.downloadIPSW(from: restoreImage) { frac in
+            let ipswURL = try await manager.downloadIPSW(from: restoreImage) { fractionCompleted in
                 Task { @MainActor in
-                    progress = 0.05 + frac * 0.45
-                    statusMessage = "Downloading IPSW (\(Int(frac * 100))%)…"
+                    progress = 0.05 + fractionCompleted * 0.45
+                    statusMessage = "Downloading IPSW (\(Int(fractionCompleted * 100))%)…"
                 }
             }
 
@@ -436,10 +436,10 @@ struct CreateVMSheet: View {
 
             statusMessage = "Installing macOS…"
             progress = 0.55
-            try await manager.install(bundle: bundle, from: ipswURL) { frac in
+            try await manager.install(bundle: bundle, from: ipswURL) { fractionCompleted in
                 Task { @MainActor in
-                    progress = 0.55 + frac * 0.45
-                    statusMessage = "Installing macOS (\(Int(frac * 100))%)…"
+                    progress = 0.55 + fractionCompleted * 0.45
+                    statusMessage = "Installing macOS (\(Int(fractionCompleted * 100))%)…"
                 }
             }
 

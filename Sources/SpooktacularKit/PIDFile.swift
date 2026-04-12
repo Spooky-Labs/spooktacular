@@ -74,8 +74,10 @@ public enum PIDFile {
               let string = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
               let pid = Int32(string)
         else {
+            Log.vm.debug("No PID file found in \(bundleURL.lastPathComponent, privacy: .public)")
             return nil
         }
+        Log.vm.debug("Read PID \(pid) from \(bundleURL.lastPathComponent, privacy: .public)")
         return pid
     }
 
@@ -103,6 +105,10 @@ public enum PIDFile {
     ///   live process.
     public static func isRunning(bundleURL: URL) -> Bool {
         guard let pid = read(from: bundleURL) else { return false }
-        return isProcessAlive(pid)
+        let alive = isProcessAlive(pid)
+        if !alive {
+            Log.vm.debug("Stale PID \(pid) in \(bundleURL.lastPathComponent, privacy: .public) — process no longer running")
+        }
+        return alive
     }
 }

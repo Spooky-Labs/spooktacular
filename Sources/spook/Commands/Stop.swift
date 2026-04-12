@@ -38,7 +38,8 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
@@ -54,11 +55,11 @@ extension Spook {
                 return
             }
 
-            let sig: Int32 = force ? SIGKILL : SIGTERM
-            let sigName = force ? "SIGKILL" : "SIGTERM"
+            let signalNumber: Int32 = force ? SIGKILL : SIGTERM
+            let signalName = force ? "SIGKILL" : "SIGTERM"
 
-            print("Sending \(sigName) to VM '\(name)' (PID \(pid))...")
-            let result = kill(pid, sig)
+            print("Sending \(signalName) to VM '\(name)' (PID \(pid))...")
+            let result = kill(pid, signalNumber)
 
             if result == 0 {
                 print(Style.success("✓ Signal sent. VM '\(name)' is stopping."))
@@ -69,10 +70,10 @@ extension Spook {
                     PIDFile.remove(from: bundleURL)
                 }
             } else {
-                let errCode = errno
-                print(Style.error("✗ Failed to send signal to PID \(pid): errno \(errCode)"))
+                let errorCode = errno
+                print(Style.error("✗ Failed to send signal to PID \(pid): errno \(errorCode)"))
                 // Clean up stale PID file if the process no longer exists.
-                if errCode == ESRCH {
+                if errorCode == ESRCH {
                     PIDFile.remove(from: bundleURL)
                     print("Cleaned up stale PID file.")
                 }

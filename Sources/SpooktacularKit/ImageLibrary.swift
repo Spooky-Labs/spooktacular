@@ -6,7 +6,7 @@ import os
 /// Images can be either local IPSW files or OCI references.
 /// The library tracks which images are cached on disk and
 /// available for instant VM creation.
-public struct VMImage: Sendable, Codable, Equatable, Identifiable {
+public struct VirtualMachineImage: Sendable, Codable, Equatable, Identifiable {
 
     /// Unique identifier for this image.
     public let id: UUID
@@ -68,7 +68,7 @@ public final class ImageLibrary: @unchecked Sendable {
     public let directory: URL
 
     /// All known images.
-    public private(set) var images: [VMImage] = []
+    public private(set) var images: [VirtualMachineImage] = []
 
     /// Path to the library index file.
     private var indexURL: URL {
@@ -81,16 +81,18 @@ public final class ImageLibrary: @unchecked Sendable {
 
     /// Loads the image library from disk.
     public func load() {
-        let fm = FileManager.default
+        Log.images.info("Loading image library from \(self.directory.path, privacy: .public)")
+        let fileManager = FileManager.default
         do {
-            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
             Log.images.error("Failed to create image library directory: \(error.localizedDescription, privacy: .public)")
         }
 
         do {
             let data = try Data(contentsOf: indexURL)
-            images = try VMBundle.decoder.decode([VMImage].self, from: data)
+            images = try VirtualMachineBundle.decoder.decode([VirtualMachineImage].self, from: data)
+            Log.images.info("Loaded \(self.images.count) image(s) from library")
         } catch {
             Log.images.debug("No existing image library index: \(error.localizedDescription, privacy: .public)")
             images = []
@@ -101,22 +103,23 @@ public final class ImageLibrary: @unchecked Sendable {
     ///
     /// The file is copied (or moved) into the library directory.
     public func addIPSW(at url: URL, name: String) throws {
-        let fm = FileManager.default
-        let destURL = directory.appendingPathComponent(url.lastPathComponent)
+        Log.images.info("Adding IPSW '\(name, privacy: .public)' from \(url.lastPathComponent, privacy: .public)")
+        let fileManager = FileManager.default
+        let destinationURL = directory.appendingPathComponent(url.lastPathComponent)
 
-        if url.path != destURL.path {
-            if fm.fileExists(atPath: destURL.path) {
-                try fm.removeItem(at: destURL)
+        if url.path != destinationURL.path {
+            if fileManager.fileExists(atPath: destinationURL.path) {
+                try fileManager.removeItem(at: destinationURL)
             }
-            try fm.copyItem(at: url, to: destURL)
+            try fileManager.copyItem(at: url, to: destinationURL)
         }
 
-        let attrs = try? fm.attributesOfItem(atPath: destURL.path)
+        let attrs = try? fileManager.attributesOfItem(atPath: destinationURL.path)
         let size = attrs?[.size] as? UInt64
 
-        let image = VMImage(
+        let image = VirtualMachineImage(
             name: name,
-            source: .ipsw(path: destURL.path),
+            source: .ipsw(path: destinationURL.path),
             sizeInBytes: size
         )
         images.append(image)
@@ -125,7 +128,8 @@ public final class ImageLibrary: @unchecked Sendable {
 
     /// Adds an OCI image reference to the library.
     public func addOCI(reference: String, name: String) throws {
-        let image = VMImage(
+        Log.images.info("Adding OCI image '\(name, privacy: .public)' (\(reference, privacy: .public))")
+        let image = VirtualMachineImage(
             name: name,
             source: .oci(reference: reference)
         )
@@ -135,8 +139,12 @@ public final class ImageLibrary: @unchecked Sendable {
 
     /// Removes an image from the library.
     public func remove(id: UUID) throws {
-        guard let index = images.firstIndex(where: { $0.id == id }) else { return }
+        guard let index = images.firstIndex(where: { $0.id == id }) else {
+            Log.images.debug("Image \(id) not found in library — nothing to remove")
+            return
+        }
         let image = images[index]
+        Log.images.info("Removing image '\(image.name, privacy: .public)' from library")
 
         // Delete the file if it's a local IPSW.
         if case .ipsw(let path) = image.source {
@@ -152,7 +160,7 @@ public final class ImageLibrary: @unchecked Sendable {
     }
 
     private func save() throws {
-        let data = try VMBundle.encoder.encode(images)
+        let data = try VirtualMachineBundle.encoder.encode(images)
         try data.write(to: indexURL)
     }
 }

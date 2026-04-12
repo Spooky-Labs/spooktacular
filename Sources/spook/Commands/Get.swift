@@ -43,7 +43,7 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let spec = bundle.spec
             let metadata = bundle.metadata
 
@@ -53,7 +53,7 @@ extension Spook {
             }
 
             if json {
-                let data = try VMBundle.encoder.encode(spec)
+                let data = try VirtualMachineBundle.encoder.encode(spec)
                 print(String(data: data, encoding: .utf8) ?? "")
                 return
             }
@@ -63,12 +63,12 @@ extension Spook {
 
         private func printStyledConfig(
             name: String,
-            spec: VMSpec,
-            metadata: VMMetadata,
-            bundle: VMBundle
+            spec: VirtualMachineSpecification,
+            metadata: VirtualMachineMetadata,
+            bundle: VirtualMachineBundle
         ) {
-            let memGB = spec.memorySizeInBytes / (1024 * 1024 * 1024)
-            let diskGB = spec.diskSizeInBytes / (1024 * 1024 * 1024)
+            let memoryInGigabytes = spec.memorySizeInBytes / (1024 * 1024 * 1024)
+            let diskSizeInGigabytes = spec.diskSizeInBytes / (1024 * 1024 * 1024)
 
             // Header
             print()
@@ -82,8 +82,8 @@ extension Spook {
             // Hardware
             Style.header("  ⬡ Hardware")
             Style.field("CPU", "\(spec.cpuCount) cores")
-            Style.field("Memory", "\(memGB) GB")
-            Style.field("Disk", "\(diskGB) GB" + Style.dim(" (APFS sparse)"))
+            Style.field("Memory", "\(memoryInGigabytes) GB")
+            Style.field("Disk", "\(diskSizeInGigabytes) GB" + Style.dim(" (APFS sparse)"))
 
             // Display
             Style.header("  ◻ Display")
@@ -139,8 +139,8 @@ extension Spook {
 
         private func printField(
             _ field: String,
-            spec: VMSpec,
-            metadata: VMMetadata
+            spec: VirtualMachineSpecification,
+            metadata: VirtualMachineMetadata
         ) throws {
             switch field {
             case "cpu": print(spec.cpuCount)
@@ -162,7 +162,7 @@ extension Spook {
         private func networkLabel(_ mode: NetworkMode) -> String {
             switch mode {
             case .nat: "NAT" + Style.dim(" (shared)")
-            case .bridged(let iface): Style.info("bridged") + Style.dim(":\(iface)")
+            case .bridged(let interface): Style.info("bridged") + Style.dim(":\(interface)")
             case .isolated: Style.yellow("isolated")
             case .hostOnly: "host-only"
             }

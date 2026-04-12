@@ -65,7 +65,8 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs, or 'spook create \(name)' to create one."))
                 throw ExitCode.failure
             }
 
@@ -75,6 +76,9 @@ extension Spook {
                 try CapacityCheck.ensureCapacity(in: Paths.vms)
             } catch let error as CapacityError {
                 print(Style.error("✗ \(error.localizedDescription)"))
+                if let recovery = error.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
                 throw ExitCode.failure
             }
 
@@ -84,7 +88,7 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
             let modeLabel = recovery ? " in Recovery mode" : ""
             print("Starting VM '\(name)'\(modeLabel)...")
@@ -100,12 +104,12 @@ extension Spook {
             try PIDFile.write(to: bundleURL)
 
             // Install SIGTERM handler for graceful shutdown.
-            let sigSource = DispatchSource.makeSignalSource(
+            let terminationSignalSource = DispatchSource.makeSignalSource(
                 signal: SIGTERM,
                 queue: .main
             )
             signal(SIGTERM, SIG_IGN) // Ignore default handler; dispatch source handles it.
-            sigSource.setEventHandler {
+            terminationSignalSource.setEventHandler {
                 print("\nReceived SIGTERM — stopping VM '\(name)'...")
                 Task { @MainActor in
                     try? await vm.stop(graceful: false)
@@ -113,15 +117,15 @@ extension Spook {
                     Foundation.exit(0)
                 }
             }
-            sigSource.resume()
+            terminationSignalSource.resume()
 
             // Also handle SIGINT (Ctrl+C) gracefully.
-            let intSource = DispatchSource.makeSignalSource(
+            let interruptSignalSource = DispatchSource.makeSignalSource(
                 signal: SIGINT,
                 queue: .main
             )
             signal(SIGINT, SIG_IGN)
-            intSource.setEventHandler {
+            interruptSignalSource.setEventHandler {
                 print("\nReceived SIGINT — stopping VM '\(name)'...")
                 Task { @MainActor in
                     try? await vm.stop(graceful: false)
@@ -129,7 +133,7 @@ extension Spook {
                     Foundation.exit(0)
                 }
             }
-            intSource.resume()
+            interruptSignalSource.resume()
 
             if recovery {
                 let options = VZMacOSVirtualMachineStartOptions()
@@ -150,7 +154,8 @@ extension Spook {
                     NSString(string: scriptPath).expandingTildeInPath
                 )
                 guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-                    print(Style.error("✗ User-data script not found: \(scriptPath)"))
+                    print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
+                    print(Style.dim("  Verify the file path exists and is readable."))
                     throw ExitCode.failure
                 }
 

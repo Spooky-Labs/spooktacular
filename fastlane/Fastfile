@@ -21,12 +21,40 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
+  # Code Signing — match
+  # ──────────────────────────────────────────────────
+
+  desc "Sync code-signing certificates and profiles via match"
+  lane :signing do
+    api_key = get_api_key
+    match(
+      api_key: api_key,
+      type: "appstore",
+      readonly: is_ci
+    )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Notarize — Direct distribution
+  # ──────────────────────────────────────────────────
+
+  desc "Notarize the .app for direct distribution"
+  lane :notarize_app do
+    notarize(
+      package: "../Spooktacular.app",
+      bundle_id: "com.spooktacular.app",
+      verbose: true
+    )
+  end
+
+  # ──────────────────────────────────────────────────
   # Beta — TestFlight
   # ──────────────────────────────────────────────────
 
   desc "Build and upload to TestFlight"
   lane :beta do |options|
     test
+    signing
     build
 
     api_key = get_api_key
@@ -48,7 +76,9 @@ platform :mac do
   desc "Build and submit to the App Store"
   lane :release do |options|
     test
+    signing
     build
+    notarize_app
 
     api_key = get_api_key
 
@@ -69,6 +99,18 @@ platform :mac do
         add_id_info_uses_idfa: false
       }
     )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Homebrew — Notarized zip for Homebrew cask
+  # ──────────────────────────────────────────────────
+
+  desc "Build, notarize, and package for Homebrew distribution"
+  lane :homebrew do
+    build
+    notarize_app
+    sh("cd .. && ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip")
+    UI.success("Homebrew package ready: Spooktacular.app.zip")
   end
 
   # ──────────────────────────────────────────────────

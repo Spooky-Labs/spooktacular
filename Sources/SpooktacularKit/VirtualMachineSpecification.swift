@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Each `SharedFolder` maps a host directory to a mount point
 /// inside the guest via the VirtIO file-system device. The first
-/// shared folder in a ``VMSpec`` uses the macOS guest automount
+/// shared folder in a ``VirtualMachineSpecification`` uses the macOS guest automount
 /// tag so it appears automatically in the guest's Finder sidebar.
 ///
 /// ## Example
@@ -23,7 +23,7 @@ public struct SharedFolder: Sendable, Codable, Equatable, Hashable {
 
     /// The mount tag used to identify this share inside the guest.
     ///
-    /// For the first folder in a spec's ``VMSpec/sharedFolders``
+    /// For the first folder in a spec's ``VirtualMachineSpecification/sharedFolders``
     /// array, this value is overridden at configuration time with
     /// the macOS guest automount tag so the share appears
     /// automatically in Finder.
@@ -50,7 +50,7 @@ public struct SharedFolder: Sendable, Codable, Equatable, Hashable {
 
 /// The hardware specification for a virtual machine.
 ///
-/// A `VMSpec` defines the CPU, memory, disk, display, network,
+/// A `VirtualMachineSpecification` defines the CPU, memory, disk, display, network,
 /// audio, and sharing configuration for a macOS virtual machine.
 /// These values are persisted as `config.json` inside the VM
 /// bundle directory.
@@ -63,14 +63,14 @@ public struct SharedFolder: Sendable, Codable, Equatable, Hashable {
 /// in a spec with exactly 4.
 ///
 /// ```swift
-/// let spec = VMSpec(cpuCount: 2)
+/// let spec = VirtualMachineSpecification(cpuCount: 2)
 /// print(spec.cpuCount) // 4
 /// ```
 ///
 /// ## Example
 ///
 /// ```swift
-/// let spec = VMSpec(
+/// let spec = VirtualMachineSpecification(
 ///     cpuCount: 8,
 ///     memorySizeInBytes: 16 * 1024 * 1024 * 1024,
 ///     diskSizeInBytes: 100 * 1024 * 1024 * 1024,
@@ -82,7 +82,7 @@ public struct SharedFolder: Sendable, Codable, Equatable, Hashable {
 ///     ]
 /// )
 /// ```
-public struct VMSpec: Sendable, Codable, Equatable, Hashable {
+public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashable {
 
     /// The minimum number of CPU cores required for a macOS VM
     /// to boot without freezing.

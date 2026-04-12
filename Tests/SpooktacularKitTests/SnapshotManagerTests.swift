@@ -11,11 +11,11 @@ struct SnapshotManagerTests {
     private func makeTempBundle(
         diskContent: String = "fake-disk-image-data",
         auxContent: String = "fake-auxiliary-data"
-    ) throws -> (VMBundle, URL) {
+    ) throws -> (VirtualMachineBundle, URL) {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let bundleURL = tempDir.appendingPathComponent("test.vm")
-        let bundle = try VMBundle.create(at: bundleURL, spec: VMSpec())
+        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
         // Write fake disk.img and auxiliary.bin.
         try Data(diskContent.utf8).write(
@@ -33,7 +33,7 @@ struct SnapshotManagerTests {
     @Suite("save")
     struct SaveTests {
 
-        private func makeTempBundle() throws -> (VMBundle, URL) {
+        private func makeTempBundle() throws -> (VirtualMachineBundle, URL) {
             let tests = SnapshotManagerTests()
             return try tests.makeTempBundle()
         }
@@ -95,7 +95,7 @@ struct SnapshotManagerTests {
                 .appendingPathComponent("snapshot-info.json")
 
             let data = try Data(contentsOf: infoURL)
-            let info = try VMBundle.decoder.decode(SnapshotInfo.self, from: data)
+            let info = try VirtualMachineBundle.decoder.decode(SnapshotInfo.self, from: data)
             #expect(info.label == "labeled")
             #expect(info.sizeInBytes > 0)
         }
@@ -120,7 +120,7 @@ struct SnapshotManagerTests {
             let tempDir = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString)
             let bundleURL = tempDir.appendingPathComponent("nodisk.vm")
-            let bundle = try VMBundle.create(at: bundleURL, spec: VMSpec())
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
             defer { try? FileManager.default.removeItem(at: tempDir) }
 
             // No disk.img created — should fail.
@@ -139,7 +139,7 @@ struct SnapshotManagerTests {
     @Suite("restore")
     struct RestoreTests {
 
-        private func makeTempBundle() throws -> (VMBundle, URL) {
+        private func makeTempBundle() throws -> (VirtualMachineBundle, URL) {
             let tests = SnapshotManagerTests()
             return try tests.makeTempBundle()
         }
@@ -212,7 +212,7 @@ struct SnapshotManagerTests {
     @Suite("list")
     struct ListTests {
 
-        private func makeTempBundle() throws -> (VMBundle, URL) {
+        private func makeTempBundle() throws -> (VirtualMachineBundle, URL) {
             let tests = SnapshotManagerTests()
             return try tests.makeTempBundle()
         }
@@ -262,7 +262,7 @@ struct SnapshotManagerTests {
     @Suite("delete")
     struct DeleteTests {
 
-        private func makeTempBundle() throws -> (VMBundle, URL) {
+        private func makeTempBundle() throws -> (VirtualMachineBundle, URL) {
             let tests = SnapshotManagerTests()
             return try tests.makeTempBundle()
         }
@@ -325,8 +325,8 @@ struct SnapshotManagerTests {
                 sizeInBytes: 1_234_567
             )
 
-            let data = try VMBundle.encoder.encode(info)
-            let decoded = try VMBundle.decoder.decode(SnapshotInfo.self, from: data)
+            let data = try VirtualMachineBundle.encoder.encode(info)
+            let decoded = try VirtualMachineBundle.decoder.decode(SnapshotInfo.self, from: data)
 
             #expect(decoded.label == info.label)
             #expect(decoded.sizeInBytes == info.sizeInBytes)

@@ -31,18 +31,19 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
             // Verify the VM is not running.
             if PIDFile.isRunning(bundleURL: bundleURL) {
                 print(Style.error("✗ VM '\(name)' is currently running."))
-                print("Stop the VM first with: spook stop \(name)")
+                print(Style.dim("  Stop the VM first with 'spook stop \(name)'."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
             print("Saving snapshot '\(label)' for VM '\(name)'...")
 
@@ -50,6 +51,9 @@ extension Spook {
                 try SnapshotManager.save(bundle: bundle, label: label)
             } catch let error as SnapshotError {
                 print(Style.error("✗ \(error.localizedDescription)"))
+                if let recovery = error.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
                 throw ExitCode.failure
             }
 
@@ -88,18 +92,19 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
             // Verify the VM is not running.
             if PIDFile.isRunning(bundleURL: bundleURL) {
                 print(Style.error("✗ VM '\(name)' is currently running."))
-                print("Stop the VM first with: spook stop \(name)")
+                print(Style.dim("  Stop the VM first with 'spook stop \(name)'."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
             print("Restoring VM '\(name)' to snapshot '\(label)'...")
 
@@ -107,8 +112,8 @@ extension Spook {
                 try SnapshotManager.restore(bundle: bundle, label: label)
             } catch let error as SnapshotError {
                 print(Style.error("✗ \(error.localizedDescription)"))
-                if case .notFound = error {
-                    print("Run 'spook snapshots \(name)' to see available snapshots.")
+                if let recovery = error.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
                 }
                 throw ExitCode.failure
             }
@@ -136,11 +141,12 @@ extension Spook {
         func run() async throws {
             let bundleURL = Paths.bundleURL(for: name)
             guard FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print("Error: VM '\(name)' not found. Run 'spook list' to see available VMs.")
+                print(Style.error("✗ VM '\(name)' not found."))
+                print(Style.dim("  Run 'spook list' to see available VMs."))
                 throw ExitCode.failure
             }
 
-            let bundle = try VMBundle.load(from: bundleURL)
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let snapshots = try SnapshotManager.list(bundle: bundle)
 
             guard !snapshots.isEmpty else {

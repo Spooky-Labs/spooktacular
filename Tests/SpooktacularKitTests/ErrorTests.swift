@@ -5,15 +5,15 @@ import Foundation
 @Suite("Error descriptions")
 struct ErrorTests {
 
-    // MARK: - VMBundleError
+    // MARK: - VirtualMachineBundleError
 
-    @Suite("VMBundleError")
-    struct VMBundleErrorTests {
+    @Suite("VirtualMachineBundleError")
+    struct VirtualMachineBundleErrorTests {
 
         @Test("notFound includes the bundle name")
         func notFoundDescription() {
             let url = URL(fileURLWithPath: "/vms/test.vm")
-            let error = VMBundleError.notFound(url: url)
+            let error = VirtualMachineBundleError.notFound(url: url)
             let description = error.localizedDescription
             #expect(description.contains("test.vm"))
         }
@@ -21,7 +21,7 @@ struct ErrorTests {
         @Test("alreadyExists includes the bundle name")
         func alreadyExistsDescription() {
             let url = URL(fileURLWithPath: "/vms/dupe.vm")
-            let error = VMBundleError.alreadyExists(url: url)
+            let error = VirtualMachineBundleError.alreadyExists(url: url)
             let description = error.localizedDescription
             #expect(description.contains("dupe.vm"))
         }
@@ -29,7 +29,7 @@ struct ErrorTests {
         @Test("invalidConfiguration mentions config.json")
         func invalidConfigDescription() {
             let url = URL(fileURLWithPath: "/vms/bad.vm")
-            let error = VMBundleError.invalidConfiguration(url: url)
+            let error = VirtualMachineBundleError.invalidConfiguration(url: url)
             let description = error.localizedDescription
             #expect(description.contains("config.json"))
         }
@@ -37,7 +37,7 @@ struct ErrorTests {
         @Test("invalidMetadata mentions metadata.json")
         func invalidMetadataDescription() {
             let url = URL(fileURLWithPath: "/vms/bad.vm")
-            let error = VMBundleError.invalidMetadata(url: url)
+            let error = VirtualMachineBundleError.invalidMetadata(url: url)
             let description = error.localizedDescription
             #expect(description.contains("metadata.json"))
         }
@@ -45,7 +45,7 @@ struct ErrorTests {
         @Test("Every case has a non-empty description")
         func allCasesDescribed() {
             let url = URL(fileURLWithPath: "/test.vm")
-            let cases: [VMBundleError] = [
+            let cases: [VirtualMachineBundleError] = [
                 .notFound(url: url),
                 .alreadyExists(url: url),
                 .invalidConfiguration(url: url),

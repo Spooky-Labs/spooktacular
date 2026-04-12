@@ -1,9 +1,10 @@
 import Foundation
+import os
 import Virtualization
 
-/// Builds `VZVirtualMachineConfiguration` objects from a ``VMSpec``.
+/// Builds `VZVirtualMachineConfiguration` objects from a ``VirtualMachineSpecification``.
 ///
-/// `VMConfiguration` translates the product-level specification
+/// `VirtualMachineConfiguration` translates the product-level specification
 /// (CPU count, memory, display count, network mode) into the
 /// corresponding Virtualization framework configuration objects.
 ///
@@ -20,7 +21,7 @@ import Virtualization
 /// let config = VZVirtualMachineConfiguration()
 ///
 /// // Apply spec-derived settings.
-/// VMConfiguration.applySpec(spec, to: config)
+/// VirtualMachineConfiguration.applySpec(spec, to: config)
 ///
 /// // Apply platform and storage from bundle artifacts.
 /// config.platform = platform
@@ -28,14 +29,14 @@ import Virtualization
 ///
 /// try config.validate()
 /// ```
-public enum VMConfiguration {
+public enum VirtualMachineConfiguration {
 
     /// Default display resolution for virtual screens.
     private static let displayWidth = 1920
     private static let displayHeight = 1200
     private static let displayPPI = 80
 
-    /// Applies a ``VMSpec`` to a `VZVirtualMachineConfiguration`.
+    /// Applies a ``VirtualMachineSpecification`` to a `VZVirtualMachineConfiguration`.
     ///
     /// This sets all spec-derived properties: CPU, memory,
     /// boot loader, graphics, input devices, network, socket,
@@ -46,9 +47,10 @@ public enum VMConfiguration {
     ///   - spec: The hardware specification.
     ///   - configuration: The mutable configuration to populate.
     public static func applySpec(
-        _ spec: VMSpec,
+        _ spec: VirtualMachineSpecification,
         to configuration: VZVirtualMachineConfiguration
     ) {
+        Log.config.info("Applying spec: \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM, \(spec.displayCount) display(s)")
         // CPU and memory
         configuration.cpuCount = spec.cpuCount
         configuration.memorySize = spec.memorySizeInBytes
@@ -145,42 +147,46 @@ public enum VMConfiguration {
     /// Applies platform-specific configuration from bundle artifacts.
     ///
     /// Reads the hardware model, machine identifier, and auxiliary
-    /// storage files from a ``VMBundle`` and sets them on the
+    /// storage files from a ``VirtualMachineBundle`` and sets them on the
     /// configuration's `platform` property.
     ///
     /// - Parameters:
     ///   - bundle: The VM bundle containing platform artifact files.
     ///   - configuration: The mutable configuration to populate.
-    /// - Throws: ``VMBundleError/invalidConfiguration(url:)`` if
+    /// - Throws: ``VirtualMachineBundleError/invalidConfiguration(url:)`` if
     ///   the platform artifacts cannot be loaded.
     public static func applyPlatform(
-        from bundle: VMBundle,
+        from bundle: VirtualMachineBundle,
         to configuration: VZVirtualMachineConfiguration
     ) throws {
+        Log.config.debug("Loading platform artifacts from \(bundle.url.lastPathComponent, privacy: .public)")
         let platform = VZMacPlatformConfiguration()
 
-        let hwModelData = try Data(
+        let hardwareModelData = try Data(
             contentsOf: bundle.url.appendingPathComponent("hardware-model.bin")
         )
-        guard let hardwareModel = VZMacHardwareModel(dataRepresentation: hwModelData) else {
-            throw VMBundleError.invalidConfiguration(url: bundle.url)
+        guard let hardwareModel = VZMacHardwareModel(dataRepresentation: hardwareModelData) else {
+            Log.config.error("Invalid hardware model in \(bundle.url.lastPathComponent, privacy: .public)")
+            throw VirtualMachineBundleError.invalidConfiguration(url: bundle.url)
         }
         platform.hardwareModel = hardwareModel
 
-        let midData = try Data(
+        let machineIdentifierData = try Data(
             contentsOf: bundle.url.appendingPathComponent("machine-identifier.bin")
         )
         guard let machineIdentifier = VZMacMachineIdentifier(
-            dataRepresentation: midData
+            dataRepresentation: machineIdentifierData
         ) else {
-            throw VMBundleError.invalidConfiguration(url: bundle.url)
+            Log.config.error("Invalid machine identifier in \(bundle.url.lastPathComponent, privacy: .public)")
+            throw VirtualMachineBundleError.invalidConfiguration(url: bundle.url)
         }
         platform.machineIdentifier = machineIdentifier
 
-        let auxURL = bundle.url.appendingPathComponent("auxiliary.bin")
-        platform.auxiliaryStorage = try VZMacAuxiliaryStorage(contentsOf: auxURL)
+        let auxiliaryStorageURL = bundle.url.appendingPathComponent("auxiliary.bin")
+        platform.auxiliaryStorage = try VZMacAuxiliaryStorage(contentsOf: auxiliaryStorageURL)
 
         configuration.platform = platform
+        Log.config.debug("Platform artifacts loaded for \(bundle.url.lastPathComponent, privacy: .public)")
     }
 
     /// Applies storage device configuration from a bundle's disk image.
@@ -189,9 +195,10 @@ public enum VMConfiguration {
     ///   - bundle: The VM bundle containing the disk image.
     ///   - configuration: The mutable configuration to populate.
     public static func applyStorage(
-        from bundle: VMBundle,
+        from bundle: VirtualMachineBundle,
         to configuration: VZVirtualMachineConfiguration
     ) throws {
+        Log.config.debug("Attaching disk image from \(bundle.url.lastPathComponent, privacy: .public)")
         let diskURL = bundle.url.appendingPathComponent("disk.img")
         let attachment = try VZDiskImageStorageDeviceAttachment(
             url: diskURL,

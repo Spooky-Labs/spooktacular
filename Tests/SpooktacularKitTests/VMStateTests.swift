@@ -2,13 +2,13 @@ import Testing
 import Foundation
 @testable import SpooktacularKit
 
-@Suite("VMState")
-struct VMStateTests {
+@Suite("VirtualMachineState")
+struct VirtualMachineStateTests {
 
     @Test(
         "All states have stable raw values for serialization",
         arguments: [
-            (VMState.stopped, "stopped"),
+            (VirtualMachineState.stopped, "stopped"),
             (.starting, "starting"),
             (.running, "running"),
             (.paused, "paused"),
@@ -17,20 +17,20 @@ struct VMStateTests {
             (.error, "error"),
         ]
     )
-    func rawValues(state: VMState, expected: String) {
+    func rawValues(state: VirtualMachineState, expected: String) {
         #expect(state.rawValue == expected)
     }
 
     @Test(
         "Round-trips through JSON",
         arguments: [
-            VMState.stopped, .starting, .running,
+            VirtualMachineState.stopped, .starting, .running,
             .paused, .pausing, .resuming, .error,
         ]
     )
-    func codableRoundTrip(state: VMState) throws {
+    func codableRoundTrip(state: VirtualMachineState) throws {
         let data = try JSONEncoder().encode(state)
-        let decoded = try JSONDecoder().decode(VMState.self, from: data)
+        let decoded = try JSONDecoder().decode(VirtualMachineState.self, from: data)
         #expect(decoded == state)
     }
 
@@ -38,7 +38,7 @@ struct VMStateTests {
     func caseCount() {
         // If a new case is added, this test will need updating.
         // This is intentional — serialization stability matters.
-        let allCases: [VMState] = [
+        let allCases: [VirtualMachineState] = [
             .stopped, .starting, .running,
             .paused, .pausing, .resuming, .error,
         ]
