@@ -85,28 +85,66 @@ extension Spook {
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
-            // Disk-inject runs BEFORE the VM boots — it writes directly
-            // to the guest's disk image while the VM is stopped.
-            if provision == .diskInject, let scriptPath = userData {
+            // Pre-boot provisioning: modes that write to the guest disk
+            // or shared folder while the VM is stopped.
+            if let scriptPath = userData {
                 let scriptURL = URL(fileURLWithPath:
                     NSString(string: scriptPath).expandingTildeInPath
                 )
-                guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-                    print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
-                    print(Style.dim("  Verify the file path exists and is readable."))
-                    throw ExitCode.failure
-                }
-                print(Style.info("Injecting user-data script into guest disk..."))
-                do {
-                    try DiskInjector.inject(script: scriptURL, into: bundle)
-                    print(Style.success("✓ Script injected. It will run automatically on boot."))
-                } catch {
-                    print(Style.error("✗ Disk injection failed: \(error.localizedDescription)"))
-                    if let localizedError = error as? LocalizedError,
-                       let recovery = localizedError.recoverySuggestion {
-                        print(Style.dim("  \(recovery)"))
+
+                switch provision {
+                case .diskInject:
+                    guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+                        print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
+                        print(Style.dim("  Verify the file path exists and is readable."))
+                        throw ExitCode.failure
                     }
-                    throw ExitCode.failure
+                    print(Style.info("Injecting user-data script into guest disk..."))
+                    do {
+                        try DiskInjector.inject(script: scriptURL, into: bundle)
+                        print(Style.success("✓ Script injected. It will run automatically on boot."))
+                    } catch {
+                        print(Style.error("✗ Disk injection failed: \(error.localizedDescription)"))
+                        if let localizedError = error as? LocalizedError,
+                           let recovery = localizedError.recoverySuggestion {
+                            print(Style.dim("  \(recovery)"))
+                        }
+                        throw ExitCode.failure
+                    }
+
+                case .sharedFolder:
+                    guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+                        print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
+                        print(Style.dim("  Verify the file path exists and is readable."))
+                        throw ExitCode.failure
+                    }
+                    print(Style.info("Setting up shared-folder provisioning..."))
+                    do {
+                        // Place script in shared folder for the watcher daemon.
+                        try SharedFolderProvisioner.provision(
+                            script: scriptURL,
+                            bundle: bundle
+                        )
+                        // Inject the watcher daemon into the disk so it works
+                        // on any VM, even without pre-installed watchers.
+                        let watcherScript = try ScriptFile.writeToTempDirectory(
+                            script: SharedFolderProvisioner.watcherInstallScript(),
+                            fileName: "install-watcher.sh"
+                        )
+                        try DiskInjector.inject(script: watcherScript, into: bundle)
+                        print(Style.success("✓ Script placed in shared folder. Watcher daemon injected."))
+                    } catch {
+                        print(Style.error("✗ Shared-folder provisioning failed: \(error.localizedDescription)"))
+                        if let localizedError = error as? LocalizedError,
+                           let recovery = localizedError.recoverySuggestion {
+                            print(Style.dim("  \(recovery)"))
+                        }
+                        throw ExitCode.failure
+                    }
+
+                case .ssh, .agent:
+                    // These modes run after boot. Nothing to do pre-boot.
+                    break
                 }
             }
 
@@ -195,17 +233,45 @@ extension Spook {
                     }
 
                 case .agent:
-                    print(Style.error("✗ Agent provisioning is not yet available."))
-                    print(Style.dim("  The guest agent communicates over VirtIO socket and requires"))
-                    print(Style.dim("  pre-installation in the VM image. This feature is planned."))
-                    print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
-                    throw ExitCode.failure
+                    let scriptURL = URL(fileURLWithPath:
+                        NSString(string: scriptPath).expandingTildeInPath
+                    )
+                    guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+                        print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
+                        print(Style.dim("  Verify the file path exists and is readable."))
+                        throw ExitCode.failure
+                    }
+
+                    // Resolve the VM's IP for SSH fallback if the agent is not installed.
+                    var fallbackIP: String?
+                    if let macAddress = bundle.spec.macAddress {
+                        fallbackIP = try? await IPResolver.resolveIP(macAddress: macAddress)
+                    }
+
+                    print("Provisioning via guest agent (vsock)...")
+                    do {
+                        try await VsockProvisioner.provision(
+                            virtualMachine: vm,
+                            script: scriptURL,
+                            fallbackIP: fallbackIP,
+                            sshUser: sshUser,
+                            sshKey: sshKey
+                        )
+                        print(Style.success("✓ User-data script completed."))
+                    } catch {
+                        print(Style.error("✗ Agent provisioning failed: \(error.localizedDescription)"))
+                        if let localizedError = error as? LocalizedError,
+                           let recovery = localizedError.recoverySuggestion {
+                            print(Style.dim("  \(recovery)"))
+                        }
+                        throw ExitCode.failure
+                    }
 
                 case .sharedFolder:
-                    print(Style.error("✗ Shared-folder provisioning is not yet available."))
-                    print(Style.dim("  This mode requires a watcher daemon in the guest image."))
-                    print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
-                    throw ExitCode.failure
+                    // Already handled above (before vm.start). The script
+                    // was placed in the shared folder and the watcher daemon
+                    // was injected into the disk. It will run via launchd.
+                    break
                 }
             }
 
