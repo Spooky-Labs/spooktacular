@@ -36,7 +36,7 @@ When the entire host is dedicated to one ML workload:
 spook create ml-trainer \
     --cpu 8 --memory 24 --disk 200 \
     --network host-only \
-    --no-audio
+    --disable-audio
 ```
 
 ### Dual-VM Configuration (Shared Host)
@@ -48,13 +48,13 @@ When running two ML VMs on one host (e.g., training + inference):
 spook create ml-train \
     --cpu 6 --memory 16 --disk 200 \
     --network host-only \
-    --no-audio
+    --disable-audio
 
 # Inference VM — lighter resources
 spook create ml-serve \
     --cpu 4 --memory 8 --disk 64 \
     --network nat \
-    --no-audio
+    --disable-audio
 ```
 
 ### Recommended Specs by Chip
@@ -194,8 +194,7 @@ GPU and is designed for the unified memory architecture.
 
 ```bash
 # Via the provisioning user-data script
-spook create ml-trainer \
-    --pull ghcr.io/spooktacular/macos:15.4 \
+spook create ml-trainer --from-ipsw latest \
     --cpu 8 --memory 24 --disk 100 \
     --user-data ~/setup-mlx.sh \
     --provision disk-inject
@@ -413,10 +412,10 @@ to communicate with each other without external network access.
 ```bash
 # Create two worker VMs with host-only networking
 spook create worker-01 --cpu 4 --memory 8 --disk 64 \
-    --network host-only --no-audio
+    --network host-only --disable-audio
 
 spook create worker-02 --cpu 4 --memory 8 --disk 64 \
-    --network host-only --no-audio
+    --network host-only --disable-audio
 
 # Share different data shards with each
 spook share worker-01 add /data/shard-01 --tag data --read-only
@@ -431,33 +430,42 @@ spook start worker-01 --headless
 spook start worker-02 --headless
 ```
 
-The ``NetworkMode/hostOnly`` mode ensures VMs can communicate with
-each other and the host over a private network, but cannot reach
-the external internet — ideal for secure ML training environments.
+The ``NetworkMode/hostOnly`` mode is intended to let VMs communicate
+with each other and the host over a private network without external
+internet access -- ideal for secure ML training environments.
+
+> Important: Host-only networking currently falls back to NAT mode.
+> VMs will have internet access until a future release adds true
+> host-only isolation. Plan your network security accordingly.
 
 ## Training Checkpoints via VM Snapshots
 
-Save the entire VM state (memory + disk) as a snapshot before
-long-running training operations. If something goes wrong, restore
-to the exact state:
+Save a disk-level snapshot before long-running training operations.
+If something goes wrong, restore the disk to the pre-training state:
 
 ```bash
-# Before starting a long training run
+# Stop the VM and snapshot before a long training run
+spook stop ml-trainer
 spook snapshot ml-trainer pre-training
+spook start ml-trainer --headless
 
 # Start training
 spook exec ml-trainer -- python3 /opt/train.py --epochs 100
 
-# If something goes wrong, restore
+# If something goes wrong, stop and restore
+spook stop ml-trainer
 spook restore ml-trainer pre-training
+spook start ml-trainer --headless
 
-# After successful training, snapshot the trained state
+# After successful training, stop and snapshot the trained state
+spook stop ml-trainer
 spook snapshot ml-trainer trained-v1
 ```
 
-Snapshots capture the full VM state, including GPU memory contents
-and in-flight computations. This is more comprehensive than
-application-level checkpointing alone.
+Disk-level snapshots copy `disk.img` and `auxiliary.bin`. The VM
+must be stopped before saving or restoring. Combine with
+application-level checkpointing (saving model weights to shared
+folders) for the best recovery story.
 
 ## Inference Server Deployment
 
@@ -467,8 +475,7 @@ network:
 ### NAT Mode (Port Forwarding)
 
 ```bash
-spook create inference-server \
-    --pull ghcr.io/spooktacular/macos-ml:15.4 \
+spook create inference-server --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
     --network nat \
     --user-data ~/setup-inference.sh \
@@ -481,8 +488,7 @@ For production inference servers that need their own IP address
 on the local network:
 
 ```bash
-spook create inference-server \
-    --pull ghcr.io/spooktacular/macos-ml:15.4 \
+spook create inference-server --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
     --network bridged:en0 \
     --user-data ~/setup-inference.sh \
@@ -587,7 +593,7 @@ spook create ml-cifar \
     --from-ipsw latest \
     --cpu 6 --memory 16 --disk 64 \
     --network host-only \
-    --no-audio \
+    --disable-audio \
     --user-data /opt/spooktacular/train-cifar.sh \
     --provision disk-inject
 

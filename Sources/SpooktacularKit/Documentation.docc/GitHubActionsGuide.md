@@ -83,15 +83,12 @@ Spooktacular includes a built-in `github-runner` template that
 automates all runner setup:
 
 ```bash
-spook create runner-01 \
-    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
-    --template github-runner \
-    --template-arg repo=myorg/myrepo \
-    --template-arg token=ghp_xxxx \
-    --template-arg labels=macos,arm64,xcode16
+spook create runner-01 --from-ipsw latest \
+    --cpu 4 --memory 8 --disk 64 \
+    --github-runner --github-repo myorg/myrepo --github-token ghp_xxxx
 ```
 
-The template:
+The `--github-runner` flag:
 
 1. Downloads the latest GitHub Actions runner binary
 2. Registers the runner with your repository (or organization)
@@ -99,16 +96,14 @@ The template:
 4. Installs the runner as a LaunchDaemon for automatic startup
 5. Optionally configures ephemeral mode for single-use VMs
 
-### Template Arguments
+### GitHub Runner Options
 
-| Argument | Required | Description |
-|----------|----------|-------------|
-| `repo` | Yes (or `org`) | GitHub repository (e.g., `myorg/myrepo`) |
-| `org` | Yes (or `repo`) | GitHub organization for org-level runners |
-| `token` | Yes | GitHub PAT or registration token |
-| `labels` | No | Comma-separated runner labels |
-| `group` | No | Runner group name (org-level only) |
-| `name` | No | Runner name (defaults to VM name) |
+| Option | Required | Description |
+|--------|----------|-------------|
+| `--github-runner` | Yes | Enables GitHub Actions runner setup |
+| `--github-repo <org/repo>` | Yes | GitHub repository (e.g., `myorg/myrepo`) |
+| `--github-token <token>` | Yes | GitHub PAT or registration token |
+| `--ephemeral` | No | Runner exits after one job, VM auto-destroys |
 
 ## Ephemeral Runners
 
@@ -130,11 +125,9 @@ eliminating "works on my runner" issues.
 
 ```bash
 # Create an ephemeral runner that auto-replaces
-spook create runner-01 \
-    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
-    --template github-runner \
-    --template-arg repo=myorg/myrepo \
-    --template-arg token=ghp_xxxx \
+spook create runner-01 --from-ipsw latest \
+    --cpu 4 --memory 8 --disk 64 \
+    --github-runner --github-repo myorg/myrepo --github-token ghp_xxxx \
     --ephemeral
 ```
 
@@ -170,23 +163,14 @@ failure:
 # pool-manager.sh — runs on the Mac host
 
 POOL_SIZE=2
-IMAGE="ghcr.io/spooktacular/macos-xcode:15.4-16.2"
 
 while true; do
-    running=$(spook list --json | jq '[.[] | select(.name | startswith("runner-"))] | length')
-
     for i in $(seq 1 $POOL_SIZE); do
         name="runner-$(printf '%02d' $i)"
 
         if ! spook list --json | jq -e ".[] | select(.name == \"$name\")" > /dev/null 2>&1; then
             echo "Replacing $name..."
-            spook create "$name" \
-                --pull "$IMAGE" \
-                --cpu 4 --memory 8 --disk 64 \
-                --template github-runner \
-                --template-arg repo=myorg/myrepo \
-                --template-arg token=ghp_xxxx
-
+            spook clone base "$name"
             spook start "$name" --headless
         fi
     done
@@ -263,10 +247,8 @@ Simpler to set up, but less secure for organizations:
 # Or classic PAT with "repo" scope
 TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
-spook create runner \
-    --template github-runner \
-    --template-arg repo=myorg/myrepo \
-    --template-arg token="$TOKEN"
+spook create runner --from-ipsw latest \
+    --github-runner --github-repo myorg/myrepo --github-token "$TOKEN"
 ```
 
 > Note: Classic PATs with `repo` scope grant broad access. Prefer
@@ -299,10 +281,8 @@ TOKEN=$(curl -s -X POST \
     "https://api.github.com/app/installations/$INSTALLATION_ID/access_tokens" \
     | jq -r .token)
 
-spook create runner \
-    --template github-runner \
-    --template-arg org=myorg \
-    --template-arg token="$TOKEN"
+spook create runner --from-ipsw latest \
+    --github-runner --github-repo myorg/myrepo --github-token "$TOKEN"
 ```
 
 ## Xcode Version Management
@@ -328,17 +308,18 @@ spook clone base-xcode15 runner-xcode15-01
 spook clone base-xcode16 runner-xcode16-01
 ```
 
-### Using OCI Images with Xcode
+### Using Clones for Fast Deployment
 
-Pre-built OCI images include Xcode, saving setup time:
+Clone from a base VM with Xcode pre-installed:
 
 ```bash
-# Xcode 15.4 on macOS 15.4
-spook create runner --pull ghcr.io/spooktacular/macos-xcode:15.4-15.4
-
-# Xcode 16.2 on macOS 15.4
-spook create runner --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2
+# Clone runners from the appropriate base
+spook clone base-xcode15 runner-xcode15-01
+spook clone base-xcode16 runner-xcode16-01
 ```
+
+> Note: OCI image pull is on the roadmap. For now, create base VMs
+> from IPSW, install Xcode manually, then clone for fast deployment.
 
 ### Workflow Targeting
 

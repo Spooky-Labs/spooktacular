@@ -4,15 +4,17 @@ import SpooktacularKit
 
 extension Spook {
 
-    /// Manages VM snapshots.
+    /// Saves a disk-level snapshot of a VM.
     struct Snapshot: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Save a VM's state as a named snapshot.",
+            abstract: "Save a VM's disk state as a named snapshot.",
             discussion: """
-                Saves the current state of a virtual machine as a \
-                named snapshot. Snapshots capture the full VM state \
-                (memory + disk) and can be restored later with \
-                'spook restore'.
+                Copies the VM's disk image and auxiliary storage into \
+                a named snapshot directory. The VM must be stopped \
+                before snapshotting.
+
+                Snapshots are stored in SavedStates/<label>/ inside \
+                the VM bundle. Restore with 'spook restore'.
 
                 EXAMPLES:
                   spook snapshot my-vm clean-install
@@ -33,11 +35,32 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Snapshots require saving the full VM state (memory + disk).
-            // This will be implemented with VZVirtualMachine.saveMachineStateTo
-            // once the VM lifecycle daemon is in place.
+            // Verify the VM is not running.
+            if PIDFile.isRunning(bundleURL: bundleURL) {
+                print(Style.error("✗ VM '\(name)' is currently running."))
+                print("Stop the VM first with: spook stop \(name)")
+                throw ExitCode.failure
+            }
+
+            let bundle = try VMBundle.load(from: bundleURL)
+
             print("Saving snapshot '\(label)' for VM '\(name)'...")
-            print("(Snapshot support requires the VM lifecycle daemon, coming soon.)")
+
+            do {
+                try SnapshotManager.save(bundle: bundle, label: label)
+            } catch let error as SnapshotError {
+                print(Style.error("✗ \(error.localizedDescription)"))
+                throw ExitCode.failure
+            }
+
+            // Read back the snapshot info to report size.
+            let snapshots = try SnapshotManager.list(bundle: bundle)
+            if let info = snapshots.first(where: { $0.label == label }) {
+                let sizeMB = Double(info.sizeInBytes) / (1024 * 1024)
+                print(Style.success("✓ Snapshot '\(label)' saved (\(String(format: "%.1f", sizeMB)) MB)."))
+            } else {
+                print(Style.success("✓ Snapshot '\(label)' saved."))
+            }
         }
     }
 
@@ -46,8 +69,9 @@ extension Spook {
         static let configuration = CommandConfiguration(
             abstract: "Restore a VM to a saved snapshot.",
             discussion: """
-                Restores a virtual machine to the state captured by a \
-                previous snapshot. The VM must be stopped before restoring.
+                Replaces the VM's disk image and auxiliary storage \
+                with the copies from a previously saved snapshot. \
+                The VM must be stopped before restoring.
 
                 EXAMPLES:
                   spook restore my-vm clean-install
@@ -68,17 +92,28 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            let savedStatesDir = bundleURL.appendingPathComponent("SavedStates")
-            let snapshotDir = savedStatesDir.appendingPathComponent(label)
-
-            guard FileManager.default.fileExists(atPath: snapshotDir.path) else {
-                print("Error: Snapshot '\(label)' not found for VM '\(name)'.")
-                print("Run 'spook snapshots \(name)' to see available snapshots.")
+            // Verify the VM is not running.
+            if PIDFile.isRunning(bundleURL: bundleURL) {
+                print(Style.error("✗ VM '\(name)' is currently running."))
+                print("Stop the VM first with: spook stop \(name)")
                 throw ExitCode.failure
             }
 
+            let bundle = try VMBundle.load(from: bundleURL)
+
             print("Restoring VM '\(name)' to snapshot '\(label)'...")
-            print("(Snapshot restore requires the VM lifecycle daemon, coming soon.)")
+
+            do {
+                try SnapshotManager.restore(bundle: bundle, label: label)
+            } catch let error as SnapshotError {
+                print(Style.error("✗ \(error.localizedDescription)"))
+                if case .notFound = error {
+                    print("Run 'spook snapshots \(name)' to see available snapshots.")
+                }
+                throw ExitCode.failure
+            }
+
+            print(Style.success("✓ VM '\(name)' restored to snapshot '\(label)'."))
         }
     }
 
@@ -88,7 +123,7 @@ extension Spook {
             abstract: "List snapshots for a VM.",
             discussion: """
                 Lists all saved snapshots for the specified virtual \
-                machine. Each snapshot shows its label and creation date.
+                machine, showing label, creation date, and size.
 
                 EXAMPLES:
                   spook snapshots my-vm
@@ -105,28 +140,27 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            let savedStatesDir = bundleURL.appendingPathComponent("SavedStates")
+            let bundle = try VMBundle.load(from: bundleURL)
+            let snapshots = try SnapshotManager.list(bundle: bundle)
 
-            let contents = (try? FileManager.default.contentsOfDirectory(
-                at: savedStatesDir,
-                includingPropertiesForKeys: [.creationDateKey]
-            )) ?? []
-
-            guard !contents.isEmpty else {
+            guard !snapshots.isEmpty else {
                 print("No snapshots found for VM '\(name)'.")
                 print("Run 'spook snapshot \(name) <label>' to create one.")
                 return
             }
 
-            print("Snapshots for '\(name)':")
-            print(String(repeating: "─", count: 40))
-            for entry in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
-                let label = entry.lastPathComponent
-                let date = (try? entry.resourceValues(forKeys: [.creationDateKey]))
-                    .flatMap(\.creationDate)
-                    .map { "\($0)" } ?? "unknown"
-                print("  \(label)  (\(date))")
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = .short
+
+            var rows: [[String]] = []
+            for info in snapshots {
+                let sizeMB = String(format: "%.1f MB", Double(info.sizeInBytes) / (1024 * 1024))
+                let date = dateFormatter.string(from: info.createdAt)
+                rows.append([info.label, date, sizeMB])
             }
+
+            Style.table(headers: ["LABEL", "DATE", "SIZE"], rows: rows)
         }
     }
 }

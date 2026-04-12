@@ -253,41 +253,31 @@ extension Spook {
                 }
                 print()
 
-                // Template and user-data info.
-                if openclaw {
-                    print(Style.info("🦞 OpenClaw template selected"))
-                    print(Style.dim("  Installs Node.js 24 + OpenClaw + gateway daemon"))
-                    print(Style.dim("  Pass API keys via --share for security"))
-                }
+                // Auto-provision if a template was selected.
+                var provisionScript: URL? = nil
+
                 if githubRunner {
-                    guard let repo = githubRepo else {
-                        print(Style.error("✗ --github-runner requires --github-repo."))
+                    guard let repo = githubRepo, let token = githubToken else {
+                        print(Style.error("✗ --github-runner requires --github-repo and --github-token"))
                         throw ExitCode.failure
                     }
-                    guard let token = githubToken else {
-                        print(Style.error("✗ --github-runner requires --github-token."))
-                        throw ExitCode.failure
-                    }
-
-                    let scriptURL = try GitHubRunnerTemplate.generate(
-                        repo: repo,
-                        token: token,
-                        ephemeral: ephemeral
+                    provisionScript = try GitHubRunnerTemplate.generate(
+                        repo: repo, token: token, ephemeral: ephemeral
                     )
+                } else if remoteDesktop {
+                    provisionScript = try RemoteDesktopTemplate.generate()
+                } else if openclaw {
+                    provisionScript = try OpenClawTemplate.generate()
+                } else if let path = userData {
+                    provisionScript = URL(fileURLWithPath: path)
+                }
 
-                    print(Style.info("🏃 GitHub Actions runner template generated"))
-                    Style.field("Repo", repo)
-                    Style.field("Script", Style.dim(scriptURL.path))
-                    print(Style.dim("  The runner will be configured on first boot via user-data."))
-                    print(Style.dim("  Start the VM to begin: spook start \(name) --user-data \(scriptURL.path) --provision ssh"))
-                }
-                if remoteDesktop {
-                    print(Style.info("🖥  Remote desktop template selected"))
-                    print(Style.dim("  Screen Sharing (VNC) will be enabled on boot"))
-                }
-                if let scriptPath = userData {
-                    Style.field("User-data", scriptPath)
-                    Style.field("Provision", provision.label)
+                if let script = provisionScript {
+                    print(Style.info("Provisioning VM..."))
+                    // Note: actual execution requires the VM to be booted with
+                    // Setup Assistant completed and SSH available. Print the
+                    // command the user should run next.
+                    print("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh")
                 }
                 if ephemeral {
                     print(Style.yellow("⟳ Ephemeral mode: VM auto-destroys after main process exits"))

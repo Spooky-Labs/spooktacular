@@ -86,12 +86,35 @@ extension Spook.Share {
 
             let shareTag = tag ?? URL(fileURLWithPath: path).lastPathComponent
 
-            // Shared folders are stored in the VM config and applied at
-            // start time via VZVirtioFileSystemDeviceConfiguration.
-            print("Added shared folder to VM '\(name)':")
-            print("  Path:      \(path)")
-            print("  Tag:       \(shareTag)")
-            print("  Read-only: \(readOnly ? "yes" : "no")")
+            // Load the bundle and append the new shared folder.
+            let bundle = try VMBundle.load(from: bundleURL)
+            let newFolder = SharedFolder(
+                hostPath: path,
+                tag: shareTag,
+                readOnly: readOnly
+            )
+            let updatedSpec = VMSpec(
+                cpuCount: bundle.spec.cpuCount,
+                memorySizeInBytes: bundle.spec.memorySizeInBytes,
+                diskSizeInBytes: bundle.spec.diskSizeInBytes,
+                displayCount: bundle.spec.displayCount,
+                networkMode: bundle.spec.networkMode,
+                audioEnabled: bundle.spec.audioEnabled,
+                microphoneEnabled: bundle.spec.microphoneEnabled,
+                sharedFolders: bundle.spec.sharedFolders + [newFolder],
+                macAddress: bundle.spec.macAddress,
+                autoResizeDisplay: bundle.spec.autoResizeDisplay,
+                clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
+            )
+            let configData = try VMBundle.encoder.encode(updatedSpec)
+            try configData.write(
+                to: bundleURL.appendingPathComponent(VMBundle.configFileName)
+            )
+
+            print(Style.success("✓ Added shared folder '\(shareTag)' to VM '\(name)'."))
+            Style.field("Path", path)
+            Style.field("Tag", shareTag)
+            Style.field("Read-only", readOnly ? "yes" : "no")
             print("")
             print("The share will be available on next 'spook start \(name)'.")
             print("In the guest, mount with: mount_virtiofs \(shareTag) /Volumes/\(shareTag)")
@@ -124,8 +147,34 @@ extension Spook.Share {
                 throw ExitCode.failure
             }
 
-            // TODO: Remove the shared folder from the VM's persisted config.
-            print("Removed shared folder '\(tag)' from VM '\(name)'.")
+            // Load the bundle and filter out the matching shared folder.
+            let bundle = try VMBundle.load(from: bundleURL)
+            let filtered = bundle.spec.sharedFolders.filter { $0.tag != tag }
+
+            guard filtered.count < bundle.spec.sharedFolders.count else {
+                print(Style.error("✗ No shared folder with tag '\(tag)' found on VM '\(name)'."))
+                throw ExitCode.failure
+            }
+
+            let updatedSpec = VMSpec(
+                cpuCount: bundle.spec.cpuCount,
+                memorySizeInBytes: bundle.spec.memorySizeInBytes,
+                diskSizeInBytes: bundle.spec.diskSizeInBytes,
+                displayCount: bundle.spec.displayCount,
+                networkMode: bundle.spec.networkMode,
+                audioEnabled: bundle.spec.audioEnabled,
+                microphoneEnabled: bundle.spec.microphoneEnabled,
+                sharedFolders: filtered,
+                macAddress: bundle.spec.macAddress,
+                autoResizeDisplay: bundle.spec.autoResizeDisplay,
+                clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
+            )
+            let configData = try VMBundle.encoder.encode(updatedSpec)
+            try configData.write(
+                to: bundleURL.appendingPathComponent(VMBundle.configFileName)
+            )
+
+            print(Style.success("✓ Removed shared folder '\(tag)' from VM '\(name)'."))
             print("Changes take effect on next 'spook start \(name)'.")
         }
     }
@@ -154,9 +203,20 @@ extension Spook.Share {
                 throw ExitCode.failure
             }
 
-            // TODO: Read shared folder config from the VM bundle.
-            print("No shared folders configured for VM '\(name)'.")
-            print("Run 'spook share \(name) add <path>' to add one.")
+            let bundle = try VMBundle.load(from: bundleURL)
+            let folders = bundle.spec.sharedFolders
+
+            guard !folders.isEmpty else {
+                print("No shared folders configured for VM '\(name)'.")
+                print("Run 'spook share \(name) add <path>' to add one.")
+                return
+            }
+
+            let rows = folders.map { folder -> [String] in
+                let mode = folder.readOnly ? "ro" : "rw"
+                return [folder.hostPath, folder.tag, mode]
+            }
+            Style.table(headers: ["PATH", "TAG", "MODE"], rows: rows)
         }
     }
 }

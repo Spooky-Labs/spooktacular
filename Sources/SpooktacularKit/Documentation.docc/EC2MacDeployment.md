@@ -88,19 +88,14 @@ By default, Spooktacular's API listens on `127.0.0.1:9470` (localhost
 only). For remote management you need to bind to all interfaces:
 
 ```bash
-# Bind to all interfaces so the K8s operator (or other tools) can
-# reach this host over the VPC network.
-spook config --bind 0.0.0.0:9470
-
-# Generate a secure bearer token for API authentication
-spook config --generate-token
-# Writes token to ~/.spooktacular/api-token
-
-# Verify
-cat ~/.spooktacular/api-token
+# Install the LaunchDaemon with a custom bind address so the K8s
+# operator (or other tools) can reach this host over the VPC network.
+sudo spook service install --bind 0.0.0.0:9470
 ```
 
-> Note: Never expose port 9470 to the public internet. Use VPC private
+> Note: `spook service install` creates a LaunchDaemon for headless servers.
+
+> Important: Never expose port 9470 to the public internet. Use VPC private
 > subnets and security groups to restrict access. See
 > <doc:KubernetesGuide> for operator-to-host connectivity patterns.
 
@@ -147,15 +142,21 @@ commands for creating, starting, stopping, and managing VMs.
 
 ### Bind Address
 
+The bind address is set when installing the LaunchDaemon:
+
 ```bash
 # Listen on localhost only (default, for local use)
-spook config --bind 127.0.0.1:9470
+sudo spook service install --bind 127.0.0.1:9470
 
 # Listen on all interfaces (required for remote access)
-spook config --bind 0.0.0.0:9470
+sudo spook service install --bind 0.0.0.0:9470
+```
 
-# Listen on a specific interface
-spook config --bind 10.0.1.50:9470
+To change the bind address, uninstall and reinstall:
+
+```bash
+sudo spook service uninstall
+sudo spook service install --bind 0.0.0.0:9470
 ```
 
 ### Bearer Token Authentication
@@ -163,14 +164,8 @@ spook config --bind 10.0.1.50:9470
 Every API request must include a bearer token:
 
 ```bash
-# Generate a cryptographically random token
-spook config --generate-token
-
-# Or set a specific token
-spook config --token "my-secret-token-here"
-
 # Verify connectivity from another machine
-curl -s -H "Authorization: Bearer $(cat token)" \
+curl -s -H "Authorization: Bearer $(cat ~/.spooktacular/api-token)" \
     http://10.0.1.50:9470/v1/vms | jq .
 ```
 
@@ -188,10 +183,7 @@ curl -s -H "Authorization: Bearer $(cat token)" \
    long-lived AWS credentials on the host.
 
 ```bash
-# Rotate the API token
-spook config --generate-token
-
-# Update the K8s operator with the new token
+# Update the K8s operator with a new token
 kubectl create secret generic spook-node-tokens \
     --from-literal=mac-01="$(ssh ec2-user@10.0.1.50 'cat ~/.spooktacular/api-token')" \
     --dry-run=client -o yaml | kubectl apply -f -
@@ -214,21 +206,18 @@ spook create runner-02 --from-ipsw latest \
 > Note: IPSW installation takes 10-20 minutes per VM. For faster
 > deployment, use OCI images or clone from a base VM.
 
-### From an OCI Image (Recommended)
+### From a Clone (Recommended for Fast Deployment)
 
-OCI images are pre-built macOS images with tools already installed.
-They skip the IPSW installation entirely:
+Create one base VM, configure it with Xcode, then clone instantly:
 
 ```bash
-# Pull and create from an OCI image with Xcode pre-installed
-spook create runner-01 \
-    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
-    --cpu 4 --memory 8 --disk 64
-
-spook create runner-02 \
-    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
-    --cpu 4 --memory 8 --disk 64
+# Clone from the base for instant deployment
+spook clone base runner-01
+spook clone base runner-02
 ```
+
+> Note: OCI image pull is on the roadmap. For now, use `--from-ipsw`
+> to create VMs, then clone configured bases for fast deployment.
 
 ### Clone from a Base VM
 
@@ -382,25 +371,19 @@ set -euo pipefail
 eval "$(/opt/homebrew/bin/brew shellenv)"
 brew install --cask spooktacular
 
-# Configure API
-spook config --bind 0.0.0.0:9470
-spook config --generate-token
+# Install service (listens on all interfaces for remote access)
+sudo spook service install --bind 0.0.0.0:9470
 
-# Install service
-spook service install
-
-# Create two runners
-spook create runner-01 \
-    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
+# Create two runners from IPSW
+spook create runner-01 --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
     --user-data /opt/spooktacular/github-runner.sh \
-    --provision agent
+    --provision disk-inject
 
-spook create runner-02 \
-    --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 \
+spook create runner-02 --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
     --user-data /opt/spooktacular/github-runner.sh \
-    --provision agent
+    --provision disk-inject
 
 spook start runner-01 --headless
 spook start runner-02 --headless
@@ -460,15 +443,15 @@ install macOS Z.W."
 trying to install. The guest version must be less than or equal to
 the host version.
 
-**Solution:** Update the host macOS, or use a pre-built OCI image
-that matches the host version:
+**Solution:** Update the host macOS to a version that supports the
+guest you want to install:
 
 ```bash
 # Check host version
 sw_vers --productVersion
 
-# Use an OCI image instead of IPSW
-spook create runner --pull ghcr.io/spooktacular/macos:15.4
+# Use --from-ipsw with a compatible version
+spook create runner --from-ipsw latest
 ```
 
 See ``Compatibility`` for details on how version checking works.

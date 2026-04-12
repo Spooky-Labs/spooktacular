@@ -216,13 +216,18 @@ curl http://$(spook ip openclaw-personal):18789/health
 
 ## Snapshots
 
-Save a working OpenClaw configuration before making changes:
+Save a working OpenClaw configuration before making changes.
+The VM must be stopped to take or restore a disk-level snapshot:
 
 ```bash
+spook stop openclaw-work
 spook snapshot openclaw-work pre-upgrade
+spook start openclaw-work --headless
 # ... make changes, install new version ...
 # If something breaks:
+spook stop openclaw-work
 spook restore openclaw-work pre-upgrade
+spook start openclaw-work --headless
 ```
 
 ## Topics

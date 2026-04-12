@@ -52,7 +52,6 @@ USAGE: spook create <name> [options]
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--from-ipsw <source>` | `latest` | IPSW source: `latest` or path to local `.ipsw` |
-| `--pull <reference>` | - | OCI image reference to pull |
 | `--cpu <n>` | 4 | CPU cores (minimum 4, see ``VMSpec/minimumCPUCount``) |
 | `--memory <n>` | 8 | Memory in GB |
 | `--disk <n>` | 64 | Disk size in GB (APFS sparse) |
@@ -67,8 +66,11 @@ USAGE: spook create <name> [options]
 | `--enable-audio` / `--disable-audio` | enabled | Audio output |
 | `--enable-microphone` / `--disable-microphone` | disabled | Microphone passthrough |
 | `--enable-auto-resize` / `--disable-auto-resize` | enabled | Auto-resize display |
-| `--template <name>` | - | Built-in template (e.g., `github-runner`) |
-| `--template-arg <key=value>` | - | Template argument (repeatable) |
+| `--github-runner` | false | Configure as a GitHub Actions runner |
+| `--github-repo <org/repo>` | - | GitHub repository for `--github-runner` |
+| `--github-token <token>` | - | Runner registration token for `--github-runner` |
+| `--openclaw` | false | Configure as an OpenClaw AI agent |
+| `--remote-desktop` | false | Enable Screen Sharing (VNC) |
 | `--ephemeral` | false | Destroy and recreate after each job |
 
 **Examples:**
@@ -88,13 +90,16 @@ spook create ci --from-ipsw latest \
 # From a local IPSW file
 spook create dev --from-ipsw ~/Downloads/macOS15.4.ipsw
 
-# From OCI image
-spook create runner --pull ghcr.io/spooktacular/macos-xcode:15.4-16.2
+# As a GitHub Actions runner
+spook create runner --from-ipsw latest \
+    --github-runner --github-repo myorg/myrepo --github-token ghp_xxx
 
 # With shared folder
 spook create ml --cpu 8 --memory 16 \
     --share /data/training \
     --network host-only
+
+> Note: OCI image pull is on the roadmap. For now, use `--from-ipsw` to create VMs.
 ```
 
 **Exit codes:** 0 on success, 1 if the VM already exists or
@@ -151,11 +156,14 @@ USAGE: spook stop <name>
 
 ```bash
 spook stop my-vm
+spook stop my-vm --force
 ```
 
-> Note: macOS guests do not respond to graceful stop requests.
-> Use `spook ssh` or `spook exec` to run `sudo shutdown -h now`
-> inside the guest before stopping for a clean shutdown.
+> Note: `spook stop` reads the PID file from the VM bundle and
+> sends SIGTERM to the `spook start` process that owns the VM.
+> That process handles SIGTERM by gracefully stopping the VM,
+> cleaning up the PID file, and exiting. Use `--force` to send
+> SIGKILL if the process is unresponsive.
 
 **Exit codes:** 0 on success, 1 if the VM is not found.
 
@@ -441,7 +449,13 @@ guest.
 
 ### spook snapshot
 
-Saves the current state of a VM as a named snapshot.
+Saves a disk-level snapshot of a VM. Copies `disk.img` and
+`auxiliary.bin` into a `SavedStates/<label>/` directory inside
+the VM bundle, along with a `snapshot-info.json` metadata file.
+
+The VM must be **stopped** before snapshotting. Disk-level
+snapshots work across processes and reboots -- no running VM
+process is required, unlike VZ state save.
 
 ```
 USAGE: spook snapshot <name> <label>
@@ -461,11 +475,17 @@ spook snapshot my-vm clean-install
 spook snapshot runner before-xcode
 ```
 
+See ``SnapshotManager`` for the API details.
+
 ---
 
 ### spook restore
 
-Restores a VM to a previously saved snapshot.
+Restores a VM's disk state from a previously saved snapshot.
+Replaces the current `disk.img` and `auxiliary.bin` with the
+copies stored in the snapshot directory.
+
+The VM must be **stopped** before restoring.
 
 ```
 USAGE: spook restore <name> <label>
@@ -478,13 +498,12 @@ spook restore my-vm clean-install
 spook restore runner before-xcode
 ```
 
-The VM must be stopped before restoring.
-
 ---
 
 ### spook snapshots
 
-Lists all snapshots for a virtual machine.
+Lists all snapshots for a virtual machine, showing each
+snapshot's label, creation date, and size.
 
 ```
 USAGE: spook snapshots <name>
@@ -494,18 +513,21 @@ USAGE: spook snapshots <name>
 
 ```bash
 spook snapshots my-vm
-# Snapshots for 'my-vm':
-# ────────────────────────────────────────
-#   clean-install  (2025-01-15 10:30:00)
-#   before-xcode   (2025-01-16 14:22:00)
+# LABEL            DATE                  SIZE
+# ──────────────   ──────────────────    ──────
+# clean-install    Jan 15, 2025 10:30    2.1 GB
+# before-xcode     Jan 16, 2025 14:22    3.8 GB
 ```
 
 ---
 
 ### spook share
 
-Manages shared folders for a virtual machine. This is a subcommand
-group with three operations.
+Manages shared folders for a virtual machine. Shared folder
+configuration is persisted in the VM's `config.json` and applied
+at start time via `VZVirtioFileSystemDeviceConfiguration`.
+
+This is a subcommand group with three operations.
 
 #### spook share add
 
@@ -560,6 +582,66 @@ spook share my-vm list
 # TAG        PATH                    PERMS
 # projects   /Users/me/Projects      rw
 # data       /data/training          ro
+```
+
+---
+
+### spook service
+
+Manages the Spooktacular LaunchDaemon for headless server
+operation. This is a subcommand group with three operations.
+
+> Note: `spook service install` creates a LaunchDaemon for
+> headless servers. It writes a plist to
+> `/Library/LaunchDaemons/com.spooktacular.daemon.plist` and
+> loads it via `launchctl`. The daemon starts automatically at
+> boot and runs the Spooktacular API server.
+
+#### spook service install
+
+Installs the LaunchDaemon. Requires `sudo`.
+
+```
+USAGE: sudo spook service install [options]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--bind <addr:port>` | `0.0.0.0:9470` | API listen address |
+
+**Examples:**
+
+```bash
+sudo spook service install
+sudo spook service install --bind 127.0.0.1:9470
+```
+
+#### spook service uninstall
+
+Unloads and removes the LaunchDaemon. Requires `sudo`.
+
+```
+USAGE: sudo spook service uninstall
+```
+
+#### spook service status
+
+Reports whether the LaunchDaemon is installed and running.
+
+```
+USAGE: spook service status
+```
+
+**Examples:**
+
+```bash
+spook service status
+# Spooktacular LaunchDaemon
+#   Plist    installed
+#   Path     /Library/LaunchDaemons/com.spooktacular.daemon.plist
+#   Status   running
 ```
 
 ## Environment Variables

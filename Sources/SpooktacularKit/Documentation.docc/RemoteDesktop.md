@@ -269,7 +269,7 @@ Audio is enabled by default in ``VMSpec``. To explicitly control it:
 spook create my-vm --enable-audio
 
 # Audio disabled (saves resources for headless CI)
-spook create my-vm --no-audio
+spook create my-vm --disable-audio
 
 # Enable microphone passthrough (for voice/video calls in the VM)
 spook create my-vm --enable-microphone
@@ -365,11 +365,15 @@ sudo createhomedir -c -u viewer
 For maximum security, use ``NetworkMode/hostOnly`` networking and
 connect only from the host:
 
+> Important: Host-only networking currently falls back to NAT mode.
+> VMs will have internet access until a future release adds true
+> host-only isolation. Plan your network security accordingly.
+
 ```bash
 spook create secure-desktop \
     --cpu 4 --memory 8 --disk 64 \
     --network host-only \
-    --no-audio
+    --disable-audio
 
 # Connect only from the host machine
 open vnc://$(spook ip secure-desktop)
@@ -395,12 +399,12 @@ spook create dev-bob --cpu 4 --memory 8 --disk 64 --network bridged:en0
 ### QA Test Lab
 
 ```bash
-# Create VMs with different macOS / Xcode versions for testing
-spook create qa-sonoma --pull ghcr.io/spooktacular/macos:14.7 \
-    --network bridged:en0
+# Create VMs for testing (clone from pre-configured bases)
+spook clone base-sonoma qa-sonoma
+spook set qa-sonoma --network bridged:en0
 
-spook create qa-sequoia --pull ghcr.io/spooktacular/macos:15.4 \
-    --network bridged:en0
+spook clone base-sequoia qa-sequoia
+spook set qa-sequoia --network bridged:en0
 
 # QA team members connect to whichever version they need
 ```

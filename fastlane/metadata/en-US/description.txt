@@ -1,29 +1,29 @@
 Spooktacular is the easiest way to create and manage macOS virtual machines on Apple Silicon. Built for enterprise teams and individual developers alike.
 
 CREATE VMs IN SECONDS
-Spin up macOS virtual machines from IPSW restore images or pre-built OCI images. Every VM is a clean, isolated macOS environment.
+Spin up macOS virtual machines from IPSW restore images. Every VM is a clean, isolated macOS environment.
 
 DOUBLE YOUR CI CAPACITY
 Run 2 VMs per Mac — instantly double your GitHub Actions, Buildkite, or CircleCI runner capacity on the same hardware. Cut your EC2 Mac costs in half.
 
 ENTERPRISE-READY
-Manage VMs as Kubernetes resources with our operator. Scale from 2 to 200 runners with kubectl apply. Full CLI for automation, full GUI for visibility.
+Full CLI for automation, full GUI for visibility. Manage headless servers with the built-in LaunchDaemon service.
 
 PROVISIONING THAT JUST WORKS
 Four ways to run scripts on first boot: disk injection (zero-touch), SSH, guest agent, or shared folders. Your user-data scripts run automatically — no manual setup.
 
 BUILT ON APPLE'S VIRTUALIZATION FRAMEWORK
-Native Apple Silicon performance. Metal GPU acceleration for ML workloads. VirtIO networking, shared folders, and audio. Save and restore VM state.
+Native Apple Silicon performance. Metal GPU acceleration for ML workloads. VirtIO networking, shared folders, and audio. Save and restore VM disk snapshots.
 
 KEY FEATURES
-• Create VMs from IPSW or OCI images
+• Create VMs from IPSW restore images
 • Instant APFS copy-on-write cloning
-• GitHub Actions runner templates
+• GitHub Actions runner setup
 • Remote desktop with Screen Sharing
 • ML workload support (Metal GPU, shared folders for datasets)
 • NAT, bridged, isolated, and host-only networking
-• Save/restore VM snapshots
-• Kubernetes operator for fleet management
+• Save/restore disk-level VM snapshots
+• LaunchDaemon service for headless operation
 • Menu bar quick access
 • Full CLI with styled terminal output
 • Accessibility: complete VoiceOver support
@@ -32,5 +32,5 @@ PERFECT FOR
 • CI/CD runners (GitHub Actions, Buildkite, CircleCI)
 • macOS development and testing across versions
 • ML training and inference on Apple Silicon
-• Enterprise fleet management via Kubernetes
+• iMessage servers (BlueBubbles)
 • Remote development environments

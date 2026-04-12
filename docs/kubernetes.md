@@ -1,5 +1,7 @@
 # Spooktacular Kubernetes Integration
 
+> **Important:** The Kubernetes operator is on the roadmap. This document describes the planned architecture. For current VM management, use the `spook` CLI.
+
 Run macOS virtual machines as Kubernetes resources. Each Mac host
 adds 2 VM pods to your cluster (Apple's kernel limit).
 
@@ -8,8 +10,7 @@ adds 2 VM pods to your cluster (Apple's kernel limit).
 ```bash
 # 1. Install Spooktacular on each Mac (EC2 Mac, Mac mini, etc.)
 brew install --cask spooktacular
-spook config --bind 0.0.0.0:9470
-spook service install
+sudo spook service install --bind 0.0.0.0:9470
 
 # 2. Install the operator in your K8s cluster
 kubectl apply -f https://spooktacular.dev/k8s/crds/macosvm.yaml

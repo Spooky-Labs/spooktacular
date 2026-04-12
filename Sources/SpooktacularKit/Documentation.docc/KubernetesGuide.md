@@ -2,6 +2,8 @@
 
 Manage macOS virtual machines as Kubernetes resources with custom CRDs and an operator.
 
+> Important: The Kubernetes operator is on the roadmap. This guide describes the planned architecture. For current VM management, use the `spook` CLI.
+
 ## Overview
 
 The Spooktacular Kubernetes operator bridges your Kubernetes cluster

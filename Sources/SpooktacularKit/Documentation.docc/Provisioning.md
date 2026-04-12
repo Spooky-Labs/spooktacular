@@ -50,11 +50,12 @@ The Spooktacular guest agent communicates over VirtIO socket — a
 direct host-guest channel that works without networking.
 
 ```bash
-spook create my-vm \
-    --pull ghcr.io/spooktacular/macos:15.4 \
+spook create my-vm --from-ipsw latest \
     --user-data ~/setup.sh \
     --provision agent
 ```
+
+> Note: OCI image pull is on the roadmap. For now, use `--from-ipsw` to create VMs.
 
 **Requires:** Agent pre-installed (included in all Spooktacular
 OCI images).

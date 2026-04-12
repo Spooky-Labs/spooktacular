@@ -69,9 +69,7 @@ public enum Compatibility {
                 return """
                     Your macOS (\(hostStr)) cannot install macOS \(imageStr). \
                     The guest version must be ≤ the host version. \
-                    Update your Mac to macOS \(imageStr) or newer, \
-                    or use a pre-built OCI image: \
-                    spook create <name> --pull ghcr.io/spooktacular/macos:<version>
+                    Update your Mac to macOS \(imageStr) or newer.
                     """
             }
         }

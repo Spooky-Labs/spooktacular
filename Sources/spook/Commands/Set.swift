@@ -17,7 +17,7 @@ extension Spook {
                 EXAMPLES:
                   spook set my-vm --cpu 8 --memory 16
                   spook set runner --network nat --audio
-                  spook set dev --displays 2 --no-audio
+                  spook set dev --displays 2 --disable-audio
                   spook set ci --network bridged:en0
                 """
         )

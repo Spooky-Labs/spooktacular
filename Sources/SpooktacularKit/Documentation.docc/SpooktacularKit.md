@@ -66,6 +66,12 @@ VMConfiguration.applySpec(spec, to: config)
 
 - ``CloneManager``
 
+### Snapshots
+
+- ``SnapshotManager``
+- ``SnapshotInfo``
+- ``SnapshotError``
+
 ### IPSW Management
 
 - ``RestoreImageManager``
