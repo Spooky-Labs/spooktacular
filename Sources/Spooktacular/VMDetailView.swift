@@ -109,16 +109,13 @@ struct VMLaunchView: View {
                     .fontWeight(.semibold)
                     .accessibilityAddTraits(.isHeader)
 
+                let ready = bundle.metadata.setupCompleted
                 Label(
-                    bundle.metadata.setupCompleted
-                        ? "Ready" : "Setup pending",
-                    systemImage: bundle.metadata.setupCompleted
-                        ? "checkmark.circle.fill" : "clock"
+                    ready ? "Ready" : "Setup pending",
+                    systemImage: ready ? "checkmark.circle.fill" : "clock"
                 )
                 .font(.subheadline)
-                .foregroundStyle(
-                    bundle.metadata.setupCompleted ? .green : .orange
-                )
+                .foregroundStyle(ready ? .green : .orange)
             }
 
             // Quick spec summary (one line)

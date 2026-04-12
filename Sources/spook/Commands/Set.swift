@@ -76,13 +76,17 @@ extension Spook {
                     ?? oldSpec.memorySizeInBytes,
                 diskSizeInBytes: oldSpec.diskSizeInBytes,
                 displayCount: displays ?? oldSpec.displayCount,
-                networkMode: network ?? oldSpec.networkMode
+                networkMode: network ?? oldSpec.networkMode,
+                audioEnabled: audio ?? oldSpec.audioEnabled,
+                microphoneEnabled: microphone ?? oldSpec.microphoneEnabled,
+                sharedFolders: oldSpec.sharedFolders,
+                macAddress: oldSpec.macAddress,
+                autoResizeDisplay: autoResize ?? oldSpec.autoResizeDisplay,
+                clipboardSharingEnabled: oldSpec.clipboardSharingEnabled
             )
 
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(newSpec)
-            try data.write(to: bundleURL.appendingPathComponent("config.json"))
+            let data = try VMBundle.encoder.encode(newSpec)
+            try data.write(to: bundleURL.appendingPathComponent(VMBundle.configFileName))
 
             print("Updated VM '\(name)' configuration.")
 

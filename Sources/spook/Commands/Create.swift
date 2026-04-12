@@ -189,19 +189,18 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            let effectiveNetwork: NetworkMode
-            if let iface = bridgedInterface {
-                effectiveNetwork = .bridged(interface: iface)
-            } else {
-                effectiveNetwork = network
-            }
+            let effectiveNetwork = bridgedInterface.map { NetworkMode.bridged(interface: $0) }
+                ?? network
 
             let spec = VMSpec(
                 cpuCount: cpu,
                 memorySizeInBytes: UInt64(memory) * 1024 * 1024 * 1024,
                 diskSizeInBytes: UInt64(disk) * 1024 * 1024 * 1024,
                 displayCount: displays,
-                networkMode: effectiveNetwork
+                networkMode: effectiveNetwork,
+                audioEnabled: audio,
+                microphoneEnabled: microphone,
+                autoResizeDisplay: autoResize
             )
 
             let manager = RestoreImageManager(cacheDirectory: Paths.ipswCache)
@@ -286,11 +285,6 @@ extension Spook {
                 Style.field("Disk", "\(disk) GB")
                 print()
                 print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
-
-            } catch let error as RestoreImageError {
-                print("Error: \(error.localizedDescription)")
-                try? FileManager.default.removeItem(at: bundleURL)
-                throw ExitCode.failure
 
             } catch {
                 print("Error: \(error.localizedDescription)")

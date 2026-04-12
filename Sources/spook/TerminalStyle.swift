@@ -1,4 +1,5 @@
 import Foundation
+import SpooktacularKit
 
 /// Styled terminal output with ANSI color codes.
 ///
@@ -178,6 +179,28 @@ enum Style {
                 cell.padding(toLength: width, withPad: " ", startingAt: 0)
             }.joined(separator: "  ")
             print(line)
+        }
+    }
+
+    // MARK: - Network Mode Labels
+
+    /// Styled label for a network mode, used across CLI commands.
+    static func networkLabel(_ mode: NetworkMode) -> String {
+        switch mode {
+        case .nat: dim("nat")
+        case .bridged(let iface): info("bridged:\(iface)")
+        case .isolated: yellow("isolated")
+        case .hostOnly: dim("host-only")
+        }
+    }
+
+    /// Raw (unstyled) label for a network mode, for machine output.
+    static func networkRaw(_ mode: NetworkMode) -> String {
+        switch mode {
+        case .nat: "nat"
+        case .bridged(let iface): "bridged:\(iface)"
+        case .isolated: "isolated"
+        case .hostOnly: "host-only"
         }
     }
 

@@ -68,47 +68,55 @@ public enum CloneManager {
             withIntermediateDirectories: true
         )
 
-        // Copy disk, auxiliary storage, and hardware model.
-        // Uses clonefile(2) where APFS is available (COW clone).
-        for fileName in filesToCopy {
-            let sourceFile = source.url.appendingPathComponent(fileName)
-            let destFile = destination.appendingPathComponent(fileName)
+        do {
+            // Copy disk, auxiliary storage, and hardware model.
+            // Uses clonefile(2) where APFS is available (COW clone).
+            for fileName in filesToCopy {
+                let sourceFile = source.url.appendingPathComponent(fileName)
+                let destFile = destination.appendingPathComponent(fileName)
 
-            guard fileManager.fileExists(atPath: sourceFile.path) else {
-                continue
+                guard fileManager.fileExists(atPath: sourceFile.path) else {
+                    continue
+                }
+
+                try fileManager.copyItem(at: sourceFile, to: destFile)
             }
 
-            try fileManager.copyItem(at: sourceFile, to: destFile)
+            // Generate a fresh machine identifier. Every VM must
+            // have a unique ECID — reusing the source's identifier
+            // causes undefined behavior in the Virtualization
+            // framework.
+            Log.clone.debug("Generating new VZMacMachineIdentifier for clone")
+            let newIdentifier = VZMacMachineIdentifier()
+            try newIdentifier.dataRepresentation.write(
+                to: destination.appendingPathComponent("machine-identifier.bin")
+            )
+
+            // Write config.json (same spec as source)
+            let spec = source.spec
+            let configData = try VMBundle.encoder.encode(spec)
+            try configData.write(
+                to: destination.appendingPathComponent(VMBundle.configFileName)
+            )
+
+            // Write metadata.json with a new ID but inherited state
+            var metadata = VMMetadata()
+            metadata.setupCompleted = source.metadata.setupCompleted
+            let metadataData = try VMBundle.encoder.encode(metadata)
+            try metadataData.write(
+                to: destination.appendingPathComponent(VMBundle.metadataFileName)
+            )
+
+            return VMBundle(
+                url: destination,
+                spec: spec,
+                metadata: metadata
+            )
+        } catch {
+            // Clean up partial clone on failure.
+            Log.clone.error("Clone failed, cleaning up: \(error.localizedDescription, privacy: .public)")
+            try? fileManager.removeItem(at: destination)
+            throw error
         }
-
-        // Generate a fresh machine identifier. Every VM must have
-        // a unique ECID — reusing the source's identifier causes
-        // undefined behavior in the Virtualization framework.
-        Log.clone.debug("Generating new VZMacMachineIdentifier for clone")
-        let newIdentifier = VZMacMachineIdentifier()
-        try newIdentifier.dataRepresentation.write(
-            to: destination.appendingPathComponent("machine-identifier.bin")
-        )
-
-        // Write config.json (same spec as source)
-        let spec = source.spec
-        let configData = try VMBundle.encoder.encode(spec)
-        try configData.write(
-            to: destination.appendingPathComponent(VMBundle.configFileName)
-        )
-
-        // Write metadata.json with a new ID but inherited state
-        var metadata = VMMetadata()
-        metadata.setupCompleted = source.metadata.setupCompleted
-        let metadataData = try VMBundle.encoder.encode(metadata)
-        try metadataData.write(
-            to: destination.appendingPathComponent(VMBundle.metadataFileName)
-        )
-
-        return VMBundle(
-            url: destination,
-            spec: spec,
-            metadata: metadata
-        )
     }
 }

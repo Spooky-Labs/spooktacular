@@ -46,6 +46,5 @@ public struct VMMetadata: Sendable, Codable, Equatable {
         self.id = UUID()
         self.createdAt = Date()
         self.setupCompleted = false
-        self.lastBootedAt = nil
     }
 }

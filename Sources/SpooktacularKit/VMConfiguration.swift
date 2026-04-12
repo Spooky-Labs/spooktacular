@@ -99,12 +99,13 @@ public enum VMConfiguration {
         // Apple docs: https://developer.apple.com/documentation/virtualization/vzvirtiosounddeviceconfiguration
         if spec.audioEnabled {
             let audio = VZVirtioSoundDeviceConfiguration()
-            let outputStream = VZVirtioSoundDeviceOutputStreamConfiguration()
-            audio.streams = [outputStream]
+            var streams: [VZVirtioSoundDeviceStreamConfiguration] = [
+                VZVirtioSoundDeviceOutputStreamConfiguration()
+            ]
             if spec.microphoneEnabled {
-                let inputStream = VZVirtioSoundDeviceInputStreamConfiguration()
-                audio.streams.append(inputStream)
+                streams.append(VZVirtioSoundDeviceInputStreamConfiguration())
             }
+            audio.streams = streams
             configuration.audioDevices = [audio]
         }
 
@@ -114,19 +115,15 @@ public enum VMConfiguration {
         // folders appear automatically in Finder.
         // Apple docs: https://developer.apple.com/documentation/virtualization/shared-directories
         if !spec.sharedFolders.isEmpty {
+            let share: VZDirectoryShare
             if spec.sharedFolders.count == 1 {
                 let folder = spec.sharedFolders[0]
-                let share = VZSingleDirectoryShare(
+                share = VZSingleDirectoryShare(
                     directory: VZSharedDirectory(
                         url: URL(fileURLWithPath: folder.hostPath),
                         readOnly: folder.readOnly
                     )
                 )
-                let device = VZVirtioFileSystemDeviceConfiguration(
-                    tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
-                )
-                device.share = share
-                configuration.directorySharingDevices = [device]
             } else {
                 var directories: [String: VZSharedDirectory] = [:]
                 for folder in spec.sharedFolders {
@@ -135,15 +132,13 @@ public enum VMConfiguration {
                         readOnly: folder.readOnly
                     )
                 }
-                let share = VZMultipleDirectoryShare(
-                    directories: directories
-                )
-                let device = VZVirtioFileSystemDeviceConfiguration(
-                    tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
-                )
-                device.share = share
-                configuration.directorySharingDevices = [device]
+                share = VZMultipleDirectoryShare(directories: directories)
             }
+            let device = VZVirtioFileSystemDeviceConfiguration(
+                tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
+            )
+            device.share = share
+            configuration.directorySharingDevices = [device]
         }
     }
 
@@ -215,43 +210,32 @@ public enum VMConfiguration {
         let devices: [VZVirtioNetworkDeviceConfiguration]
 
         switch mode {
-        case .nat:
-            let device = VZVirtioNetworkDeviceConfiguration()
-            device.attachment = VZNATNetworkDeviceAttachment()
-            devices = [device]
-
-        case .bridged(let interface):
-            let interfaces = VZBridgedNetworkInterface.networkInterfaces
-            guard let target = interfaces.first(where: {
-                $0.identifier == interface
-            }) else {
-                // Fall back to NAT if the requested interface
-                // is not found. A warning should be logged by
-                // the caller.
-                let device = VZVirtioNetworkDeviceConfiguration()
-                device.attachment = VZNATNetworkDeviceAttachment()
-                devices = [device]
-                break
-            }
-            let device = VZVirtioNetworkDeviceConfiguration()
-            device.attachment = VZBridgedNetworkDeviceAttachment(interface: target)
-            devices = [device]
-
         case .isolated:
             devices = []
 
+        case .bridged(let interface):
+            let target = VZBridgedNetworkInterface.networkInterfaces
+                .first { $0.identifier == interface }
+            if let target {
+                let device = VZVirtioNetworkDeviceConfiguration()
+                device.attachment = VZBridgedNetworkDeviceAttachment(interface: target)
+                devices = [device]
+            } else {
+                devices = [makeNATDevice()]
+            }
+
         case .hostOnly:
             // Host-only requires a user-space virtual switch via
-            // VZFileHandleNetworkDeviceAttachment. For now, fall
-            // back to NAT — the full implementation requires the
-            // file-handle networking subsystem.
-            let device = VZVirtioNetworkDeviceConfiguration()
-            device.attachment = VZNATNetworkDeviceAttachment()
-            devices = [device]
+            // VZFileHandleNetworkDeviceAttachment. Fall back to
+            // NAT until the file-handle networking subsystem is
+            // implemented.
+            Log.network.warning("Host-only networking not yet implemented; falling back to NAT")
+            devices = [makeNATDevice()]
+
+        case .nat:
+            devices = [makeNATDevice()]
         }
 
-        // Apply custom MAC address to the first network device
-        // when specified.
         if let macString = macAddress,
            let mac = VZMACAddress(string: macString),
            let first = devices.first {
@@ -259,5 +243,11 @@ public enum VMConfiguration {
         }
 
         return devices
+    }
+
+    private static func makeNATDevice() -> VZVirtioNetworkDeviceConfiguration {
+        let device = VZVirtioNetworkDeviceConfiguration()
+        device.attachment = VZNATNetworkDeviceAttachment()
+        return device
     }
 }

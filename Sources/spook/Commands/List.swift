@@ -66,7 +66,7 @@ extension Spook {
                 let diskGB = bundle.spec.diskSizeInBytes / (1024 * 1024 * 1024)
                 let setup = bundle.metadata.setupCompleted
                     ? Style.green("✓ ready") : Style.dim("pending")
-                let network = networkLabel(bundle.spec.networkMode)
+                let network = Style.networkLabel(bundle.spec.networkMode)
                 let audio = bundle.spec.audioEnabled
                     ? Style.dim("♪") : ""
 
@@ -117,13 +117,5 @@ extension Spook {
             }
         }
 
-        private func networkLabel(_ mode: NetworkMode) -> String {
-            switch mode {
-            case .nat: Style.dim("nat")
-            case .bridged(let iface): Style.info("bridged:\(iface)")
-            case .isolated: Style.yellow("isolated")
-            case .hostOnly: Style.dim("host-only")
-            }
-        }
     }
 }

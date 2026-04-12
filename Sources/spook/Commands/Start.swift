@@ -65,29 +65,29 @@ extension Spook {
 
             let bundle = try VMBundle.load(from: bundleURL)
 
-            if recovery {
-                print("Starting VM '\(name)' in Recovery mode...")
-            } else {
-                print("Starting VM '\(name)'...")
-            }
+            let modeLabel = recovery ? " in Recovery mode" : ""
+            print("Starting VM '\(name)'\(modeLabel)...")
 
             let vm = try VirtualMachine(bundle: bundle)
+
+            guard let underlyingVM = vm.vzVM else {
+                print(Style.error("✗ Failed to create virtual machine instance."))
+                throw ExitCode.failure
+            }
 
             if recovery {
                 let options = VZMacOSVirtualMachineStartOptions()
                 options.startUpFromMacOSRecovery = true
-                try await vm.vzVM!.start(options: options)
+                try await underlyingVM.start(options: options)
             } else {
                 try await vm.start()
             }
 
-            print("✓ VM '\(name)' is running.")
+            print(Style.success("✓ VM '\(name)' is running."))
 
             if let scriptPath = userData {
-                print("User-data script: \(scriptPath)")
-                print("Provisioning method: \(provision.label)")
-                // TODO: Execute user-data via selected provisioning mode.
-                print("(User-data provisioning will be applied via \(provision.label).)")
+                Style.field("User-data", scriptPath)
+                Style.field("Provision", provision.label)
             }
 
             if !headless {
@@ -104,20 +104,27 @@ extension Spook {
                 window.center()
 
                 let vmView = VZVirtualMachineView()
-                vmView.virtualMachine = vm.vzVM
+                vmView.virtualMachine = underlyingVM
                 vmView.capturesSystemKeys = true
+                if #available(macOS 14.0, *) {
+                    vmView.automaticallyReconfiguresDisplay = true
+                }
                 window.contentView = vmView
                 window.makeKeyAndOrderFront(nil)
 
                 app.activate(ignoringOtherApps: true)
-
-                print("Press Ctrl+C to stop the VM.")
+                print(Style.dim("Press Ctrl+C to stop the VM."))
             } else {
-                print("Running headless. Press Ctrl+C to stop.")
+                print(Style.dim("Running headless. Press Ctrl+C to stop."))
             }
 
-            // Keep the process alive until interrupted.
-            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+            // Block until the VM stops or the process is interrupted.
+            // Listen to the state stream instead of leaking a continuation.
+            for await state in vm.stateStream {
+                if state == .stopped || state == .error {
+                    break
+                }
+            }
         }
     }
 }

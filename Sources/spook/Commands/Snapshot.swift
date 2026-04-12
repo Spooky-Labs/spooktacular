@@ -17,9 +17,7 @@ extension Spook {
                 EXAMPLES:
                   spook snapshot my-vm clean-install
                   spook snapshot runner before-xcode
-                """,
-            subcommands: [],
-            aliases: []
+                """
         )
 
         @Argument(help: "Name of the VM.")
@@ -108,15 +106,13 @@ extension Spook {
             }
 
             let savedStatesDir = bundleURL.appendingPathComponent("SavedStates")
-            let fm = FileManager.default
 
-            guard fm.fileExists(atPath: savedStatesDir.path),
-                  let contents = try? fm.contentsOfDirectory(
-                    at: savedStatesDir,
-                    includingPropertiesForKeys: [.creationDateKey]
-                  ),
-                  !contents.isEmpty
-            else {
+            let contents = (try? FileManager.default.contentsOfDirectory(
+                at: savedStatesDir,
+                includingPropertiesForKeys: [.creationDateKey]
+            )) ?? []
+
+            guard !contents.isEmpty else {
                 print("No snapshots found for VM '\(name)'.")
                 print("Run 'spook snapshot \(name) <label>' to create one.")
                 return
@@ -126,8 +122,9 @@ extension Spook {
             print(String(repeating: "─", count: 40))
             for entry in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
                 let label = entry.lastPathComponent
-                let values = try? entry.resourceValues(forKeys: [.creationDateKey])
-                let date = values?.creationDate.map { "\($0)" } ?? "unknown"
+                let date = (try? entry.resourceValues(forKeys: [.creationDateKey]))
+                    .flatMap(\.creationDate)
+                    .map { "\($0)" } ?? "unknown"
                 print("  \(label)  (\(date))")
             }
         }

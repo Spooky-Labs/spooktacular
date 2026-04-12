@@ -100,14 +100,9 @@ public enum Compatibility {
     ) -> Result {
         let host = hostVersion ?? self.hostVersion
 
-        if compare(host, isAtLeast: imageVersion) {
-            return .compatible
-        } else {
-            return .hostTooOld(
-                hostVersion: host,
-                imageVersion: imageVersion
-            )
-        }
+        return compare(host, isAtLeast: imageVersion)
+            ? .compatible
+            : .hostTooOld(hostVersion: host, imageVersion: imageVersion)
     }
 
     // MARK: - Private

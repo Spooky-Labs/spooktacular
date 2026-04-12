@@ -140,25 +140,28 @@ final class AppState {
         }
     }
 
-    /// Deletes a VM by name.
+    /// Deletes a VM by name, stopping it first if running.
     func deleteVM(_ name: String) {
-        do {
-            if runningVMs[name] != nil {
-                runningVMs.removeValue(forKey: name)
-            }
-            if let bundle = vms[name] {
-                try FileManager.default.removeItem(at: bundle.url)
-            }
-            vms.removeValue(forKey: name)
-            if selectedVM == name {
-                selectedVM = nil
-            }
+        Task {
+            do {
+                // Stop the VM before deleting its bundle.
+                if let vm = runningVMs.removeValue(forKey: name) {
+                    Log.vm.info("Stopping running VM '\(name, privacy: .public)' before deletion")
+                    try await vm.stop(graceful: false)
+                }
+                if let bundle = vms.removeValue(forKey: name) {
+                    try FileManager.default.removeItem(at: bundle.url)
+                }
+                if selectedVM == name {
+                    selectedVM = nil
+                }
 
-            AccessibilityNotification.Announcement(
-                "Virtual machine \(name) deleted"
-            ).post()
-        } catch {
-            presentError(error)
+                AccessibilityNotification.Announcement(
+                    "Virtual machine \(name) deleted"
+                ).post()
+            } catch {
+                presentError(error)
+            }
         }
     }
 

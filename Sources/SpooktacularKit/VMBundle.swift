@@ -40,13 +40,13 @@ public struct VMBundle: Sendable {
     // MARK: - Constants
 
     /// File name for the VM hardware specification.
-    static let configFileName = "config.json"
+    public static let configFileName = "config.json"
 
     /// File name for the VM runtime metadata.
-    static let metadataFileName = "metadata.json"
+    public static let metadataFileName = "metadata.json"
 
     /// A JSON encoder configured for bundle files.
-    static var encoder: JSONEncoder {
+    public static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -54,7 +54,7 @@ public struct VMBundle: Sendable {
     }
 
     /// A JSON decoder configured for bundle files.
-    static var decoder: JSONDecoder {
+    public static var decoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder

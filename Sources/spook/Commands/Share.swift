@@ -74,25 +74,22 @@ extension Spook.Share {
                 throw ExitCode.failure
             }
 
-            let expandedPath = path
-            guard FileManager.default.fileExists(atPath: expandedPath) else {
-                print("Error: Directory not found at '\(expandedPath)'.")
-                throw ExitCode.failure
-            }
-
             var isDir: ObjCBool = false
-            FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir)
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
+                print("Error: Directory not found at '\(path)'.")
+                throw ExitCode.failure
+            }
             guard isDir.boolValue else {
-                print("Error: '\(expandedPath)' is not a directory.")
+                print("Error: '\(path)' is not a directory.")
                 throw ExitCode.failure
             }
 
-            let shareTag = tag ?? URL(fileURLWithPath: expandedPath).lastPathComponent
+            let shareTag = tag ?? URL(fileURLWithPath: path).lastPathComponent
 
             // Shared folders are stored in the VM config and applied at
             // start time via VZVirtioFileSystemDeviceConfiguration.
             print("Added shared folder to VM '\(name)':")
-            print("  Path:      \(expandedPath)")
+            print("  Path:      \(path)")
             print("  Tag:       \(shareTag)")
             print("  Read-only: \(readOnly ? "yes" : "no")")
             print("")

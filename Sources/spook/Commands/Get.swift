@@ -53,12 +53,8 @@ extension Spook {
             }
 
             if json {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(spec)
-                if let jsonString = String(data: data, encoding: .utf8) {
-                    print(jsonString)
-                }
+                let data = try VMBundle.encoder.encode(spec)
+                print(String(data: data, encoding: .utf8) ?? "")
                 return
             }
 
@@ -151,7 +147,7 @@ extension Spook {
             case "memory": print(spec.memorySizeInBytes / (1024 * 1024 * 1024))
             case "disk": print(spec.diskSizeInBytes / (1024 * 1024 * 1024))
             case "displays": print(spec.displayCount)
-            case "network": print(networkRaw(spec.networkMode))
+            case "network": print(Style.networkRaw(spec.networkMode))
             case "audio": print(spec.audioEnabled)
             case "microphone": print(spec.microphoneEnabled)
             case "id": print(metadata.id.uuidString)
@@ -168,15 +164,6 @@ extension Spook {
             case .nat: "NAT" + Style.dim(" (shared)")
             case .bridged(let iface): Style.info("bridged") + Style.dim(":\(iface)")
             case .isolated: Style.yellow("isolated")
-            case .hostOnly: "host-only"
-            }
-        }
-
-        private func networkRaw(_ mode: NetworkMode) -> String {
-            switch mode {
-            case .nat: "nat"
-            case .bridged(let iface): "bridged:\(iface)"
-            case .isolated: "isolated"
             case .hostOnly: "host-only"
             }
         }

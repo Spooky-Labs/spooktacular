@@ -59,6 +59,9 @@ public enum ImageSource: Sendable, Codable, Equatable {
 /// library.addIPSW(at: ipswURL, name: "macOS 15.4")
 /// let images = library.images
 /// ```
+/// - Important: This class is not thread-safe. Access it only
+///   from `@MainActor` (as `AppState` does) or a single serial
+///   context.
 public final class ImageLibrary: @unchecked Sendable {
 
     /// The directory where images and metadata are stored.
@@ -85,21 +88,11 @@ public final class ImageLibrary: @unchecked Sendable {
             Log.images.error("Failed to create image library directory: \(error.localizedDescription, privacy: .public)")
         }
 
-        let data: Data
         do {
-            data = try Data(contentsOf: indexURL)
+            let data = try Data(contentsOf: indexURL)
+            images = try VMBundle.decoder.decode([VMImage].self, from: data)
         } catch {
-            Log.images.error("Failed to read image library index: \(error.localizedDescription, privacy: .public)")
-            images = []
-            return
-        }
-
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        do {
-            images = try decoder.decode([VMImage].self, from: data)
-        } catch {
-            Log.images.error("Failed to decode image library index: \(error.localizedDescription, privacy: .public)")
+            Log.images.debug("No existing image library index: \(error.localizedDescription, privacy: .public)")
             images = []
         }
     }
@@ -159,10 +152,7 @@ public final class ImageLibrary: @unchecked Sendable {
     }
 
     private func save() throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(images)
+        let data = try VMBundle.encoder.encode(images)
         try data.write(to: indexURL)
     }
 }

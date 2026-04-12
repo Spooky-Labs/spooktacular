@@ -195,12 +195,11 @@ struct VMInspectorView: View {
         Section("Display") {
             LabeledContent("Monitors", value: "\(bundle.spec.displayCount)")
                 .accessibilityElement(children: .combine)
-            LabeledContent("Auto-resize") {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
-            .accessibilityLabel("Auto-resize display")
-            .accessibilityValue("Enabled")
+            booleanRow(
+                "Auto-resize",
+                enabled: bundle.spec.autoResizeDisplay,
+                accessibilityLabel: "Auto-resize display"
+            )
         }
     }
 
@@ -219,26 +218,21 @@ struct VMInspectorView: View {
     @ViewBuilder
     private var audioSection: some View {
         Section("Audio") {
-            LabeledContent("Speaker") {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
-            .accessibilityLabel("Speaker output")
-            .accessibilityValue("Enabled")
-
-            LabeledContent("Microphone") {
-                Image(systemName: "minus.circle")
-                    .foregroundStyle(.secondary)
-            }
-            .accessibilityLabel("Microphone input")
-            .accessibilityValue("Disabled")
-
-            LabeledContent("Clipboard") {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
-            .accessibilityLabel("Clipboard sharing")
-            .accessibilityValue("Enabled")
+            booleanRow(
+                "Speaker",
+                enabled: bundle.spec.audioEnabled,
+                accessibilityLabel: "Speaker output"
+            )
+            booleanRow(
+                "Microphone",
+                enabled: bundle.spec.microphoneEnabled,
+                accessibilityLabel: "Microphone input"
+            )
+            booleanRow(
+                "Clipboard",
+                enabled: bundle.spec.clipboardSharingEnabled,
+                accessibilityLabel: "Clipboard sharing"
+            )
         }
     }
 
@@ -286,6 +280,20 @@ struct VMInspectorView: View {
     }
 
     // MARK: - Helpers
+
+    private func booleanRow(
+        _ label: String,
+        enabled: Bool,
+        accessibilityLabel: String
+    ) -> some View {
+        LabeledContent(label) {
+            Image(systemName: enabled
+                  ? "checkmark.circle.fill" : "minus.circle")
+            .foregroundStyle(enabled ? .green : .secondary)
+        }
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(enabled ? "Enabled" : "Disabled")
+    }
 
     private var networkLabel: String {
         switch bundle.spec.networkMode {
