@@ -156,6 +156,32 @@ struct VMConfigurationTests {
         #expect(!config.entropyDevices.isEmpty)
     }
 
+    @Test("Always includes a memory balloon device")
+    func memoryBalloon() {
+        let spec = VMSpec()
+        let config = VZVirtualMachineConfiguration()
+        VMConfiguration.applySpec(spec, to: config)
+
+        #expect(
+            !config.memoryBalloonDevices.isEmpty,
+            "Memory balloon is required for dynamic memory management"
+        )
+    }
+
+    @Test("Single shared folder uses VZSingleDirectoryShare")
+    func singleSharedFolder() throws {
+        let spec = VMSpec(sharedFolders: [
+            SharedFolder(hostPath: "/tmp", tag: "single"),
+        ])
+        let config = VZVirtualMachineConfiguration()
+        VMConfiguration.applySpec(spec, to: config)
+
+        let device = try #require(
+            config.directorySharingDevices.first as? VZVirtioFileSystemDeviceConfiguration
+        )
+        #expect(device.share is VZSingleDirectoryShare)
+    }
+
     @Test("Configures audio output when audioEnabled")
     func audioOutput() throws {
         let spec = VMSpec(audioEnabled: true)
@@ -192,8 +218,8 @@ struct VMConfigurationTests {
         #expect(config.audioDevices.isEmpty)
     }
 
-    @Test("Configures shared folders as directory sharing devices")
-    func sharedFolders() {
+    @Test("Multiple shared folders use a single device with VZMultipleDirectoryShare")
+    func sharedFolders() throws {
         let spec = VMSpec(sharedFolders: [
             SharedFolder(hostPath: "/tmp", tag: "first"),
             SharedFolder(hostPath: "/var", tag: "second", readOnly: true),
@@ -201,7 +227,14 @@ struct VMConfigurationTests {
         let config = VZVirtualMachineConfiguration()
         VMConfiguration.applySpec(spec, to: config)
 
-        #expect(config.directorySharingDevices.count == 2)
+        // Apple's pattern: one VZVirtioFileSystemDeviceConfiguration
+        // with a VZMultipleDirectoryShare, not one device per folder.
+        #expect(config.directorySharingDevices.count == 1)
+
+        let device = try #require(
+            config.directorySharingDevices.first as? VZVirtioFileSystemDeviceConfiguration
+        )
+        #expect(device.share is VZMultipleDirectoryShare)
     }
 
     @Test("First shared folder uses macOSGuestAutomountTag")

@@ -79,13 +79,24 @@ public enum VMConfiguration {
 
         // VirtIO socket — always present for host↔guest communication
         // (IP discovery, graceful shutdown, provisioning signals).
+        // Apple docs: https://developer.apple.com/documentation/virtualization/sockets
         configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
 
         // Entropy — exposes host randomness to guest for
         // cryptographic operations.
+        // Apple docs: https://developer.apple.com/documentation/virtualization/randomization
         configuration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
 
-        // Audio
+        // Memory balloon — allows the host to dynamically reclaim
+        // unused guest memory. Required for efficient resource use.
+        // Apple docs: https://developer.apple.com/documentation/virtualization/vzvirtiotraditionalmemoryballoondeviceconfiguration
+        configuration.memoryBalloonDevices = [
+            VZVirtioTraditionalMemoryBalloonDeviceConfiguration()
+        ]
+
+        // Audio — VirtIO sound device with output stream and
+        // optional microphone input.
+        // Apple docs: https://developer.apple.com/documentation/virtualization/vzvirtiosounddeviceconfiguration
         if spec.audioEnabled {
             let audio = VZVirtioSoundDeviceConfiguration()
             let outputStream = VZVirtioSoundDeviceOutputStreamConfiguration()
@@ -97,24 +108,42 @@ public enum VMConfiguration {
             configuration.audioDevices = [audio]
         }
 
-        // Shared folders
-        var directorySharingDevices: [VZDirectorySharingDeviceConfiguration] = []
-        for (index, folder) in spec.sharedFolders.enumerated() {
-            let share = VZSingleDirectoryShare(
-                directory: VZSharedDirectory(
-                    url: URL(fileURLWithPath: folder.hostPath),
-                    readOnly: folder.readOnly
+        // Shared folders — uses VZMultipleDirectoryShare when
+        // multiple folders are configured, VZSingleDirectoryShare
+        // for a single folder. The macOS guest automount tag makes
+        // folders appear automatically in Finder.
+        // Apple docs: https://developer.apple.com/documentation/virtualization/shared-directories
+        if !spec.sharedFolders.isEmpty {
+            if spec.sharedFolders.count == 1 {
+                let folder = spec.sharedFolders[0]
+                let share = VZSingleDirectoryShare(
+                    directory: VZSharedDirectory(
+                        url: URL(fileURLWithPath: folder.hostPath),
+                        readOnly: folder.readOnly
+                    )
                 )
-            )
-            let tag = index == 0
-                ? VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
-                : folder.tag
-            let device = VZVirtioFileSystemDeviceConfiguration(tag: tag)
-            device.share = share
-            directorySharingDevices.append(device)
-        }
-        if !directorySharingDevices.isEmpty {
-            configuration.directorySharingDevices = directorySharingDevices
+                let device = VZVirtioFileSystemDeviceConfiguration(
+                    tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
+                )
+                device.share = share
+                configuration.directorySharingDevices = [device]
+            } else {
+                var directories: [String: VZSharedDirectory] = [:]
+                for folder in spec.sharedFolders {
+                    directories[folder.tag] = VZSharedDirectory(
+                        url: URL(fileURLWithPath: folder.hostPath),
+                        readOnly: folder.readOnly
+                    )
+                }
+                let share = VZMultipleDirectoryShare(
+                    directories: directories
+                )
+                let device = VZVirtioFileSystemDeviceConfiguration(
+                    tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
+                )
+                device.share = share
+                configuration.directorySharingDevices = [device]
+            }
         }
     }
 

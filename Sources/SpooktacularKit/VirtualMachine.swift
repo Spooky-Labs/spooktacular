@@ -170,6 +170,50 @@ public final class VirtualMachine: NSObject, Sendable {
         updateState(.running)
     }
 
+    // MARK: - Save and Restore State
+
+    /// Saves the virtual machine's state to a file.
+    ///
+    /// Pauses the VM and writes its complete runtime state
+    /// (memory, CPU, device registers) to the specified URL.
+    /// The VM remains paused after saving. Call ``resume()``
+    /// to continue execution, or ``stop(graceful:)`` to shut
+    /// down.
+    ///
+    /// - Parameter url: The file URL where the state will be
+    ///   saved. Typically inside the VM bundle's `SavedStates/`
+    ///   directory.
+    /// - Throws: An error if save is not supported (requires
+    ///   macOS 14+) or if the save operation fails.
+    ///
+    /// > Important: The saved state file is tied to the exact
+    /// > disk image state at the time of saving. Modifying the
+    /// > disk image after saving invalidates the state file.
+    @available(macOS 14.0, *)
+    public func saveState(to url: URL) async throws {
+        guard let vm = vzVM else { return }
+        Log.vm.info("Saving VM state to \(url.lastPathComponent, privacy: .public)")
+        try await vm.saveMachineStateTo(url: url)
+        Log.vm.notice("VM state saved successfully")
+    }
+
+    /// Restores the virtual machine from a previously saved state.
+    ///
+    /// Loads the complete runtime state from the specified file
+    /// and resumes VM execution from the exact point it was saved.
+    ///
+    /// - Parameter url: The file URL of a previously saved state.
+    /// - Throws: An error if restore is not supported (requires
+    ///   macOS 14+) or if the state file is invalid or incompatible.
+    @available(macOS 14.0, *)
+    public func restoreState(from url: URL) async throws {
+        guard let vm = vzVM else { return }
+        Log.vm.info("Restoring VM state from \(url.lastPathComponent, privacy: .public)")
+        try await vm.restoreMachineStateFrom(url: url)
+        updateState(.running)
+        Log.vm.notice("VM state restored — running")
+    }
+
     // MARK: - Private
 
     private func updateState(_ newState: VMState) {
