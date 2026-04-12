@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms of Use — Spooktacular</title>
+<style>
+:root { --bg: #0f0f23; --fg: #e0d4ff; --accent: #a78bfa; --dim: #6b7280; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+.container { max-width: 700px; margin: 0 auto; padding: 2rem; }
+a { color: var(--accent); }
+h1 { font-size: 2rem; margin: 2rem 0 1rem; }
+h2 { font-size: 1.25rem; margin: 2rem 0 0.75rem; color: var(--accent); }
+p, li { margin-bottom: 0.75rem; }
+ul { padding-left: 1.5rem; }
+.back { display: inline-block; margin-bottom: 2rem; }
+.updated { color: var(--dim); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="container">
+<a href="index.html" class="back">&larr; Back to Spooktacular</a>
+<h1>Terms of Use</h1>
+<p class="updated">Last updated: April 12, 2026</p>
+
+<h2>License</h2>
+<p>Spooktacular is released under the <a href="https://github.com/WikipediaBrown/spooktacular/blob/main/LICENSE">MIT License</a>. You are free to use, modify, and distribute the software without restriction, subject to the terms of that license.</p>
+
+<h2>Apple's macOS EULA</h2>
+<p>Spooktacular creates macOS virtual machines using Apple's Virtualization framework. Your use of macOS within virtual machines is governed by <a href="https://www.apple.com/legal/sla/">Apple's macOS Software License Agreement</a>, which includes these constraints:</p>
+<ul>
+<li><strong>2 VM limit per host</strong> — Apple Silicon Macs can run a maximum of 2 macOS VMs concurrently. This is enforced by the macOS kernel.</li>
+<li><strong>Apple hardware only</strong> — macOS VMs may only run on Apple-branded hardware.</li>
+<li><strong>No service bureau use</strong> — macOS VMs may not be used for "service bureau, time-sharing, terminal sharing, relay service, or other similar types of services" (i.e., selling VM compute to third parties).</li>
+<li><strong>Internal use permitted</strong> — Running macOS VMs for your own software development, testing, and internal operations is permitted.</li>
+</ul>
+<p>Spooktacular enforces the 2-VM kernel limit automatically. Compliance with the remaining EULA terms is your responsibility.</p>
+
+<h2>No Warranty</h2>
+<p>Spooktacular is provided "as is" without warranty of any kind. See the <a href="https://github.com/WikipediaBrown/spooktacular/blob/main/LICENSE">MIT License</a> for the full disclaimer.</p>
+
+<h2>Virtual Machine Data</h2>
+<p>You are responsible for the data stored inside your virtual machines. Spooktacular provides tools to create, manage, and delete VMs — including the <code>spook delete</code> command which permanently removes all VM data. Deleted data cannot be recovered.</p>
+
+<h2>Enterprise Use</h2>
+<p>Enterprise customers using Spooktacular for CI/CD runners, ML workloads, or fleet management should ensure compliance with their organization's IT policies and Apple's EULA. Spooktacular does not provide legal advice.</p>
+
+<h2>Changes</h2>
+<p>These terms may be updated. Changes will be reflected on this page with an updated date.</p>
+
+<h2>Contact</h2>
+<p>Questions? <a href="https://github.com/WikipediaBrown/spooktacular/issues">Open an issue on GitHub</a>.</p>
+</div>
+</body>
+</html>

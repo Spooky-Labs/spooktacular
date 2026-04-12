@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Features — Spooktacular</title>
+<style>
+:root { --bg: #0f0f23; --fg: #e0d4ff; --accent: #a78bfa; --dim: #6b7280; --card: #1a1a2e; --green: #6ee7b7; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+.container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1 { font-size: 2.5rem; margin: 2rem 0 0.5rem; background: linear-gradient(135deg, #c4b5fd, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid #2a2a4a; padding-bottom: 0.5rem; }
+h3 { font-size: 1.15rem; margin: 1.5rem 0 0.5rem; }
+p, li { color: var(--fg); margin-bottom: 0.75rem; }
+ul { padding-left: 1.5rem; }
+code { background: #2a2a4a; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+pre { background: var(--card); border: 1px solid #2a2a4a; border-radius: 8px; padding: 1rem; margin: 1rem 0; overflow-x: auto; font-family: 'SF Mono', Menlo, monospace; font-size: 0.85rem; }
+.tag { display: inline-block; background: #2a2a4a; color: var(--accent); padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; margin-right: 0.25rem; }
+.back { display: inline-block; margin-bottom: 2rem; }
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+th, td { text-align: left; padding: 0.5rem 1rem; border-bottom: 1px solid #2a2a4a; }
+th { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<a href="index.html" class="back">&larr; Back to Spooktacular</a>
+<h1>Features</h1>
+<p>An in-depth survey of every capability in Spooktacular.</p>
+
+<h2>VM Lifecycle Management</h2>
+
+<h3>Create from IPSW</h3>
+<p>Download Apple's official macOS restore images and install them into a new VM. The IPSW is cached locally by SHA256 so subsequent VMs skip the download. Spooktacular checks version compatibility before downloading — if the latest IPSW is newer than your host macOS, you get a clear error with actionable guidance instead of a wasted 13 GB download.</p>
+<pre>spook create my-vm --from-ipsw latest --cpu 8 --memory 16 --disk 100</pre>
+
+<h3>Instant Cloning</h3>
+<p>APFS copy-on-write cloning duplicates a 30 GB VM in milliseconds. Both VMs share physical disk blocks — space is only consumed when one side writes. Every clone gets a fresh <code>VZMacMachineIdentifier</code> to prevent the Virtualization framework's most documented footgun.</p>
+<pre>spook clone base runner-01    # ~50ms for a 30 GB VM</pre>
+
+<h3>Start, Stop, Pause</h3>
+<p>Boot VMs with a display window or headless for CI. Boot into macOS Recovery mode for system repair. Save and restore VM state (macOS 14+ snapshots).</p>
+<pre>spook start my-vm                    # display window
+spook start my-vm --headless          # CI/server mode
+spook start my-vm --recovery          # macOS Recovery
+spook snapshot my-vm checkpoint-1     # save state
+spook restore my-vm checkpoint-1      # restore state</pre>
+
+<h3>Configuration Management</h3>
+<p>View and modify VM specs after creation. Machine-readable JSON output for automation pipelines.</p>
+<pre>spook get my-vm                # styled table
+spook get my-vm --json          # JSON for automation
+spook get my-vm --field cpu     # single value: "8"
+spook set my-vm --cpu 12 --memory 32</pre>
+
+<h2>Hardware Configuration</h2>
+
+<table>
+<tr><th>Option</th><th>Range</th><th>Default</th><th>Notes</th></tr>
+<tr><td>CPU cores</td><td>4 – host max</td><td>4</td><td>Minimum 4 to prevent boot freeze</td></tr>
+<tr><td>Memory</td><td>4 – 64 GB</td><td>8 GB</td><td>From host unified RAM</td></tr>
+<tr><td>Disk</td><td>32 – 500 GB</td><td>64 GB</td><td>APFS sparse (grows on write)</td></tr>
+<tr><td>Displays</td><td>1 – 2</td><td>1</td><td>Metal GPU accelerated</td></tr>
+<tr><td>Audio</td><td>on/off</td><td>on</td><td>VirtIO sound + optional mic</td></tr>
+<tr><td>Microphone</td><td>on/off</td><td>off</td><td>Host mic passthrough</td></tr>
+<tr><td>Clipboard</td><td>on/off</td><td>on</td><td>Host↔guest copy/paste</td></tr>
+<tr><td>Auto-resize</td><td>on/off</td><td>on</td><td>Guest resolution follows window</td></tr>
+<tr><td>MAC address</td><td>auto/custom</td><td>auto</td><td>Stable identity across reboots</td></tr>
+</table>
+
+<h2>Networking</h2>
+
+<h3>NAT (Default)</h3>
+<p>Guest reaches the internet through the host. Host reaches the guest via DHCP-assigned IP. No entitlement needed. Works in the Mac App Store build.</p>
+
+<h3>Bridged</h3>
+<p>Guest gets its own IP on the host's LAN. Full bidirectional connectivity. Requires <code>com.apple.vm.networking</code> entitlement (Developer ID build only).</p>
+
+<h3>Isolated</h3>
+<p>No network interface attached. Zero connectivity. Use for secure builds where network exfiltration must be impossible.</p>
+
+<h3>Host-Only</h3>
+<p>Guest communicates with the host and other VMs but not the internet. Perfect for federated ML training where VMs need to coordinate without external access.</p>
+
+<h2>Provisioning (User Data)</h2>
+
+<p>Four strategies for running scripts on first boot, consistent across CLI, GUI, and Kubernetes:</p>
+
+<h3>Disk Inject <span class="tag">zero-touch</span></h3>
+<p>Mounts the guest disk before boot and injects a standard macOS LaunchDaemon. The script runs automatically when macOS starts. No SSH, no agent, no network needed. The <strong>only</strong> mode that works on a completely vanilla macOS from IPSW.</p>
+
+<h3>SSH</h3>
+<p>Waits for the VM to boot, discovers its IP, connects via SSH, and runs the script. Real-time output streaming. Requires Remote Login enabled in the guest.</p>
+
+<h3>Guest Agent <span class="tag">fastest</span></h3>
+<p>A lightweight agent inside the guest communicates over VirtIO socket (vsock). No networking required. Pre-installed in all Spooktacular OCI images.</p>
+
+<h3>Shared Folder</h3>
+<p>Script delivered via VirtIO shared folder. A watcher daemon in the guest executes new scripts automatically. No networking, no disk modification.</p>
+
+<h2>Shared Folders</h2>
+
+<p>Mount host directories into the guest at <code>/Volumes/My Shared Files/</code> via VirtIO file system. Read-only or read-write per folder. Essential for:</p>
+<ul>
+<li>CI build artifacts</li>
+<li>ML training datasets (mount terabytes of data without copying into the VM)</li>
+<li>Configuration files and scripts</li>
+<li>Test fixtures and test data</li>
+</ul>
+<pre>spook share my-vm add ~/Projects --tag projects
+spook share my-vm add /data/models --tag models --read-only
+spook share my-vm list</pre>
+
+<h2>Image Library</h2>
+
+<p>Cache IPSW and OCI images locally. Browse available images in the GUI sidebar. Add images by local file path or OCI registry reference.</p>
+<pre>spook pull ghcr.io/spooktacular/macos-xcode:15.4-16.2 base
+spook create runner --clone-from base</pre>
+
+<h2>GUI Application</h2>
+
+<ul>
+<li><strong>NavigationSplitView</strong> with searchable sidebar (VMs + images)</li>
+<li><strong>Inspector panel</strong> for VM configuration details</li>
+<li><strong>Launch screen</strong> with prominent Start button and hardware summary</li>
+<li><strong>Live VM display</strong> via <code>VZVirtualMachineView</code> with auto-resize</li>
+<li><strong>Create VM sheet</strong> — two-column layout with controls + explanations</li>
+<li><strong>Progressive disclosure</strong> — essentials visible, advanced in DisclosureGroups</li>
+<li><strong>Menu bar extra</strong> — quick VM status and start/stop from the menu bar</li>
+<li><strong>Liquid Glass</strong> on macOS 26+ (automatic fallback on older versions)</li>
+<li><strong>Full accessibility</strong> — VoiceOver labels, hints, identifiers; WCAG 2.1 color compliance; reduced motion support</li>
+<li><strong>Dark mode</strong> — semantic colors throughout</li>
+</ul>
+
+<h2>CLI (spook)</h2>
+
+<p>16 commands with styled terminal output, ANSI color coding (respects <code>NO_COLOR</code>), comprehensive <code>--help</code> on every command.</p>
+
+<table>
+<tr><th>Command</th><th>Purpose</th></tr>
+<tr><td><code>create</code></td><td>Create a VM from IPSW with all hardware + provisioning options</td></tr>
+<tr><td><code>start</code></td><td>Boot a VM (display, headless, or recovery mode)</td></tr>
+<tr><td><code>stop</code></td><td>Stop a running VM</td></tr>
+<tr><td><code>list</code></td><td>List all VMs with status table (or <code>--json</code>)</td></tr>
+<tr><td><code>clone</code></td><td>Instant APFS copy-on-write clone</td></tr>
+<tr><td><code>delete</code></td><td>Remove a VM (with confirmation)</td></tr>
+<tr><td><code>ip</code></td><td>Show a running VM's IP address</td></tr>
+<tr><td><code>get</code></td><td>Show VM configuration (table, JSON, or single field)</td></tr>
+<tr><td><code>set</code></td><td>Modify VM configuration</td></tr>
+<tr><td><code>snapshot</code></td><td>Save VM state</td></tr>
+<tr><td><code>restore</code></td><td>Restore VM from snapshot</td></tr>
+<tr><td><code>snapshots</code></td><td>List saved snapshots</td></tr>
+<tr><td><code>share</code></td><td>Manage shared folders (add/remove/list)</td></tr>
+<tr><td><code>ssh</code></td><td>SSH into a running VM</td></tr>
+<tr><td><code>exec</code></td><td>Execute a command inside a VM</td></tr>
+</table>
+
+<h2>Kubernetes Integration</h2>
+
+<p>Full Kubernetes-native VM management via custom resources:</p>
+<ul>
+<li><strong>MacOSVM</strong> CRD — single VM with full spec</li>
+<li><strong>MacOSVMPool</strong> CRD — managed pool of ephemeral runners with auto-replacement</li>
+<li><strong>Operator</strong> — Swift binary, watches resources, schedules onto Mac hosts</li>
+<li><strong>Capacity-aware scheduler</strong> — respects 2-VM kernel limit per host</li>
+<li><strong>Helm chart</strong> for installation</li>
+</ul>
+
+<h2>EC2 Mac Fleet Management</h2>
+
+<p>One-liner setup on AWS EC2 Mac dedicated hosts. Three fleet scaling models:</p>
+<ul>
+<li><strong>AWS Auto Scaling Groups</strong> — ASG manages host count, Spooktacular manages VMs</li>
+<li><strong>Kubernetes cluster-autoscaler</strong> — operator signals when capacity is needed</li>
+<li><strong>Built-in fleet controller</strong> — <code>spook fleet</code> talks to AWS API directly</li>
+</ul>
+<pre>curl -sSL https://spooktacular.dev/ec2-setup.sh | bash -s -- \
+    --github-repo myorg/myrepo --github-token ghp_xxx --xcode 16.2</pre>
+
+<h2>Testing</h2>
+
+<p>89 tests across 14 suites. TDD throughout. Swift Testing framework with parameterized tests, typed error assertions, and accessibility identifier validation.</p>
+
+<h2>Distribution</h2>
+
+<ul>
+<li><strong>Mac App Store</strong> — via Fastlane with full metadata</li>
+<li><strong>Homebrew Cask</strong> — signed + notarized .app with CLI symlink</li>
+<li><strong>TestFlight</strong> — automatic on push to main</li>
+<li><strong>GitHub Releases</strong> — automatic on version tags</li>
+<li><strong>DocC documentation</strong> — auto-deployed to GitHub Pages</li>
+</ul>
+
+</div>
+</body>
+</html>

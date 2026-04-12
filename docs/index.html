@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spooktacular — macOS Virtual Machines, Simplified</title>
+<style>
+:root { --bg: #0f0f23; --fg: #e0d4ff; --accent: #a78bfa; --dim: #6b7280; --card: #1a1a2e; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; }
+.container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+header { text-align: center; padding: 4rem 0 3rem; }
+header h1 { font-size: 3rem; font-weight: 700; background: linear-gradient(135deg, #c4b5fd, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+header p { font-size: 1.25rem; color: var(--dim); margin-top: 0.5rem; }
+.hero-code { background: var(--card); border: 1px solid #2a2a4a; border-radius: 12px; padding: 1.5rem; margin: 2rem 0; font-family: 'SF Mono', Menlo, monospace; font-size: 0.9rem; overflow-x: auto; }
+.hero-code .prompt { color: var(--dim); }
+.hero-code .cmd { color: var(--accent); }
+.hero-code .output { color: #6ee7b7; }
+nav { display: flex; gap: 1rem; justify-content: center; margin: 2rem 0; flex-wrap: wrap; }
+nav a { color: var(--accent); text-decoration: none; padding: 0.5rem 1.25rem; border: 1px solid #2a2a4a; border-radius: 8px; transition: all 0.2s; }
+nav a:hover { background: #1a1a2e; border-color: var(--accent); }
+section { margin: 3rem 0; }
+section h2 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--accent); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
+.card { background: var(--card); border: 1px solid #2a2a4a; border-radius: 12px; padding: 1.5rem; }
+.card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+.card p { color: var(--dim); font-size: 0.9rem; }
+footer { text-align: center; padding: 3rem 0; color: var(--dim); font-size: 0.85rem; border-top: 1px solid #2a2a4a; margin-top: 3rem; }
+code { background: #2a2a4a; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+<h1>Spooktacular</h1>
+<p>macOS Virtual Machines, Simplified</p>
+</header>
+
+<div class="hero-code">
+<span class="prompt">$</span> <span class="cmd">brew install --cask spooktacular</span><br>
+<span class="prompt">$</span> <span class="cmd">spook create runner --from-ipsw latest --cpu 8 --memory 16</span><br>
+<span class="output">✓ VM 'runner' created successfully.</span><br>
+<span class="prompt">$</span> <span class="cmd">spook start runner --headless --user-data ./setup.sh</span><br>
+<span class="output">✓ VM 'runner' is running.</span>
+</div>
+
+<nav>
+<a href="features.html">Features</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="https://github.com/WikipediaBrown/spooktacular">GitHub</a>
+<a href="https://github.com/WikipediaBrown/spooktacular/blob/main/docs/kubernetes.md">Kubernetes</a>
+</nav>
+
+<section>
+<h2>Why Spooktacular?</h2>
+<div class="grid">
+<div class="card">
+<h3>2x Your CI Capacity</h3>
+<p>Run 2 macOS VMs per Mac — double your GitHub Actions runners on EC2 Mac for the same cost.</p>
+</div>
+<div class="card">
+<h3>Enterprise Kubernetes</h3>
+<p>Manage VMs as K8s resources. <code>kubectl apply</code> creates runners. Scale from 2 to 200.</p>
+</div>
+<div class="card">
+<h3>Zero-Touch Provisioning</h3>
+<p>User-data scripts run automatically on boot. No SSH, no agent, no manual setup required.</p>
+</div>
+<div class="card">
+<h3>ML on Apple Silicon</h3>
+<p>Metal GPU acceleration, shared folders for datasets, host-only networking for federated learning.</p>
+</div>
+<div class="card">
+<h3>Remote Desktop</h3>
+<p>Screen Sharing built in. Connect from anywhere via VNC.</p>
+</div>
+<div class="card">
+<h3>CLI + GUI + API</h3>
+<p>16 CLI commands, native SwiftUI app, HTTP control API, menu bar extra. Your choice.</p>
+</div>
+</div>
+</section>
+
+<footer>
+Built with Apple's Virtualization.framework. Swift 6. 89 tests. DocC documented.<br>
+Copyright &copy; 2026 Spooktacular.
+</footer>
+
+</div>
+</body>
+</html>

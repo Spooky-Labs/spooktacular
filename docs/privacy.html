@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy — Spooktacular</title>
+<style>
+:root { --bg: #0f0f23; --fg: #e0d4ff; --accent: #a78bfa; --dim: #6b7280; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+.container { max-width: 700px; margin: 0 auto; padding: 2rem; }
+a { color: var(--accent); }
+h1 { font-size: 2rem; margin: 2rem 0 1rem; }
+h2 { font-size: 1.25rem; margin: 2rem 0 0.75rem; color: var(--accent); }
+p, li { margin-bottom: 0.75rem; }
+ul { padding-left: 1.5rem; }
+.back { display: inline-block; margin-bottom: 2rem; }
+.updated { color: var(--dim); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="container">
+<a href="index.html" class="back">&larr; Back to Spooktacular</a>
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated: April 12, 2026</p>
+
+<h2>Summary</h2>
+<p>Spooktacular does not collect, transmit, or store any personal data. Everything runs locally on your Mac.</p>
+
+<h2>Data Collection</h2>
+<p>Spooktacular collects <strong>no data whatsoever</strong>. Specifically:</p>
+<ul>
+<li>No analytics or telemetry</li>
+<li>No crash reports sent to us</li>
+<li>No usage tracking</li>
+<li>No account creation</li>
+<li>No network requests to our servers</li>
+</ul>
+
+<h2>Local Data</h2>
+<p>Spooktacular stores virtual machine data locally on your Mac at <code>~/.spooktacular/</code>. This includes:</p>
+<ul>
+<li>VM disk images and configuration files</li>
+<li>Cached IPSW restore images</li>
+<li>Image library metadata</li>
+<li>An API token for the local control API (never transmitted)</li>
+</ul>
+<p>This data never leaves your machine unless you explicitly push it to a container registry via the <code>spook push</code> command.</p>
+
+<h2>Network Connections</h2>
+<p>Spooktacular makes network connections only when you explicitly request them:</p>
+<ul>
+<li><strong>IPSW downloads</strong> — connects to Apple's CDN to download macOS restore images</li>
+<li><strong>OCI registry</strong> — connects to container registries (GHCR, Docker Hub, etc.) when you push or pull images</li>
+<li><strong>VM networking</strong> — VMs with NAT or bridged networking access the network through your Mac's connection</li>
+</ul>
+<p>No connection is ever made to Spooktacular's servers.</p>
+
+<h2>Third-Party Services</h2>
+<p>Spooktacular is <a href="https://github.com/WikipediaBrown/spooktacular">open source (MIT license)</a>. You can audit the source code to verify these claims.</p>
+
+<h2>Children's Privacy</h2>
+<p>Spooktacular is a developer tool and is not directed at children under 13.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, we will update this page and the "Last updated" date above.</p>
+
+<h2>Contact</h2>
+<p>Questions about this policy? <a href="https://github.com/WikipediaBrown/spooktacular/issues">Open an issue on GitHub</a>.</p>
+</div>
+</body>
+</html>

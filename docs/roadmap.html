@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roadmap — Spooktacular</title>
+<style>
+:root { --bg: #0f0f23; --fg: #e0d4ff; --accent: #a78bfa; --dim: #6b7280; --card: #1a1a2e; --green: #6ee7b7; --yellow: #fbbf24; --blue: #60a5fa; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; }
+.container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+a { color: var(--accent); text-decoration: none; }
+h1 { font-size: 2.5rem; margin: 2rem 0 0.5rem; background: linear-gradient(135deg, #c4b5fd, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; color: var(--accent); border-bottom: 1px solid #2a2a4a; padding-bottom: 0.5rem; }
+p { margin-bottom: 0.75rem; }
+.phase { background: var(--card); border: 1px solid #2a2a4a; border-radius: 12px; padding: 1.5rem; margin: 1rem 0; }
+.phase h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+.status { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
+.done { background: rgba(110,231,183,0.15); color: var(--green); }
+.next { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.planned { background: rgba(96,165,250,0.15); color: var(--blue); }
+.future { background: rgba(107,114,128,0.15); color: var(--dim); }
+ul { padding-left: 1.5rem; margin: 0.5rem 0; }
+li { margin-bottom: 0.4rem; }
+.check { color: var(--green); }
+.wip { color: var(--yellow); }
+.todo { color: var(--dim); }
+.back { display: inline-block; margin-bottom: 2rem; }
+.legend { display: flex; gap: 1.5rem; margin: 1rem 0 2rem; flex-wrap: wrap; }
+.legend span { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<a href="index.html" class="back">&larr; Back to Spooktacular</a>
+<h1>Roadmap</h1>
+<p>What's built, what's next, and where we're headed. Spooktacular serves enterprise CI/CD teams, ML researchers, and remote desktop users.</p>
+
+<div class="legend">
+<span><span class="check">&#10003;</span> Shipped</span>
+<span><span class="wip">&#9675;</span> In progress</span>
+<span><span class="todo">&#9633;</span> Planned</span>
+</div>
+
+<h2>v0.1 — Foundation <span class="status done">Shipped</span></h2>
+
+<div class="phase">
+<h3>Core VM Lifecycle</h3>
+<ul>
+<li><span class="check">&#10003;</span> Create VMs from IPSW restore images</li>
+<li><span class="check">&#10003;</span> Instant APFS copy-on-write cloning with MachineIdentifier regeneration</li>
+<li><span class="check">&#10003;</span> Start / stop / delete VMs</li>
+<li><span class="check">&#10003;</span> VM bundle format (config.json + platform artifacts + disk image)</li>
+<li><span class="check">&#10003;</span> IPSW version compatibility checking (fails fast, not after 13 GB download)</li>
+<li><span class="check">&#10003;</span> 89 unit tests across 14 test suites</li>
+</ul>
+<h3>Hardware Configuration</h3>
+<ul>
+<li><span class="check">&#10003;</span> CPU, memory, disk, displays (1-2), network mode</li>
+<li><span class="check">&#10003;</span> Audio (speaker + microphone), clipboard sharing</li>
+<li><span class="check">&#10003;</span> Shared folders (VirtIO file system with automount)</li>
+<li><span class="check">&#10003;</span> MAC address configuration</li>
+<li><span class="check">&#10003;</span> Auto-resize display (macOS 14+)</li>
+<li><span class="check">&#10003;</span> NAT, bridged, isolated, host-only networking</li>
+</ul>
+<h3>CLI (16 commands)</h3>
+<ul>
+<li><span class="check">&#10003;</span> create, start, stop, list, clone, delete, ip</li>
+<li><span class="check">&#10003;</span> get, set, snapshot, restore, snapshots</li>
+<li><span class="check">&#10003;</span> share (add/remove/list), ssh, exec</li>
+<li><span class="check">&#10003;</span> Styled ANSI terminal output (respects NO_COLOR)</li>
+<li><span class="check">&#10003;</span> Comprehensive --help with examples on every command</li>
+</ul>
+<h3>SwiftUI GUI</h3>
+<ul>
+<li><span class="check">&#10003;</span> NavigationSplitView with searchable sidebar</li>
+<li><span class="check">&#10003;</span> Two-column Create VM sheet with progressive disclosure</li>
+<li><span class="check">&#10003;</span> Inspector panel for VM configuration</li>
+<li><span class="check">&#10003;</span> VZVirtualMachineView display with auto-resize</li>
+<li><span class="check">&#10003;</span> Menu bar extra for quick VM management</li>
+<li><span class="check">&#10003;</span> Image library in sidebar</li>
+<li><span class="check">&#10003;</span> Liquid Glass on macOS 26+</li>
+<li><span class="check">&#10003;</span> Full accessibility (VoiceOver, WCAG 2.1, reduced motion)</li>
+</ul>
+<h3>Distribution</h3>
+<ul>
+<li><span class="check">&#10003;</span> Proper .app bundle with Info.plist and app icon</li>
+<li><span class="check">&#10003;</span> Fastlane (test, build, beta, release, docs, lint)</li>
+<li><span class="check">&#10003;</span> GitHub Actions CI/CD (GitHub Flow)</li>
+<li><span class="check">&#10003;</span> DocC documentation catalog with articles</li>
+<li><span class="check">&#10003;</span> GitHub Pages site</li>
+</ul>
+</div>
+
+<h2>v0.2 — Provisioning Engine <span class="status next">Next</span></h2>
+
+<div class="phase">
+<h3>User Data Execution</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Disk-inject provisioning (mount guest disk, inject LaunchDaemon)</li>
+<li><span class="todo">&#9633;</span> SSH provisioning (wait for IP, connect, execute script)</li>
+<li><span class="todo">&#9633;</span> Guest agent over VirtIO socket (vsock)</li>
+<li><span class="todo">&#9633;</span> Shared-folder watcher provisioning</li>
+<li><span class="todo">&#9633;</span> Setup Assistant automation via VZ keyboard input (windowed mode)</li>
+</ul>
+<h3>Built-in Templates</h3>
+<ul>
+<li><span class="todo">&#9633;</span> <code>--github-runner</code> — configure GitHub Actions runner</li>
+<li><span class="todo">&#9633;</span> <code>--remote-desktop</code> — enable Screen Sharing, report VNC URL</li>
+<li><span class="todo">&#9633;</span> <code>--buildkite</code> / <code>--circleci</code> — CI runner templates</li>
+</ul>
+<h3>Remote Desktop</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Screen Sharing (VNC) auto-enable via provisioning</li>
+<li><span class="todo">&#9633;</span> VNC URL reported in CLI and GUI</li>
+<li><span class="todo">&#9633;</span> Research: Apple Remote Desktop integration for 4K 60fps</li>
+<li><span class="todo">&#9633;</span> Research: hardware-accelerated VNC encoding via VideoToolbox</li>
+<li><span class="todo">&#9633;</span> Research: HEVC/H.265 streaming for near-4K quality at low bandwidth</li>
+</ul>
+</div>
+
+<h2>v0.3 — OCI Distribution <span class="status planned">Planned</span></h2>
+
+<div class="phase">
+<ul>
+<li><span class="todo">&#9633;</span> OCI Distribution Spec v2 client (push/pull)</li>
+<li><span class="todo">&#9633;</span> Content-addressed chunked disk layers (64 MB, resumable)</li>
+<li><span class="todo">&#9633;</span> Support for GHCR, Docker Hub, ECR, ACR</li>
+<li><span class="todo">&#9633;</span> Publish official base images:
+  <ul>
+    <li><code>spooktacular/macos:15.4</code> — base macOS, SSH enabled</li>
+    <li><code>spooktacular/macos-xcode:15.4-16.2</code> — + Xcode + CLI tools</li>
+    <li><code>spooktacular/macos-ml:15.4</code> — + Python, MLX, PyTorch MPS</li>
+  </ul>
+</li>
+<li><span class="todo">&#9633;</span> Image build pipeline (GitHub Actions on Apple Silicon)</li>
+</ul>
+</div>
+
+<h2>v0.4 — Kubernetes Operator <span class="status planned">Planned</span></h2>
+
+<div class="phase">
+<ul>
+<li><span class="todo">&#9633;</span> MacOSVM CRD — single VM as a K8s resource</li>
+<li><span class="todo">&#9633;</span> MacOSVMPool CRD — managed ephemeral runner pool</li>
+<li><span class="todo">&#9633;</span> Swift K8s client (SwiftNIO)</li>
+<li><span class="todo">&#9633;</span> Capacity-aware scheduler (≤2 VMs per Mac)</li>
+<li><span class="todo">&#9633;</span> Helm chart for operator installation</li>
+<li><span class="todo">&#9633;</span> Cross-compilation to Linux ARM64</li>
+<li><span class="todo">&#9633;</span> Container image on GHCR</li>
+</ul>
+</div>
+
+<h2>v0.5 — Autoscaling & Fleet Management <span class="status planned">Planned</span></h2>
+
+<div class="phase">
+<h3>Per-Host Pool Autoscaling</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Runner pool with auto-replacement on exit</li>
+<li><span class="todo">&#9633;</span> GitHub webhook receiver (workflow_job events)</li>
+<li><span class="todo">&#9633;</span> GitHub API polling (fallback)</li>
+<li><span class="todo">&#9633;</span> Configurable min/max replicas and idle timeout</li>
+</ul>
+<h3>Fleet Scaling (EC2 Mac)</h3>
+<ul>
+<li><span class="todo">&#9633;</span> AWS ASG integration (launch template + user-data)</li>
+<li><span class="todo">&#9633;</span> Kubernetes cluster-autoscaler integration</li>
+<li><span class="todo">&#9633;</span> Built-in fleet controller (<code>spook fleet</code>)</li>
+<li><span class="todo">&#9633;</span> Terraform module (<code>spooktacular/ec2-mac-runners/aws</code>)</li>
+<li><span class="todo">&#9633;</span> CloudFormation template</li>
+<li><span class="todo">&#9633;</span> EC2 one-liner setup script</li>
+</ul>
+</div>
+
+<h2>v1.0 — Enterprise Production <span class="status planned">Planned</span></h2>
+
+<div class="phase">
+<h3>Helper Daemon Architecture</h3>
+<ul>
+<li><span class="todo">&#9633;</span> LaunchAgent (desktop) / LaunchDaemon (server) helper</li>
+<li><span class="todo">&#9633;</span> HTTP control API on configurable interface</li>
+<li><span class="todo">&#9633;</span> Bearer token authentication</li>
+<li><span class="todo">&#9633;</span> Server-Sent Events for real-time state streaming</li>
+<li><span class="todo">&#9633;</span> GUI and CLI as thin HTTP clients to the daemon</li>
+</ul>
+<h3>Remote Desktop (Production Quality)</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Target: 4K resolution at 60 fps over LAN</li>
+<li><span class="todo">&#9633;</span> Hardware-accelerated encoding via VideoToolbox (H.265/HEVC)</li>
+<li><span class="todo">&#9633;</span> Adaptive bitrate based on network conditions</li>
+<li><span class="todo">&#9633;</span> Low-latency audio sync</li>
+<li><span class="todo">&#9633;</span> Multi-monitor support (2 displays per VM)</li>
+<li><span class="todo">&#9633;</span> Clipboard sync between host and remote client</li>
+<li><span class="todo">&#9633;</span> USB device forwarding research</li>
+</ul>
+<h3>ML Workload Optimization</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Metal GPU performance profiling and tuning</li>
+<li><span class="todo">&#9633;</span> Neural Engine access investigation</li>
+<li><span class="todo">&#9633;</span> Shared memory optimization for large models</li>
+<li><span class="todo">&#9633;</span> MLX / PyTorch MPS benchmarks vs. native</li>
+<li><span class="todo">&#9633;</span> Training checkpoint save/restore via VM snapshots</li>
+<li><span class="todo">&#9633;</span> Federated learning across VM pool (host-only networking)</li>
+</ul>
+<h3>Mac App Store + Homebrew</h3>
+<ul>
+<li><span class="todo">&#9633;</span> Mac App Store submission (App Sandbox + virtualization entitlement)</li>
+<li><span class="todo">&#9633;</span> Homebrew Cask formula with CLI symlink</li>
+<li><span class="todo">&#9633;</span> Developer ID signing + notarization for Homebrew</li>
+<li><span class="todo">&#9633;</span> Separate MAS and Developer ID entitlements</li>
+</ul>
+</div>
+
+<h2>Future <span class="status future">Exploring</span></h2>
+
+<div class="phase">
+<ul>
+<li><span class="todo">&#9633;</span> MDM integration — optional embedded Swift MDM server for zero-agent management</li>
+<li><span class="todo">&#9633;</span> BYO MDM — enroll VMs in customer's Jamf/Kandji/Mosyle</li>
+<li><span class="todo">&#9633;</span> Web dashboard — browser-based VM management</li>
+<li><span class="todo">&#9633;</span> REST API documentation (OpenAPI spec)</li>
+<li><span class="todo">&#9633;</span> Prometheus metrics endpoint for fleet monitoring</li>
+<li><span class="todo">&#9633;</span> Grafana dashboard templates</li>
+<li><span class="todo">&#9633;</span> Multi-architecture OCI images (for future Intel support if Apple adds it)</li>
+<li><span class="todo">&#9633;</span> VM migration between hosts</li>
+<li><span class="todo">&#9633;</span> Nested virtualization on M3+ (run VMs inside VMs)</li>
+</ul>
+</div>
+
+</div>
+</body>
+</html>
