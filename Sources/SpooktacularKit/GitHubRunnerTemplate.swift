@@ -57,7 +57,9 @@ public enum GitHubRunnerTemplate {
         ephemeral: Bool = false
     ) throws -> URL {
         let script = scriptContent(repo: repo, token: token, labels: labels, ephemeral: ephemeral)
-        let url = try writeToTempFile(script)
+        let url = try ScriptFile.writeToTempDirectory(
+            script: script, fileName: "github-runner-setup.sh"
+        )
         Log.provision.info("Generated GitHub runner script for \(repo, privacy: .public)")
         return url
     }
@@ -128,28 +130,4 @@ public enum GitHubRunnerTemplate {
         """
     }
 
-    /// Writes a script string to a temporary file.
-    ///
-    /// - Parameter script: The script content to write.
-    /// - Returns: The file URL of the written script.
-    /// - Throws: An error if the file cannot be created.
-    static func writeToTempFile(_ script: String) throws -> URL {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("spooktacular-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(
-            at: tempDir,
-            withIntermediateDirectories: true
-        )
-
-        let scriptURL = tempDir.appendingPathComponent("github-runner-setup.sh")
-        try Data(script.utf8).write(to: scriptURL, options: .atomic)
-
-        // Make executable.
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755],
-            ofItemAtPath: scriptURL.path
-        )
-
-        return scriptURL
-    }
 }

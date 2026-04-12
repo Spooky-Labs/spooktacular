@@ -47,6 +47,8 @@ VMConfiguration.applySpec(spec, to: config)
 - <doc:MLWorkloads>
 - <doc:RemoteDesktop>
 - <doc:OpenClawGuide>
+- <doc:BlueBubblesGuide>
+- <doc:Versioning>
 
 ### Virtual Machine Bundles
 

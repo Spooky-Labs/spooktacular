@@ -128,14 +128,31 @@ spook                   CLI (swift-argument-parser, 16 commands)
 
 | Metric | Value |
 |---|---|
-| Tests | **180** across 23 suites |
-| Source | 47 files, ~7,200 lines of Swift |
+| Tests | **235** across 33 suites |
+| Source | 50+ files, ~8,500 lines of Swift |
 | DocC | 11 guides + full API reference |
 | Force unwraps | **0** |
 | Force casts | **0** |
 | Logging | `os.Logger` with 11 categories |
 | Accessibility | VoiceOver, WCAG 2.1, reduced motion |
 | CI/CD | GitHub Actions (test → build → beta → release → docs) |
+| Distribution | Fastlane (match + notarize + deliver) |
+
+## Versioning
+
+We follow [Semantic Versioning](https://semver.org). See the full [versioning guide](docs/versioning.md).
+
+```
+1.0.0-rc1   Release candidate (test in staging before stable ships)
+1.0.0       Stable (safe for production)
+1.1.0       New features (backward-compatible)
+1.1.1       Bug fix (safe to upgrade immediately)
+2.0.0       Breaking changes (migration guide provided)
+```
+
+**Compatibility guarantees:** VM bundle format, CLI flags, and `--json` output schemas are part of the public API. Breaking changes require a major version bump with migration documentation and at least one release candidate.
+
+**Patch releases** ship within 48 hours of confirmed fixes. **Release candidates** test for a minimum of 1 week.
 
 ## Planned
 
@@ -143,7 +160,6 @@ See the full [roadmap](https://spooktacular.app/roadmap.html):
 
 - **OCI image push/pull** — GHCR, Docker Hub, ECR
 - **Kubernetes operator** — MacOSVM CRD, Helm chart, capacity-aware scheduler
-- **Helper daemon** — HTTP control API, LaunchDaemon for headless servers
 - **Fleet autoscaling** — GitHub webhook scaling, AWS ASG integration
 - **4K 60fps remote desktop** — HEVC via VideoToolbox
 

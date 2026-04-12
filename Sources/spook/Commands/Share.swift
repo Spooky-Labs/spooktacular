@@ -89,25 +89,14 @@ extension Spook.Share {
 
             let shareTag = tag ?? URL(fileURLWithPath: path).lastPathComponent
 
-            // Load the bundle and append the new shared folder.
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let newFolder = SharedFolder(
                 hostPath: path,
                 tag: shareTag,
                 readOnly: readOnly
             )
-            let updatedSpec = VirtualMachineSpecification(
-                cpuCount: bundle.spec.cpuCount,
-                memorySizeInBytes: bundle.spec.memorySizeInBytes,
-                diskSizeInBytes: bundle.spec.diskSizeInBytes,
-                displayCount: bundle.spec.displayCount,
-                networkMode: bundle.spec.networkMode,
-                audioEnabled: bundle.spec.audioEnabled,
-                microphoneEnabled: bundle.spec.microphoneEnabled,
-                sharedFolders: bundle.spec.sharedFolders + [newFolder],
-                macAddress: bundle.spec.macAddress,
-                autoResizeDisplay: bundle.spec.autoResizeDisplay,
-                clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
+            let updatedSpec = bundle.spec.withSharedFolders(
+                bundle.spec.sharedFolders + [newFolder]
             )
             let configData = try VirtualMachineBundle.encoder.encode(updatedSpec)
             try configData.write(
@@ -151,7 +140,6 @@ extension Spook.Share {
                 throw ExitCode.failure
             }
 
-            // Load the bundle and filter out the matching shared folder.
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let filtered = bundle.spec.sharedFolders.filter { $0.tag != tag }
 
@@ -161,19 +149,7 @@ extension Spook.Share {
                 throw ExitCode.failure
             }
 
-            let updatedSpec = VirtualMachineSpecification(
-                cpuCount: bundle.spec.cpuCount,
-                memorySizeInBytes: bundle.spec.memorySizeInBytes,
-                diskSizeInBytes: bundle.spec.diskSizeInBytes,
-                displayCount: bundle.spec.displayCount,
-                networkMode: bundle.spec.networkMode,
-                audioEnabled: bundle.spec.audioEnabled,
-                microphoneEnabled: bundle.spec.microphoneEnabled,
-                sharedFolders: filtered,
-                macAddress: bundle.spec.macAddress,
-                autoResizeDisplay: bundle.spec.autoResizeDisplay,
-                clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
-            )
+            let updatedSpec = bundle.spec.withSharedFolders(filtered)
             let configData = try VirtualMachineBundle.encoder.encode(updatedSpec)
             try configData.write(
                 to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName)

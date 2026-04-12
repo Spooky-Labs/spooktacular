@@ -17,7 +17,7 @@ import Virtualization
 ///
 /// ```swift
 /// let source = try VirtualMachineBundle.load(from: sourceURL)
-/// let clone = try CloneManager.clone(source: source, to: destURL)
+/// let clone = try CloneManager.clone(source: source, to: destinationURL)
 ///
 /// // clone.spec == source.spec (preserved)
 /// // clone.metadata.id != source.metadata.id (new identity)

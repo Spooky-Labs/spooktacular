@@ -31,53 +31,43 @@ public enum CapacityCheck {
     /// this limit in its API, so we enforce it in userspace.
     public static let maxConcurrentVMs = 2
 
-    /// Counts the number of VMs with an active (running) process
-    /// in the given directory.
+    /// Returns the names of all currently running VMs in the
+    /// given directory.
     ///
     /// Scans all `.vm` bundle directories for PID files and checks
     /// whether the recorded process is alive.
     ///
     /// - Parameter directory: The directory containing `.vm` bundles
     ///   (typically `~/.spooktacular/vms/`).
-    /// - Returns: The number of bundles with a live process.
-    public static func runningCount(in directory: URL) -> Int {
-        let fileManager = FileManager.default
-        guard let contents = try? fileManager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil
-        ) else {
-            Log.capacity.debug("No VM directory found at \(directory.path, privacy: .public)")
-            return 0
-        }
-
-        let count = contents
-            .filter { $0.pathExtension == "vm" }
-            .filter { PIDFile.isRunning(bundleURL: $0) }
-            .count
-
-        Log.capacity.debug("Running VM count: \(count) (limit \(maxConcurrentVMs))")
-        return count
-    }
-
-    /// Returns the names of all currently running VMs in the
-    /// given directory.
-    ///
-    /// - Parameter directory: The directory containing `.vm` bundles.
-    /// - Returns: An array of VM names (without the `.vm` extension).
+    /// - Returns: An array of VM names (without the `.vm` extension),
+    ///   sorted alphabetically.
     public static func runningVMs(in directory: URL) -> [String] {
         let fileManager = FileManager.default
         guard let contents = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
         ) else {
+            Log.capacity.debug("No VM directory found at \(directory.path, privacy: .public)")
             return []
         }
 
-        return contents
+        let names = contents
             .filter { $0.pathExtension == "vm" }
             .filter { PIDFile.isRunning(bundleURL: $0) }
             .map { $0.deletingPathExtension().lastPathComponent }
             .sorted()
+
+        Log.capacity.debug("Running VM count: \(names.count) (limit \(maxConcurrentVMs))")
+        return names
+    }
+
+    /// Counts the number of VMs with an active (running) process
+    /// in the given directory.
+    ///
+    /// - Parameter directory: The directory containing `.vm` bundles.
+    /// - Returns: The number of bundles with a live process.
+    public static func runningCount(in directory: URL) -> Int {
+        runningVMs(in: directory).count
     }
 
     /// Throws if the concurrent VM limit has been reached.

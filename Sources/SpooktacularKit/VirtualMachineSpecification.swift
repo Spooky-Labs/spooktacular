@@ -216,4 +216,31 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         self.autoResizeDisplay = autoResizeDisplay
         self.clipboardSharingEnabled = clipboardSharingEnabled
     }
+
+    /// Returns a copy of this specification with different shared folders.
+    ///
+    /// All other properties are preserved unchanged.
+    ///
+    /// ```swift
+    /// let updated = spec.withSharedFolders(spec.sharedFolders + [newFolder])
+    /// ```
+    ///
+    /// - Parameter folders: The new shared folders list.
+    /// - Returns: A new specification identical to this one except
+    ///   for shared folders.
+    public func withSharedFolders(_ folders: [SharedFolder]) -> VirtualMachineSpecification {
+        VirtualMachineSpecification(
+            cpuCount: cpuCount,
+            memorySizeInBytes: memorySizeInBytes,
+            diskSizeInBytes: diskSizeInBytes,
+            displayCount: displayCount,
+            networkMode: networkMode,
+            audioEnabled: audioEnabled,
+            microphoneEnabled: microphoneEnabled,
+            sharedFolders: folders,
+            macAddress: macAddress,
+            autoResizeDisplay: autoResizeDisplay,
+            clipboardSharingEnabled: clipboardSharingEnabled
+        )
+    }
 }

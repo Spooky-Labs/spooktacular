@@ -91,13 +91,13 @@ extension Spook {
 
             print("Updated VM '\(name)' configuration.")
 
-            if let c = cpu { print("  CPU: \(max(c, VirtualMachineSpecification.minimumCPUCount)) cores") }
-            if let m = memory { print("  Memory: \(m) GB") }
-            if let d = displays { print("  Displays: \(min(max(d, 1), 2))") }
-            if let n = network { print("  Network: \(n)") }
-            if let a = audio { print("  Audio: \(a ? "enabled" : "disabled")") }
-            if let m = microphone { print("  Microphone: \(m ? "enabled" : "disabled")") }
-            if let r = autoResize { print("  Auto-resize: \(r ? "enabled" : "disabled")") }
+            if let cpuCount = cpu { print("  CPU: \(max(cpuCount, VirtualMachineSpecification.minimumCPUCount)) cores") }
+            if let memorySize = memory { print("  Memory: \(memorySize) GB") }
+            if let displayCount = displays { print("  Displays: \(min(max(displayCount, 1), 2))") }
+            if let networkMode = network { print("  Network: \(networkMode)") }
+            if let audioEnabled = audio { print("  Audio: \(audioEnabled ? "enabled" : "disabled")") }
+            if let microphoneEnabled = microphone { print("  Microphone: \(microphoneEnabled ? "enabled" : "disabled")") }
+            if let autoResizeEnabled = autoResize { print("  Auto-resize: \(autoResizeEnabled ? "enabled" : "disabled")") }
         }
     }
 }
