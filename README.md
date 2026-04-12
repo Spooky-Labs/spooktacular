@@ -13,7 +13,7 @@
 [![macOS](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple&logoColor=white)](https://developer.apple.com/macos/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-[Website](https://spooktacular.app) · [Docs](https://spooktacular.app/features.html) · [Roadmap](https://spooktacular.app/roadmap.html) · [Compare](https://spooktacular.app/compare.html)
+[Website](https://spooktacular.app) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Roadmap](https://spooktacular.app/roadmap.html) · [Compare](https://spooktacular.app/compare.html)
 
 </div>
 

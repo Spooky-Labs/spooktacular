@@ -87,15 +87,4 @@ jobs:
           path: fastlane/screenshots/
           retention-days: 14
 
-  docs:
-    name: Generate Documentation
-    runs-on: macos-15
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Generate DocC
-        run: |
-          chmod +x scripts/build-docs.sh
-          ./scripts/build-docs.sh
+  # DocC generation + deployment is handled by docs.yml on push to main.
