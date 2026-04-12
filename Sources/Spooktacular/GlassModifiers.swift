@@ -11,21 +11,3 @@ struct GlassButtonModifier: ViewModifier {
         }
     }
 }
-
-/// Applies `.glassEffect()` on macOS 26+, no-op on older.
-struct GlassEffectModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.glassEffect()
-        } else {
-            content
-        }
-    }
-}
-
-extension View {
-    /// Applies Liquid Glass effect on macOS 26+.
-    func glassIfAvailable() -> some View {
-        modifier(GlassEffectModifier())
-    }
-}

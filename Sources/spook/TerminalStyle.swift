@@ -89,11 +89,6 @@ enum Style {
         styled(text, codes: "34")
     }
 
-    /// Magenta — special, interactive.
-    static func magenta(_ text: String) -> String {
-        styled(text, codes: "35")
-    }
-
     // MARK: - Symbols
 
     /// ✓ in green.

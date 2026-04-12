@@ -10,14 +10,14 @@ struct SpooktacularApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
-                .frame(minWidth: 800, minHeight: 500)
+                .frame(minWidth: 600, minHeight: 400)
                 .sheet(isPresented: Bindable(appState).showAddImage) {
                     AddImageSheet()
                         .environment(appState)
                 }
         }
         .windowStyle(.titleBar)
-        .defaultSize(width: 1200, height: 800)
+        .defaultSize(width: 900, height: 600)
         .commands {
             CommandGroup(after: .newItem) {
                 Button("New Virtual Machine…") {

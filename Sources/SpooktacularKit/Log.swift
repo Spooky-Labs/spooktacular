@@ -50,9 +50,6 @@ public enum Log {
     /// Networking: NAT, bridged, isolated, host-only.
     public static let network = Logger(subsystem: subsystem, category: "network")
 
-    /// Shared folders: VirtIO file system.
-    public static let share = Logger(subsystem: subsystem, category: "share")
-
     /// Provisioning: user-data, disk-inject, SSH, agent.
     public static let provision = Logger(subsystem: subsystem, category: "provision")
 
@@ -61,7 +58,4 @@ public enum Log {
 
     /// App UI: SwiftUI views, sheets, navigation.
     public static let ui = Logger(subsystem: subsystem, category: "ui")
-
-    /// API: HTTP control API server.
-    public static let api = Logger(subsystem: subsystem, category: "api")
 }
