@@ -200,7 +200,7 @@ Spooktacular
 <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
 <span class="title">setup-gha-runners.sh</span>
 </div>
-<pre><span class="cmt"># Create a base VM with Xcode pre-installed</span>
+<pre><span class="cmt"># Create a base VM from the latest macOS IPSW</span>
 <span class="cmd">spook create base --from-ipsw latest --cpu 8 --memory 16 --disk 100</span>
 
 <span class="cmt"># Clone ephemeral runners (48ms each, shares disk blocks via APFS CoW)</span>
