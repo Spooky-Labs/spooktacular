@@ -60,7 +60,7 @@ platform :mac do
       pkg: "../Spooktacular.app",
       skip_binary_upload: false,
       skip_metadata: false,
-      skip_screenshots: true,  # Enable when screenshots are ready
+      skip_screenshots: false,
       submit_for_review: options[:submit] || false,
       automatic_release: options[:auto_release] || false,
       force: true,
@@ -69,6 +69,27 @@ platform :mac do
         add_id_info_uses_idfa: false
       }
     )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Screenshots — Capture App Store screenshots
+  # ──────────────────────────────────────────────────
+
+  desc "Capture and process App Store screenshots"
+  lane :screenshots do
+    # Build the app bundle first
+    build
+
+    # Capture screenshots using our script
+    # (XCUITest-based capture requires Xcode project;
+    #  this uses the shell-based approach for SwiftPM)
+    sh("cd .. && chmod +x scripts/capture-screenshots.sh && ./scripts/capture-screenshots.sh")
+
+    # Post-process for App Store sizes
+    sh("cd .. && chmod +x scripts/process-screenshots.sh && ./scripts/process-screenshots.sh")
+
+    UI.success("Screenshots captured and processed.")
+    UI.message("Output: fastlane/screenshots/en-US/")
   end
 
   # ──────────────────────────────────────────────────
