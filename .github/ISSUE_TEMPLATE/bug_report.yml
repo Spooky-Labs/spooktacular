@@ -1,0 +1,79 @@
+name: "🐛 Bug Report"
+description: Report a bug in Spooktacular
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the details below so we can reproduce and fix it.
+
+  - type: input
+    id: version
+    attributes:
+      label: "Spooktacular version"
+      description: "Run `spook --version` to find this."
+      placeholder: "0.5.0"
+    validations:
+      required: true
+
+  - type: input
+    id: macos
+    attributes:
+      label: "macOS version"
+      description: "Run `sw_vers` to find this."
+      placeholder: "macOS 15.4"
+    validations:
+      required: true
+
+  - type: input
+    id: chip
+    attributes:
+      label: "Apple Silicon chip"
+      placeholder: "M2 Pro"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "What happened?"
+      description: "Describe the bug clearly and concisely."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: "What did you expect?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: "Steps to reproduce"
+      description: "Exact commands or actions to trigger the bug."
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs or error output"
+      description: "Paste terminal output, Console.app logs, or screenshots."
+      render: shell
+
+  - type: dropdown
+    id: interface
+    attributes:
+      label: "Which interface?"
+      options:
+        - CLI (spook)
+        - GUI (Spooktacular.app)
+        - Both
+    validations:
+      required: true

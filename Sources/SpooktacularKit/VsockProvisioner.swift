@@ -1,5 +1,5 @@
 import Foundation
-import Virtualization
+@preconcurrency import Virtualization
 import os
 
 /// Provisions a running VM by sending a script over VirtIO socket.
