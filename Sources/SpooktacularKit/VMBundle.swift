@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// A virtual machine bundle stored on disk.
 ///
@@ -90,6 +91,7 @@ public struct VMBundle: Sendable {
         let fileManager = FileManager.default
 
         guard !fileManager.fileExists(atPath: url.path) else {
+            Log.vm.error("Bundle already exists at \(url.lastPathComponent, privacy: .public)")
             throw VMBundleError.alreadyExists(url: url)
         }
 
@@ -106,6 +108,7 @@ public struct VMBundle: Sendable {
         let metadataData = try Self.encoder.encode(metadata)
         try metadataData.write(to: url.appendingPathComponent(metadataFileName))
 
+        Log.vm.info("Created bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
         return VMBundle(url: url, spec: spec, metadata: metadata)
     }
 

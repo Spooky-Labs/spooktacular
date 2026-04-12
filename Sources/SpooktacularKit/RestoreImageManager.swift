@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Virtualization
 
 /// Manages macOS restore images (IPSWs) for virtual machine installation.
@@ -66,15 +67,21 @@ public final class RestoreImageManager: Sendable {
     /// - Throws: ``RestoreImageError/incompatibleHost(message:)``
     ///   if the host macOS is too old.
     public func fetchLatestSupported() async throws -> VZMacOSRestoreImage {
+        Log.ipsw.info("Fetching latest supported restore image from Apple")
         let image = try await VZMacOSRestoreImage.latestSupported
+
+        let v = image.operatingSystemVersion
+        Log.ipsw.info("Latest IPSW: macOS \(v.majorVersion, privacy: .public).\(v.minorVersion, privacy: .public).\(v.patchVersion, privacy: .public) (build \(image.buildVersion, privacy: .public))")
 
         let result = Compatibility.check(
             imageVersion: image.operatingSystemVersion
         )
         if let message = result.errorMessage {
+            Log.compat.error("Version mismatch: \(message, privacy: .public)")
             throw RestoreImageError.incompatibleHost(message: message)
         }
 
+        Log.compat.info("Host version compatible with IPSW")
         return image
     }
 

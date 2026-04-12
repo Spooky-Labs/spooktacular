@@ -36,6 +36,18 @@ VMConfiguration.applySpec(spec, to: config)
 
 ## Topics
 
+### Guides
+
+- <doc:GettingStarted>
+- <doc:Provisioning>
+- <doc:CLIReference>
+- <doc:GitHubActionsGuide>
+- <doc:EC2MacDeployment>
+- <doc:KubernetesGuide>
+- <doc:MLWorkloads>
+- <doc:RemoteDesktop>
+- <doc:OpenClawGuide>
+
 ### Virtual Machine Bundles
 
 - ``VMBundle``
@@ -76,6 +88,10 @@ VMConfiguration.applySpec(spec, to: config)
 - ``ImageLibrary``
 - ``VMImage``
 - ``ImageSource``
+
+### Logging
+
+- ``Log``
 
 ### Accessibility
 

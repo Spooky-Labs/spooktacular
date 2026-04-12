@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Virtualization
 
 /// Creates copy-on-write clones of virtual machine bundles.
@@ -56,8 +57,11 @@ public enum CloneManager {
         let fileManager = FileManager.default
 
         guard !fileManager.fileExists(atPath: destination.path) else {
+            Log.clone.error("Clone destination already exists: \(destination.lastPathComponent, privacy: .public)")
             throw VMBundleError.alreadyExists(url: destination)
         }
+
+        Log.clone.info("Cloning '\(source.url.lastPathComponent, privacy: .public)' → '\(destination.lastPathComponent, privacy: .public)'")
 
         try fileManager.createDirectory(
             at: destination,
@@ -80,6 +84,7 @@ public enum CloneManager {
         // Generate a fresh machine identifier. Every VM must have
         // a unique ECID — reusing the source's identifier causes
         // undefined behavior in the Virtualization framework.
+        Log.clone.debug("Generating new VZMacMachineIdentifier for clone")
         let newIdentifier = VZMacMachineIdentifier()
         try newIdentifier.dataRepresentation.write(
             to: destination.appendingPathComponent("machine-identifier.bin")

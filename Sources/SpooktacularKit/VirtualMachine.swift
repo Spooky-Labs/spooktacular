@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Virtualization
 
 /// The lifecycle state of a virtual machine.
@@ -121,8 +122,10 @@ public final class VirtualMachine: NSObject, Sendable {
     /// - Throws: An error if the VM cannot be started.
     public func start() async throws {
         guard let vm = vzVM else { return }
+        Log.vm.info("Starting VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.starting)
         try await vm.start()
+        Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' is running")
         updateState(.running)
     }
 
@@ -170,6 +173,7 @@ public final class VirtualMachine: NSObject, Sendable {
     // MARK: - Private
 
     private func updateState(_ newState: VMState) {
+        Log.vm.debug("State transition: \(self.state.rawValue, privacy: .public) → \(newState.rawValue, privacy: .public)")
         state = newState
         stateContinuation.yield(newState)
     }
@@ -181,6 +185,7 @@ extension VirtualMachine: VZVirtualMachineDelegate {
 
     /// Called when the guest OS has stopped normally.
     nonisolated public func guestDidStop(_ virtualMachine: VZVirtualMachine) {
+        Log.vm.notice("Guest OS stopped normally")
         Task { @MainActor [weak self] in
             self?.updateState(.stopped)
         }
@@ -191,6 +196,7 @@ extension VirtualMachine: VZVirtualMachineDelegate {
         _ virtualMachine: VZVirtualMachine,
         didStopWithError error: Error
     ) {
+        Log.vm.error("VM stopped with error: \(error.localizedDescription, privacy: .public)")
         Task { @MainActor [weak self] in
             self?.updateState(.error)
         }

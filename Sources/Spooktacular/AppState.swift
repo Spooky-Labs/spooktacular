@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 import SpooktacularKit
 
 /// The shared application state for Spooktacular.
@@ -178,6 +179,7 @@ final class AppState {
 
     /// Surfaces an error to the user through the centralized alert.
     private func presentError(_ error: Error) {
+        Log.ui.error("Presenting error to user: \(error.localizedDescription, privacy: .public)")
         errorMessage = error.localizedDescription
         errorPresented = true
     }
