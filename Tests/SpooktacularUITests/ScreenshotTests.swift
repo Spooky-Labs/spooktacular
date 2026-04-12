@@ -2,145 +2,172 @@ import XCTest
 
 /// Automated App Store screenshot capture for Spooktacular.
 ///
-/// These tests launch the app, navigate to key screens, and
-/// capture screenshots using `XCUIScreenshot`. The screenshots
-/// are saved as test attachments and can be exported for
-/// App Store / TestFlight submission.
+/// These tests use XCUITest to launch the app, navigate to key
+/// screens, and capture screenshots for App Store and TestFlight
+/// submission. Each screenshot is saved as a test attachment.
 ///
 /// ## Running
 ///
-/// From Xcode:
-///   Product → Test (Cmd+U) with the SpooktacularUITests scheme
+/// ### From Xcode
 ///
-/// From the command line:
-///   xcodebuild test -scheme SpooktacularUITests -destination 'platform=macOS'
+/// 1. Open `Package.swift` in Xcode
+/// 2. Add a UI Testing Bundle target (File → New → Target)
+/// 3. Move this file into the new target
+/// 4. Run tests: Product → Test (Cmd+U)
 ///
-/// ## App Store macOS Screenshot Sizes
+/// ### From the command line
 ///
-/// - 1280×800  (13" non-Retina)
-/// - 1440×900  (13" non-Retina alt)
-/// - 2560×1600 (13" Retina)
-/// - 2880×1800 (15"/16" Retina)
+/// ```bash
+/// xcodebuild test \
+///   -scheme Spooktacular \
+///   -destination 'platform=macOS' \
+///   -only-testing:SpooktacularUITests
+/// ```
 ///
-/// Screenshots are captured at the current screen resolution.
-/// Resize with `sips` or a Fastlane post-processing step.
+/// ## App Store Screenshot Sizes (macOS)
+///
+/// | Display | Size |
+/// |---------|------|
+/// | 13" Retina | 2560×1600 |
+/// | 16" Retina | 2880×1800 |
+///
+/// Post-process with `scripts/process-screenshots.sh`.
+@MainActor
 final class ScreenshotTests: XCTestCase {
 
-    let app = XCUIApplication()
+    private var app: XCUIApplication!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         continueAfterFailure = false
+        app = XCUIApplication()
         app.launch()
 
-        // Wait for the main window to appear.
+        // Wait for the main window.
         let window = app.windows.firstMatch
         XCTAssertTrue(
             window.waitForExistence(timeout: 10),
-            "App window should appear within 10 seconds"
+            "App window should appear"
         )
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         app.terminate()
+        app = nil
+    }
+
+    // MARK: - Helper
+
+    /// Captures a named screenshot and attaches it to the test.
+    private func captureScreenshot(named name: String) {
+        // Small delay for animations to settle.
+        Thread.sleep(forTimeInterval: 0.5)
+
+        let screenshot = app.windows.firstMatch.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// Captures the entire screen (including menu bar and Dock).
+    private func captureFullScreen(named name: String) {
+        Thread.sleep(forTimeInterval: 0.5)
+
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     // MARK: - Screenshots
 
-    /// 1. Empty state — the landing page when no VMs exist.
-    func testScreenshot01_EmptyState() throws {
-        let screenshot = app.windows.firstMatch.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "01_empty_state"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    /// 1. Empty state — the welcome screen when no VMs exist.
+    ///
+    /// Shows the ContentUnavailableView with the "Create VM" button.
+    /// This is the first thing a new user sees.
+    func test01_EmptyState() {
+        captureScreenshot(named: "01_empty_state")
     }
 
-    /// 2. Create VM sheet — the two-column form with all options.
-    func testScreenshot02_CreateVMSheet() throws {
-        // Click the + button in the toolbar to open the sheet.
-        let createButton = app.buttons["createVMButton"]
-        if createButton.exists {
-            createButton.click()
-        } else {
-            // Fallback: use keyboard shortcut.
-            app.typeKey("n", modifierFlags: .command)
-        }
+    /// 2. Create VM sheet — the two-column form.
+    ///
+    /// Opens the sheet and fills in a sample name so the form
+    /// looks realistic in the screenshot.
+    func test02_CreateVMSheet() {
+        // Open via keyboard shortcut (reliable across layouts).
+        app.typeKey("n", modifierFlags: .command)
 
-        // Wait for the sheet to appear.
+        // Wait for the sheet to appear by looking for the name field.
         let nameField = app.textFields["vmNameField"]
-        let sheetAppeared = nameField.waitForExistence(timeout: 5)
-        XCTAssertTrue(sheetAppeared, "Create VM sheet should appear")
-
-        // Type a sample name so the form looks populated.
-        if sheetAppeared {
-            nameField.click()
-            nameField.typeText("ci-runner-01")
+        guard nameField.waitForExistence(timeout: 5) else {
+            XCTFail("Create VM sheet did not appear")
+            return
         }
 
-        sleep(1) // Let animations settle.
+        // Type a realistic name.
+        nameField.click()
+        nameField.typeText("ci-runner-01")
 
-        let screenshot = app.windows.firstMatch.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "02_create_vm_sheet"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        captureScreenshot(named: "02_create_vm_sheet")
+
+        // Dismiss the sheet.
+        app.typeKey(.escape, modifierFlags: [])
     }
 
-    /// 3. VM list with VMs in the sidebar.
-    func testScreenshot03_VMList() throws {
-        // This screenshot is most useful when VMs exist.
-        // The test captures whatever state the app is in.
-        sleep(1)
-
-        let screenshot = app.windows.firstMatch.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "03_vm_list"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    /// 3. VM list — sidebar with VMs and image library.
+    ///
+    /// Best captured when mock VMs exist (run after `spook create`
+    /// has been used to create test VMs).
+    func test03_VMList() {
+        captureScreenshot(named: "03_vm_list")
     }
 
-    /// 4. VM detail / launch screen with hardware summary.
-    func testScreenshot04_VMDetail() throws {
-        // Click the first VM in the sidebar (if any exist).
+    /// 4. VM launch screen — the centered Start button view.
+    ///
+    /// Clicks the first VM in the sidebar to show the launch screen
+    /// with hardware summary and the Start button.
+    func test04_LaunchScreen() {
+        // Try to select the first VM in the sidebar.
         let sidebar = app.outlines.firstMatch
         if sidebar.exists {
-            let firstRow = sidebar.cells.firstMatch
-            if firstRow.waitForExistence(timeout: 3) {
-                firstRow.click()
-                sleep(1)
+            let firstCell = sidebar.cells.firstMatch
+            if firstCell.waitForExistence(timeout: 3) {
+                firstCell.click()
+                Thread.sleep(forTimeInterval: 0.5)
             }
         }
 
-        let screenshot = app.windows.firstMatch.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "04_vm_detail"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        captureScreenshot(named: "04_launch_screen")
     }
 
-    /// 5. Inspector panel open alongside the detail view.
-    func testScreenshot05_Inspector() throws {
-        // Open inspector with the toolbar button.
+    /// 5. Inspector panel — configuration details alongside the
+    /// launch screen or VM display.
+    func test05_Inspector() {
+        // Select first VM.
+        let sidebar = app.outlines.firstMatch
+        if sidebar.exists {
+            let firstCell = sidebar.cells.firstMatch
+            if firstCell.waitForExistence(timeout: 3) {
+                firstCell.click()
+            }
+        }
+
+        // Toggle inspector.
         let inspectorButton = app.buttons["inspectorToggle"]
         if inspectorButton.waitForExistence(timeout: 3) {
             inspectorButton.click()
-            sleep(1)
         }
 
-        let screenshot = app.windows.firstMatch.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "05_inspector"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+        captureScreenshot(named: "05_inspector")
     }
 
-    /// 6. Full app screenshot — for the primary App Store listing.
-    func testScreenshot06_FullApp() throws {
-        // Capture the entire screen (shows menu bar + Dock context).
-        let screenshot = XCUIScreen.main.screenshot()
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = "06_full_screen"
-        attachment.lifetime = .keepAlways
-        add(attachment)
+    /// 6. Menu bar — the dropdown with VM status and quick actions.
+    ///
+    /// Note: Menu bar screenshots may require manual capture since
+    /// activating the menu bar extra programmatically is unreliable.
+    func test06_MenuBar() {
+        // Capture the full screen which includes the menu bar.
+        captureFullScreen(named: "06_full_app")
     }
 }
