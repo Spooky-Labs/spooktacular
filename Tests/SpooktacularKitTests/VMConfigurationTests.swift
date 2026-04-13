@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-import Virtualization
+@preconcurrency import Virtualization
 @testable import SpooktacularKit
 
 @Suite("VirtualMachineConfiguration")

@@ -1,6 +1,6 @@
 import Foundation
 import os
-import Virtualization
+@preconcurrency import Virtualization
 
 /// An error thrown when an operation is attempted on a
 /// `VirtualMachine` whose underlying `VZVirtualMachine` has

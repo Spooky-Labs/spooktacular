@@ -1,6 +1,7 @@
 import ArgumentParser
 import Foundation
 import SpooktacularKit
+@preconcurrency import Virtualization
 
 extension Spook {
 

@@ -1,6 +1,6 @@
 import Foundation
 import os
-import Virtualization
+@preconcurrency import Virtualization
 
 /// Creates copy-on-write clones of virtual machine bundles.
 ///

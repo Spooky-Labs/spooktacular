@@ -1,5 +1,5 @@
 import SwiftUI
-import Virtualization
+@preconcurrency import Virtualization
 import SpooktacularKit
 
 /// The detail view for a selected VM.

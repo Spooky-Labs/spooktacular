@@ -1,6 +1,6 @@
 import Foundation
 import os
-import Virtualization
+@preconcurrency import Virtualization
 
 /// Builds `VZVirtualMachineConfiguration` objects from a ``VirtualMachineSpecification``.
 ///

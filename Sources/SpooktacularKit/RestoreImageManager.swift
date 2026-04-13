@@ -1,6 +1,6 @@
 import Foundation
 import os
-import Virtualization
+@preconcurrency import Virtualization
 
 /// Manages macOS restore images (IPSWs) for virtual machine installation.
 ///

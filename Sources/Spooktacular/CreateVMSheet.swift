@@ -1,4 +1,5 @@
 import SwiftUI
+@preconcurrency import Virtualization
 import SpooktacularKit
 
 /// Entry for a shared folder in the create form.
