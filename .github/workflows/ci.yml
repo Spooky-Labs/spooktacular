@@ -13,7 +13,7 @@ concurrency:
 jobs:
   test:
     name: Unit Tests (Swift Testing)
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
 
@@ -28,7 +28,7 @@ jobs:
 
   build:
     name: Build App Bundle
-    runs-on: macos-15
+    runs-on: macos-26
     needs: test
     steps:
       - uses: actions/checkout@v5
@@ -57,7 +57,7 @@ jobs:
 
   screenshots:
     name: App Store Screenshots
-    runs-on: macos-15
+    runs-on: macos-26
     needs: build
     # Only on main branch and PRs — screenshots are a release artifact,
     # not a gating CI check. Failures here do not block merges.
