@@ -32,12 +32,15 @@ platform :mac do
     # App Store Connect and TestFlight require .pkg for macOS,
     # not a raw .app bundle. Use productbuild to create an
     # installer package with the app placed in /Applications.
-    sign_flag = ""
-    if ENV["INSTALLER_CERT_NAME"]
-      sign_flag = "--sign '#{ENV["INSTALLER_CERT_NAME"]}'"
-    end
+    #
+    # The installer cert identity comes from match (via
+    # additional_cert_types: mac_installer_distribution) or
+    # the INSTALLER_CERT_NAME env var. Falls back to the
+    # team-based identity name if neither is set.
+    installer_identity = ENV["INSTALLER_CERT_NAME"] ||
+      "3rd Party Mac Developer Installer: #{ENV["sigh_com.spooktacular.app_appstore_macos_team-id"] || "4AM5US9G8B"}"
 
-    sh("cd .. && productbuild --component Spooktacular.app /Applications #{sign_flag} Spooktacular.pkg")
+    sh("cd .. && productbuild --component Spooktacular.app /Applications --sign '#{installer_identity}' Spooktacular.pkg")
     UI.success("Package created: Spooktacular.pkg")
   end
 
@@ -53,6 +56,7 @@ platform :mac do
     match(
       api_key: api_key,
       type: "appstore",
+      additional_cert_types: ["mac_installer_distribution"],
       readonly: is_ci
     )
   end
