@@ -335,6 +335,36 @@ struct VirtualMachineBundleTests {
             #expect(reloaded.metadata.id == bundle.metadata.id)
         }
 
+        @Test("writeSpec persists and reloads correctly")
+        func writeSpecRoundTrip() throws {
+            let tempDir = makeTempDir()
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let originalSpec = VirtualMachineSpecification(cpuCount: 4, memorySizeInBytes: 8 * 1024 * 1024 * 1024)
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: originalSpec)
+            #expect(bundle.spec.cpuCount == 4)
+
+            let updatedSpec = VirtualMachineSpecification(
+                cpuCount: 12,
+                memorySizeInBytes: 32 * 1024 * 1024 * 1024,
+                diskSizeInBytes: 128 * 1024 * 1024 * 1024,
+                displayCount: 2,
+                networkMode: .bridged(interface: "en0")
+            )
+            try VirtualMachineBundle.writeSpec(updatedSpec, to: bundleURL)
+
+            let reloaded = try VirtualMachineBundle.load(from: bundleURL)
+            #expect(reloaded.spec == updatedSpec)
+            #expect(reloaded.spec.cpuCount == 12)
+            #expect(reloaded.spec.memorySizeInBytes == 32 * 1024 * 1024 * 1024)
+            #expect(reloaded.spec.diskSizeInBytes == 128 * 1024 * 1024 * 1024)
+            #expect(reloaded.spec.displayCount == 2)
+            #expect(reloaded.spec.networkMode == .bridged(interface: "en0"))
+            // Metadata should be unchanged.
+            #expect(reloaded.metadata.id == bundle.metadata.id)
+        }
+
         @Test("Throws notFound when loading a nonexistent bundle")
         func loadNonexistent() {
             let bogus = URL(fileURLWithPath: "/tmp/nonexistent-\(UUID()).vm")

@@ -50,29 +50,27 @@ extension Spook {
                 return
             }
 
-            let signalNumber: Int32 = force ? SIGKILL : SIGTERM
-            let signalName = force ? "SIGKILL" : "SIGTERM"
-
-            print(Style.info("Sending \(signalName) to VM '\(name)' (PID \(pid))..."))
-            let result = kill(pid, signalNumber)
-
-            if result == 0 {
-                print(Style.success("✓ Signal sent. VM '\(name)' is stopping."))
-
-                // If we sent SIGKILL, the process won't clean up its
-                // PID file, so we remove it ourselves.
-                if force {
-                    PIDFile.remove(from: bundleURL)
-                }
+            if force {
+                // SIGTERM with escalation to SIGKILL after grace period.
+                print(Style.info("Terminating VM '\(name)' (PID \(pid))..."))
+                await PIDFile.terminate(bundleURL: bundleURL)
+                print(Style.success("✓ VM '\(name)' stopped."))
             } else {
-                let errorCode = errno
-                print(Style.error("✗ Failed to send signal to PID \(pid): errno \(errorCode)"))
-                // Clean up stale PID file if the process no longer exists.
-                if errorCode == ESRCH {
-                    PIDFile.remove(from: bundleURL)
-                    print(Style.dim("Cleaned up stale PID file."))
+                print(Style.info("Sending SIGTERM to VM '\(name)' (PID \(pid))..."))
+                let result = kill(pid, SIGTERM)
+
+                if result == 0 {
+                    print(Style.success("✓ Signal sent. VM '\(name)' is stopping."))
+                } else {
+                    let errorCode = errno
+                    print(Style.error("✗ Failed to send signal to PID \(pid): errno \(errorCode)"))
+                    // Clean up stale PID file if the process no longer exists.
+                    if errorCode == ESRCH {
+                        PIDFile.remove(from: bundleURL)
+                        print(Style.dim("Cleaned up stale PID file."))
+                    }
+                    throw ExitCode.failure
                 }
-                throw ExitCode.failure
             }
         }
     }

@@ -176,6 +176,27 @@ struct CloneManagerTests {
         }
     }
 
+    @Test("Clone gets a new machine identifier")
+    func cloneGetsNewMachineIdentifier() throws {
+        let (source, tempDir) = try makeTestBundle()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let sourceIdentifier = try Data(
+            contentsOf: source.url.appendingPathComponent("machine-identifier.bin")
+        )
+
+        let destURL = tempDir.appendingPathComponent("clone.vm")
+        _ = try CloneManager.clone(source: source, to: destURL)
+
+        let cloneIdentifier = try Data(
+            contentsOf: destURL.appendingPathComponent("machine-identifier.bin")
+        )
+
+        #expect(sourceIdentifier != cloneIdentifier,
+                "Clone must receive a new machine identifier to avoid undefined behavior")
+        #expect(!cloneIdentifier.isEmpty, "Machine identifier must not be empty")
+    }
+
     @Test("Skips missing source files without crashing")
     func skipsMissingFiles() throws {
         let tempDir = FileManager.default.temporaryDirectory

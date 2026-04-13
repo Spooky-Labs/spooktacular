@@ -63,7 +63,7 @@ extension Spook {
             }
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
-            let expandedKey = NSString(string: key).expandingTildeInPath
+            // `key` is already tilde-expanded by the @Option transform.
             let commandString = command.joined(separator: " ")
 
             guard let macAddress = bundle.spec.macAddress else {
@@ -81,20 +81,15 @@ extension Spook {
 
             // Build the ssh command with the remote command appended.
             var args = SSHExecutor.sshOptions
-            args += ["-i", expandedKey, "\(user)@\(ip)", commandString]
+            args += ["-i", key, "\(user)@\(ip)", commandString]
 
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-            process.arguments = args
-            process.standardInput = FileHandle.standardInput
-            process.standardOutput = FileHandle.standardOutput
-            process.standardError = FileHandle.standardError
-
-            try process.run()
-            process.waitUntilExit()
-
-            if process.terminationStatus != 0 {
-                throw ExitCode(process.terminationStatus)
+            do {
+                try SSHExecutor.execInteractive(arguments: args)
+            } catch let error as SSHError {
+                if case .executionFailed(let exitCode) = error {
+                    throw ExitCode(exitCode)
+                }
+                throw error
             }
         }
     }

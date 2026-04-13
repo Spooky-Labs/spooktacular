@@ -65,6 +65,41 @@ public enum IPResolver {
         return nil
     }
 
+    // MARK: - Retry Loop
+
+    /// Polls ``resolveIP(macAddress:)`` until the VM's IP address appears or the timeout expires.
+    ///
+    /// The VM needs time to boot and obtain a DHCP lease, so this
+    /// method retries at the specified interval until the IP appears
+    /// in the host's lease table or ARP cache.
+    ///
+    /// - Parameters:
+    ///   - macAddress: The VM's MAC address as a colon-separated
+    ///     hex string (e.g., `"aa:bb:cc:dd:ee:ff"`). Case-insensitive.
+    ///   - timeout: Maximum time to wait in seconds. Defaults to
+    ///     120 seconds.
+    ///   - pollInterval: Seconds between retries. Defaults to 5.
+    /// - Returns: The resolved IPv4 address, or `nil` if the
+    ///   timeout expires without a match.
+    public static func resolveIPWithRetry(
+        macAddress: String,
+        timeout: TimeInterval = 120,
+        pollInterval: TimeInterval = 5
+    ) async throws -> String? {
+        let deadline = Date().addingTimeInterval(timeout)
+        let sleepNanoseconds = UInt64(pollInterval * 1_000_000_000)
+
+        while Date() < deadline {
+            if let ip = try await resolveIP(macAddress: macAddress) {
+                return ip
+            }
+            Log.provision.debug("IP not yet available for MAC \(macAddress, privacy: .public), retrying in \(Int(pollInterval))s")
+            try await Task.sleep(nanoseconds: sleepNanoseconds)
+        }
+
+        return nil
+    }
+
     // MARK: - DHCP Lease File
 
     /// The default path to the macOS DHCP server's lease database.

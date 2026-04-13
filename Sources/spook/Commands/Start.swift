@@ -223,20 +223,16 @@ extension Spook {
                         throw ExitCode.failure
                     }
 
-                    // Resolve the VM's IP to connect via SSH.
                     if let macAddress = bundle.spec.macAddress {
-                        print(Style.info("Resolving VM IP address..."))
-                        if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
-                            print(Style.info("Waiting for SSH on \(ip)..."))
-                            try await SSHExecutor.waitForSSH(ip: ip)
-
-                            print(Style.info("Executing user-data script..."))
-                            try await SSHExecutor.execute(
-                                script: scriptURL,
-                                on: ip,
-                                user: sshUser,
-                                key: sshKey
-                            )
+                        print(Style.info("Provisioning via SSH..."))
+                        let ip = try await VMProvisioner.provisionViaSSH(
+                            macAddress: macAddress,
+                            script: scriptURL,
+                            user: sshUser,
+                            key: sshKey,
+                            timeout: 120
+                        )
+                        if ip != nil {
                             print(Style.success("✓ User-data script completed."))
                         } else {
                             print(Style.warning("Could not resolve VM IP. Skipping user-data execution."))

@@ -43,6 +43,36 @@ public enum VsockProvisioner {
     /// `spook-agent` binary.
     public static let agentPort: UInt32 = 9470
 
+    // MARK: - Wire Protocol Helpers
+
+    /// Encodes a script payload as a length-prefixed frame.
+    ///
+    /// The frame format is a 4-byte big-endian `UInt32` length
+    /// followed by the script content as UTF-8 bytes.
+    ///
+    /// - Parameter script: The script content to encode.
+    /// - Returns: The framed data ready to write to the socket.
+    public static func encodeFrame(_ script: String) -> Data {
+        let scriptData = Data(script.utf8)
+        var length = UInt32(scriptData.count).bigEndian
+        var frame = Data(bytes: &length, count: 4)
+        frame.append(scriptData)
+        return frame
+    }
+
+    /// Decodes an exit code from a 4-byte big-endian response.
+    ///
+    /// - Parameter data: Exactly 4 bytes of response data from
+    ///   the guest agent.
+    /// - Returns: The decoded exit code, or `nil` if the data is
+    ///   not exactly 4 bytes.
+    public static func decodeExitCode(from data: Data) -> UInt32? {
+        guard data.count == 4 else { return nil }
+        return data.withUnsafeBytes {
+            UInt32(bigEndian: $0.load(as: UInt32.self))
+        }
+    }
+
     /// Sends a script to the guest agent via VirtIO socket.
     ///
     /// Connects to the VM's vsock device on ``agentPort``,

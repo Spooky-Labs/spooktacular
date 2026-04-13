@@ -94,6 +94,64 @@ struct VsockProvisionerTests {
         )
     }
 
+    // MARK: - Wire Protocol
+
+    @Test("Frame encodes length as 4-byte big-endian prefix")
+    func frameEncoding() {
+        let script = "echo hello"
+        let frame = VsockProvisioner.encodeFrame(script)
+
+        // First 4 bytes are the length prefix.
+        let lengthData = frame.prefix(4)
+        let length = lengthData.withUnsafeBytes {
+            UInt32(bigEndian: $0.load(as: UInt32.self))
+        }
+        #expect(length == UInt32(script.utf8.count))
+
+        // Remaining bytes are the script content.
+        let content = frame.dropFirst(4)
+        #expect(String(data: Data(content), encoding: .utf8) == script)
+
+        // Total frame size is 4 + script length.
+        #expect(frame.count == 4 + script.utf8.count)
+    }
+
+    @Test("Frame encodes empty script with zero-length prefix")
+    func frameEncodesEmptyScript() {
+        let frame = VsockProvisioner.encodeFrame("")
+        #expect(frame.count == 4)
+
+        let length = frame.withUnsafeBytes {
+            UInt32(bigEndian: $0.load(as: UInt32.self))
+        }
+        #expect(length == 0)
+    }
+
+    @Test("Exit code decodes from 4-byte big-endian response")
+    func exitCodeDecoding() {
+        // Encode exit code 0.
+        var zero: UInt32 = UInt32(0).bigEndian
+        let zeroData = Data(bytes: &zero, count: 4)
+        #expect(VsockProvisioner.decodeExitCode(from: zeroData) == 0)
+
+        // Encode exit code 42.
+        var fortyTwo: UInt32 = UInt32(42).bigEndian
+        let fortyTwoData = Data(bytes: &fortyTwo, count: 4)
+        #expect(VsockProvisioner.decodeExitCode(from: fortyTwoData) == 42)
+
+        // Encode exit code 1.
+        var one: UInt32 = UInt32(1).bigEndian
+        let oneData = Data(bytes: &one, count: 4)
+        #expect(VsockProvisioner.decodeExitCode(from: oneData) == 1)
+    }
+
+    @Test("Exit code returns nil for wrong-size data")
+    func exitCodeWrongSize() {
+        #expect(VsockProvisioner.decodeExitCode(from: Data()) == nil)
+        #expect(VsockProvisioner.decodeExitCode(from: Data([0x00, 0x00])) == nil)
+        #expect(VsockProvisioner.decodeExitCode(from: Data([0x00, 0x00, 0x00, 0x00, 0x01])) == nil)
+    }
+
     // MARK: - All Cases Have Descriptions
 
     @Test("Every VsockProvisionerError case has a non-empty description")

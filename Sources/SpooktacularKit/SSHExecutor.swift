@@ -139,6 +139,36 @@ public enum SSHExecutor {
         Log.provision.notice("Script completed successfully on \(ip, privacy: .public)")
     }
 
+    // MARK: - Interactive Execution
+
+    /// Runs an interactive SSH session with the given arguments.
+    ///
+    /// Launches `/usr/bin/ssh` with `arguments`, inheriting the
+    /// calling process's standard input, output, and error so the
+    /// user gets a fully interactive terminal. The method blocks
+    /// until the SSH process exits.
+    ///
+    /// Use this for `spook ssh` and `spook exec`, where the user
+    /// interacts directly with the remote shell.
+    ///
+    /// - Parameter arguments: The argument list for `ssh`,
+    ///   including options, identity, and destination.
+    /// - Throws: ``SSHError/executionFailed(exitCode:)`` if the
+    ///   SSH process exits with a non-zero status.
+    public static func execInteractive(arguments: [String]) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        process.arguments = arguments
+        process.standardInput = FileHandle.standardInput
+        process.standardOutput = FileHandle.standardOutput
+        process.standardError = FileHandle.standardError
+        try process.run()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            throw SSHError.executionFailed(exitCode: process.terminationStatus)
+        }
+    }
+
     // MARK: - Port Check
 
     /// Checks whether a TCP port is open on the given IP.

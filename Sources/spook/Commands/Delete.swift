@@ -33,26 +33,9 @@ extension Spook {
             // Prevent deleting a running VM unless --force is used.
             if PIDFile.isRunning(bundleURL: bundleURL) {
                 if force {
-                    // Stop the VM by sending SIGTERM to the owning process.
-                    if let pid = PIDFile.read(from: bundleURL) {
-                        print(Style.info("Stopping VM '\(name)' (PID \(pid))..."))
-                        kill(pid, SIGTERM)
-
-                        // Wait briefly for the process to exit.
-                        let deadline = Date().addingTimeInterval(10)
-                        while PIDFile.isProcessAlive(pid), Date() < deadline {
-                            try await Task.sleep(nanoseconds: 500_000_000)
-                        }
-
-                        // If still alive after timeout, force-kill.
-                        if PIDFile.isProcessAlive(pid) {
-                            kill(pid, SIGKILL)
-                            try await Task.sleep(nanoseconds: 500_000_000)
-                        }
-
-                        PIDFile.remove(from: bundleURL)
-                        print(Style.success("✓ VM '\(name)' stopped."))
-                    }
+                    print(Style.info("Stopping VM '\(name)'..."))
+                    await PIDFile.terminate(bundleURL: bundleURL)
+                    print(Style.success("✓ VM '\(name)' stopped."))
                 } else {
                     print(Style.error("Cannot delete '\(name)': VM is currently running."))
                     print(Style.dim("Stop it first with: spook stop \(name)"))

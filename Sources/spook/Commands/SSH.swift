@@ -50,13 +50,13 @@ extension Spook {
             }
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
-            let expandedKey = NSString(string: key).expandingTildeInPath
+            // `key` is already tilde-expanded by the @Option transform.
 
             guard let macAddress = bundle.spec.macAddress else {
                 print(Style.error("✗ VM '\(name)' has no configured MAC address for automatic IP resolution."))
                 print(Style.dim("  Find the IP manually in the guest's System Settings > Network,"))
                 print(Style.dim("  then connect with:"))
-                print(Style.dim("  ssh -i \(expandedKey) \(user)@<ip-address>"))
+                print(Style.dim("  ssh -i \(key) \(user)@<ip-address>"))
                 throw ExitCode.failure
             }
 
@@ -70,20 +70,15 @@ extension Spook {
 
             // Build the ssh command and exec it, replacing this process.
             var args = SSHExecutor.sshOptions
-            args += ["-i", expandedKey, "\(user)@\(ip)"]
+            args += ["-i", key, "\(user)@\(ip)"]
 
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-            process.arguments = args
-            process.standardInput = FileHandle.standardInput
-            process.standardOutput = FileHandle.standardOutput
-            process.standardError = FileHandle.standardError
-
-            try process.run()
-            process.waitUntilExit()
-
-            if process.terminationStatus != 0 {
-                throw ExitCode(process.terminationStatus)
+            do {
+                try SSHExecutor.execInteractive(arguments: args)
+            } catch let error as SSHError {
+                if case .executionFailed(let exitCode) = error {
+                    throw ExitCode(exitCode)
+                }
+                throw error
             }
         }
     }

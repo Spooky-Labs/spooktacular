@@ -126,6 +126,18 @@ public final class VirtualMachine: NSObject, Sendable {
     }
 
     // MARK: - Lifecycle
+    //
+    // Why `nonisolated(unsafe)`:
+    //
+    // `VZVirtualMachine`'s async methods (start, stop, pause, resume,
+    // saveMachineStateTo, restoreMachineStateFrom) are not annotated
+    // as `@MainActor` in the Virtualization framework headers, yet
+    // they must be called from the main actor. Because `VirtualMachine`
+    // itself is `@MainActor`, we know the `vzVM` reference is only
+    // accessed on the main actor. The `nonisolated(unsafe)` local
+    // binding satisfies the compiler's sendability check for the
+    // `await` suspension point without introducing a data race --
+    // the value never escapes the main actor's execution context.
 
     /// Starts the virtual machine.
     ///

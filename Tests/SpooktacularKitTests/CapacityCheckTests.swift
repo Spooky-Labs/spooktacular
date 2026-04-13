@@ -165,6 +165,54 @@ struct CapacityCheckTests {
         }
     }
 
+    // MARK: - Capacity Boundary
+
+    @Test("Two running VMs causes capacity error")
+    func twoRunningVMsCausesError() throws {
+        let dir = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        try createBundle(named: "runner-1", in: dir, withPID: myPID)
+        try createBundle(named: "runner-2", in: dir, withPID: myPID)
+
+        #expect(CapacityCheck.runningCount(in: dir) == 2)
+        #expect(throws: CapacityError.self) {
+            try CapacityCheck.ensureCapacity(in: dir)
+        }
+    }
+
+    @Test("One running VM passes capacity check")
+    func oneRunningVMPasses() throws {
+        let dir = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        try createBundle(named: "runner-1", in: dir, withPID: myPID)
+
+        #expect(CapacityCheck.runningCount(in: dir) == 1)
+        #expect(throws: Never.self) {
+            try CapacityCheck.ensureCapacity(in: dir)
+        }
+    }
+
+    @Test("Zero running VMs passes capacity check")
+    func zeroRunningVMsPasses() throws {
+        let dir = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        try createBundle(named: "runner-1", in: dir)
+        try createBundle(named: "runner-2", in: dir)
+
+        #expect(CapacityCheck.runningCount(in: dir) == 0)
+        #expect(throws: Never.self) {
+            try CapacityCheck.ensureCapacity(in: dir)
+        }
+    }
+
     // MARK: - CapacityError
 
     @Test("CapacityError has a descriptive message")

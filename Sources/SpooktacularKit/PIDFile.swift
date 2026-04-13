@@ -60,6 +60,43 @@ public enum PIDFile {
         Log.vm.info("Removed PID file from \(bundleURL.lastPathComponent, privacy: .public)")
     }
 
+    // MARK: - Terminate
+
+    /// Sends `SIGTERM` to the process owning the VM, waits for it to
+    /// exit, escalates to `SIGKILL` if needed, and removes the PID file.
+    ///
+    /// This method centralizes the "stop a VM process" pattern used by
+    /// `spook delete --force` and `spook stop --force`. It guarantees
+    /// the PID file is always cleaned up, even if the process was
+    /// already dead.
+    ///
+    /// - Parameters:
+    ///   - bundleURL: The file URL of the `.vm` bundle directory.
+    ///   - gracePeriod: Maximum time (in seconds) to wait after
+    ///     `SIGTERM` before escalating to `SIGKILL`. Defaults to 10.
+    public static func terminate(bundleURL: URL, gracePeriod: TimeInterval = 10) async {
+        guard let pid = read(from: bundleURL), isProcessAlive(pid) else {
+            remove(from: bundleURL)
+            return
+        }
+
+        Log.vm.info("Sending SIGTERM to PID \(pid) for \(bundleURL.lastPathComponent, privacy: .public)")
+        kill(pid, SIGTERM)
+
+        // Poll until the process exits or the grace period expires.
+        let deadline = Date().addingTimeInterval(gracePeriod)
+        while Date() < deadline && isProcessAlive(pid) {
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+
+        if isProcessAlive(pid) {
+            Log.vm.warning("PID \(pid) did not exit within \(Int(gracePeriod))s, sending SIGKILL")
+            kill(pid, SIGKILL)
+        }
+
+        remove(from: bundleURL)
+    }
+
     // MARK: - Read and Query
 
     /// Reads the PID from a VM bundle's PID file.
