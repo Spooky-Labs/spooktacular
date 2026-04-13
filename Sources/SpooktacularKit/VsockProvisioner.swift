@@ -114,8 +114,7 @@ public enum VsockProvisioner {
             let connection = try await socketDevice.connect(toPort: agentPort)
 
             // VZVirtioSocketConnection provides a raw file descriptor
-            // for bidirectional I/O. Create FileHandle wrappers for
-            // structured read/write. We duplicate the fd so each
+            // for bidirectional I/O. We duplicate the fd so each
             // handle can close independently without affecting the other.
             let fd = connection.fileDescriptor
             let writeFD = dup(fd)
@@ -127,32 +126,22 @@ public enum VsockProvisioner {
             let writeHandle = FileHandle(fileDescriptor: writeFD, closeOnDealloc: true)
             let readHandle = FileHandle(fileDescriptor: readFD, closeOnDealloc: true)
 
-            // Build the payload: 4-byte big-endian length + script bytes.
-            let scriptData = Data(scriptContent.utf8)
-            var length = UInt32(scriptData.count).bigEndian
-            let lengthData = Data(bytes: &length, count: 4)
-
-            writeHandle.write(lengthData)
-            writeHandle.write(scriptData)
+            let frame = encodeFrame(scriptContent)
+            writeHandle.write(frame)
 
             Log.provision.info(
-                "Script sent via vsock (\(scriptData.count) bytes), waiting for completion"
+                "Script sent via vsock (\(frame.count) bytes), waiting for completion"
             )
 
             // Read the 4-byte exit code response from the agent.
             let responseData = readHandle.readData(ofLength: 4)
 
-            if responseData.count == 4 {
-                let exitCode = responseData.withUnsafeBytes {
-                    UInt32(bigEndian: $0.load(as: UInt32.self))
-                }
-                if exitCode != 0 {
-                    Log.provision.error("Guest agent reported exit code \(exitCode)")
-                    throw VsockProvisionerError.scriptFailed(exitCode: Int32(exitCode))
-                }
+            if let exitCode = decodeExitCode(from: responseData), exitCode != 0 {
+                Log.provision.error("Guest agent reported exit code \(exitCode)")
+                throw VsockProvisionerError.scriptFailed(exitCode: Int32(exitCode))
             }
             // If the agent closes without sending an exit code, treat
-            // as success — older agent versions may not send one.
+            // as success -- older agent versions may not send one.
 
             try? writeHandle.close()
             try? readHandle.close()

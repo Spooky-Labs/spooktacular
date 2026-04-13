@@ -95,17 +95,11 @@ public enum CloneManager {
             )
 
             let spec = source.spec
-            let configData = try VirtualMachineBundle.encoder.encode(spec)
-            try configData.write(
-                to: destination.appendingPathComponent(VirtualMachineBundle.configFileName)
-            )
+            try VirtualMachineBundle.writeSpec(spec, to: destination)
 
             var metadata = VirtualMachineMetadata()
             metadata.setupCompleted = source.metadata.setupCompleted
-            let metadataData = try VirtualMachineBundle.encoder.encode(metadata)
-            try metadataData.write(
-                to: destination.appendingPathComponent(VirtualMachineBundle.metadataFileName)
-            )
+            try VirtualMachineBundle.writeMetadata(metadata, to: destination)
 
             Log.clone.notice("Clone complete: '\(destination.lastPathComponent, privacy: .public)'")
             return VirtualMachineBundle(

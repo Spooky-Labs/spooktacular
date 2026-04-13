@@ -107,15 +107,10 @@ public enum SSHExecutor {
         key: String? = nil
     ) async throws {
         let remotePath = "/tmp/spook-user-data.sh"
+        let keyArgs = keyArguments(for: key)
 
         Log.provision.info("Copying script to \(user, privacy: .public)@\(ip, privacy: .public):\(remotePath, privacy: .public)")
-        var scpArgs = sshOptions
-        if let key {
-            let expandedKey = NSString(string: key).expandingTildeInPath
-            scpArgs += ["-i", expandedKey]
-        }
-        scpArgs += [script.path, "\(user)@\(ip):\(remotePath)"]
-
+        let scpArgs = sshOptions + keyArgs + [script.path, "\(user)@\(ip):\(remotePath)"]
         let scpExit = try await runStreamingProcess("/usr/bin/scp", arguments: scpArgs)
         guard scpExit == 0 else {
             Log.provision.error("scp failed with exit code \(scpExit) copying script to \(ip, privacy: .public)")
@@ -123,13 +118,7 @@ public enum SSHExecutor {
         }
 
         Log.provision.info("Executing script on \(ip, privacy: .public)")
-        var sshArgs = sshOptions
-        if let key {
-            let expandedKey = NSString(string: key).expandingTildeInPath
-            sshArgs += ["-i", expandedKey]
-        }
-        sshArgs += ["\(user)@\(ip)", "chmod +x \(remotePath) && \(remotePath)"]
-
+        let sshArgs = sshOptions + keyArgs + ["\(user)@\(ip)", "chmod +x \(remotePath) && \(remotePath)"]
         let sshExit = try await runStreamingProcess("/usr/bin/ssh", arguments: sshArgs)
         guard sshExit == 0 else {
             Log.provision.error("Remote script execution failed with exit code \(sshExit) on \(ip, privacy: .public)")
@@ -227,6 +216,20 @@ public enum SSHExecutor {
                 continuation.resume(returning: false)
             }
         }
+    }
+
+    // MARK: - Key Arguments
+
+    /// Builds the `-i <key>` arguments for SSH/SCP commands.
+    ///
+    /// - Parameter key: The SSH private key path, or `nil` to use
+    ///   the SSH agent's default key.
+    /// - Returns: An array with `-i` and the expanded path, or
+    ///   an empty array if no key was provided.
+    private static func keyArguments(for key: String?) -> [String] {
+        guard let key else { return [] }
+        let expandedKey = NSString(string: key).expandingTildeInPath
+        return ["-i", expandedKey]
     }
 
     // MARK: - Process Helpers

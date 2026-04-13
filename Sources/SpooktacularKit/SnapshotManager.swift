@@ -318,9 +318,6 @@ public enum SnapshotError: Error, Sendable, Equatable, LocalizedError {
     /// A required file is missing from the VM bundle.
     case fileNotFound(path: String)
 
-    /// The VM is currently running and cannot be snapshotted.
-    case vmIsRunning
-
     public var errorDescription: String? {
         switch self {
         case .alreadyExists(let label):
@@ -329,8 +326,6 @@ public enum SnapshotError: Error, Sendable, Equatable, LocalizedError {
             "Snapshot '\(label)' not found."
         case .fileNotFound(let path):
             "Required file not found: \(path)."
-        case .vmIsRunning:
-            "Cannot snapshot a running VM."
         }
     }
 
@@ -342,8 +337,6 @@ public enum SnapshotError: Error, Sendable, Equatable, LocalizedError {
             "Run 'spook snapshots <vm>' to see available snapshots."
         case .fileNotFound:
             "The VM bundle may be corrupted. Recreate it with 'spook delete <name>' and 'spook create <name>'."
-        case .vmIsRunning:
-            "Stop the VM first with 'spook stop <name>', then retry the snapshot operation."
         }
     }
 }

@@ -80,13 +80,12 @@ public enum CapacityCheck {
     ///   ``maxConcurrentVMs`` or more VMs are already running.
     public static func ensureCapacity(in directory: URL) throws {
         Log.capacity.info("Checking VM capacity in \(directory.lastPathComponent, privacy: .public)")
-        let count = runningCount(in: directory)
-        if count >= maxConcurrentVMs {
-            let names = runningVMs(in: directory)
-            Log.capacity.error("Capacity check failed: \(count) VMs running (limit \(maxConcurrentVMs))")
+        let names = runningVMs(in: directory)
+        if names.count >= maxConcurrentVMs {
+            Log.capacity.error("Capacity check failed: \(names.count) VMs running (limit \(maxConcurrentVMs))")
             throw CapacityError.limitReached(running: names)
         }
-        Log.capacity.debug("Capacity OK: \(count)/\(maxConcurrentVMs) slots used")
+        Log.capacity.debug("Capacity OK: \(names.count)/\(maxConcurrentVMs) slots used")
     }
 }
 

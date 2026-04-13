@@ -240,10 +240,10 @@ public enum SetupAutomation {
             Log.provision.debug("Using Sequoia (macOS 15) automation sequence")
             return sequoiaSequence(username: username, password: password)
         case 26:
-            // Tahoe uses the same Setup Assistant layout as Sequoia.
-            // This will be updated when Tahoe ships with layout changes.
-            Log.provision.debug("Using Tahoe (macOS 26) automation sequence")
-            return tahoeSequence(username: username, password: password)
+            // Tahoe shares the same Setup Assistant layout as Sequoia.
+            // Update this case when Tahoe ships with layout changes.
+            Log.provision.debug("Using Tahoe (macOS 26) automation sequence (same as Sequoia)")
+            return sequoiaSequence(username: username, password: password)
         default:
             Log.provision.error("No automation sequence available for macOS \(macOSVersion, privacy: .public)")
             return []
@@ -422,24 +422,4 @@ public enum SetupAutomation {
         ]
     }
 
-    // MARK: - macOS 26 (Tahoe)
-
-    /// The Setup Assistant automation sequence for macOS 26 (Tahoe).
-    ///
-    /// Based on the Sequoia sequence with adjustments for Tahoe's
-    /// Setup Assistant layout. The core flow is the same --- Apple
-    /// has kept the Setup Assistant structure stable across recent
-    /// releases, with minor navigation changes.
-    ///
-    /// This sequence will be updated as Tahoe betas reveal any
-    /// layout differences from Sequoia.
-    private static func tahoeSequence(
-        username: String,
-        password: String
-    ) -> [BootStep] {
-        // Tahoe's Setup Assistant shares the same structure as Sequoia.
-        // Reuse the Sequoia sequence as the baseline. When Tahoe ships,
-        // any screen differences will be patched here.
-        return sequoiaSequence(username: username, password: password)
-    }
 }

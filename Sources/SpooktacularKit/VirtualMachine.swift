@@ -225,13 +225,11 @@ public final class VirtualMachine: NSObject, Sendable {
     /// - Parameter url: The file URL where the state will be
     ///   saved. Typically inside the VM bundle's `SavedStates/`
     ///   directory.
-    /// - Throws: An error if save is not supported (requires
-    ///   macOS 14+) or if the save operation fails.
+    /// - Throws: An error if the save operation fails.
     ///
     /// > Important: The saved state file is tied to the exact
     /// > disk image state at the time of saving. Modifying the
     /// > disk image after saving invalidates the state file.
-    @available(macOS 14.0, *)
     public func saveState(to url: URL) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Saving VM state to \(url.lastPathComponent, privacy: .public)")
@@ -246,9 +244,8 @@ public final class VirtualMachine: NSObject, Sendable {
     /// and resumes VM execution from the exact point it was saved.
     ///
     /// - Parameter url: The file URL of a previously saved state.
-    /// - Throws: An error if restore is not supported (requires
-    ///   macOS 14+) or if the state file is invalid or incompatible.
-    @available(macOS 14.0, *)
+    /// - Throws: An error if the state file is invalid or
+    ///   incompatible with the current disk image.
     public func restoreState(from url: URL) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
         Log.vm.info("Restoring VM state from \(url.lastPathComponent, privacy: .public)")

@@ -191,7 +191,7 @@ public enum VirtualMachineConfiguration {
         platform.machineIdentifier = machineIdentifier
 
         let auxiliaryStorageURL = bundle.url.appendingPathComponent(VirtualMachineBundle.auxiliaryStorageFileName)
-        platform.auxiliaryStorage = try VZMacAuxiliaryStorage(contentsOf: auxiliaryStorageURL)
+        platform.auxiliaryStorage = VZMacAuxiliaryStorage(contentsOf: auxiliaryStorageURL)
 
         configuration.platform = platform
         Log.config.debug("Platform artifacts loaded for \(bundle.url.lastPathComponent, privacy: .public)")
@@ -236,6 +236,7 @@ public enum VirtualMachineConfiguration {
                 device.attachment = VZBridgedNetworkDeviceAttachment(interface: target)
                 devices = [device]
             } else {
+                Log.config.warning("Bridge interface '\(interface, privacy: .public)' not found, falling back to NAT")
                 devices = [makeNATDevice()]
             }
 
