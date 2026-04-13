@@ -84,7 +84,7 @@ platform :mac do
       api_key: api_key,
       app_identifier: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
       app_platform: "osx",
-      pkg: "../Spooktacular.pkg",
+      pkg: "Spooktacular.pkg",
       skip_submission: false,
       skip_waiting_for_build_processing: true,
       changelog: options[:changelog] || "Bug fixes and improvements."
@@ -111,7 +111,7 @@ platform :mac do
       app_platform: "osx",
       metadata_path: "./metadata",
       screenshots_path: "./screenshots",
-      pkg: "../Spooktacular.pkg",
+      pkg: "Spooktacular.pkg",
       skip_binary_upload: false,
       skip_metadata: false,
       skip_screenshots: false,
