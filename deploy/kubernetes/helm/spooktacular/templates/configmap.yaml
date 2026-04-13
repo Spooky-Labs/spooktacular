@@ -1,0 +1,114 @@
+# =============================================================================
+# Controller Configuration ConfigMap
+# =============================================================================
+#
+# Contains the controller's runtime configuration, including the list of
+# Mac node endpoints. The controller reads this file on startup and reloads
+# it when the ConfigMap changes (via inotify or periodic polling).
+#
+# In production, you may replace static node endpoints with a service
+# discovery mechanism (e.g., DNS-SD, Consul, or K8s node annotations).
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+data:
+  config.yaml: |
+    # =========================================================================
+    # Spooktacular Controller Configuration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # Controller behavior
+    # -------------------------------------------------------------------------
+    controller:
+      # How often to reconcile all MacOSVM resources (seconds).
+      reconcileInterval: {{ .Values.controller.reconcileInterval }}
+
+      # Timeout for HTTP API calls to Mac nodes (seconds).
+      nodeTimeout: {{ .Values.controller.nodeTimeout }}
+
+      # Log level: debug, info, warn, error.
+      logLevel: {{ .Values.controller.logLevel }}
+
+    # -------------------------------------------------------------------------
+    # Mac node endpoints
+    # -------------------------------------------------------------------------
+    # Each entry represents a Mac node running `spook serve`. The controller
+    # distributes VMs across these nodes based on resource availability and
+    # the VM's nodeSelector constraints.
+    #
+    # Fields:
+    #   name:     Unique identifier for the node (matches K8s node name).
+    #   endpoint: HTTP(S) URL of the spook serve API.
+    #   labels:   Key-value pairs for nodeSelector matching.
+    # -------------------------------------------------------------------------
+    nodes:
+      {{- if .Values.macNodes }}
+      {{- range .Values.macNodes }}
+      - name: {{ .name | quote }}
+        endpoint: {{ .endpoint | quote }}
+        {{- if .labels }}
+        labels:
+          {{- toYaml .labels | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- else }}
+      # No Mac nodes configured. Add nodes via values.yaml:
+      #
+      #   macNodes:
+      #     - name: mac-mini-01
+      #       endpoint: https://192.168.1.50:8484
+      #       labels:
+      #         spooktacular.app/pool: ci
+      []
+      {{- end }}
+
+    # -------------------------------------------------------------------------
+    # TLS configuration for node communication
+    # -------------------------------------------------------------------------
+    tls:
+      enabled: {{ .Values.tls.enabled }}
+      {{- if .Values.tls.enabled }}
+      caFile: /etc/spooktacular/tls/ca.crt
+      certFile: /etc/spooktacular/tls/tls.crt
+      keyFile: /etc/spooktacular/tls/tls.key
+      {{- end }}
+
+    # -------------------------------------------------------------------------
+    # Templates
+    # -------------------------------------------------------------------------
+    # Built-in VM templates. Each template defines default provisioning
+    # behavior that can be customized via templateConfig on the MacOSVM.
+    # -------------------------------------------------------------------------
+    templates:
+      github-runner:
+        description: "GitHub Actions self-hosted runner"
+        defaultCpu: 4
+        defaultMemoryInGigabytes: 8
+        defaultDiskInGigabytes: 64
+        provisioningMode: ssh
+
+      remote-desktop:
+        description: "Remote desktop with VNC/ARD access"
+        defaultCpu: 8
+        defaultMemoryInGigabytes: 16
+        defaultDiskInGigabytes: 128
+        provisioningMode: ssh
+
+      openclaw:
+        description: "OpenClaw build environment"
+        defaultCpu: 4
+        defaultMemoryInGigabytes: 8
+        defaultDiskInGigabytes: 64
+        provisioningMode: ssh

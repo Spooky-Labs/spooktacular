@@ -1,0 +1,54 @@
+# =============================================================================
+# Spooktacular Helm Chart
+# =============================================================================
+#
+# Deploys the Spooktacular controller into a Kubernetes cluster. The controller
+# watches MacOSVM custom resources and manages macOS VMs on remote Apple
+# Silicon nodes via the Spooktacular HTTP API.
+#
+# Architecture:
+#   - The controller runs as a Deployment on a Linux node.
+#   - Mac nodes run `spook serve` independently (as a LaunchDaemon).
+#   - The controller communicates with Mac nodes over HTTP to create, start,
+#     stop, and delete VMs.
+#
+# =============================================================================
+
+apiVersion: v2
+name: spooktacular
+description: >-
+  Kubernetes controller for managing macOS VMs on Apple Silicon nodes.
+  Enables declarative VM lifecycle management via MacOSVM custom resources.
+
+type: application
+
+# Chart version — follows SemVer. Bump this on every chart change.
+version: 0.1.0
+
+# Application version — matches the Spooktacular binary version.
+appVersion: "0.1.0"
+
+home: https://github.com/spooktacular/spooktacular
+sources:
+  - https://github.com/spooktacular/spooktacular
+
+keywords:
+  - macos
+  - virtualization
+  - apple-silicon
+  - ci-cd
+  - github-actions
+  - vm-management
+
+maintainers:
+  - name: Spooktacular Authors
+
+icon: https://spooktacular.app/icon.png
+
+annotations:
+  # Indicates that this chart installs CRDs.
+  artifacthub.io/crds: |
+    - kind: MacOSVM
+      version: v1alpha1
+      name: macosvms.spooktacular.app
+      description: Manages macOS virtual machines on Apple Silicon nodes.

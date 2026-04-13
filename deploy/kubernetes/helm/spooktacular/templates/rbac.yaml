@@ -1,0 +1,181 @@
+# =============================================================================
+# RBAC — ServiceAccount, ClusterRole, ClusterRoleBinding
+# =============================================================================
+#
+# The Spooktacular controller needs cluster-level permissions to:
+#   - Watch and update MacOSVM custom resources across all namespaces.
+#   - Read Secrets (for runner tokens referenced by secretRef).
+#   - Create Events (for recording VM lifecycle transitions).
+#   - Manage Leases (for leader election in HA deployments).
+#
+# =============================================================================
+
+{{- if .Values.serviceAccount.create }}
+# -----------------------------------------------------------------------------
+# ServiceAccount
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "spooktacular.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  {{- with .Values.serviceAccount.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: true
+{{- end }}
+
+---
+
+{{- if .Values.rbac.create }}
+# -----------------------------------------------------------------------------
+# ClusterRole
+# -----------------------------------------------------------------------------
+# Defines the permissions the controller needs. Follows the principle of
+# least privilege — only the resources and verbs actually needed are granted.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-controller
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+rules:
+  # ---------------------------------------------------------------------------
+  # MacOSVM resources — full lifecycle management.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - spooktacular.app
+    resources:
+      - macosvms
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # ---------------------------------------------------------------------------
+  # MacOSVM status subresource — the controller updates status independently
+  # from spec changes.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - spooktacular.app
+    resources:
+      - macosvms/status
+    verbs:
+      - get
+      - update
+      - patch
+
+  # ---------------------------------------------------------------------------
+  # MacOSVM finalizers — the controller adds finalizers to ensure cleanup
+  # runs before a MacOSVM is deleted.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - spooktacular.app
+    resources:
+      - macosvms/finalizers
+    verbs:
+      - update
+
+  # ---------------------------------------------------------------------------
+  # Secrets — read-only access to retrieve runner tokens and TLS certs
+  # referenced by MacOSVM resources.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+
+  # ---------------------------------------------------------------------------
+  # Events — the controller records events on MacOSVM resources for
+  # observability (e.g., "VM created on node mac-mini-01").
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+
+  # ---------------------------------------------------------------------------
+  # Nodes — read-only to discover Mac node labels and status.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+
+  # ---------------------------------------------------------------------------
+  # Leases — for leader election when running multiple controller replicas.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  # ---------------------------------------------------------------------------
+  # ConfigMaps — used as an alternative leader election backend.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+---
+
+# -----------------------------------------------------------------------------
+# ClusterRoleBinding
+# -----------------------------------------------------------------------------
+# Binds the ClusterRole to the controller's ServiceAccount so that the
+# controller pod inherits the permissions defined above.
+# -----------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-controller
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "spooktacular.fullname" . }}-controller
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "spooktacular.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

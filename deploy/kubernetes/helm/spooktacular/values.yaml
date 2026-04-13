@@ -1,0 +1,193 @@
+# =============================================================================
+# Spooktacular Helm Chart — Default Values
+# =============================================================================
+#
+# Override these values by passing --set flags or a custom values.yaml file
+# when installing the chart:
+#
+#   helm install spooktacular ./deploy/kubernetes/helm/spooktacular \
+#     --set controller.image.tag=v0.2.0 \
+#     --set macNodes[0].name=mac-mini-01 \
+#     --set macNodes[0].endpoint=https://192.168.1.50:8484
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Controller Deployment
+# -----------------------------------------------------------------------------
+controller:
+  # Container image for the Spooktacular K8s controller.
+  image:
+    repository: ghcr.io/spooktacular/controller
+    tag: ""  # Defaults to appVersion from Chart.yaml if empty.
+    pullPolicy: IfNotPresent
+
+  # Number of controller replicas. Only one replica is active at a time
+  # (leader election is used when replicas > 1).
+  replicas: 1
+
+  # Resource requests and limits for the controller pod.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Node selector for the controller pod. The controller runs on Linux.
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  # Tolerations for the controller pod.
+  tolerations: []
+
+  # Pod-level security context.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+
+  # Container-level security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+  # Leader election settings for high-availability deployments.
+  leaderElection:
+    enabled: true
+    # Lease duration before a new leader can be elected.
+    leaseDuration: 15s
+    renewDeadline: 10s
+    retryPeriod: 2s
+
+  # Logging configuration.
+  logLevel: info  # debug, info, warn, error
+
+  # How often the controller reconciles all MacOSVM resources (seconds).
+  reconcileInterval: 30
+
+  # Timeout for HTTP calls to Mac nodes (seconds).
+  nodeTimeout: 30
+
+# -----------------------------------------------------------------------------
+# Mac Node Endpoints
+# -----------------------------------------------------------------------------
+# Each Mac node runs `spook serve` as a LaunchDaemon. The controller needs to
+# know how to reach each node. In production, consider using a service
+# discovery mechanism instead of static endpoints.
+#
+# Example:
+#   macNodes:
+#     - name: mac-mini-01
+#       endpoint: https://192.168.1.50:8484
+#       labels:
+#         spooktacular.app/pool: ci
+#         spooktacular.app/gpu: "true"
+#     - name: mac-studio-01
+#       endpoint: https://192.168.1.51:8484
+#       labels:
+#         spooktacular.app/pool: desktop
+macNodes: []
+
+# -----------------------------------------------------------------------------
+# TLS Configuration
+# -----------------------------------------------------------------------------
+# TLS settings for communication between the controller and Mac nodes.
+tls:
+  # Enable mTLS for controller-to-node communication.
+  enabled: false
+
+  # Name of an existing Secret containing TLS certificates.
+  # The Secret should have keys: ca.crt, tls.crt, tls.key
+  existingSecret: ""
+
+  # If not using an existing secret, the chart can reference cert-manager.
+  certManager:
+    enabled: false
+    issuerRef:
+      name: ""
+      kind: ClusterIssuer
+
+# -----------------------------------------------------------------------------
+# RBAC
+# -----------------------------------------------------------------------------
+rbac:
+  # Create ClusterRole and ClusterRoleBinding for the controller.
+  create: true
+
+# -----------------------------------------------------------------------------
+# Service Account
+# -----------------------------------------------------------------------------
+serviceAccount:
+  # Create a ServiceAccount for the controller.
+  create: true
+  # Name of the ServiceAccount. Auto-generated if empty.
+  name: ""
+  # Annotations to add to the ServiceAccount (e.g., for IRSA on EKS).
+  annotations: {}
+
+# -----------------------------------------------------------------------------
+# Service
+# -----------------------------------------------------------------------------
+# The controller exposes a metrics and health endpoint.
+service:
+  type: ClusterIP
+  port: 8080
+  # Annotations for the service (e.g., for Prometheus scraping).
+  annotations: {}
+
+# -----------------------------------------------------------------------------
+# Monitoring
+# -----------------------------------------------------------------------------
+metrics:
+  # Enable Prometheus metrics endpoint on the controller.
+  enabled: true
+  port: 8081
+
+  # Create a ServiceMonitor for Prometheus Operator.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    namespace: ""
+    additionalLabels: {}
+
+# -----------------------------------------------------------------------------
+# Pod Disruption Budget
+# -----------------------------------------------------------------------------
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# -----------------------------------------------------------------------------
+# CRD Installation
+# -----------------------------------------------------------------------------
+crds:
+  # Install CRDs as part of the Helm release.
+  install: true
+  # Keep CRDs when the Helm release is deleted.
+  keep: true
+
+# -----------------------------------------------------------------------------
+# Extra labels applied to all resources.
+# -----------------------------------------------------------------------------
+commonLabels: {}
+
+# -----------------------------------------------------------------------------
+# Extra annotations applied to all resources.
+# -----------------------------------------------------------------------------
+commonAnnotations: {}
+
+# -----------------------------------------------------------------------------
+# Image pull secrets for private registries.
+# -----------------------------------------------------------------------------
+imagePullSecrets: []
+
+# -----------------------------------------------------------------------------
+# Override the release name.
+# -----------------------------------------------------------------------------
+nameOverride: ""
+fullnameOverride: ""

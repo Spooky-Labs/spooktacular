@@ -1,0 +1,59 @@
+# =============================================================================
+# Controller Service
+# =============================================================================
+#
+# Exposes the controller's HTTP API, health probes, and Prometheus metrics
+# within the cluster. This service is NOT exposed externally — it is used
+# by internal consumers such as:
+#   - Prometheus (scraping /metrics)
+#   - Liveness/readiness probes (via kubelet)
+#   - Optional webhooks (for future admission controllers)
+#
+# =============================================================================
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  annotations:
+    {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "spooktacular.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  ports:
+    # -------------------------------------------------------------------------
+    # Primary HTTP API port — serves the controller's management API.
+    # -------------------------------------------------------------------------
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+
+    {{- if .Values.metrics.enabled }}
+    # -------------------------------------------------------------------------
+    # Metrics port — Prometheus scrapes this endpoint.
+    # -------------------------------------------------------------------------
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}
+
+    # -------------------------------------------------------------------------
+    # Health check port — used by kubelet for probes.
+    # -------------------------------------------------------------------------
+    - name: health
+      port: 8082
+      targetPort: health
+      protocol: TCP

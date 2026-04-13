@@ -1,0 +1,152 @@
+# =============================================================================
+# Example: Ephemeral Runner Pool
+# =============================================================================
+#
+# This manifest creates a pool of ephemeral GitHub Actions runners. Each VM
+# is destroyed after its job completes, guaranteeing a clean environment for
+# every CI run. This is the recommended pattern for production CI/CD.
+#
+# The pool consists of 3 identical runners, each on a different Mac node
+# (if available). In a real deployment, you would pair this with an
+# autoscaler or a CronJob that maintains the desired pool size.
+#
+# Usage:
+#   # Create the shared runner token Secret:
+#   kubectl create secret generic ephemeral-runner-token \
+#     --from-literal=token=AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+#
+#   # Apply the pool:
+#   kubectl apply -f ephemeral-pool.yaml
+#
+#   # Monitor:
+#   kubectl get mvm -l spooktacular.app/pool-name=ephemeral-ci -w
+#
+# =============================================================================
+
+---
+# -----------------------------------------------------------------------------
+# Runner 1 of 3
+# -----------------------------------------------------------------------------
+apiVersion: spooktacular.app/v1alpha1
+kind: MacOSVM
+metadata:
+  name: ephemeral-runner-001
+  namespace: default
+  labels:
+    app.kubernetes.io/name: ephemeral-runner
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: ci
+    spooktacular.app/pool-name: ephemeral-ci
+    spooktacular.app/pool-index: "0"
+spec:
+  sourceVM: macos-15-ci
+
+  # Sized for fast Swift builds.
+  cpu: 4
+  memoryInGigabytes: 8
+  diskInGigabytes: 64
+
+  network: nat
+
+  # ---------------------------------------------------------------------------
+  # Ephemeral: the VM is automatically destroyed when the runner process
+  # exits (i.e., after one job completes). The controller will delete the
+  # MacOSVM resource and clean up disk on the node.
+  # ---------------------------------------------------------------------------
+  ephemeral: true
+
+  template: github-runner
+
+  templateConfig:
+    repo: my-org/my-ios-app
+    labels: "macos,arm64,ephemeral"
+    secretRef: ephemeral-runner-token
+
+  provisioning:
+    mode: ssh
+    user: admin
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      # Minimal provisioning — the base image should have tools pre-installed.
+      # This script only verifies the environment is healthy.
+      echo "Runner $(hostname) starting health check..."
+      sw_vers
+      xcodebuild -version
+      echo "Health check passed."
+
+---
+# -----------------------------------------------------------------------------
+# Runner 2 of 3
+# -----------------------------------------------------------------------------
+apiVersion: spooktacular.app/v1alpha1
+kind: MacOSVM
+metadata:
+  name: ephemeral-runner-002
+  namespace: default
+  labels:
+    app.kubernetes.io/name: ephemeral-runner
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: ci
+    spooktacular.app/pool-name: ephemeral-ci
+    spooktacular.app/pool-index: "1"
+spec:
+  sourceVM: macos-15-ci
+  cpu: 4
+  memoryInGigabytes: 8
+  diskInGigabytes: 64
+  network: nat
+  ephemeral: true
+  template: github-runner
+  templateConfig:
+    repo: my-org/my-ios-app
+    labels: "macos,arm64,ephemeral"
+    secretRef: ephemeral-runner-token
+  provisioning:
+    mode: ssh
+    user: admin
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      echo "Runner $(hostname) starting health check..."
+      sw_vers
+      xcodebuild -version
+      echo "Health check passed."
+
+---
+# -----------------------------------------------------------------------------
+# Runner 3 of 3
+# -----------------------------------------------------------------------------
+apiVersion: spooktacular.app/v1alpha1
+kind: MacOSVM
+metadata:
+  name: ephemeral-runner-003
+  namespace: default
+  labels:
+    app.kubernetes.io/name: ephemeral-runner
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: ci
+    spooktacular.app/pool-name: ephemeral-ci
+    spooktacular.app/pool-index: "2"
+spec:
+  sourceVM: macos-15-ci
+  cpu: 4
+  memoryInGigabytes: 8
+  diskInGigabytes: 64
+  network: nat
+  ephemeral: true
+  template: github-runner
+  templateConfig:
+    repo: my-org/my-ios-app
+    labels: "macos,arm64,ephemeral"
+    secretRef: ephemeral-runner-token
+  provisioning:
+    mode: ssh
+    user: admin
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      echo "Runner $(hostname) starting health check..."
+      sw_vers
+      xcodebuild -version
+      echo "Health check passed."

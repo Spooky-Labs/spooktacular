@@ -1,0 +1,198 @@
+# =============================================================================
+# Spooktacular Controller Deployment
+# =============================================================================
+#
+# The controller runs on a Linux node and watches MacOSVM custom resources.
+# When a MacOSVM is created, updated, or deleted, the controller makes HTTP
+# API calls to the appropriate Mac node running `spook serve` to manage the
+# actual VM lifecycle.
+#
+# Architecture note: Mac nodes cannot run containers, so the controller
+# runs on Linux and communicates with Mac nodes over the network.
+# =============================================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      {{- include "spooktacular.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+  strategy:
+    # RollingUpdate is safe because leader election ensures only one
+    # controller is active at a time.
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "spooktacular.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+      annotations:
+        # Force a rollout when the ConfigMap changes.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      serviceAccountName: {{ include "spooktacular.serviceAccountName" . }}
+
+      {{- with .Values.controller.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      # -----------------------------------------------------------------------
+      # The controller MUST run on a Linux node. Mac nodes registered in the
+      # cluster cannot run container workloads.
+      # -----------------------------------------------------------------------
+      {{- with .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.controller.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      containers:
+        - name: controller
+          image: {{ include "spooktacular.controllerImage" . }}
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+
+          {{- with .Values.controller.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          # -------------------------------------------------------------------
+          # Command and arguments
+          # -------------------------------------------------------------------
+          command:
+            - /spooktacular-controller
+          args:
+            - --config=/etc/spooktacular/config.yaml
+            - --log-level={{ .Values.controller.logLevel }}
+            {{- if .Values.controller.leaderElection.enabled }}
+            - --leader-elect=true
+            - --leader-elect-lease-duration={{ .Values.controller.leaderElection.leaseDuration }}
+            - --leader-elect-renew-deadline={{ .Values.controller.leaderElection.renewDeadline }}
+            - --leader-elect-retry-period={{ .Values.controller.leaderElection.retryPeriod }}
+            {{- end }}
+            {{- if .Values.metrics.enabled }}
+            - --metrics-bind-address=:{{ .Values.metrics.port }}
+            {{- end }}
+            - --health-probe-bind-address=:8082
+
+          # -------------------------------------------------------------------
+          # Ports
+          # -------------------------------------------------------------------
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+            - name: health
+              containerPort: 8082
+              protocol: TCP
+
+          # -------------------------------------------------------------------
+          # Health probes
+          # -------------------------------------------------------------------
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+
+          # -------------------------------------------------------------------
+          # Resource limits
+          # -------------------------------------------------------------------
+          {{- with .Values.controller.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+
+          # -------------------------------------------------------------------
+          # Volume mounts
+          # -------------------------------------------------------------------
+          volumeMounts:
+            - name: config
+              mountPath: /etc/spooktacular
+              readOnly: true
+            {{- if .Values.tls.enabled }}
+            - name: tls-certs
+              mountPath: /etc/spooktacular/tls
+              readOnly: true
+            {{- end }}
+
+          # -------------------------------------------------------------------
+          # Environment variables
+          # -------------------------------------------------------------------
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+
+      # -----------------------------------------------------------------------
+      # Volumes
+      # -----------------------------------------------------------------------
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "spooktacular.fullname" . }}-config
+
+        {{- if .Values.tls.enabled }}
+        - name: tls-certs
+          secret:
+            {{- if .Values.tls.existingSecret }}
+            secretName: {{ .Values.tls.existingSecret }}
+            {{- else }}
+            secretName: {{ include "spooktacular.fullname" . }}-tls
+            {{- end }}
+        {{- end }}

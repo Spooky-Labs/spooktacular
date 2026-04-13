@@ -1,0 +1,117 @@
+# =============================================================================
+# Example: GitHub Actions Self-Hosted Runner on macOS
+# =============================================================================
+#
+# This MacOSVM provisions a persistent GitHub Actions runner on an Apple
+# Silicon node. It clones the "macos-15-base" image, boots a 4-core / 16 GB
+# VM, and runs the github-runner template to register with your repository.
+#
+# Prerequisites:
+#   1. A base VM named "macos-15-base" exists on at least one Mac node.
+#   2. A GitHub personal access token or runner registration token.
+#   3. The Spooktacular controller is running in the cluster.
+#
+# Usage:
+#   # Create a Secret with the runner token:
+#   kubectl create secret generic github-runner-token \
+#     --from-literal=token=AAAAAAAAAAAAAAAAAAAAAAAAAAAA
+#
+#   # Apply this manifest:
+#   kubectl apply -f github-runner.yaml
+#
+#   # Watch the VM come up:
+#   kubectl get mvm -w
+#
+# =============================================================================
+
+apiVersion: spooktacular.app/v1alpha1
+kind: MacOSVM
+metadata:
+  name: ci-runner-macos
+  namespace: default
+  labels:
+    app.kubernetes.io/name: github-runner
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: ci
+spec:
+  # ---------------------------------------------------------------------------
+  # Base image to clone from. Must exist on the target Mac node.
+  # ---------------------------------------------------------------------------
+  sourceVM: macos-15-base
+
+  # ---------------------------------------------------------------------------
+  # Compute resources — sized for Xcode builds and test suites.
+  # ---------------------------------------------------------------------------
+  cpu: 4
+  memoryInGigabytes: 16
+  diskInGigabytes: 128
+
+  # ---------------------------------------------------------------------------
+  # Bridged networking gives the runner a routable IP, which simplifies
+  # connectivity for artifact uploads, cache servers, and monitoring.
+  # ---------------------------------------------------------------------------
+  network: bridged
+
+  # ---------------------------------------------------------------------------
+  # Template: github-runner
+  #
+  # The controller will:
+  #   1. Boot the cloned VM.
+  #   2. SSH in as the provisioning user.
+  #   3. Download the latest GitHub Actions runner agent.
+  #   4. Register it with the specified repository.
+  #   5. Start the runner as a LaunchDaemon.
+  # ---------------------------------------------------------------------------
+  template: github-runner
+
+  templateConfig:
+    repo: my-org/my-ios-app
+    labels: "macos,arm64,xcode-16,self-hosted"
+    runnerGroup: Default
+
+    # Reference a Kubernetes Secret for the registration token instead of
+    # inlining it. The controller reads the "token" key from this Secret.
+    secretRef: github-runner-token
+
+  # ---------------------------------------------------------------------------
+  # Provisioning — additional setup beyond what the template provides.
+  # This script runs AFTER the template provisioning completes.
+  # ---------------------------------------------------------------------------
+  provisioning:
+    mode: ssh
+    user: admin
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Install Xcode command-line tools if not present.
+      if ! xcode-select -p &>/dev/null; then
+        echo "Installing Xcode CLT..."
+        xcode-select --install 2>/dev/null || true
+        # Wait for installation — in a real setup, use a more robust check.
+        until xcode-select -p &>/dev/null; do sleep 5; done
+      fi
+
+      # Install Homebrew if not present.
+      if ! command -v brew &>/dev/null; then
+        echo "Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+      fi
+
+      # Install common CI dependencies.
+      brew install swiftlint xcbeautify fastlane
+
+      echo "Provisioning complete."
+
+  # ---------------------------------------------------------------------------
+  # Not ephemeral — this runner persists across jobs. Set ephemeral: true
+  # if you want a fresh VM for every job (see ephemeral-pool.yaml).
+  # ---------------------------------------------------------------------------
+  ephemeral: false
+
+  # ---------------------------------------------------------------------------
+  # Schedule on any node with the "ci" pool label.
+  # ---------------------------------------------------------------------------
+  nodeSelector:
+    spooktacular.app/pool: ci

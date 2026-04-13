@@ -1,0 +1,370 @@
+# =============================================================================
+# MacOSVM Custom Resource Definition
+# =============================================================================
+#
+# Defines the MacOSVM resource type for managing macOS virtual machines on
+# Apple Silicon nodes via Kubernetes. This CRD is the primary interface for
+# DevOps teams to declare, provision, and lifecycle-manage macOS VMs using
+# standard kubectl workflows.
+#
+# Install with:
+#   kubectl apply -f macosvm-crd.yaml
+#
+# Once installed, create VMs with:
+#   kubectl apply -f my-vm.yaml
+#   kubectl get macosvms          (or: kubectl get mvm)
+#   kubectl describe mvm my-vm
+#
+# =============================================================================
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: macosvms.spooktacular.app
+  labels:
+    app.kubernetes.io/name: spooktacular
+    app.kubernetes.io/part-of: spooktacular
+  annotations:
+    # Marks this CRD as managed by the Spooktacular Helm chart.
+    spooktacular.app/managed-by: helm
+spec:
+  group: spooktacular.app
+
+  names:
+    kind: MacOSVM
+    listKind: MacOSVMList
+    plural: macosvms
+    singular: macosvm
+    shortNames:
+      - mvm
+    categories:
+      # Allows `kubectl get all` to include MacOSVMs when using this category.
+      - spooktacular
+
+  scope: Namespaced
+
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            MacOSVM declares a macOS virtual machine to be managed by the
+            Spooktacular controller. The controller provisions the VM on an
+            available Apple Silicon node, clones from a source image, applies
+            provisioning scripts, and reports status back to the cluster.
+          required:
+            - spec
+          properties:
+            # -----------------------------------------------------------------
+            # apiVersion, kind, metadata are implicit — only spec and status
+            # need to be declared here.
+            # -----------------------------------------------------------------
+
+            spec:
+              type: object
+              description: Desired state of the macOS VM.
+              required:
+                - sourceVM
+              properties:
+
+                # ==============================================================
+                # Source Image
+                # ==============================================================
+                sourceVM:
+                  type: string
+                  description: >-
+                    Name of the base VM or restore image to clone from. This
+                    must match a VM or IPSW available on the target Mac node.
+                    The controller will create a full clone before applying
+                    any provisioning. Examples: "macos-15-base", "sequoia-ci".
+                  minLength: 1
+                  maxLength: 253
+
+                # ==============================================================
+                # Compute Resources
+                # ==============================================================
+                cpu:
+                  type: integer
+                  description: >-
+                    Number of CPU cores to allocate to the VM. Must be at
+                    least 2 (Apple Virtualization.framework minimum). The
+                    controller will validate against the host node's available
+                    cores.
+                  default: 4
+                  minimum: 2
+                  maximum: 32
+
+                memoryInGigabytes:
+                  type: integer
+                  description: >-
+                    RAM allocation in gigabytes. Apple Virtualization.framework
+                    requires a minimum of 4 GB. The controller validates that
+                    the node has sufficient free memory.
+                  default: 8
+                  minimum: 4
+                  maximum: 128
+
+                diskInGigabytes:
+                  type: integer
+                  description: >-
+                    Disk size in gigabytes for the VM's primary storage. The
+                    cloned image is resized to this value. Minimum 32 GB to
+                    accommodate macOS plus development tools.
+                  default: 64
+                  minimum: 32
+                  maximum: 2048
+
+                # ==============================================================
+                # Networking
+                # ==============================================================
+                network:
+                  type: string
+                  description: >-
+                    Network mode for the VM.
+                    - nat: VM gets a private IP; host performs NAT (default).
+                    - bridged: VM appears on the host's physical network with
+                      its own IP. Requires entitlements on the host.
+                    - isolated: VM has no external network access. Useful for
+                      security-sensitive builds.
+                  default: nat
+                  enum:
+                    - nat
+                    - bridged
+                    - isolated
+
+                # ==============================================================
+                # Provisioning
+                # ==============================================================
+                provisioning:
+                  type: object
+                  description: >-
+                    Configuration for how the VM is provisioned after cloning.
+                    Provisioning runs once after the VM first boots from the
+                    cloned image.
+                  properties:
+                    mode:
+                      type: string
+                      description: >-
+                        How the provisioning script is delivered to the VM.
+                        - ssh: Controller SSHes into the VM and executes the
+                          script. Requires SSH enabled in the base image.
+                        - disk-inject: Script is written to a shared directory
+                          that the VM mounts on boot (via virtio). No SSH
+                          needed — a LaunchDaemon in the base image picks up
+                          and runs the script.
+                      default: ssh
+                      enum:
+                        - ssh
+                        - disk-inject
+
+                    script:
+                      type: string
+                      description: >-
+                        Shell script to execute inside the VM for provisioning.
+                        This is the full script body (not a path). For large
+                        scripts, consider using a ConfigMap and referencing it
+                        via templateConfig.
+                      maxLength: 65536
+
+                    user:
+                      type: string
+                      description: >-
+                        Username to authenticate as when provisioning via SSH.
+                        The base image must have this user configured with
+                        either password or key-based auth.
+                      default: admin
+                      maxLength: 63
+
+                # ==============================================================
+                # Lifecycle
+                # ==============================================================
+                ephemeral:
+                  type: boolean
+                  description: >-
+                    When true, the VM is automatically deleted when it stops.
+                    Ideal for CI/CD runners that should not persist between
+                    jobs. The controller removes the VM resource and cleans up
+                    disk on the node.
+                  default: false
+
+                # ==============================================================
+                # Node Scheduling
+                # ==============================================================
+                nodeSelector:
+                  type: object
+                  description: >-
+                    Label selector constraining which Mac nodes this VM can be
+                    scheduled on. If omitted, the controller picks any available
+                    node with sufficient resources.
+                    Example: {"spooktacular.app/gpu": "true"} to target nodes
+                    with Metal GPU passthrough enabled.
+                  additionalProperties:
+                    type: string
+                  x-kubernetes-map-type: atomic
+
+                # ==============================================================
+                # Templates
+                # ==============================================================
+                template:
+                  type: string
+                  description: >-
+                    Named template that pre-configures the VM for a common
+                    workload. The controller merges template defaults with
+                    any explicit spec fields (explicit fields take precedence).
+                    - github-runner: Provisions a GitHub Actions self-hosted
+                      runner. Requires templateConfig.repo and
+                      templateConfig.token.
+                    - remote-desktop: Enables VNC/ARD and configures a desktop
+                      session. Optionally set templateConfig.resolution.
+                    - openclaw: Provisions an OpenClaw build environment.
+                  enum:
+                    - github-runner
+                    - remote-desktop
+                    - openclaw
+
+                templateConfig:
+                  type: object
+                  description: >-
+                    Key-value configuration passed to the selected template.
+                    Each template defines which keys it expects. Unknown keys
+                    are silently ignored (not an error).
+                  properties:
+                    repo:
+                      type: string
+                      description: >-
+                        GitHub repository (owner/name) for the runner to
+                        register with. Required when template is github-runner.
+                    token:
+                      type: string
+                      description: >-
+                        Registration token for the GitHub Actions runner.
+                        For production use, reference a Secret instead of
+                        inlining the token.
+                    labels:
+                      type: string
+                      description: >-
+                        Comma-separated labels to apply to the runner.
+                        Example: "macos,arm64,xcode-16"
+                    resolution:
+                      type: string
+                      description: >-
+                        Display resolution for remote-desktop template.
+                        Format: WIDTHxHEIGHT. Example: "1920x1080"
+                    runnerGroup:
+                      type: string
+                      description: >-
+                        GitHub Actions runner group to join. Defaults to
+                        "Default" if not specified.
+                    secretRef:
+                      type: string
+                      description: >-
+                        Name of a Kubernetes Secret in the same namespace
+                        containing sensitive template config values. Keys
+                        in the Secret override keys in templateConfig.
+
+            # -----------------------------------------------------------------
+            # Status — written by the controller, read-only for users.
+            # -----------------------------------------------------------------
+            status:
+              type: object
+              description: >-
+                Observed state of the macOS VM, updated by the Spooktacular
+                controller. Do not modify these fields manually.
+              properties:
+                phase:
+                  type: string
+                  description: >-
+                    Current lifecycle phase of the VM.
+                    - Pending: Resource accepted, waiting for node assignment.
+                    - Creating: VM is being cloned and configured on a node.
+                    - Running: VM is booted and responsive.
+                    - Stopped: VM has been shut down (still exists on disk).
+                    - Failed: An error occurred; see message for details.
+                    - Terminating: VM is being deleted and cleaned up.
+                  enum:
+                    - Pending
+                    - Creating
+                    - Running
+                    - Stopped
+                    - Failed
+                    - Terminating
+
+                ip:
+                  type: string
+                  description: >-
+                    IP address of the running VM, resolved after boot. Empty
+                    when the VM is not running. For NAT mode this is the
+                    private IP; for bridged mode this is the LAN IP.
+
+                nodeName:
+                  type: string
+                  description: >-
+                    Name of the Mac node where this VM is running. Set during
+                    the Creating phase and retained until the VM is deleted.
+
+                message:
+                  type: string
+                  description: >-
+                    Human-readable message providing additional detail about
+                    the current phase. Particularly useful when phase is Failed.
+
+                lastTransitionTime:
+                  type: string
+                  format: date-time
+                  description: >-
+                    Timestamp of the last phase transition. ISO 8601 format.
+
+      # -------------------------------------------------------------------
+      # Subresources
+      # -------------------------------------------------------------------
+      subresources:
+        # Enables the /status subresource so that:
+        # - Users can update spec without affecting status
+        # - Controller can update status without triggering spec watches
+        status: {}
+
+      # -------------------------------------------------------------------
+      # Printer Columns — what `kubectl get mvm` shows
+      # -------------------------------------------------------------------
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          description: Current lifecycle phase of the VM.
+          jsonPath: .status.phase
+
+        - name: IP
+          type: string
+          description: IP address of the running VM.
+          jsonPath: .status.ip
+          priority: 0
+
+        - name: Node
+          type: string
+          description: Mac node where the VM is running.
+          jsonPath: .status.nodeName
+
+        - name: Source
+          type: string
+          description: Base VM image this was cloned from.
+          jsonPath: .spec.sourceVM
+          priority: 1
+
+        - name: CPU
+          type: integer
+          description: Number of CPU cores allocated.
+          jsonPath: .spec.cpu
+          priority: 1
+
+        - name: Memory
+          type: integer
+          description: Memory in gigabytes.
+          jsonPath: .spec.memoryInGigabytes
+          priority: 1
+
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

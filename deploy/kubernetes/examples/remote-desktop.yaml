@@ -1,0 +1,95 @@
+# =============================================================================
+# Example: Remote Desktop macOS VM
+# =============================================================================
+#
+# This MacOSVM provisions a remote-accessible macOS desktop. Developers can
+# connect via VNC or Apple Remote Desktop to a full GUI session on Apple
+# Silicon hardware — useful for manual testing, debugging UI issues, or
+# running graphical tools that require a display.
+#
+# Usage:
+#   kubectl apply -f remote-desktop.yaml
+#   kubectl get mvm remote-desktop -w
+#
+#   # Once Running, connect via VNC:
+#   open vnc://$(kubectl get mvm remote-desktop -o jsonpath='{.status.ip}'):5900
+#
+# =============================================================================
+
+apiVersion: spooktacular.app/v1alpha1
+kind: MacOSVM
+metadata:
+  name: remote-desktop
+  namespace: default
+  labels:
+    app.kubernetes.io/name: remote-desktop
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: desktop
+spec:
+  # ---------------------------------------------------------------------------
+  # Base image — should have macOS installed with a user account configured.
+  # ---------------------------------------------------------------------------
+  sourceVM: macos-15-base
+
+  # ---------------------------------------------------------------------------
+  # Generous resources for an interactive desktop experience. Metal GPU
+  # passthrough is handled at the Virtualization.framework level when the
+  # base image supports it.
+  # ---------------------------------------------------------------------------
+  cpu: 8
+  memoryInGigabytes: 16
+  diskInGigabytes: 256
+
+  # ---------------------------------------------------------------------------
+  # Bridged networking so the desktop is reachable from the corporate network.
+  # ---------------------------------------------------------------------------
+  network: bridged
+
+  # ---------------------------------------------------------------------------
+  # Template: remote-desktop
+  #
+  # The controller will:
+  #   1. Boot the cloned VM.
+  #   2. Enable Screen Sharing (VNC) via kickstart.
+  #   3. Configure the display resolution.
+  #   4. Optionally install NoMachine or other remote desktop software.
+  # ---------------------------------------------------------------------------
+  template: remote-desktop
+
+  templateConfig:
+    resolution: "2560x1600"
+
+  # ---------------------------------------------------------------------------
+  # Custom provisioning — install developer tools for the desktop user.
+  # ---------------------------------------------------------------------------
+  provisioning:
+    mode: ssh
+    user: admin
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Enable Screen Sharing (VNC) via the system preference.
+      sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
+        -activate -configure -access -on \
+        -clientopts -setvnclegacy -vnclegacy yes \
+        -restart -agent -privs -all
+
+      # Install developer tools.
+      if command -v brew &>/dev/null; then
+        brew install --cask visual-studio-code firefox
+        brew install git-lfs
+      fi
+
+      echo "Remote desktop provisioning complete."
+
+  # ---------------------------------------------------------------------------
+  # Persistent — this desktop stays available until explicitly deleted.
+  # ---------------------------------------------------------------------------
+  ephemeral: false
+
+  # ---------------------------------------------------------------------------
+  # Prefer nodes labeled for desktop workloads (optional).
+  # ---------------------------------------------------------------------------
+  nodeSelector:
+    spooktacular.app/pool: desktop
