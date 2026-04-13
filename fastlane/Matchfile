@@ -1,4 +1,4 @@
-git_url("https://github.com/Spooky-Labs/certificates")
+git_url("https://github.com/Spooky-Labs/spooktacular-certificates")
 storage_mode("git")
 type("appstore")
 app_identifier(["com.spooktacular.app"])
