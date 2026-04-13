@@ -60,7 +60,7 @@ USAGE: spook create <name> [options]
 | `--memory <n>` | 8 | Memory in GB |
 | `--disk <n>` | 64 | Disk size in GB (APFS sparse) |
 | `--displays <n>` | 1 | Virtual displays (1 or 2) |
-| `--network <mode>` | nat | Network mode: `nat`, `isolated`, `host-only`, `bridged:<iface>` |
+| `--network <mode>` | nat | Network mode: `nat`, `isolated`, `bridged:<iface>` |
 | `--bridged-interface <iface>` | - | Host interface for bridged mode |
 | `--user-data <path>` | - | Shell script to run after first boot |
 | `--provision <mode>` | disk-inject | Provisioning mode (see ``ProvisioningMode``) |
@@ -101,7 +101,7 @@ spook create runner --from-ipsw latest \
 # With shared folder
 spook create ml --cpu 8 --memory 16 \
     --share /data/training \
-    --network host-only
+    --network isolated
 ```
 
 > Note: OCI image pull is on the roadmap. For now, use `--from-ipsw`

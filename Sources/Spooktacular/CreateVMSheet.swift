@@ -199,7 +199,6 @@ struct CreateVMSheet: View {
                     Picker("Mode", selection: $networkMode) {
                         Text("NAT (shared)").tag(NetworkMode.nat)
                         Text("Isolated (no network)").tag(NetworkMode.isolated)
-                        Text("Host-only").tag(NetworkMode.hostOnly)
                     }
                     .labelsHidden()
                 }
@@ -221,8 +220,9 @@ struct CreateVMSheet: View {
             },
             explanation: """
                 Audio uses VirtIO sound devices. Clipboard sharing \
-                copies text between host and guest. Enterprise CI \
-                runners typically disable all three for isolation.
+                is only supported for Linux guests; macOS guests \
+                do not support clipboard synchronization through \
+                the Virtualization framework.
                 """
         )
     }
@@ -328,11 +328,9 @@ struct CreateVMSheet: View {
             "The VM accesses the internet through your Mac's connection. " +
             "The host can reach the guest via its DHCP-assigned IP."
         case .isolated:
-            "The VM has no network. Use for secure builds where " +
-            "network isolation is required."
-        case .hostOnly:
-            "The VM can talk to the host and other VMs but not the " +
-            "internet. Good for federated ML or multi-VM integration tests."
+            "The VM has no network interface. Use for secure builds " +
+            "where network isolation is required. Host-guest " +
+            "communication is still possible via the VirtIO socket."
         case .bridged:
             "The VM gets its own IP on your local network. Requires " +
             "the com.apple.vm.networking entitlement."

@@ -185,7 +185,6 @@ enum Style {
         case .nat: dim("nat")
         case .bridged(let interface): info("bridged:\(interface)")
         case .isolated: yellow("isolated")
-        case .hostOnly: dim("host-only")
         }
     }
 
@@ -195,7 +194,6 @@ enum Style {
         case .nat: "nat"
         case .bridged(let interface): "bridged:\(interface)"
         case .isolated: "isolated"
-        case .hostOnly: "host-only"
         }
     }
 

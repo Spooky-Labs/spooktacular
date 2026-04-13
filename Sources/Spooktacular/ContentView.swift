@@ -319,7 +319,6 @@ struct VMInspectorView: View {
         case .nat: "NAT"
         case .bridged(let interface): "Bridged (\(interface))"
         case .isolated: "Isolated"
-        case .hostOnly: "Host-only"
         }
     }
 }

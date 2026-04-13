@@ -98,22 +98,6 @@ struct VirtualMachineConfigurationTests {
         )
     }
 
-    @Test("Host-only mode currently produces a NAT device")
-    func hostOnlyFallback() throws {
-        let spec = VirtualMachineSpecification(networkMode: .hostOnly)
-        let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
-
-        #expect(config.networkDevices.count == 1)
-        let virtioNet = try #require(
-            config.networkDevices.first as? VZVirtioNetworkDeviceConfiguration
-        )
-        #expect(
-            virtioNet.attachment is VZNATNetworkDeviceAttachment,
-            "Host-only currently falls back to NAT"
-        )
-    }
-
     @Test("Sets macOS boot loader")
     func bootLoader() {
         let spec = VirtualMachineSpecification()

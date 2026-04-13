@@ -160,7 +160,7 @@ spec:
 
   # ─── Network ────────────────────────────────────────────
   network:
-    mode: nat         # nat | bridged | isolated | host-only
+    mode: nat         # nat | bridged | isolated
     # interface: en0  # Required only for bridged mode
 
   # ─── Shared Folders ─────────────────────────────────────
@@ -430,7 +430,7 @@ setup guide.
 ## Example: ML Training Job
 
 A VM configured for machine learning with shared dataset access
-and host-only networking:
+and isolated networking:
 
 ```yaml
 apiVersion: spooktacular.io/v1alpha1
@@ -445,7 +445,7 @@ spec:
     memory: 16Gi
     disk: 100Gi
   network:
-    mode: host-only
+    mode: isolated
   sharedFolders:
     - hostPath: /data/training-sets
       guestTag: training-data

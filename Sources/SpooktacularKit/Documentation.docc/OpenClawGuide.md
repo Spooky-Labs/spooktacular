@@ -175,14 +175,16 @@ If your OpenClaw instances need to communicate (e.g.,
 a coordinator agent delegating to worker agents):
 
 ```bash
-spook create openclaw-coordinator --from-ipsw latest --network host-only
-spook create openclaw-worker --from-ipsw latest --network host-only
+spook create openclaw-coordinator --from-ipsw latest --network nat
+spook create openclaw-worker --from-ipsw latest --network nat
 ```
 
-Host-only networking lets the VMs talk to each other
-and to the host Mac, but not to the internet. The
-coordinator can reach the worker's gateway at its
-host-only IP on port 18789.
+NAT networking lets the VMs reach each other via their
+DHCP-assigned IPs and the host Mac. The coordinator can
+reach the worker's gateway on port 18789. Use
+``NetworkMode/isolated`` if you need to prevent internet
+access entirely, communicating through shared folders
+and the VirtIO socket instead.
 
 For internet access + inter-VM communication, use
 NAT networking — both VMs can reach each other via

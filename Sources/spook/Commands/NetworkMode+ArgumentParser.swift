@@ -9,7 +9,6 @@ extension NetworkMode: ExpressibleByArgument {
         switch argument {
         case "nat": self = .nat
         case "isolated": self = .isolated
-        case "host-only": self = .hostOnly
         default:
             if argument.hasPrefix("bridged:") {
                 self = .bridged(interface: String(argument.dropFirst("bridged:".count)))

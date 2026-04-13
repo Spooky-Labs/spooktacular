@@ -175,7 +175,6 @@ struct VirtualMachineBundleTests {
                 NetworkMode.nat,
                 .bridged(interface: "en0"),
                 .isolated,
-                .hostOnly,
             ]
         )
         func networkModeRoundTrip(mode: NetworkMode) throws {

@@ -36,7 +36,7 @@ extension Spook {
 
         @Option(
             help: """
-                Network mode: nat, isolated, host-only, or bridged:<interface>. \
+                Network mode: nat, isolated, or bridged:<interface>. \
                 Example: --network bridged:en0
                 """
         )

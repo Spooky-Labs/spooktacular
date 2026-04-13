@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import os
 import SpooktacularKit
 @preconcurrency import Virtualization
 
@@ -98,7 +99,7 @@ extension Spook {
 
         @Option(
             help: """
-                Network mode: nat, isolated, host-only, or bridged:<interface>. \
+                Network mode: nat, isolated, or bridged:<interface>. \
                 Example: --network bridged:en0
                 """
         )
@@ -179,6 +180,15 @@ extension Spook {
                 """
         )
         var ephemeral: Bool = false
+
+        @Flag(
+            help: """
+                Skip auto-provisioning after install. The template \
+                script is generated but not executed. Use this if \
+                you want to boot and provision manually.
+                """
+        )
+        var noProvision: Bool = false
 
         @MainActor
         func run() async throws {
@@ -289,10 +299,18 @@ extension Spook {
                         print(Style.success("✓ Script injected. It will run automatically on first boot."))
 
                     case .ssh:
-                        print(Style.info("Provisioning VM..."))
-                        // SSH execution requires the VM to be booted with
-                        // Setup Assistant completed and SSH available.
-                        print("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh")
+                        if noProvision {
+                            Log.provision.info("Skipping SSH provisioning (--no-provision)")
+                            print(Style.info("Script generated. Skipping auto-provisioning (--no-provision)."))
+                            print("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh")
+                        } else {
+                            Log.provision.info("Starting SSH auto-provisioning for '\(name, privacy: .public)'")
+                            try await autoProvisionViaSSH(
+                                bundle: bundle,
+                                script: script,
+                                macAddress: macAddress
+                            )
+                        }
 
                     case .agent:
                         print(Style.warning("⚠ Agent provisioning requires the Spooktacular guest agent (planned for a future release)."))
@@ -327,8 +345,123 @@ extension Spook {
                 throw ExitCode.failure
             }
         }
+
+        // MARK: - Auto-Provisioning
+
+        /// Boots the VM headless, waits for SSH, executes the script, and stops the VM.
+        ///
+        /// If provisioning fails, the VM bundle is left intact so the user
+        /// can debug manually. Only the provisioning step is reported as
+        /// failed -- the VM creation itself already succeeded.
+        @MainActor
+        private func autoProvisionViaSSH(
+            bundle: VirtualMachineBundle,
+            script: URL,
+            macAddress: String
+        ) async throws {
+            let logger = Log.provision
+
+            // 1. Create and start the VM headless.
+            logger.info("Creating VM instance from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
+            print(Style.info("Booting VM for provisioning..."))
+            let vm = try VirtualMachine(bundle: bundle)
+            try await vm.start()
+            logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' started for provisioning")
+            print(Style.success("✓ VM is running."))
+
+            // Use a do/catch so the VM is always stopped, even on failure.
+            do {
+                // 2. Resolve the VM's IP address by polling DHCP/ARP.
+                logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
+                print("Resolving VM IP address...")
+                guard let ip = try await resolveIPWithRetry(
+                    macAddress: macAddress,
+                    timeout: 120
+                ) else {
+                    logger.error("Failed to resolve IP for MAC \(macAddress, privacy: .public)")
+                    print(Style.error("✗ Could not resolve VM IP address."))
+                    print(Style.dim("  The VM was created successfully but provisioning was skipped."))
+                    print(Style.dim("  Run 'spook start \(name) --headless --user-data \(script.path) --provision ssh' to provision manually."))
+                    // Fall through to stop the VM.
+                    throw ProvisioningSkipped()
+                }
+                logger.notice("Resolved IP \(ip, privacy: .public) for MAC \(macAddress, privacy: .public)")
+                print("  IP: \(ip)")
+
+                // 3. Wait for SSH to become available.
+                logger.info("Waiting for SSH on \(ip, privacy: .public)")
+                print("Waiting for SSH...")
+                try await SSHExecutor.waitForSSH(ip: ip)
+                logger.notice("SSH available on \(ip, privacy: .public)")
+
+                // 4. Execute the provisioning script.
+                logger.info("Executing provisioning script on \(ip, privacy: .public)")
+                print("Executing provisioning script...")
+                try await SSHExecutor.execute(
+                    script: script,
+                    on: ip,
+                    user: sshUser,
+                    key: sshKey
+                )
+                logger.notice("Provisioning script completed on \(ip, privacy: .public)")
+                print(Style.success("✓ Provisioning complete."))
+
+            } catch is ProvisioningSkipped {
+                // Already printed the message above. Just stop the VM.
+            } catch {
+                logger.error("Provisioning failed: \(error.localizedDescription, privacy: .public)")
+                print(Style.error("✗ Provisioning failed: \(error.localizedDescription)"))
+                if let localizedError = error as? LocalizedError,
+                   let recovery = localizedError.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
+                print(Style.dim("  The VM was created successfully. Provisioning can be retried with:"))
+                print(Style.dim("  spook start \(name) --headless --user-data \(script.path) --provision ssh"))
+            }
+
+            // 5. Stop the VM.
+            logger.info("Stopping VM '\(bundle.url.lastPathComponent, privacy: .public)' after provisioning")
+            print("Stopping VM...")
+            try? await vm.stop(graceful: false)
+            logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' stopped after provisioning")
+            print(Style.success("✓ VM stopped."))
+        }
+
+        /// Polls ``IPResolver`` until the VM's IP address is found or the timeout expires.
+        ///
+        /// The VM needs time to boot and obtain a DHCP lease, so this
+        /// method retries every 5 seconds until the IP appears in the
+        /// host's lease table or ARP cache.
+        ///
+        /// - Parameters:
+        ///   - macAddress: The VM's MAC address.
+        ///   - timeout: Maximum time to wait in seconds.
+        /// - Returns: The resolved IPv4 address, or `nil` if the timeout expires.
+        private func resolveIPWithRetry(
+            macAddress: String,
+            timeout: TimeInterval
+        ) async throws -> String? {
+            let deadline = Date().addingTimeInterval(timeout)
+            let pollInterval: UInt64 = 5_000_000_000 // 5 seconds
+
+            while Date() < deadline {
+                if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
+                    return ip
+                }
+                Log.provision.debug("IP not yet available for MAC \(macAddress, privacy: .public), retrying in 5s")
+                try await Task.sleep(nanoseconds: pollInterval)
+            }
+
+            return nil
+        }
     }
 }
+
+// MARK: - Internal Errors
+
+/// Sentinel error used to break out of the provisioning do/catch
+/// when IP resolution fails, so the VM is still stopped cleanly.
+private struct ProvisioningSkipped: Error {}
 
 // MARK: - ArgumentParser Conformance
 

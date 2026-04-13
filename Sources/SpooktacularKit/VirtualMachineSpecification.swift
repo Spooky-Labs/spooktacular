@@ -165,8 +165,17 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
 
     /// Whether the host and guest share a common clipboard.
     ///
-    /// When `true`, copy-paste operations propagate between the
-    /// host and the guest. Defaults to `true`.
+    /// This field is retained for forward compatibility, but
+    /// clipboard sharing is **only supported for Linux guests**
+    /// via `VZSpiceAgentPortAttachment` (which requires
+    /// `spice-vdagent` installed in the guest).
+    ///
+    /// macOS guests do not support clipboard synchronization
+    /// through the Virtualization framework. When this property
+    /// is `true` and the guest is macOS, a warning is logged and
+    /// the setting is treated as a no-op.
+    ///
+    /// Defaults to `true`.
     public let clipboardSharingEnabled: Bool
 
     /// Creates a new virtual machine specification.
@@ -190,7 +199,8 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     ///   - autoResizeDisplay: Resize guest display to match host
     ///     window. Defaults to `true`.
     ///   - clipboardSharingEnabled: Share clipboard between host
-    ///     and guest. Defaults to `true`.
+    ///     and guest. Only effective for Linux guests; macOS guests
+    ///     log a warning and ignore this setting. Defaults to `true`.
     public init(
         cpuCount: Int = 4,
         memorySizeInBytes: UInt64 = 8 * 1024 * 1024 * 1024,

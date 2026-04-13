@@ -12,11 +12,38 @@
 /// | ``nat`` | ✓ | Via resolved IP | None |
 /// | ``bridged(interface:)`` | ✓ | Own LAN IP | `com.apple.vm.networking` |
 /// | ``isolated`` | ✗ | ✗ | None |
-/// | ``hostOnly`` | ✗ | ✓ | None |
+///
+/// For host-guest communication without full network access,
+/// use ``isolated`` mode and communicate via the VirtIO socket
+/// device (`VZVirtioSocketDeviceConfiguration`), which is always
+/// attached regardless of network mode.
 ///
 /// - Note: Bridged mode requires the `com.apple.vm.networking`
 ///   restricted entitlement, which must be requested from Apple
 ///   Developer Technical Support.
+///
+/// ### Why There Is No Host-Only Mode
+///
+/// Apple's Virtualization framework provides three network
+/// attachment types: `VZNATNetworkDeviceAttachment`,
+/// `VZBridgedNetworkDeviceAttachment`, and
+/// `VZFileHandleNetworkDeviceAttachment`. None of these
+/// implements host-only semantics directly.
+///
+/// A host-only mode would require a user-space virtual network
+/// switch built on top of `VZFileHandleNetworkDeviceAttachment`,
+/// handling raw Ethernet frames, DHCP, and packet routing — a
+/// substantial subsystem that would need its own lifecycle
+/// management and security hardening. Rather than ship a
+/// half-baked implementation or silently fall back to NAT
+/// (which would give VMs unintended internet access), this enum
+/// only exposes modes that the Virtualization framework supports
+/// natively.
+///
+/// If you need isolated host-guest communication, use ``isolated``
+/// with the VirtIO socket device. If you need full IP networking
+/// between VMs, use ``bridged(interface:)`` on a dedicated
+/// host-only network interface.
 public enum NetworkMode: Sendable, Codable, Equatable, Hashable {
 
     /// Network address translation through the host.
@@ -43,14 +70,8 @@ public enum NetworkMode: Sendable, Codable, Equatable, Hashable {
     ///
     /// The virtual machine has no network interface attached.
     /// Use this for secure builds where network isolation is required.
+    /// Host-guest communication is still possible via the VirtIO
+    /// socket device (`VZVirtioSocketDeviceConfiguration`), which
+    /// is always attached regardless of network mode.
     case isolated
-
-    /// Host-only networking.
-    ///
-    /// The guest can communicate with the host and other VMs
-    /// on the same host, but cannot reach the external network.
-    ///
-    /// Maps to `VZFileHandleNetworkDeviceAttachment` with a
-    /// user-space virtual switch.
-    case hostOnly
 }

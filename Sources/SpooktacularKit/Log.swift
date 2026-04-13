@@ -47,7 +47,7 @@ public enum Log {
     /// Compatibility checking: host vs image version.
     public static let compatibility = Logger(subsystem: subsystem, category: "compat")
 
-    /// Networking: NAT, bridged, isolated, host-only.
+    /// Networking: NAT, bridged, isolated.
     public static let network = Logger(subsystem: subsystem, category: "network")
 
     /// Provisioning: user-data, disk-inject, SSH, agent.

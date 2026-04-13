@@ -9,8 +9,9 @@ import os
 /// corresponding Virtualization framework configuration objects.
 ///
 /// The ``applySpec(_:to:)`` method sets CPU, memory, boot loader,
-/// graphics, input, network, socket, and entropy devices on a
-/// mutable `VZVirtualMachineConfiguration`. Platform configuration
+/// graphics, input, network, socket, and entropy
+/// devices on a mutable `VZVirtualMachineConfiguration`.
+/// Platform configuration
 /// (hardware model, machine identifier, auxiliary storage) and
 /// storage devices (disk images) are set separately because they
 /// require VM-specific artifacts from disk.
@@ -40,8 +41,9 @@ public enum VirtualMachineConfiguration {
     ///
     /// This sets all spec-derived properties: CPU, memory,
     /// boot loader, graphics, input devices, network, socket,
-    /// and entropy. It does **not** set `platform` or
-    /// `storageDevices` — those require bundle-specific artifacts.
+    /// and entropy. It does **not** set
+    /// `platform` or `storageDevices` — those require
+    /// bundle-specific artifacts.
     ///
     /// - Parameters:
     ///   - spec: The hardware specification.
@@ -73,6 +75,10 @@ public enum VirtualMachineConfiguration {
 
         if !spec.sharedFolders.isEmpty {
             configuration.directorySharingDevices = [makeSharing(spec.sharedFolders)]
+        }
+
+        if spec.clipboardSharingEnabled {
+            Log.config.warning("Clipboard sharing is only supported for Linux guests. macOS guests do not support clipboard synchronization through the Virtualization framework.")
         }
     }
 
@@ -224,14 +230,6 @@ public enum VirtualMachineConfiguration {
             } else {
                 devices = [makeNATDevice()]
             }
-
-        case .hostOnly:
-            // Host-only requires a user-space virtual switch via
-            // VZFileHandleNetworkDeviceAttachment. Fall back to
-            // NAT until the file-handle networking subsystem is
-            // implemented.
-            Log.network.warning("Host-only networking not yet implemented; falling back to NAT")
-            devices = [makeNATDevice()]
 
         case .nat:
             devices = [makeNATDevice()]

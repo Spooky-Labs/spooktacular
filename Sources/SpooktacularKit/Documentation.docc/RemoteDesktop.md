@@ -138,7 +138,6 @@ The ``NetworkMode`` you choose affects how you connect:
 |-------------|---------------------|-------------------|
 | ``NetworkMode/nat`` | Host only | Connect from host, or SSH tunnel |
 | ``NetworkMode/bridged(interface:)`` | Entire LAN | Direct VNC connection |
-| ``NetworkMode/hostOnly`` | Host and other VMs | Connect from host, or SSH tunnel |
 | ``NetworkMode/isolated`` | Nowhere | Not suitable for VNC |
 
 For remote desktop scenarios, **bridged** mode is recommended because
@@ -289,32 +288,28 @@ Standard VNC does not support audio. For remote audio:
 
 ## Clipboard Sharing
 
-Spooktacular supports bidirectional clipboard sharing between the
-host and guest macOS. Copy text or images on the host, paste in
-the VM, and vice versa.
+The ``VirtualMachineSpecification/clipboardSharingEnabled`` field
+exists for forward compatibility, but clipboard sharing through the
+Virtualization framework is **only supported for Linux guests**.
+The underlying mechanism (`VZSpiceAgentPortAttachment`) requires the
+`spice-vdagent` package running inside the guest, which is not
+available on macOS.
 
-### Configuration
-
-Clipboard sharing is enabled by default via
-``VirtualMachineSpecification/clipboardSharingEnabled``:
+For macOS guests, enabling this setting is a no-op — a warning is
+logged at configuration time and no console device is attached.
 
 ```bash
-# Clipboard sharing on (default)
+# The flag is accepted but has no effect for macOS guests
 spook create my-vm
 
-# Clipboard sharing off (for security-sensitive VMs)
+# Disable to suppress the warning
 spook create secure-vm --disable-clipboard
 ```
 
-### How It Works
-
-The Virtualization framework's `Spice` channel handles clipboard
-synchronization transparently. Both the local Spooktacular display
-window and VNC sessions benefit from this feature.
-
-> Note: Clipboard sharing works between the host and guest. If you
-> are connecting via VNC from a third machine, clipboard operations
-> go: your machine -> VNC -> guest -> Virtualization -> host.
+> Important: There is currently no Virtualization framework API for
+> clipboard synchronization between the host and a macOS guest. If
+> Apple adds this capability in a future release, Spooktacular will
+> wire it up automatically via this existing field.
 
 ## Security
 
@@ -362,22 +357,23 @@ sudo createhomedir -c -u viewer
 
 ### Isolated Desktops
 
-For maximum security, use ``NetworkMode/hostOnly`` networking and
-connect only from the host:
-
-> Important: Host-only networking currently falls back to NAT mode.
-> VMs will have internet access until a future release adds true
-> host-only isolation. Plan your network security accordingly.
+For maximum security, use ``NetworkMode/isolated`` networking
+to remove all network interfaces from the VM. Host-guest
+communication is still possible via the VirtIO socket device,
+which is always attached regardless of network mode.
 
 ```bash
 spook create secure-desktop \
     --cpu 4 --memory 8 --disk 64 \
-    --network host-only \
+    --network isolated \
     --disable-audio
-
-# Connect only from the host machine
-open vnc://$(spook ip secure-desktop)
 ```
+
+> Note: Isolated mode removes the network interface entirely.
+> VNC requires a network connection, so isolated VMs can only
+> be accessed through the local Spooktacular display window.
+> Use ``NetworkMode/nat`` if you need VNC access with limited
+> exposure.
 
 ## Multiple Users Accessing Different VMs
 

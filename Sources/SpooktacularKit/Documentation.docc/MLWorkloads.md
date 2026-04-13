@@ -35,7 +35,7 @@ When the entire host is dedicated to one ML workload:
 ```bash
 spook create ml-trainer \
     --cpu 8 --memory 24 --disk 200 \
-    --network host-only \
+    --network isolated \
     --disable-audio
 ```
 
@@ -47,7 +47,7 @@ When running two ML VMs on one host (e.g., training + inference):
 # Training VM — more CPU and memory
 spook create ml-train \
     --cpu 6 --memory 16 --disk 200 \
-    --network host-only \
+    --network isolated \
     --disable-audio
 
 # Inference VM — lighter resources
@@ -383,8 +383,9 @@ print(f"Prediction: {prediction}")
 ## Federated Learning Setup
 
 Run multiple isolated VMs that each train on a subset of data,
-then aggregate the results. Host-only networking allows the VMs
-to communicate with each other without external network access.
+then aggregate the results. Use ``NetworkMode/isolated`` mode with
+shared folders so VMs exchange data through the host filesystem
+without any network access.
 
 ### Architecture
 
@@ -393,12 +394,11 @@ to communicate with each other without external network access.
 |  Mac Host                               |
 |  +----------+  +----------+            |
 |  |  VM-1    |  |  VM-2    |            |
-|  |  Worker  |<>|  Worker  |            |
+|  |  Worker  |  |  Worker  |            |
 |  |  Shard 1 |  |  Shard 2 |            |
 |  +----------+  +----------+            |
-|       ^              ^                  |
-|       +------+-------+                  |
-|         Host-only network               |
+|       \              /                  |
+|        Shared folders                   |
 |              |                          |
 |      +-------v--------+                |
 |      |  Aggregator    |                |
@@ -410,18 +410,18 @@ to communicate with each other without external network access.
 ### Setup
 
 ```bash
-# Create two worker VMs with host-only networking
+# Create two worker VMs with isolated networking
 spook create worker-01 --cpu 4 --memory 8 --disk 64 \
-    --network host-only --disable-audio
+    --network isolated --disable-audio
 
 spook create worker-02 --cpu 4 --memory 8 --disk 64 \
-    --network host-only --disable-audio
+    --network isolated --disable-audio
 
 # Share different data shards with each
 spook share worker-01 add /data/shard-01 --tag data --read-only
 spook share worker-02 add /data/shard-02 --tag data --read-only
 
-# Share a common output directory
+# Share a common output directory for aggregation
 spook share worker-01 add /data/federated-output --tag output
 spook share worker-02 add /data/federated-output --tag output
 
@@ -430,13 +430,10 @@ spook start worker-01 --headless
 spook start worker-02 --headless
 ```
 
-The ``NetworkMode/hostOnly`` mode is intended to let VMs communicate
-with each other and the host over a private network without external
-internet access -- ideal for secure ML training environments.
-
-> Important: Host-only networking currently falls back to NAT mode.
-> VMs will have internet access until a future release adds true
-> host-only isolation. Plan your network security accordingly.
+The ``NetworkMode/isolated`` mode removes all network interfaces
+from the VM, ensuring no external internet access. VMs communicate
+with the host and each other exclusively through shared folders
+and the VirtIO socket device.
 
 ## Training Checkpoints via VM Snapshots
 
@@ -569,8 +566,8 @@ python3 /opt/serve.py
 
 ### Network
 
-- **Host-only for isolation** — ``NetworkMode/hostOnly`` eliminates
-  network overhead from external traffic.
+- **Isolated mode for security** — ``NetworkMode/isolated`` removes
+  the network interface entirely, eliminating external traffic.
 - **Shared folders over network mounts** — VirtIO shared folders
   are faster than NFS or SMB mounts for data access.
 
@@ -592,7 +589,7 @@ torchvision.datasets.CIFAR10('/data/cifar10', download=True)
 spook create ml-cifar \
     --from-ipsw latest \
     --cpu 6 --memory 16 --disk 64 \
-    --network host-only \
+    --network isolated \
     --disable-audio \
     --user-data /opt/spooktacular/train-cifar.sh \
     --provision disk-inject

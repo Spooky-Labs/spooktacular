@@ -160,7 +160,6 @@ extension Spook {
             case .nat: "NAT" + Style.dim(" (shared)")
             case .bridged(let interface): Style.info("bridged") + Style.dim(":\(interface)")
             case .isolated: Style.yellow("isolated")
-            case .hostOnly: "host-only"
             }
         }
     }
