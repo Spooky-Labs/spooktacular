@@ -40,6 +40,10 @@ let package = Package(
             dependencies: ["SpooktacularKit"],
             path: "Sources/Spooktacular"
         ),
+        .executableTarget(
+            name: "spook-agent",
+            path: "Sources/spook-agent"
+        ),
         .testTarget(
             name: "SpooktacularKitTests",
             dependencies: ["SpooktacularKit"],
