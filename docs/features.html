@@ -105,13 +105,22 @@ footer .foot-bottom { display: flex; justify-content: space-between; align-items
 footer .foot-bottom p { margin: 0; }
 @media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
 
-/* Starfield */
-.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
-.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
-.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
-@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, .container, .page-header, footer, main { position: relative; z-index: 1; }
+/* Pixel Starfield */
+.pixel-starfield { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
+.pixel-star { position: absolute; background: #c4b5fd; image-rendering: pixelated; }
+.pixel-star.dim { background: #8b6ce0; }
+.pixel-star.faint { background: #5b21b6; }
+@keyframes pixelTwinkle { 0%, 100% { opacity: 0.8; } 50% { opacity: 0.2; } }
+@keyframes pixelTwinkle2 { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.9; } }
+@keyframes pixelTwinkle3 { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.1; } }
+.pixel-star.t1 { animation: pixelTwinkle 4s ease-in-out infinite; }
+.pixel-star.t2 { animation: pixelTwinkle2 6s ease-in-out infinite; }
+.pixel-star.t3 { animation: pixelTwinkle3 8s ease-in-out infinite; }
+
+/* Pixel art elements */
+.pixel-divider { display: flex; justify-content: center; align-items: center; padding: 1.5rem 0; gap: 1.5rem; }
+.pixel-ghost-prompt { display: inline-block; vertical-align: middle; margin-right: 0.35rem; }
+nav, .container, .page-header, footer, main, .pixel-divider { position: relative; z-index: 1; }
 
 @media (max-width: 640px) {
   .page-header h1 { font-size: 2.25rem; }
@@ -121,7 +130,42 @@ nav, .container, .page-header, footer, main { position: relative; z-index: 1; }
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to main content</a>
-<div class="stars" aria-hidden="true"></div><div class="stars2" aria-hidden="true"></div><div class="stars3" aria-hidden="true"></div>
+<div class="pixel-starfield" aria-hidden="true">
+<div class="pixel-star t1" style="width:2px;height:2px;top:3%;left:6%"></div>
+<div class="pixel-star dim t2" style="width:1px;height:1px;top:8%;left:18%"></div>
+<div class="pixel-star t3" style="width:2px;height:2px;top:2%;left:30%"></div>
+<div class="pixel-star faint t1" style="width:1px;height:1px;top:6%;left:40%"></div>
+<div class="pixel-star t2" style="width:2px;height:2px;top:3%;left:50%"></div>
+<div class="pixel-star dim t3" style="width:1px;height:1px;top:9%;left:61%"></div>
+<div class="pixel-star t1" style="width:2px;height:2px;top:5%;left:72%"></div>
+<div class="pixel-star faint t2" style="width:1px;height:1px;top:2%;left:83%"></div>
+<div class="pixel-star t3" style="width:2px;height:2px;top:7%;left:92%"></div>
+<div class="pixel-star dim t1" style="width:1px;height:1px;top:14%;left:12%"></div>
+<div class="pixel-star faint t2" style="width:1px;height:1px;top:12%;left:35%"></div>
+<div class="pixel-star t3" style="width:1px;height:1px;top:16%;left:56%"></div>
+<div class="pixel-star faint t1" style="width:1px;height:1px;top:11%;left:78%"></div>
+<div class="pixel-star dim t2" style="width:1px;height:1px;top:19%;left:24%"></div>
+<div class="pixel-star faint t3" style="width:1px;height:1px;top:17%;left:66%"></div>
+<div class="pixel-star t1" style="width:1px;height:1px;top:22%;left:88%"></div>
+<div class="pixel-star faint t2" style="width:1px;height:1px;top:24%;left:4%"></div>
+<div class="pixel-star dim t3" style="width:1px;height:1px;top:21%;left:95%"></div>
+<div class="pixel-star t2" style="width:2px;height:2px;top:28%;left:15%"></div>
+<div class="pixel-star faint t1" style="width:1px;height:1px;top:32%;left:48%"></div>
+<div class="pixel-star dim t3" style="width:1px;height:1px;top:35%;left:75%"></div>
+<div class="pixel-star t1" style="width:2px;height:2px;top:40%;left:8%"></div>
+<div class="pixel-star faint t2" style="width:1px;height:1px;top:38%;left:55%"></div>
+<div class="pixel-star t3" style="width:1px;height:1px;top:45%;left:90%"></div>
+<div class="pixel-star dim t1" style="width:1px;height:1px;top:50%;left:22%"></div>
+<div class="pixel-star faint t2" style="width:1px;height:1px;top:55%;left:68%"></div>
+<div class="pixel-star t3" style="width:2px;height:2px;top:60%;left:38%"></div>
+<div class="pixel-star dim t1" style="width:1px;height:1px;top:65%;left:82%"></div>
+<div class="pixel-star faint t2" style="width:1px;height:1px;top:70%;left:12%"></div>
+<div class="pixel-star t1" style="width:1px;height:1px;top:75%;left:52%"></div>
+<div class="pixel-star dim t3" style="width:1px;height:1px;top:80%;left:30%"></div>
+<div class="pixel-star faint t1" style="width:1px;height:1px;top:85%;left:70%"></div>
+<div class="pixel-star t2" style="width:1px;height:1px;top:90%;left:45%"></div>
+<div class="pixel-star faint t3" style="width:1px;height:1px;top:95%;left:85%"></div>
+</div>
 
 <nav role="navigation" aria-label="Main navigation">
 <div class="inner">
@@ -133,12 +177,12 @@ Spooktacular
 <label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
 <div class="nav-links">
 <a href="features.html" class="active">Features</a>
-<a href="roadmap.html">Roadmap</a>
 <a href="compare.html">Compare</a>
-<a href="versioning.html">Versioning</a>
-<a href="api/documentation/spooktacularkit/" target="_blank">API Docs</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="api/documentation/spooktacularkit/" target="_blank">Docs</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
+<a href="get-started.html">Get Started</a>
+<a href="download.html" class="cta-btn">Download</a>
 </div>
 </div>
 </nav>
@@ -162,7 +206,7 @@ Spooktacular
 <!-- CI/CD Runners -->
 <div class="container">
 <div class="use-case" id="cicd">
-<div class="section-label">&#9881; Primary Use Case</div>
+<div class="section-label"><svg width="12" height="12" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated" style="vertical-align:middle;margin-right:4px"><rect x="6" y="1" width="4" height="1" fill="#c4b5fd"/><rect x="4" y="2" width="2" height="1" fill="#c4b5fd"/><rect x="10" y="2" width="2" height="1" fill="#c4b5fd"/><rect x="3" y="3" width="1" height="2" fill="#c4b5fd"/><rect x="12" y="3" width="1" height="2" fill="#c4b5fd"/><rect x="1" y="5" width="2" height="1" fill="#a78bfa"/><rect x="13" y="5" width="2" height="1" fill="#a78bfa"/><rect x="1" y="6" width="2" height="4" fill="#a78bfa"/><rect x="13" y="6" width="2" height="4" fill="#a78bfa"/><rect x="3" y="10" width="1" height="2" fill="#c4b5fd"/><rect x="12" y="10" width="1" height="2" fill="#c4b5fd"/><rect x="4" y="12" width="2" height="1" fill="#c4b5fd"/><rect x="10" y="12" width="2" height="1" fill="#c4b5fd"/><rect x="6" y="13" width="4" height="1" fill="#c4b5fd"/><rect x="5" y="4" width="6" height="6" fill="#0f0a1a"/><rect x="7" y="6" width="2" height="2" fill="#fbbf24"/></svg> Primary Use Case</div>
 <h2>CI/CD Runners</h2>
 <p class="sub">The core scenario: replace bare-metal runners with cloned VMs. Double your capacity on the same hardware, with ephemeral runners that auto-destroy after each job.</p>
 
@@ -172,12 +216,12 @@ Spooktacular
 <span class="title">github-actions-setup.sh</span>
 </div>
 <pre><span class="cmt"># Create base image once, clone for every runner</span>
-<span class="dim">$</span> <span class="cmd">spook create base --from-ipsw latest --cpu 4 --memory 8</span>
-<span class="dim">$</span> <span class="cmd">spook clone base runner-01</span>
-<span class="dim">$</span> <span class="cmd">spook clone base runner-02</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook create base --from-ipsw latest --cpu 4 --memory 8</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook clone base runner-01</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook clone base runner-02</span>
 
 <span class="cmt"># Ephemeral runners auto-destroy when the job completes</span>
-<span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --ephemeral \</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook start runner-01 --headless --ephemeral \</span>
     <span class="cmd">--provision ssh --template github-runner \</span>
     <span class="cmd">--var repo=org/app --var token=$GH_TOKEN</span>
 <span class="ok">&#10003; runner-01 registered with GitHub Actions</span></pre>
@@ -185,7 +229,7 @@ Spooktacular
 
 <div class="feat-grid">
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128268;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="6" y="1" width="4" height="1" fill="#c4b5fd"/><rect x="4" y="2" width="2" height="1" fill="#c4b5fd"/><rect x="10" y="2" width="2" height="1" fill="#c4b5fd"/><rect x="3" y="3" width="1" height="2" fill="#c4b5fd"/><rect x="12" y="3" width="1" height="2" fill="#c4b5fd"/><rect x="1" y="5" width="2" height="1" fill="#a78bfa"/><rect x="13" y="5" width="2" height="1" fill="#a78bfa"/><rect x="1" y="6" width="2" height="4" fill="#a78bfa"/><rect x="13" y="6" width="2" height="4" fill="#a78bfa"/><rect x="3" y="10" width="1" height="2" fill="#c4b5fd"/><rect x="12" y="10" width="1" height="2" fill="#c4b5fd"/><rect x="4" y="12" width="2" height="1" fill="#c4b5fd"/><rect x="10" y="12" width="2" height="1" fill="#c4b5fd"/><rect x="6" y="13" width="4" height="1" fill="#c4b5fd"/><rect x="5" y="4" width="6" height="6" fill="#0f0a1a"/><rect x="7" y="6" width="2" height="2" fill="#fbbf24"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>GitHub Actions Runner Template</h3>
 <p>Built-in template generates a complete runner registration script. Pass repo and token as variables. Supports labels and ephemeral mode.</p>
@@ -193,7 +237,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#9889;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="2" width="12" height="9" fill="#1a1035"/><rect x="3" y="3" width="10" height="7" fill="#0f0a1a"/><rect x="5" y="5" width="2" height="2" fill="#c4b5fd"/><rect x="9" y="5" width="2" height="2" fill="#a78bfa"/><rect x="7" y="7" width="1" height="1" fill="#8b6ce0"/><rect x="6" y="12" width="4" height="1" fill="#c4b5fd"/><rect x="5" y="13" width="6" height="1" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>APFS Copy-on-Write Cloning</h3>
 <p>FileManager.copyItem triggers APFS clonefile(2). Zero-byte delta clones in ~48ms. No disk copy, no image registry required.</p>
@@ -201,7 +245,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128640;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="7" y="1" width="2" height="2" fill="#c4b5fd"/><rect x="6" y="3" width="4" height="3" fill="#a78bfa"/><rect x="7" y="3" width="2" height="2" fill="#e8deff"/><rect x="5" y="6" width="6" height="4" fill="#8b6ce0"/><rect x="6" y="7" width="4" height="2" fill="#a78bfa"/><rect x="4" y="10" width="2" height="2" fill="#7c3aed"/><rect x="10" y="10" width="2" height="2" fill="#7c3aed"/><rect x="6" y="10" width="4" height="2" fill="#ef4444"/><rect x="6" y="12" width="2" height="2" fill="#fbbf24"/><rect x="8" y="12" width="2" height="2" fill="#f59e0b"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Ephemeral Runners</h3>
 <p>The --ephemeral flag on start automatically destroys the VM when it stops. Perfect for single-use CI runners that guarantee a clean environment.</p>
@@ -209,7 +253,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128274;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="2" width="14" height="12" fill="#1a1035"/><rect x="2" y="3" width="12" height="10" fill="#0f0a1a"/><rect x="3" y="4" width="1" height="1" fill="#c4b5fd"/><rect x="4" y="4" width="1" height="1" fill="#a78bfa"/><rect x="3" y="6" width="1" height="1" fill="#8b6ce0"/><rect x="4" y="6" width="4" height="1" fill="#c4b5fd"/><rect x="3" y="8" width="1" height="1" fill="#8b6ce0"/><rect x="4" y="8" width="3" height="1" fill="#a78bfa"/><rect x="3" y="10" width="2" height="1" fill="#fbbf24"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>SSH Provisioning</h3>
 <p>Wait-for-SSH with configurable timeout, then execute scripts with streaming output. Works with any user-data script format.</p>
@@ -217,7 +261,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128190;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="1" width="12" height="14" fill="#a78bfa"/><rect x="3" y="2" width="10" height="3" fill="#c4b5fd"/><rect x="5" y="2" width="6" height="3" fill="#0f0a1a"/><rect x="3" y="6" width="10" height="7" fill="#0f0a1a"/><rect x="5" y="8" width="6" height="3" fill="#8b6ce0"/><rect x="6" y="9" width="4" height="1" fill="#c4b5fd"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Disk-Inject Provisioning</h3>
 <p>Zero-network provisioning. Injects a LaunchDaemon and script directly into the VM disk image before boot. No SSH, no network required.</p>
@@ -225,7 +269,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128204;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="3" y="2" width="10" height="12" fill="#1a1035"/><rect x="4" y="3" width="8" height="10" fill="#0f0a1a"/><rect x="6" y="4" width="4" height="4" fill="#a78bfa"/><rect x="7" y="5" width="2" height="2" fill="#e8deff"/><rect x="5" y="9" width="6" height="1" fill="#8b6ce0"/><rect x="5" y="11" width="6" height="1" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>MachineIdentifier Regeneration</h3>
 <p>Each clone gets a unique hardware identifier. Avoids conflicts when multiple clones run on the same host or register with the same CI service.</p>
@@ -233,7 +277,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128248;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="2" width="12" height="12" fill="#1a1035"/><rect x="3" y="3" width="10" height="2" fill="#a78bfa"/><rect x="5" y="3" width="2" height="2" fill="#0f0a1a"/><rect x="4" y="6" width="8" height="7" fill="#0f0a1a"/><rect x="5" y="8" width="6" height="3" fill="#8b6ce0"/><rect x="6" y="9" width="4" height="1" fill="#c4b5fd"/><rect x="12" y="3" width="1" height="2" fill="#fbbf24"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Disk Snapshots</h3>
 <p>Save, restore, list, and delete snapshots per VM. Snapshot before installing Xcode, restore if something breaks. Instant rollback.</p>
@@ -241,13 +285,20 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128200;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="12" width="12" height="1" fill="#8b6ce0"/><rect x="2" y="2" width="1" height="10" fill="#8b6ce0"/><rect x="4" y="9" width="2" height="3" fill="#a78bfa"/><rect x="7" y="6" width="2" height="6" fill="#c4b5fd"/><rect x="10" y="3" width="2" height="9" fill="#a78bfa"/></svg></span>
 <div class="tag tag-planned">Planned</div>
 <h3>BuildKite / CircleCI Templates</h3>
 <p>Runner registration templates for BuildKite and CircleCI. On the roadmap, not yet shipped.</p>
 <a href="roadmap.html" class="source-link">View Roadmap &rarr;</a>
 </div>
 </div>
+</div>
+
+<!-- Pixel divider -->
+<div class="pixel-divider" aria-hidden="true">
+<svg width="3" height="3" viewBox="0 0 3 3" shape-rendering="crispEdges"><rect x="1" y="0" width="1" height="1" fill="#c4b5fd"/><rect x="0" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="2" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="1" y="2" width="1" height="1" fill="#c4b5fd"/></svg>
+<svg width="8" height="8" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#e8deff"/><rect x="0" y="2" width="8" height="1" fill="#d4c2f0"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#c4b5fd"/><rect x="3" y="3" width="2" height="1" fill="#7c3aed"/><rect x="0" y="4" width="8" height="1" fill="#a78bfa"/><rect x="0" y="5" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="6" width="2" height="1" fill="#a78bfa"/><rect x="3" y="6" width="2" height="1" fill="#a78bfa"/><rect x="6" y="6" width="2" height="1" fill="#a78bfa"/><rect x="1" y="7" width="1" height="1" fill="#8b6ce0"/><rect x="4" y="7" width="1" height="1" fill="#8b6ce0"/><rect x="7" y="7" width="1" height="1" fill="#8b6ce0"/></svg>
+<svg width="3" height="3" viewBox="0 0 3 3" shape-rendering="crispEdges"><rect x="1" y="0" width="1" height="1" fill="#c4b5fd"/><rect x="0" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="2" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="1" y="2" width="1" height="1" fill="#c4b5fd"/></svg>
 </div>
 
 <!-- Remote Desktop -->
@@ -258,7 +309,7 @@ Spooktacular
 
 <div class="feat-grid">
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128424;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="2" width="14" height="9" fill="#1a1035"/><rect x="2" y="3" width="12" height="7" fill="#0f0a1a"/><rect x="4" y="5" width="3" height="3" fill="#7c3aed"/><rect x="8" y="5" width="4" height="1" fill="#a78bfa"/><rect x="8" y="7" width="3" height="1" fill="#8b6ce0"/><rect x="6" y="12" width="4" height="1" fill="#c4b5fd"/><rect x="4" y="13" width="8" height="1" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Remote Desktop Template</h3>
 <p>Built-in template generates a script that enables Screen Sharing (VNC) on the guest. One command to create a remote desktop VM.</p>
@@ -266,7 +317,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#127912;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="2" width="14" height="9" fill="#1a1035"/><rect x="2" y="3" width="12" height="7" fill="#0f0a1a"/><rect x="4" y="4" width="2" height="2" fill="#ef4444"/><rect x="6" y="4" width="2" height="2" fill="#fbbf24"/><rect x="8" y="4" width="2" height="2" fill="#6ee7b7"/><rect x="10" y="4" width="2" height="2" fill="#60a5fa"/><rect x="4" y="7" width="8" height="2" fill="#7c3aed"/><rect x="6" y="12" width="4" height="1" fill="#c4b5fd"/><rect x="5" y="13" width="6" height="1" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Metal GPU Displays</h3>
 <p>1-2 Metal GPU-accelerated displays per VM at 1920x1200 resolution. Hardware-accelerated rendering for a responsive desktop experience.</p>
@@ -274,7 +325,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128302;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="3" y="3" width="10" height="8" fill="#1a1035"/><rect x="4" y="4" width="8" height="6" fill="#0f0a1a"/><rect x="1" y="1" width="2" height="2" fill="#a78bfa"/><rect x="2" y="3" width="1" height="1" fill="#8b6ce0"/><rect x="13" y="1" width="2" height="2" fill="#a78bfa"/><rect x="13" y="3" width="1" height="1" fill="#8b6ce0"/><rect x="1" y="12" width="2" height="2" fill="#a78bfa"/><rect x="3" y="12" width="1" height="1" fill="#8b6ce0"/><rect x="13" y="12" width="2" height="2" fill="#a78bfa"/><rect x="13" y="11" width="1" height="1" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Auto-Resize Display</h3>
 <p>Display resolution automatically adjusts when you resize the VM window. Requires macOS 14+ on the host.</p>
@@ -282,7 +333,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128266;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="4" width="4" height="8" fill="#a78bfa"/><rect x="3" y="5" width="2" height="6" fill="#c4b5fd"/><rect x="6" y="3" width="2" height="2" fill="#8b6ce0"/><rect x="8" y="2" width="2" height="2" fill="#a78bfa"/><rect x="6" y="11" width="2" height="2" fill="#8b6ce0"/><rect x="8" y="12" width="2" height="2" fill="#a78bfa"/><rect x="10" y="6" width="2" height="1" fill="#c4b5fd"/><rect x="12" y="7" width="2" height="1" fill="#c4b5fd"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Audio Output + Microphone</h3>
 <p>Full audio passthrough including microphone input. Video calls and audio playback work inside the VM.</p>
@@ -290,7 +341,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128193;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="4" width="6" height="2" fill="#a78bfa"/><rect x="1" y="6" width="14" height="9" fill="#8b6ce0"/><rect x="2" y="7" width="12" height="7" fill="#0f0a1a"/><rect x="1" y="4" width="2" height="2" fill="#c4b5fd"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>VirtIO Shared Folders</h3>
 <p>Mount host directories inside the VM. Share project files, build artifacts, datasets between host and guest without network.</p>
@@ -298,13 +349,20 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#9855;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="7" y="1" width="2" height="2" fill="#c4b5fd"/><rect x="3" y="4" width="10" height="1" fill="#a78bfa"/><rect x="7" y="5" width="2" height="4" fill="#c4b5fd"/><rect x="4" y="9" width="3" height="1" fill="#a78bfa"/><rect x="9" y="9" width="3" height="1" fill="#a78bfa"/><rect x="3" y="10" width="2" height="3" fill="#8b6ce0"/><rect x="11" y="10" width="2" height="3" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Full Accessibility</h3>
 <p>VoiceOver labels, hints, and identifiers on every control. Accessibility announcements for state changes. Reduce motion support.</p>
 <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View Source &rarr;</a>
 </div>
 </div>
+</div>
+
+<!-- Pixel divider: campfire -->
+<div class="pixel-divider" aria-hidden="true">
+<svg width="3" height="3" viewBox="0 0 3 3" shape-rendering="crispEdges"><rect x="1" y="0" width="1" height="1" fill="#fbbf24"/><rect x="0" y="1" width="1" height="1" fill="#f59e0b"/><rect x="2" y="1" width="1" height="1" fill="#f59e0b"/><rect x="1" y="2" width="1" height="1" fill="#ef4444"/></svg>
+<svg width="12" height="12" viewBox="0 0 12 12" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="5" y="0" width="2" height="1" fill="#fbbf24" opacity="0.7"/><rect x="4" y="1" width="4" height="1" fill="#fbbf24"/><rect x="3" y="2" width="6" height="1" fill="#f59e0b"/><rect x="5" y="2" width="2" height="1" fill="#fbbf24"/><rect x="3" y="3" width="6" height="1" fill="#f59e0b"/><rect x="2" y="4" width="8" height="1" fill="#ef4444"/><rect x="2" y="5" width="8" height="1" fill="#dc2626"/><rect x="3" y="6" width="6" height="1" fill="#b91c1c"/><rect x="2" y="7" width="3" height="1" fill="#5b21b6"/><rect x="7" y="7" width="3" height="1" fill="#5b21b6"/><rect x="3" y="8" width="6" height="1" fill="#4c1d95"/><rect x="1" y="9" width="4" height="1" fill="#3b1280"/><rect x="7" y="9" width="4" height="1" fill="#3b1280"/></svg>
+<svg width="3" height="3" viewBox="0 0 3 3" shape-rendering="crispEdges"><rect x="1" y="0" width="1" height="1" fill="#fbbf24"/><rect x="0" y="1" width="1" height="1" fill="#f59e0b"/><rect x="2" y="1" width="1" height="1" fill="#f59e0b"/><rect x="1" y="2" width="1" height="1" fill="#ef4444"/></svg>
 </div>
 
 <!-- ML Workloads -->
@@ -315,7 +373,7 @@ Spooktacular
 
 <div class="feat-grid">
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#127912;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="2" width="14" height="9" fill="#1a1035"/><rect x="2" y="3" width="12" height="7" fill="#0f0a1a"/><rect x="4" y="4" width="2" height="2" fill="#ef4444"/><rect x="6" y="4" width="2" height="2" fill="#fbbf24"/><rect x="8" y="4" width="2" height="2" fill="#6ee7b7"/><rect x="10" y="4" width="2" height="2" fill="#60a5fa"/><rect x="4" y="7" width="8" height="2" fill="#7c3aed"/><rect x="6" y="12" width="4" height="1" fill="#c4b5fd"/><rect x="5" y="13" width="6" height="1" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Metal GPU Displays</h3>
 <p>Up to 2 Metal GPU-accelerated displays per VM at 1920x1200. GPU compute is available to guest workloads through the virtualization layer.</p>
@@ -323,7 +381,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128193;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="4" width="6" height="2" fill="#a78bfa"/><rect x="1" y="6" width="14" height="9" fill="#8b6ce0"/><rect x="2" y="7" width="12" height="7" fill="#0f0a1a"/><rect x="1" y="4" width="2" height="2" fill="#c4b5fd"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Shared Folders for Datasets</h3>
 <p>Mount host directories in the VM via VirtIO. Load training data from the host filesystem without copying into the VM image.</p>
@@ -331,7 +389,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128683;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="2" width="3" height="3" fill="#a78bfa"/><rect x="3" y="3" width="1" height="1" fill="#e8deff"/><rect x="11" y="2" width="3" height="3" fill="#a78bfa"/><rect x="12" y="3" width="1" height="1" fill="#e8deff"/><rect x="6" y="11" width="3" height="3" fill="#a78bfa"/><rect x="7" y="12" width="1" height="1" fill="#e8deff"/><rect x="5" y="3" width="6" height="1" fill="#ef4444"/><rect x="3" y="5" width="1" height="6" fill="#ef4444"/><rect x="13" y="5" width="1" height="6" fill="#ef4444"/><rect x="4" y="11" width="2" height="1" fill="#ef4444"/><rect x="9" y="11" width="4" height="1" fill="#ef4444"/><rect x="0" y="0" width="16" height="1" fill="#ef4444" opacity="0.3"/><rect x="0" y="15" width="16" height="1" fill="#ef4444" opacity="0.3"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Isolated Networking</h3>
 <p>Air-gapped VMs with zero network access. Run untrusted models or experiments in complete network isolation.</p>
@@ -339,13 +397,20 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#129302;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="5" y="1" width="6" height="2" fill="#a78bfa"/><rect x="4" y="3" width="8" height="6" fill="#c4b5fd"/><rect x="5" y="4" width="2" height="2" fill="#0f0a1a"/><rect x="9" y="4" width="2" height="2" fill="#0f0a1a"/><rect x="6" y="4" width="1" height="1" fill="#fbbf24"/><rect x="10" y="4" width="1" height="1" fill="#fbbf24"/><rect x="6" y="7" width="4" height="1" fill="#7c3aed"/><rect x="3" y="9" width="10" height="4" fill="#8b6ce0"/><rect x="5" y="13" width="2" height="2" fill="#a78bfa"/><rect x="9" y="13" width="2" height="2" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>OpenClaw AI Template</h3>
 <p>Built-in template for OpenClaw AI workloads. Generates a provisioning script tailored for ML environments.</p>
 <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/OpenClawTemplate.swift" class="source-link" target="_blank">View Source &rarr;</a>
 </div>
 </div>
+</div>
+
+<!-- Pixel divider -->
+<div class="pixel-divider" aria-hidden="true">
+<svg width="6" height="6" viewBox="0 0 6 6" shape-rendering="crispEdges"><rect x="2" y="0" width="2" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="4" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="2" y="2" width="2" height="1" fill="#a78bfa"/><rect x="1" y="3" width="4" height="1" fill="#c4b5fd"/><rect x="0" y="4" width="2" height="1" fill="#a78bfa"/><rect x="4" y="4" width="2" height="1" fill="#a78bfa"/><rect x="0" y="5" width="1" height="1" fill="#8b6ce0"/><rect x="5" y="5" width="1" height="1" fill="#8b6ce0"/></svg>
+<svg width="8" height="8" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#d0bff5"/><rect x="1" y="1" width="6" height="1" fill="#d0bff5"/><rect x="0" y="2" width="8" height="1" fill="#b99de0"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="3" y="3" width="2" height="1" fill="#7c3aed"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="8" height="1" fill="#7c3aed"/><rect x="0" y="6" width="2" height="1" fill="#8b6ce0"/><rect x="3" y="6" width="2" height="1" fill="#8b6ce0"/><rect x="6" y="6" width="2" height="1" fill="#8b6ce0"/><rect x="1" y="7" width="1" height="1" fill="#7c3aed"/><rect x="4" y="7" width="1" height="1" fill="#7c3aed"/><rect x="7" y="7" width="1" height="1" fill="#7c3aed"/></svg>
+<svg width="6" height="6" viewBox="0 0 6 6" shape-rendering="crispEdges"><rect x="2" y="0" width="2" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="4" y="1" width="1" height="1" fill="#8b6ce0"/><rect x="2" y="2" width="2" height="1" fill="#a78bfa"/><rect x="1" y="3" width="4" height="1" fill="#c4b5fd"/><rect x="0" y="4" width="2" height="1" fill="#a78bfa"/><rect x="4" y="4" width="2" height="1" fill="#a78bfa"/><rect x="0" y="5" width="1" height="1" fill="#8b6ce0"/><rect x="5" y="5" width="1" height="1" fill="#8b6ce0"/></svg>
 </div>
 
 <!-- DevOps Automation -->
@@ -360,21 +425,21 @@ Spooktacular
 <span class="title">automation.sh</span>
 </div>
 <pre><span class="cmt"># Register as a LaunchDaemon service (survives reboots)</span>
-<span class="dim">$</span> <span class="cmd">spook service install runner-01</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook service install runner-01</span>
 <span class="ok">&#10003; LaunchDaemon installed: com.spooktacular.runner-01</span>
 
 <span class="cmt"># Save machine state (macOS 14+)</span>
-<span class="dim">$</span> <span class="cmd">spook stop runner-01 --save-state</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook stop runner-01 --save-state</span>
 <span class="ok">&#10003; Machine state saved, VM paused</span>
 
 <span class="cmt"># Resolve VM IP for SSH access</span>
-<span class="dim">$</span> <span class="cmd">spook ip runner-01</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook ip runner-01</span>
 <span class="file">192.168.64.3</span></pre>
 </div>
 
 <div class="feat-grid">
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128260;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="6" y="1" width="4" height="1" fill="#c4b5fd"/><rect x="4" y="2" width="2" height="1" fill="#a78bfa"/><rect x="10" y="2" width="2" height="1" fill="#a78bfa"/><rect x="3" y="3" width="1" height="3" fill="#8b6ce0"/><rect x="12" y="3" width="1" height="3" fill="#8b6ce0"/><rect x="3" y="6" width="1" height="3" fill="#a78bfa"/><rect x="12" y="6" width="1" height="3" fill="#a78bfa"/><rect x="4" y="9" width="2" height="1" fill="#8b6ce0"/><rect x="10" y="9" width="2" height="1" fill="#8b6ce0"/><rect x="6" y="10" width="4" height="1" fill="#c4b5fd"/><rect x="13" y="4" width="2" height="1" fill="#6ee7b7"/><rect x="14" y="5" width="1" height="1" fill="#6ee7b7"/><rect x="7" y="5" width="2" height="2" fill="#fbbf24"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Full VM Lifecycle</h3>
 <p>Start, stop, pause, and resume VMs programmatically. Save and restore machine state on macOS 14+ for instant resume.</p>
@@ -382,7 +447,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#9881;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="6" y="1" width="4" height="1" fill="#c4b5fd"/><rect x="4" y="2" width="2" height="1" fill="#c4b5fd"/><rect x="10" y="2" width="2" height="1" fill="#c4b5fd"/><rect x="3" y="3" width="1" height="2" fill="#c4b5fd"/><rect x="12" y="3" width="1" height="2" fill="#c4b5fd"/><rect x="1" y="5" width="2" height="1" fill="#a78bfa"/><rect x="13" y="5" width="2" height="1" fill="#a78bfa"/><rect x="1" y="6" width="2" height="4" fill="#a78bfa"/><rect x="13" y="6" width="2" height="4" fill="#a78bfa"/><rect x="3" y="10" width="1" height="2" fill="#c4b5fd"/><rect x="12" y="10" width="1" height="2" fill="#c4b5fd"/><rect x="4" y="12" width="2" height="1" fill="#c4b5fd"/><rect x="10" y="12" width="2" height="1" fill="#c4b5fd"/><rect x="6" y="13" width="4" height="1" fill="#c4b5fd"/><rect x="5" y="4" width="6" height="6" fill="#0f0a1a"/><rect x="7" y="6" width="2" height="2" fill="#fbbf24"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Per-VM LaunchDaemon Service</h3>
 <p>Register any VM as a macOS LaunchDaemon. Automatically starts on boot, restarts on failure. Full lifecycle management.</p>
@@ -390,7 +455,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128203;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="3" y="1" width="10" height="14" fill="#1a1035"/><rect x="4" y="2" width="8" height="12" fill="#0f0a1a"/><rect x="5" y="3" width="6" height="1" fill="#a78bfa"/><rect x="5" y="5" width="4" height="1" fill="#8b6ce0"/><rect x="5" y="7" width="6" height="1" fill="#a78bfa"/><rect x="5" y="9" width="3" height="1" fill="#8b6ce0"/><rect x="5" y="11" width="5" height="1" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>PID File Tracking</h3>
 <p>Every running VM writes a PID file. Enables safe process management, prevents duplicate starts, and supports external monitoring.</p>
@@ -398,7 +463,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128207;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="3" width="5" height="4" fill="#1a1035"/><rect x="3" y="4" width="3" height="2" fill="#0f0a1a"/><rect x="9" y="3" width="5" height="4" fill="#1a1035"/><rect x="10" y="4" width="3" height="2" fill="#0f0a1a"/><rect x="3" y="8" width="2" height="1" fill="#c4b5fd"/><rect x="11" y="8" width="2" height="1" fill="#c4b5fd"/><rect x="2" y="9" width="4" height="1" fill="#a78bfa"/><rect x="10" y="9" width="4" height="1" fill="#a78bfa"/><rect x="7" y="4" width="2" height="2" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>2-VM Capacity Enforcement</h3>
 <p>Apple limits 2 concurrent macOS VMs per host. Spooktacular enforces this at the API level to prevent capacity errors.</p>
@@ -406,7 +471,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#127760;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="2" width="3" height="3" fill="#a78bfa"/><rect x="3" y="3" width="1" height="1" fill="#e8deff"/><rect x="11" y="2" width="3" height="3" fill="#a78bfa"/><rect x="12" y="3" width="1" height="1" fill="#e8deff"/><rect x="6" y="11" width="3" height="3" fill="#a78bfa"/><rect x="7" y="12" width="1" height="1" fill="#e8deff"/><rect x="5" y="3" width="6" height="1" fill="#8b6ce0"/><rect x="3" y="5" width="1" height="6" fill="#8b6ce0"/><rect x="13" y="5" width="1" height="6" fill="#8b6ce0"/><rect x="4" y="11" width="2" height="1" fill="#8b6ce0"/><rect x="9" y="11" width="4" height="1" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>IP Resolution</h3>
 <p>Resolve VM IP addresses via DHCP leases with ARP fallback. Enables dynamic SSH connections without hardcoded addresses.</p>
@@ -414,7 +479,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128230;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="2" width="12" height="12" fill="#1a1035"/><rect x="3" y="3" width="10" height="10" fill="#0f0a1a"/><rect x="5" y="5" width="1" height="1" fill="#c4b5fd"/><rect x="7" y="4" width="2" height="1" fill="#6ee7b7"/><rect x="6" y="5" width="4" height="1" fill="#6ee7b7"/><rect x="7" y="6" width="2" height="1" fill="#6ee7b7"/><rect x="8" y="7" width="1" height="1" fill="#6ee7b7"/><rect x="5" y="9" width="6" height="1" fill="#a78bfa"/><rect x="5" y="11" width="6" height="1" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>IPSW Restore Image Manager</h3>
 <p>Auto-download the latest compatible macOS restore image. No manual IPSW hunting. Manages a local image library.</p>
@@ -422,7 +487,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128640;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="7" y="1" width="2" height="2" fill="#c4b5fd"/><rect x="6" y="3" width="4" height="3" fill="#a78bfa"/><rect x="7" y="3" width="2" height="2" fill="#e8deff"/><rect x="5" y="6" width="6" height="4" fill="#8b6ce0"/><rect x="6" y="7" width="4" height="2" fill="#a78bfa"/><rect x="4" y="10" width="2" height="2" fill="#7c3aed"/><rect x="10" y="10" width="2" height="2" fill="#7c3aed"/><rect x="6" y="10" width="4" height="2" fill="#ef4444"/><rect x="6" y="12" width="2" height="2" fill="#fbbf24"/><rect x="8" y="12" width="2" height="2" fill="#f59e0b"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Unattended Setup Assistant</h3>
 <p>Keyboard driver automates macOS Setup Assistant on 15+. Create a VM, install the OS, complete setup, and provision in one command.</p>
@@ -430,7 +495,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128268;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="4" width="4" height="4" fill="#a78bfa"/><rect x="3" y="5" width="2" height="2" fill="#0f0a1a"/><rect x="10" y="4" width="4" height="4" fill="#a78bfa"/><rect x="11" y="5" width="2" height="2" fill="#0f0a1a"/><rect x="6" y="5" width="4" height="2" fill="#c4b5fd"/><rect x="7" y="7" width="2" height="1" fill="#8b6ce0"/><rect x="7" y="3" width="2" height="1" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>VirtIO Socket Provisioning</h3>
 <p>Host-side VirtIO socket provisioner. Communicates with the guest agent over vsock for zero-network provisioning.</p>
@@ -438,13 +503,20 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#129302;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="5" y="1" width="6" height="2" fill="#a78bfa"/><rect x="4" y="3" width="8" height="6" fill="#c4b5fd"/><rect x="5" y="4" width="2" height="2" fill="#0f0a1a"/><rect x="9" y="4" width="2" height="2" fill="#0f0a1a"/><rect x="6" y="4" width="1" height="1" fill="#fbbf24"/><rect x="10" y="4" width="1" height="1" fill="#fbbf24"/><rect x="6" y="7" width="4" height="1" fill="#7c3aed"/><rect x="3" y="9" width="10" height="4" fill="#8b6ce0"/><rect x="5" y="13" width="2" height="2" fill="#a78bfa"/><rect x="9" y="13" width="2" height="2" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Guest Agent</h3>
 <p>VirtIO socket daemon that runs inside the guest VM. Receives provisioning commands from the host over vsock.</p>
 <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook-agent" class="source-link" target="_blank">View Source &rarr;</a>
 </div>
 </div>
+</div>
+
+<!-- Pixel divider: campfire -->
+<div class="pixel-divider" aria-hidden="true">
+<svg width="3" height="3" viewBox="0 0 3 3" shape-rendering="crispEdges"><rect x="1" y="0" width="1" height="1" fill="#fbbf24"/><rect x="0" y="1" width="1" height="1" fill="#f59e0b"/><rect x="2" y="1" width="1" height="1" fill="#f59e0b"/><rect x="1" y="2" width="1" height="1" fill="#ef4444"/></svg>
+<svg width="12" height="12" viewBox="0 0 12 12" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="5" y="0" width="2" height="1" fill="#fbbf24" opacity="0.7"/><rect x="4" y="1" width="4" height="1" fill="#fbbf24"/><rect x="3" y="2" width="6" height="1" fill="#f59e0b"/><rect x="5" y="2" width="2" height="1" fill="#fbbf24"/><rect x="3" y="3" width="6" height="1" fill="#f59e0b"/><rect x="2" y="4" width="8" height="1" fill="#ef4444"/><rect x="2" y="5" width="8" height="1" fill="#dc2626"/><rect x="3" y="6" width="6" height="1" fill="#b91c1c"/><rect x="2" y="7" width="3" height="1" fill="#5b21b6"/><rect x="7" y="7" width="3" height="1" fill="#5b21b6"/><rect x="3" y="8" width="6" height="1" fill="#4c1d95"/><rect x="1" y="9" width="4" height="1" fill="#3b1280"/><rect x="7" y="9" width="4" height="1" fill="#3b1280"/></svg>
+<svg width="3" height="3" viewBox="0 0 3 3" shape-rendering="crispEdges"><rect x="1" y="0" width="1" height="1" fill="#fbbf24"/><rect x="0" y="1" width="1" height="1" fill="#f59e0b"/><rect x="2" y="1" width="1" height="1" fill="#f59e0b"/><rect x="1" y="2" width="1" height="1" fill="#ef4444"/></svg>
 </div>
 
 <!-- HTTP API & Integrations -->
@@ -459,21 +531,21 @@ Spooktacular
 <span class="title">api-examples.sh</span>
 </div>
 <pre><span class="cmt"># Start the HTTP API server</span>
-<span class="dim">$</span> <span class="cmd">spook serve --port 8080</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">spook serve --port 8080</span>
 
 <span class="cmt"># List all VMs</span>
-<span class="dim">$</span> <span class="cmd">curl http://localhost:8080/vms</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">curl http://localhost:8080/vms</span>
 
 <span class="cmt"># Start a specific VM</span>
-<span class="dim">$</span> <span class="cmd">curl -X POST http://localhost:8080/vms/runner-01/start</span>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">curl -X POST http://localhost:8080/vms/runner-01/start</span>
 
 <span class="cmt"># Get VM status</span>
-<span class="dim">$</span> <span class="cmd">curl http://localhost:8080/vms/runner-01</span></pre>
+<span class="pixel-ghost-prompt"><svg width="12" height="12" viewBox="0 0 8 8" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="0" width="4" height="1" fill="#c4b5fd"/><rect x="1" y="1" width="6" height="1" fill="#d4c2f0"/><rect x="0" y="2" width="8" height="1" fill="#c4b5fd"/><rect x="2" y="2" width="1" height="1" fill="#1a1035"/><rect x="5" y="2" width="1" height="1" fill="#1a1035"/><rect x="0" y="3" width="8" height="1" fill="#a78bfa"/><rect x="0" y="4" width="8" height="1" fill="#8b6ce0"/><rect x="0" y="5" width="2" height="1" fill="#a78bfa"/><rect x="3" y="5" width="2" height="1" fill="#a78bfa"/><rect x="6" y="5" width="2" height="1" fill="#a78bfa"/></svg></span> <span class="cmd">curl http://localhost:8080/vms/runner-01</span></pre>
 </div>
 
 <div class="feat-grid">
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#127760;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="3" width="2" height="1" fill="#c4b5fd"/><rect x="1" y="4" width="2" height="1" fill="#c4b5fd"/><rect x="0" y="5" width="2" height="4" fill="#a78bfa"/><rect x="1" y="9" width="2" height="1" fill="#c4b5fd"/><rect x="2" y="10" width="2" height="1" fill="#c4b5fd"/><rect x="12" y="3" width="2" height="1" fill="#c4b5fd"/><rect x="13" y="4" width="2" height="1" fill="#c4b5fd"/><rect x="14" y="5" width="2" height="4" fill="#a78bfa"/><rect x="13" y="9" width="2" height="1" fill="#c4b5fd"/><rect x="12" y="10" width="2" height="1" fill="#c4b5fd"/><rect x="6" y="5" width="1" height="1" fill="#fbbf24"/><rect x="7" y="6" width="2" height="2" fill="#fbbf24"/><rect x="9" y="8" width="1" height="1" fill="#fbbf24"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>HTTP REST API</h3>
 <p>9 REST endpoints built on Network.framework with Codable request/response types. Control VM lifecycle from any language or CI system.</p>
@@ -481,7 +553,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128187;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="2" width="14" height="12" fill="#1a1035"/><rect x="2" y="3" width="12" height="10" fill="#0f0a1a"/><rect x="3" y="4" width="1" height="1" fill="#c4b5fd"/><rect x="4" y="4" width="1" height="1" fill="#a78bfa"/><rect x="3" y="6" width="1" height="1" fill="#8b6ce0"/><rect x="4" y="6" width="4" height="1" fill="#c4b5fd"/><rect x="3" y="8" width="1" height="1" fill="#8b6ce0"/><rect x="4" y="8" width="3" height="1" fill="#a78bfa"/><rect x="3" y="10" width="2" height="1" fill="#fbbf24"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>14 CLI Commands</h3>
 <p>Create, clone, start, stop, pause, resume, delete, list, get, ip, ssh, exec, snapshot, service, set, share, and serve. 23 including subcommands.</p>
@@ -489,7 +561,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128421;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="2" width="14" height="9" fill="#1a1035"/><rect x="2" y="3" width="12" height="7" fill="#0f0a1a"/><rect x="4" y="5" width="3" height="3" fill="#7c3aed"/><rect x="8" y="5" width="4" height="1" fill="#a78bfa"/><rect x="8" y="7" width="3" height="1" fill="#8b6ce0"/><rect x="6" y="12" width="4" height="1" fill="#c4b5fd"/><rect x="4" y="13" width="8" height="1" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>SwiftUI GUI</h3>
 <p>Native macOS app with NavigationSplitView, inspector panel, and VM creation sheet. Liquid Glass support on macOS 26+.</p>
@@ -497,7 +569,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#9776;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="1" y="1" width="14" height="2" fill="#1a1035"/><rect x="2" y="2" width="1" height="1" fill="#ef4444"/><rect x="4" y="2" width="1" height="1" fill="#fbbf24"/><rect x="6" y="2" width="1" height="1" fill="#6ee7b7"/><rect x="1" y="4" width="14" height="11" fill="#0f0a1a"/><rect x="3" y="6" width="4" height="1" fill="#a78bfa"/><rect x="3" y="8" width="6" height="1" fill="#8b6ce0"/><rect x="3" y="10" width="3" height="1" fill="#a78bfa"/><rect x="3" y="12" width="5" height="1" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Menu Bar Extra</h3>
 <p>Persistent menu bar icon for quick VM status checks and actions without opening the full app.</p>
@@ -505,7 +577,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128218;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="3" y="1" width="10" height="14" fill="#1a1035"/><rect x="4" y="2" width="8" height="12" fill="#0f0a1a"/><rect x="5" y="3" width="6" height="1" fill="#a78bfa"/><rect x="5" y="5" width="6" height="1" fill="#c4b5fd"/><rect x="5" y="7" width="4" height="1" fill="#8b6ce0"/><rect x="5" y="9" width="6" height="1" fill="#a78bfa"/><rect x="5" y="11" width="5" height="1" fill="#c4b5fd"/><rect x="3" y="1" width="1" height="14" fill="#a78bfa"/></svg></span>
 <div class="tag tag-shipped">Shipped</div>
 <h3>Full DocC API Reference</h3>
 <p>Complete API documentation generated from source. Browse types, methods, and articles in the hosted DocC archive.</p>
@@ -513,7 +585,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#128230;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="2" y="2" width="12" height="12" fill="#1a1035"/><rect x="3" y="3" width="10" height="10" fill="#0f0a1a"/><rect x="5" y="5" width="1" height="1" fill="#c4b5fd"/><rect x="7" y="4" width="2" height="1" fill="#6ee7b7"/><rect x="6" y="5" width="4" height="1" fill="#6ee7b7"/><rect x="7" y="6" width="2" height="1" fill="#6ee7b7"/><rect x="8" y="7" width="1" height="1" fill="#6ee7b7"/><rect x="5" y="9" width="6" height="1" fill="#a78bfa"/><rect x="5" y="11" width="6" height="1" fill="#8b6ce0"/></svg></span>
 <div class="tag tag-planned">Planned</div>
 <h3>OCI Registry Push/Pull</h3>
 <p>Push and pull VM images to/from OCI-compliant container registries. On the roadmap, not yet shipped.</p>
@@ -521,7 +593,7 @@ Spooktacular
 </div>
 
 <div class="feature-card">
-<span class="icon" aria-hidden="true">&#9096;</span>
+<span class="icon" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 16 16" shape-rendering="crispEdges" image-rendering="pixelated"><rect x="7" y="1" width="2" height="2" fill="#c4b5fd"/><rect x="4" y="3" width="8" height="1" fill="#a78bfa"/><rect x="3" y="4" width="10" height="1" fill="#8b6ce0"/><rect x="2" y="5" width="12" height="1" fill="#a78bfa"/><rect x="1" y="6" width="14" height="2" fill="#8b6ce0"/><rect x="7" y="6" width="2" height="2" fill="#0f0a1a"/><rect x="2" y="8" width="12" height="1" fill="#a78bfa"/><rect x="3" y="9" width="10" height="1" fill="#8b6ce0"/><rect x="4" y="10" width="8" height="1" fill="#a78bfa"/><rect x="7" y="11" width="2" height="2" fill="#c4b5fd"/><rect x="1" y="7" width="1" height="1" fill="#c4b5fd"/><rect x="14" y="7" width="1" height="1" fill="#c4b5fd"/></svg></span>
 <div class="tag">Shipped</div>
 <h3>Kubernetes Operator</h3>
 <p><code>kubectl apply -f vm.yaml</code> creates macOS VMs. MacOSVM CRD with full spec/status, Helm chart, Swift controller that reconciles via the HTTP API on Mac nodes.</p>
