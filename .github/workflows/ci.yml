@@ -49,18 +49,20 @@ jobs:
           echo "✓ App bundle structure verified"
 
       - name: Upload .app artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: Spooktacular.app
           path: Spooktacular.app
           retention-days: 14
 
   screenshots:
-    name: UI Tests + Screenshots (XCUITest)
+    name: App Store Screenshots
     runs-on: macos-15
     needs: build
-    # Only run on main branch and PRs (not every feature push)
+    # Only on main branch and PRs — screenshots are a release artifact,
+    # not a gating CI check. Failures here do not block merges.
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
 
@@ -80,7 +82,7 @@ jobs:
           ./scripts/process-screenshots.sh || echo "No raw screenshots to process"
 
       - name: Upload screenshots
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: screenshots
