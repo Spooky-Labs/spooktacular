@@ -110,11 +110,12 @@ extension Spook {
             for (name, bundle) in bundles {
                 entries.append([
                     "name": name,
+                    "running": PIDFile.isRunning(bundleURL: bundle.url),
                     "cpu": bundle.spec.cpuCount,
                     "memorySizeInGigabytes": bundle.spec.memorySizeInGigabytes,
                     "diskSizeInGigabytes": bundle.spec.diskSizeInGigabytes,
                     "displays": bundle.spec.displayCount,
-                    "network": "\(bundle.spec.networkMode)",
+                    "network": bundle.spec.networkMode.serialized,
                     "audio": bundle.spec.audioEnabled,
                     "setupCompleted": bundle.metadata.setupCompleted,
                     "id": bundle.metadata.id.uuidString,

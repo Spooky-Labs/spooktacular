@@ -130,7 +130,6 @@ struct VMInspectorView: View {
             networkSection
             audioSection
             sharedFoldersSection
-            provisioningSection
             storageSection
         }
         .formStyle(.grouped)
@@ -208,7 +207,7 @@ struct VMInspectorView: View {
     @ViewBuilder
     private var networkSection: some View {
         Section("Network") {
-            LabeledContent("Mode", value: networkLabel)
+            LabeledContent("Mode", value: bundle.spec.networkMode.serialized)
                 .accessibilityElement(children: .combine)
         }
     }
@@ -264,25 +263,6 @@ struct VMInspectorView: View {
         }
     }
 
-    // MARK: - Provisioning
-
-    @ViewBuilder
-    private var provisioningSection: some View {
-        Section("Provisioning") {
-            LabeledContent("Setup") {
-                Image(systemName: bundle.metadata.setupCompleted
-                      ? "checkmark.circle.fill" : "circle.dashed")
-                .foregroundStyle(
-                    bundle.metadata.setupCompleted ? .green : .secondary
-                )
-            }
-            .accessibilityLabel("Setup status")
-            .accessibilityValue(
-                bundle.metadata.setupCompleted ? "Complete" : "Pending"
-            )
-        }
-    }
-
     // MARK: - Storage
 
     @ViewBuilder
@@ -314,7 +294,4 @@ struct VMInspectorView: View {
         .accessibilityValue(enabled ? "Enabled" : "Disabled")
     }
 
-    private var networkLabel: String {
-        bundle.spec.networkMode.serialized
-    }
 }

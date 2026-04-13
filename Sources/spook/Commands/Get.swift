@@ -143,7 +143,7 @@ extension Spook {
             case "memory": print(spec.memorySizeInGigabytes)
             case "disk": print(spec.diskSizeInGigabytes)
             case "displays": print(spec.displayCount)
-            case "network": print(Style.networkRaw(spec.networkMode))
+            case "network": print(spec.networkMode.serialized)
             case "audio": print(spec.audioEnabled)
             case "microphone": print(spec.microphoneEnabled)
             case "id": print(metadata.id.uuidString)

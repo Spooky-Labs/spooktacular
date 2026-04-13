@@ -5,7 +5,6 @@ import SpooktacularKit
 struct SidebarView: View {
 
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     @Binding var searchText: String
     @State private var confirmDelete: String?

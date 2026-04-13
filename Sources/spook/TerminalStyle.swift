@@ -211,11 +211,6 @@ enum Style {
         }
     }
 
-    /// Raw (unstyled) label for a network mode, for machine output.
-    static func networkRaw(_ mode: NetworkMode) -> String {
-        mode.serialized
-    }
-
     // MARK: - Private
 
     private static func styled(_ text: String, codes: String) -> String {

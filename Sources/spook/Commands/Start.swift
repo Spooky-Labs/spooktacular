@@ -1,8 +1,8 @@
+import AppKit
 import ArgumentParser
 import Foundation
 import SpooktacularKit
 @preconcurrency import Virtualization
-import AppKit
 
 extension Spook {
 
