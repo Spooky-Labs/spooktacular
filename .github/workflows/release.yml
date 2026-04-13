@@ -9,7 +9,7 @@ jobs:
     name: Build, Notarize & Submit to App Store
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Fastlane
         run: gem install fastlane

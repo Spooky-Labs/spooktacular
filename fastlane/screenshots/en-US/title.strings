@@ -1,0 +1,4 @@
+"01_empty_state" = "Get started in seconds. Create your first VM with one command.";
+"02_create_vm_sheet" = "Full control over CPU, memory, disk, network, and shared folders.";
+"03_vm_list" = "Run 2 VMs per host. Double your CI capacity at zero cost.";
+"04_menu_bar" = "Quick access from the menu bar. Start, stop, and monitor VMs instantly.";

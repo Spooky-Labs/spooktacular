@@ -130,7 +130,16 @@ platform :mac do
     # Post-process for App Store sizes
     sh("cd .. && chmod +x scripts/process-screenshots.sh && ./scripts/process-screenshots.sh")
 
-    UI.success("Screenshots captured and processed.")
+    # Add device frames and promotional text using frameit.
+    # Configuration lives in screenshots/Framefile.json with
+    # per-screenshot titles in en-US/title.strings.
+    frameit(
+      path: "./screenshots",
+      white: false,
+      force_orientation_block: proc { |_| :portrait }
+    )
+
+    UI.success("Screenshots captured, processed, and framed.")
     UI.message("Output: fastlane/screenshots/en-US/")
   end
 

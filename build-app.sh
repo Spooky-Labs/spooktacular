@@ -32,7 +32,10 @@ echo "Compiling..."
 swift build $CONFIG_FLAG --target "$APP_NAME"
 swift build $CONFIG_FLAG --target "$CLI_NAME"
 
-BINARY_DIR="$PROJECT_DIR/.build/$MODE"
+# Use swift's own --show-bin-path for the correct output directory,
+# which varies across platforms (e.g. .build/release vs
+# .build/arm64-apple-macosx/release).
+BINARY_DIR="$(swift build $CONFIG_FLAG --show-bin-path)"
 
 # 2. Generate icon if missing
 ICNS="$PROJECT_DIR/Resources/AppIcon.icns"

@@ -1,0 +1,55 @@
+{
+  "default": {
+    "title": {
+      "color": "#FFFFFF",
+      "font_size": 64,
+      "padding": 40
+    },
+    "keyword": {
+      "color": "#6B5CE7",
+      "font_size": 48
+    },
+    "background": "#1A1A2E",
+    "padding": 60,
+    "show_complete_frame": false,
+    "stack_title": true
+  },
+  "data": [
+    {
+      "filter": "01_empty_state",
+      "keyword": {
+        "text": "SIMPLE"
+      },
+      "title": {
+        "text": "Get started in seconds.\nCreate your first VM with one command."
+      }
+    },
+    {
+      "filter": "02_create_vm_sheet",
+      "keyword": {
+        "text": "POWERFUL"
+      },
+      "title": {
+        "text": "Full control over CPU, memory, disk,\nnetwork, and shared folders."
+      }
+    },
+    {
+      "filter": "03_vm_list",
+      "keyword": {
+        "text": "EFFICIENT"
+      },
+      "title": {
+        "text": "Run 2 VMs per host.\nDouble your CI capacity at zero cost."
+      }
+    },
+    {
+      "filter": "04_menu_bar",
+      "keyword": {
+        "text": "ACCESSIBLE"
+      },
+      "title": {
+        "text": "Quick access from the menu bar.\nStart, stop, and monitor VMs instantly."
+      }
+    }
+  ]
+}
