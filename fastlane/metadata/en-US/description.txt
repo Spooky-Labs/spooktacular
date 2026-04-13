@@ -1,40 +1,37 @@
-Spooktacular is the easiest way to create and manage macOS virtual machines on Apple Silicon. Built for enterprise teams and individual developers alike.
+Spooktacular is the fastest way to create, provision, and manage macOS virtual machines on Apple Silicon. Built on Apple's Virtualization.framework for native performance, it serves enterprise CI/CD teams and individual developers with equal ease.
 
 CREATE VMs IN SECONDS
-Spin up macOS virtual machines from IPSW restore images. Every VM is a clean, isolated macOS environment.
+Spin up macOS virtual machines from IPSW restore images with automatic download and verification. Unattended Setup Assistant automation completes initial configuration hands-free on macOS 15 and macOS 26. Instant APFS copy-on-write cloning lets you stamp out identical VMs without duplicating disk space.
 
-DOUBLE YOUR CI CAPACITY
-Run 2 VMs per Mac — instantly double your GitHub Actions, Buildkite, or CircleCI runner capacity on the same hardware. Cut your EC2 Mac costs in half.
+4 PROVISIONING MODES
+- SSH: Execute user-data scripts with real-time output streaming
+- Disk-inject: Write files directly into the VM disk image
+- VirtIO socket: Communicate via the built-in guest agent
+- Shared-folder: Drop scripts into a watched folder for automatic execution
 
-ENTERPRISE-READY
-Full CLI for automation, full GUI for visibility. Manage headless servers with the built-in LaunchDaemon service.
+TEMPLATES FOR COMMON WORKFLOWS
+Run --github-runner, --remote-desktop, or --openclaw to generate turnkey provisioning scripts. GitHub Actions runners support ephemeral mode: the VM auto-destroys when the job completes, giving every build a pristine environment.
 
-PROVISIONING
-Two provisioning modes today: SSH-based user-data execution with output streaming, and disk-inject (in progress). Two more planned: guest agent and shared-folder watcher.
+KUBERNETES OPERATOR
+Deploy MacOSVM custom resources via the included Helm chart. The Swift-based controller reconciles desired state, provisions runners, and manages the full VM lifecycle from your cluster.
 
-TEMPLATES
-Built-in templates for GitHub Actions runners, remote desktop, and OpenClaw generate setup scripts you apply via the CLI. Create the VM, then start it with --user-data and --provision ssh.
+HTTP API
+9 REST endpoints expose every VM operation for integration with your own tooling, dashboards, or orchestration systems.
 
-BUILT ON APPLE'S VIRTUALIZATION FRAMEWORK
-Native Apple Silicon performance. Metal GPU acceleration for ML workloads. VirtIO networking, shared folders, and audio. Save and restore VM disk snapshots.
+NETWORKING AND SNAPSHOTS
+Choose NAT, bridged, or isolated networking per VM. Save and restore disk-level snapshots to checkpoint work or roll back changes instantly.
 
-KEY FEATURES
-- Create VMs from IPSW restore images
-- Instant APFS copy-on-write cloning
-- SSH provisioning with user-data scripts
-- IP resolution via DHCP leases and ARP table
-- GitHub Actions runner template (generates setup script)
-- Remote desktop template (generates Screen Sharing setup script)
-- NAT, bridged, and isolated networking
-- Save/restore disk-level VM snapshots
-- 2-VM capacity enforcement
-- LaunchDaemon service for headless operation
-- Menu bar quick access
-- Full CLI with styled terminal output
-- Accessibility: complete VoiceOver support
+HEADLESS AND GUI
+A native SwiftUI app with Liquid Glass design (macOS 26+) provides full visibility into every VM. A menu bar extra offers quick access. For servers, per-VM LaunchDaemon services keep VMs running unattended. The bundled CLI (spook) exposes 14 commands with --json output, --field extraction, and NO_COLOR support.
+
+ACCESSIBILITY
+Full VoiceOver support throughout the GUI. Every control, every state change, every notification is accessible.
+
+318 TESTS
+Comprehensive test coverage across the entire stack.
 
 PERFECT FOR
 - CI/CD runners (GitHub Actions, Buildkite, CircleCI)
 - macOS development and testing across versions
-- ML training and inference on Apple Silicon
 - Remote development environments
+- Kubernetes-managed Mac infrastructure

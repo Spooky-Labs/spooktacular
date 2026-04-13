@@ -1,1 +1,1 @@
-virtualization,virtual machine,vm,macos,developer,ci,runner,github,kubernetes,enterprise
+virtualization,vm,macos,ci,runner,github actions,kubernetes,enterprise,devops,clone

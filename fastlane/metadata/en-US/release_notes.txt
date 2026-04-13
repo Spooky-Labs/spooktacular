@@ -1,37 +1,45 @@
-v1.0.0 - Initial Release
+v0.1.0 - First Beta
 
 VM Lifecycle
-- Create macOS VMs from IPSW restore images
-- Instant APFS copy-on-write cloning with new MachineIdentifier
-- Start/stop VMs with PID tracking and graceful SIGTERM shutdown
-- 2-VM capacity enforcement (Apple Silicon kernel limit)
+- Create macOS VMs from IPSW restore images with automatic download
+- Unattended Setup Assistant automation (macOS 15 and macOS 26)
+- Instant APFS copy-on-write cloning with unique MachineIdentifier
+- Start, stop, and destroy VMs with PID tracking and graceful shutdown
+- Disk-level snapshot save and restore
 
 Provisioning
-- SSH-based user-data execution with real-time output streaming
+- 4 modes: SSH, disk-inject, VirtIO socket (guest agent), shared-folder
+- SSH user-data execution with real-time output streaming
 - IP resolution via DHCP leases and ARP table
-- Setup Assistant keyboard automation (macOS 15 and 26)
 
 Templates
-- --github-runner, --remote-desktop, and --openclaw generate provisioning scripts
-- Apply scripts via the 2-step flow: generate, then start with --user-data --provision ssh
+- --github-runner: GitHub Actions runner with ephemeral mode (auto-destroy on stop)
+- --remote-desktop: Screen Sharing setup
+- --openclaw: OpenClaw environment
 
-Snapshots
-- Save and restore disk-level VM snapshots
+Kubernetes Operator
+- MacOSVM custom resource definition
+- Helm chart for deployment
+- Swift-based controller with full reconciliation loop
+
+HTTP API
+- 9 REST endpoints for VM lifecycle, provisioning, and status
 
 Networking
-- NAT (default), bridged (with entitlement), isolated (zero network)
+- NAT (default), bridged, and isolated networking modes
 
 Service
-- spook service install creates a LaunchDaemon for headless servers
+- Per-VM LaunchDaemon service generation for headless operation
 - Shared folder mount persistence across reboots
 
 CLI
-- 16 commands with styled ANSI output
+- 14 commands with styled ANSI output
 - --json for automation, --field for scripting, NO_COLOR support
 
 GUI
-- Native SwiftUI app with NavigationSplitView
-- Inspector panel with progressive disclosure
-- Liquid Glass UI on macOS 26+
+- Native SwiftUI app with Liquid Glass design (macOS 26+)
 - Menu bar extra for quick access
-- Full VoiceOver and WCAG 2.1 accessibility
+- Full VoiceOver and accessibility support
+
+Testing
+- 318 tests across the full stack

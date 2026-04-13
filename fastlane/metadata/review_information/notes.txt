@@ -1,1 +1,16 @@
-Spooktacular uses Apple's Virtualization.framework (com.apple.security.virtualization entitlement) to create and manage macOS virtual machines on Apple Silicon Macs. The app requires the virtualization entitlement to function. No VMs can be created on Intel Macs. The app is a native SwiftUI application with a companion CLI tool.
+Spooktacular creates and manages macOS virtual machines using Apple's Virtualization.framework. It requires the com.apple.security.virtualization entitlement to function.
+
+The app works only on Apple Silicon Macs. It cannot create VMs on Intel hardware.
+
+What the app does:
+- Creates macOS VMs from IPSW restore images (downloaded automatically)
+- Automates the Setup Assistant so VMs reach a usable desktop unattended
+- Provisions VMs via SSH, disk-inject, VirtIO socket, or shared-folder
+- Provides templates for GitHub Actions runners, remote desktop, and OpenClaw
+- Exposes an HTTP API (9 REST endpoints) for automation
+- Includes a Kubernetes operator for orchestrating VMs at scale
+- Saves and restores disk-level snapshots
+
+The app ships both a SwiftUI GUI and a bundled CLI tool called "spook" (installed to /usr/local/bin). The CLI exposes 14 commands for scripting and headless server management. A per-VM LaunchDaemon service keeps VMs running unattended on headless servers.
+
+No account login or network service is required. All VM operations are local to the Mac. The app does not collect user data.
