@@ -21,11 +21,31 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
+  # Package — Create .pkg from .app
+  # ──────────────────────────────────────────────────
+
+  desc "Package the .app into a signed .pkg for App Store submission"
+  lane :package do
+    # App Store Connect and TestFlight require .pkg for macOS,
+    # not a raw .app bundle. Use productbuild to create an
+    # installer package with the app placed in /Applications.
+    sh(
+      "cd .. && productbuild " \
+      "--component Spooktacular.app /Applications " \
+      "--sign '#{ENV["INSTALLER_CERT_NAME"] || "-"}' " \
+      "Spooktacular.pkg"
+    )
+    UI.success("Package created: Spooktacular.pkg")
+  end
+
+  # ──────────────────────────────────────────────────
   # Code Signing — match
   # ──────────────────────────────────────────────────
 
   desc "Sync code-signing certificates and profiles via match"
   lane :signing do
+    setup_ci if ENV['CI']
+
     api_key = get_api_key
     match(
       api_key: api_key,
@@ -51,18 +71,20 @@ platform :mac do
   # Beta — TestFlight
   # ──────────────────────────────────────────────────
 
-  desc "Build and upload to TestFlight"
+  desc "Build, package, and upload to TestFlight"
   lane :beta do |options|
     test
     signing
     build
+    package
 
     api_key = get_api_key
 
     pilot(
       api_key: api_key,
       app_identifier: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
-      pkg: "../Spooktacular.app",
+      app_platform: "osx",
+      pkg: "../Spooktacular.pkg",
       skip_submission: false,
       skip_waiting_for_build_processing: true,
       changelog: options[:changelog] || "Bug fixes and improvements."
@@ -73,21 +95,23 @@ platform :mac do
   # Release — App Store
   # ──────────────────────────────────────────────────
 
-  desc "Build and submit to the App Store"
+  desc "Build, notarize, and submit to the App Store"
   lane :release do |options|
     test
     signing
     build
     notarize_app
+    package
 
     api_key = get_api_key
 
     deliver(
       api_key: api_key,
       app_identifier: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
+      app_platform: "osx",
       metadata_path: "./metadata",
       screenshots_path: "./screenshots",
-      pkg: "../Spooktacular.app",
+      pkg: "../Spooktacular.pkg",
       skip_binary_upload: false,
       skip_metadata: false,
       skip_screenshots: false,
@@ -119,20 +143,15 @@ platform :mac do
 
   desc "Capture and process App Store screenshots"
   lane :screenshots do
-    # Build the app bundle first
     build
 
-    # Capture screenshots using our script
-    # (XCUITest-based capture requires Xcode project;
-    #  this uses the shell-based approach for SwiftPM)
+    # Shell-based capture (SwiftPM projects don't have an Xcode
+    # project for XCUITest / Fastlane snapshot).
     sh("cd .. && chmod +x scripts/capture-screenshots.sh && ./scripts/capture-screenshots.sh")
-
-    # Post-process for App Store sizes
     sh("cd .. && chmod +x scripts/process-screenshots.sh && ./scripts/process-screenshots.sh")
 
-    # Add device frames and promotional text using frameit.
-    # Configuration lives in screenshots/Framefile.json with
-    # per-screenshot titles in en-US/title.strings.
+    # Add device frames and promotional text via frameit.
+    # Config: screenshots/Framefile.json + en-US/title.strings
     frameit(
       path: "./screenshots",
       white: false,
@@ -180,10 +199,10 @@ platform :mac do
   end
 
   after_all do |lane|
-    UI.success("✅ Lane '#{lane}' completed successfully.")
+    UI.success("Lane '#{lane}' completed successfully.")
   end
 
   error do |lane, exception|
-    UI.error("❌ Lane '#{lane}' failed: #{exception.message}")
+    UI.error("Lane '#{lane}' failed: #{exception.message}")
   end
 end
