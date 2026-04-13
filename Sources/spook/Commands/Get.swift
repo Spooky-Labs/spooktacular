@@ -89,7 +89,7 @@ extension Spook {
 
             // Network
             Style.header("  ⬡ Network")
-            Style.field("Mode", networkLabel(spec.networkMode))
+            Style.field("Mode", spec.networkMode.serialized)
             if let mac = spec.macAddress {
                 Style.field("MAC address", Style.dim(mac))
             } else {
@@ -155,12 +155,5 @@ extension Spook {
             }
         }
 
-        private func networkLabel(_ mode: NetworkMode) -> String {
-            switch mode {
-            case .nat: "NAT" + Style.dim(" (shared)")
-            case .bridged(let interface): Style.info("bridged") + Style.dim(":\(interface)")
-            case .isolated: Style.yellow("isolated")
-            }
-        }
     }
 }

@@ -62,7 +62,7 @@ public enum DiskInjector {
     ///   - bundle: The target VM bundle (must contain `disk.img`).
     /// - Throws: ``DiskInjectorError`` if mounting, writing, or unmounting fails.
     public static func inject(script scriptURL: URL, into bundle: VirtualMachineBundle) throws {
-        let diskPath = bundle.url.appendingPathComponent("disk.img").path
+        let diskPath = bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName).path
 
         guard FileManager.default.fileExists(atPath: diskPath) else {
             throw DiskInjectorError.diskImageNotFound(path: diskPath)

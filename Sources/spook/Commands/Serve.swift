@@ -49,13 +49,13 @@ extension Spook {
         )
 
         @Option(help: "TCP port to listen on.")
-        var port: Int = 8484
+        var port: Int = Int(HTTPAPIServer.defaultPort)
 
         @Option(help: "Host address to bind to. Use 0.0.0.0 for all interfaces.")
         var host: String = "127.0.0.1"
 
         @Option(help: "Path to the spook binary for spawning VM processes.")
-        var spookPath: String = ProcessInfo.processInfo.environment["SPOOK_PATH"] ?? "/usr/local/bin/spook"
+        var spookPath: String = ProcessInfo.processInfo.environment["SPOOK_PATH"] ?? HTTPAPIServer.defaultSpookPath
 
         func run() async throws {
             try SpooktacularPaths.ensureDirectories()

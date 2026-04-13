@@ -76,7 +76,10 @@ public enum SnapshotManager {
     public static let infoFileName = "snapshot-info.json"
 
     /// Files that are copied from the bundle into each snapshot.
-    private static let snapshotFiles = ["disk.img", "auxiliary.bin"]
+    private static let snapshotFiles = [
+        VirtualMachineBundle.diskImageFileName,
+        VirtualMachineBundle.auxiliaryStorageFileName,
+    ]
 
     // MARK: - Save
 
@@ -107,7 +110,7 @@ public enum SnapshotManager {
         }
 
         // Verify disk.img exists before creating anything.
-        let diskURL = bundle.url.appendingPathComponent("disk.img")
+        let diskURL = bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
         guard fileManager.fileExists(atPath: diskURL.path) else {
             Log.snapshot.error("Snapshot failed: disk.img not found at \(diskURL.path, privacy: .public)")
             throw SnapshotError.fileNotFound(path: diskURL.path)

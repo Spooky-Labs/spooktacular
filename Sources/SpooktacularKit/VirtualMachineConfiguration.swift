@@ -171,7 +171,7 @@ public enum VirtualMachineConfiguration {
         let platform = VZMacPlatformConfiguration()
 
         let hardwareModelData = try Data(
-            contentsOf: bundle.url.appendingPathComponent("hardware-model.bin")
+            contentsOf: bundle.url.appendingPathComponent(VirtualMachineBundle.hardwareModelFileName)
         )
         guard let hardwareModel = VZMacHardwareModel(dataRepresentation: hardwareModelData) else {
             Log.config.error("Invalid hardware model in \(bundle.url.lastPathComponent, privacy: .public)")
@@ -180,7 +180,7 @@ public enum VirtualMachineConfiguration {
         platform.hardwareModel = hardwareModel
 
         let machineIdentifierData = try Data(
-            contentsOf: bundle.url.appendingPathComponent("machine-identifier.bin")
+            contentsOf: bundle.url.appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
         )
         guard let machineIdentifier = VZMacMachineIdentifier(
             dataRepresentation: machineIdentifierData
@@ -190,7 +190,7 @@ public enum VirtualMachineConfiguration {
         }
         platform.machineIdentifier = machineIdentifier
 
-        let auxiliaryStorageURL = bundle.url.appendingPathComponent("auxiliary.bin")
+        let auxiliaryStorageURL = bundle.url.appendingPathComponent(VirtualMachineBundle.auxiliaryStorageFileName)
         platform.auxiliaryStorage = try VZMacAuxiliaryStorage(contentsOf: auxiliaryStorageURL)
 
         configuration.platform = platform
@@ -207,7 +207,7 @@ public enum VirtualMachineConfiguration {
         to configuration: VZVirtualMachineConfiguration
     ) throws {
         Log.config.debug("Attaching disk image from \(bundle.url.lastPathComponent, privacy: .public)")
-        let diskURL = bundle.url.appendingPathComponent("disk.img")
+        let diskURL = bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
         let attachment = try VZDiskImageStorageDeviceAttachment(
             url: diskURL,
             readOnly: false

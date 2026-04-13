@@ -93,10 +93,7 @@ extension Spook.Share {
             let updatedSpec = bundle.spec.withSharedFolders(
                 bundle.spec.sharedFolders + [newFolder]
             )
-            let configData = try VirtualMachineBundle.encoder.encode(updatedSpec)
-            try configData.write(
-                to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName)
-            )
+            try VirtualMachineBundle.writeSpec(updatedSpec, to: bundleURL)
 
             print(Style.success("✓ Added shared folder '\(shareTag)' to VM '\(name)'."))
             Style.field("Path", path)
@@ -140,10 +137,7 @@ extension Spook.Share {
             }
 
             let updatedSpec = bundle.spec.withSharedFolders(filtered)
-            let configData = try VirtualMachineBundle.encoder.encode(updatedSpec)
-            try configData.write(
-                to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName)
-            )
+            try VirtualMachineBundle.writeSpec(updatedSpec, to: bundleURL)
 
             print(Style.success("✓ Removed shared folder '\(tag)' from VM '\(name)'."))
             print(Style.dim("Changes take effect on next 'spook start \(name)'."))

@@ -45,20 +45,32 @@ public struct VirtualMachineBundle: Sendable {
     /// File name for the VM runtime metadata.
     public static let metadataFileName = "metadata.json"
 
+    /// File name for the APFS sparse disk image.
+    public static let diskImageFileName = "disk.img"
+
+    /// File name for the `VZMacAuxiliaryStorage` data.
+    public static let auxiliaryStorageFileName = "auxiliary.bin"
+
+    /// File name for the `VZMacHardwareModel` data.
+    public static let hardwareModelFileName = "hardware-model.bin"
+
+    /// File name for the `VZMacMachineIdentifier` data.
+    public static let machineIdentifierFileName = "machine-identifier.bin"
+
     /// A JSON encoder configured for bundle files.
-    public static var encoder: JSONEncoder {
+    public static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         return encoder
-    }
+    }()
 
     /// A JSON decoder configured for bundle files.
-    public static var decoder: JSONDecoder {
+    public static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
-    }
+    }()
 
     // MARK: - Properties
 
@@ -113,6 +125,19 @@ public struct VirtualMachineBundle: Sendable {
     }
 
     // MARK: - Updating Bundles
+
+    /// Writes updated specification to an existing bundle directory.
+    ///
+    /// Replaces the `config.json` file in the bundle at the
+    /// given URL with the provided specification.
+    ///
+    /// - Parameters:
+    ///   - spec: The updated specification to write.
+    ///   - bundleURL: The file URL of the `.vm` bundle directory.
+    public static func writeSpec(_ spec: VirtualMachineSpecification, to bundleURL: URL) throws {
+        let data = try encoder.encode(spec)
+        try data.write(to: bundleURL.appendingPathComponent(configFileName))
+    }
 
     /// Writes updated metadata to an existing bundle directory.
     ///

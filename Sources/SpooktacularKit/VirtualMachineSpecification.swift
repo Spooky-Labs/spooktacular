@@ -1,5 +1,22 @@
 import Foundation
 
+// MARK: - UInt64 Convenience
+
+public extension UInt64 {
+    /// Converts gigabytes to bytes.
+    ///
+    /// Uses wrapping multiplication (`&*`) to avoid trapping on
+    /// impossibly large values, though in practice VM memory and
+    /// disk sizes are well within range.
+    ///
+    /// ```swift
+    /// let eightGiB = UInt64.gigabytes(8) // 8_589_934_592
+    /// ```
+    static func gigabytes(_ value: some BinaryInteger) -> UInt64 {
+        UInt64(value) &* 1_073_741_824
+    }
+}
+
 /// A directory shared between the host and the virtual machine.
 ///
 /// Each `SharedFolder` maps a host directory to a mount point
@@ -304,5 +321,26 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     /// The disk size in whole gigabytes (GiB).
     public var diskSizeInGigabytes: UInt64 {
         diskSizeInBytes / (1024 * 1024 * 1024)
+    }
+}
+
+// MARK: - UInt64 Convenience
+
+extension UInt64 {
+
+    /// Returns the number of bytes in the given number of gibibytes (GiB).
+    ///
+    /// One gibibyte is 1,073,741,824 bytes (1024^3). This helper
+    /// eliminates magic-number multiplication when specifying memory
+    /// and disk sizes.
+    ///
+    /// ```swift
+    /// let eightGiB = UInt64.gigabytes(8) // 8_589_934_592
+    /// ```
+    ///
+    /// - Parameter count: The number of gibibytes.
+    /// - Returns: The equivalent byte count.
+    public static func gigabytes(_ count: UInt64) -> UInt64 {
+        count * 1024 * 1024 * 1024
     }
 }

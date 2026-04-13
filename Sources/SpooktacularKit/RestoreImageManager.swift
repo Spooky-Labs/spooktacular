@@ -160,21 +160,21 @@ public final class RestoreImageManager: Sendable {
         let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
 
         try requirements.hardwareModel.dataRepresentation.write(
-            to: bundleURL.appendingPathComponent("hardware-model.bin")
+            to: bundleURL.appendingPathComponent(VirtualMachineBundle.hardwareModelFileName)
         )
 
         let machineIdentifier = VZMacMachineIdentifier()
         try machineIdentifier.dataRepresentation.write(
-            to: bundleURL.appendingPathComponent("machine-identifier.bin")
+            to: bundleURL.appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
         )
 
         _ = try VZMacAuxiliaryStorage(
-            creatingStorageAt: bundleURL.appendingPathComponent("auxiliary.bin"),
+            creatingStorageAt: bundleURL.appendingPathComponent(VirtualMachineBundle.auxiliaryStorageFileName),
             hardwareModel: requirements.hardwareModel,
             options: []
         )
 
-        let diskURL = bundleURL.appendingPathComponent("disk.img")
+        let diskURL = bundleURL.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
         try createSparseImage(at: diskURL, sizeInBytes: spec.diskSizeInBytes)
 
         Log.ipsw.notice("Bundle '\(name, privacy: .public)' created with platform artifacts")

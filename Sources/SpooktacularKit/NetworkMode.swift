@@ -74,4 +74,16 @@ public enum NetworkMode: Sendable, Codable, Equatable, Hashable {
     /// socket device (`VZVirtioSocketDeviceConfiguration`), which
     /// is always attached regardless of network mode.
     case isolated
+
+    /// A stable, machine-readable string representation of this network mode.
+    ///
+    /// Returns `"nat"`, `"bridged:<interface>"`, or `"isolated"`.
+    /// Use this for serialization, JSON APIs, and CLI `--field` output.
+    public var serialized: String {
+        switch self {
+        case .nat: "nat"
+        case .bridged(let interface): "bridged:\(interface)"
+        case .isolated: "isolated"
+        }
+    }
 }

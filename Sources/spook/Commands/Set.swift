@@ -68,7 +68,7 @@ extension Spook {
 
             let newSpec = oldSpec.with(
                 cpuCount: cpu,
-                memorySizeInBytes: memory.map { UInt64($0) * 1024 * 1024 * 1024 },
+                memorySizeInBytes: memory.map { .gigabytes($0) },
                 displayCount: displays,
                 networkMode: network,
                 audioEnabled: audio,
@@ -76,8 +76,7 @@ extension Spook {
                 autoResizeDisplay: autoResize
             )
 
-            let data = try VirtualMachineBundle.encoder.encode(newSpec)
-            try data.write(to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName))
+            try VirtualMachineBundle.writeSpec(newSpec, to: bundleURL)
 
             print(Style.success("✓ Updated VM '\(name)' configuration."))
 

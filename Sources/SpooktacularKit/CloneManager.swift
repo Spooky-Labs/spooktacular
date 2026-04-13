@@ -35,9 +35,9 @@ public enum CloneManager {
 
     /// Files that are copied verbatim from source to clone.
     private static let filesToCopy = [
-        "disk.img",
-        "auxiliary.bin",
-        "hardware-model.bin",
+        VirtualMachineBundle.diskImageFileName,
+        VirtualMachineBundle.auxiliaryStorageFileName,
+        VirtualMachineBundle.hardwareModelFileName,
     ]
 
     /// Clones a VM bundle to a new location.
@@ -91,7 +91,7 @@ public enum CloneManager {
             Log.clone.debug("Generating new VZMacMachineIdentifier for clone")
             let newIdentifier = VZMacMachineIdentifier()
             try newIdentifier.dataRepresentation.write(
-                to: destination.appendingPathComponent("machine-identifier.bin")
+                to: destination.appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
             )
 
             let spec = source.spec

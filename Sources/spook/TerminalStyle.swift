@@ -213,11 +213,7 @@ enum Style {
 
     /// Raw (unstyled) label for a network mode, for machine output.
     static func networkRaw(_ mode: NetworkMode) -> String {
-        switch mode {
-        case .nat: "nat"
-        case .bridged(let interface): "bridged:\(interface)"
-        case .isolated: "isolated"
-        }
+        mode.serialized
     }
 
     // MARK: - Private

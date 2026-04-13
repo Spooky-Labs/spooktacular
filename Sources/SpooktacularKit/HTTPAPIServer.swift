@@ -58,6 +58,14 @@ import os
 /// the actor for safe mutation.
 public actor HTTPAPIServer {
 
+    // MARK: - Defaults
+
+    /// The default TCP port for the HTTP API server.
+    public static let defaultPort: UInt16 = 8484
+
+    /// The default path to the `spook` binary.
+    public static let defaultSpookPath: String = "/usr/local/bin/spook"
+
     // MARK: - Properties
 
     /// The NWListener that accepts incoming TCP connections.
@@ -92,11 +100,15 @@ public actor HTTPAPIServer {
     ///   - spookPath: The absolute path to the `spook` binary for
     ///     spawning VM processes. Defaults to `/usr/local/bin/spook`.
     /// - Throws: `NWError` if the listener cannot be created.
-    public init(host: String, port: UInt16, vmDirectory: URL, spookPath: String = "/usr/local/bin/spook") throws {
+    public init(host: String, port: UInt16 = 8484, vmDirectory: URL, spookPath: String = "/usr/local/bin/spook") throws {
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            throw HTTPAPIServerError.invalidPort(port)
+        }
+
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(host),
-            port: NWEndpoint.Port(rawValue: port)!
+            port: nwPort
         )
 
         self.listener = try NWListener(using: parameters)
@@ -686,13 +698,6 @@ public actor HTTPAPIServer {
         let spec = bundle.spec
         let metadata = bundle.metadata
 
-        let network: String
-        switch spec.networkMode {
-        case .nat: network = "nat"
-        case .bridged(let interface): network = "bridged:\(interface)"
-        case .isolated: network = "isolated"
-        }
-
         return VMStatus(
             name: name,
             running: PIDFile.isRunning(bundleURL: bundle.url),
@@ -700,7 +705,7 @@ public actor HTTPAPIServer {
             memorySizeInGigabytes: spec.memorySizeInGigabytes,
             diskSizeInGigabytes: spec.diskSizeInGigabytes,
             displays: spec.displayCount,
-            network: network,
+            network: spec.networkMode.serialized,
             audio: spec.audioEnabled,
             microphone: spec.microphoneEnabled,
             macAddress: spec.macAddress,
@@ -988,6 +993,9 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
     /// The port is already in use.
     case portInUse(UInt16)
 
+    /// The port number is invalid (e.g., 0).
+    case invalidPort(UInt16)
+
     public var errorDescription: String? {
         switch self {
         case .malformedRequest:
@@ -996,6 +1004,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Server was cancelled."
         case .portInUse(let port):
             "Port \(port) is already in use."
+        case .invalidPort(let port):
+            "Invalid port number: \(port)."
         }
     }
 }

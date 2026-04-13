@@ -221,8 +221,8 @@ extension Spook {
 
             let spec = VirtualMachineSpecification(
                 cpuCount: cpu,
-                memorySizeInBytes: UInt64(memory) * 1024 * 1024 * 1024,
-                diskSizeInBytes: UInt64(disk) * 1024 * 1024 * 1024,
+                memorySizeInBytes: .gigabytes(memory),
+                diskSizeInBytes: .gigabytes(disk),
                 displayCount: displays,
                 networkMode: effectiveNetwork,
                 audioEnabled: audio,
@@ -377,6 +377,8 @@ extension Spook {
 
         /// Boots the VM headless, waits for SSH, executes the script, and stops the VM.
         ///
+        /// Delegates the resolve-wait-execute sequence to
+        /// ``VMProvisioner/provisionViaSSH(macAddress:script:user:key:timeout:pollInterval:)``.
         /// If provisioning fails, the VM bundle is left intact so the user
         /// can debug manually. Only the provisioning step is reported as
         /// failed -- the VM creation itself already succeeded.
@@ -398,43 +400,24 @@ extension Spook {
 
             // Use a do/catch so the VM is always stopped, even on failure.
             do {
-                // 2. Resolve the VM's IP address by polling DHCP/ARP.
-                logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
                 print(Style.info("Resolving VM IP address..."))
-                guard let ip = try await resolveIPWithRetry(
+                let ip = try await VMProvisioner.provisionViaSSH(
                     macAddress: macAddress,
+                    script: script,
+                    user: sshUser,
+                    key: sshKey,
                     timeout: 120
-                ) else {
-                    logger.error("Failed to resolve IP for MAC \(macAddress, privacy: .public)")
+                )
+
+                if let ip {
+                    Style.field("IP", ip)
+                    print(Style.success("✓ Provisioning complete."))
+                } else {
                     print(Style.error("✗ Could not resolve VM IP address."))
                     print(Style.dim("  The VM was created successfully but provisioning was skipped."))
                     print(Style.dim("  Run 'spook start \(name) --headless --user-data \(script.path) --provision ssh' to provision manually."))
-                    // Fall through to stop the VM.
-                    throw ProvisioningSkipped()
                 }
-                logger.notice("Resolved IP \(ip, privacy: .public) for MAC \(macAddress, privacy: .public)")
-                Style.field("IP", ip)
 
-                // 3. Wait for SSH to become available.
-                logger.info("Waiting for SSH on \(ip, privacy: .public)")
-                print(Style.info("Waiting for SSH..."))
-                try await SSHExecutor.waitForSSH(ip: ip)
-                logger.notice("SSH available on \(ip, privacy: .public)")
-
-                // 4. Execute the provisioning script.
-                logger.info("Executing provisioning script on \(ip, privacy: .public)")
-                print(Style.info("Executing provisioning script..."))
-                try await SSHExecutor.execute(
-                    script: script,
-                    on: ip,
-                    user: sshUser,
-                    key: sshKey
-                )
-                logger.notice("Provisioning script completed on \(ip, privacy: .public)")
-                print(Style.success("✓ Provisioning complete."))
-
-            } catch is ProvisioningSkipped {
-                // Already printed the message above. Just stop the VM.
             } catch {
                 logger.error("Provisioning failed: \(error.localizedDescription, privacy: .public)")
                 print(Style.error("✗ Provisioning failed: \(error.localizedDescription)"))
@@ -446,40 +429,12 @@ extension Spook {
                 print(Style.dim("  spook start \(name) --headless --user-data \(script.path) --provision ssh"))
             }
 
-            // 5. Stop the VM.
+            // Stop the VM.
             logger.info("Stopping VM '\(bundle.url.lastPathComponent, privacy: .public)' after provisioning")
             print(Style.info("Stopping VM..."))
             try? await vm.stop(graceful: false)
             logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' stopped after provisioning")
             print(Style.success("✓ VM stopped."))
-        }
-
-        /// Polls ``IPResolver`` until the VM's IP address is found or the timeout expires.
-        ///
-        /// The VM needs time to boot and obtain a DHCP lease, so this
-        /// method retries every 5 seconds until the IP appears in the
-        /// host's lease table or ARP cache.
-        ///
-        /// - Parameters:
-        ///   - macAddress: The VM's MAC address.
-        ///   - timeout: Maximum time to wait in seconds.
-        /// - Returns: The resolved IPv4 address, or `nil` if the timeout expires.
-        private func resolveIPWithRetry(
-            macAddress: String,
-            timeout: TimeInterval
-        ) async throws -> String? {
-            let deadline = Date().addingTimeInterval(timeout)
-            let pollInterval: UInt64 = 5_000_000_000 // 5 seconds
-
-            while Date() < deadline {
-                if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
-                    return ip
-                }
-                Log.provision.debug("IP not yet available for MAC \(macAddress, privacy: .public), retrying in 5s")
-                try await Task.sleep(nanoseconds: pollInterval)
-            }
-
-            return nil
         }
 
         // MARK: - Setup Assistant Automation
@@ -535,7 +490,7 @@ extension Spook {
                 // 3. Wait for SSH to confirm setup finished.
                 logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
                 print(Style.info("Waiting for SSH to confirm setup completed..."))
-                if let ip = try await resolveIPWithRetry(macAddress: macAddress, timeout: 120) {
+                if let ip = try await IPResolver.resolveIPWithRetry(macAddress: macAddress, timeout: 120) {
                     logger.info("Resolved IP \(ip, privacy: .public), waiting for SSH")
                     try await SSHExecutor.waitForSSH(ip: ip)
                     logger.notice("SSH confirmed on \(ip, privacy: .public)")
@@ -567,12 +522,6 @@ extension Spook {
         }
     }
 }
-
-// MARK: - Internal Errors
-
-/// Sentinel error used to break out of the provisioning do/catch
-/// when IP resolution fails, so the VM is still stopped cleanly.
-private struct ProvisioningSkipped: Error {}
 
 // MARK: - ArgumentParser Conformance
 

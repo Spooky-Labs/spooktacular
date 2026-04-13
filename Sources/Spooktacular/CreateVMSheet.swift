@@ -395,8 +395,8 @@ struct CreateVMSheet: View {
 
         let spec = VirtualMachineSpecification(
             cpuCount: Int(cpuCount),
-            memorySizeInBytes: UInt64(memorySizeInGigabytes) * 1024 * 1024 * 1024,
-            diskSizeInBytes: UInt64(diskSizeInGigabytes) * 1024 * 1024 * 1024,
+            memorySizeInBytes: .gigabytes(Int(memorySizeInGigabytes)),
+            diskSizeInBytes: .gigabytes(Int(diskSizeInGigabytes)),
             displayCount: displayCount,
             networkMode: networkMode,
             audioEnabled: audioEnabled,

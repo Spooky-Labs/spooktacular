@@ -315,10 +315,6 @@ struct VMInspectorView: View {
     }
 
     private var networkLabel: String {
-        switch bundle.spec.networkMode {
-        case .nat: "NAT"
-        case .bridged(let interface): "Bridged (\(interface))"
-        case .isolated: "Isolated"
-        }
+        bundle.spec.networkMode.serialized
     }
 }
