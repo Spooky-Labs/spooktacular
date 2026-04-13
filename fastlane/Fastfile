@@ -70,7 +70,7 @@ platform :mac do
   desc "Notarize the .app for direct distribution"
   lane :notarize_app do
     notarize(
-      package: "../Spooktacular.app",
+      package: "Spooktacular.app",
       bundle_id: "com.spooktacular.app",
       verbose: true
     )
