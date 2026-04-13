@@ -22,7 +22,7 @@ if [[ "${1:-}" == "--static" ]]; then
         --target SpooktacularKit \
         --output-path ./docs/api \
         --transform-for-static-hosting \
-        --hosting-base-path spooktacular/api
+        --hosting-base-path api
     echo "✓ Static docs generated at docs/api/"
     echo "  Live at: https://spooktacular.app/api/documentation/spooktacularkit/"
 
