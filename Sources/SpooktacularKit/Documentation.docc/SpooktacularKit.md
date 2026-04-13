@@ -115,6 +115,8 @@ VirtualMachineConfiguration.applySpec(spec, to: config)
 ### Setup Automation
 
 - ``SetupAutomation``
+- ``SetupAutomationExecutor``
+- ``SetupAutomationExecutorError``
 - ``BootStep``
 - ``BootAction``
 - ``KeyCode``
