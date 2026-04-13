@@ -1,0 +1,6 @@
+# Installed plugins are tracked here for version control.
+# Run `bundle exec fastlane install_plugins` to install.
+#
+# No plugins required for v1.0 — all functionality uses
+# built-in Fastlane actions (match, pilot, deliver, frameit,
+# notarize).

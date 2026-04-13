@@ -22,8 +22,21 @@ fastlane/test_output/
 *.swp
 *~
 
+# Claude Code
+.claude/
+
+# Ruby / Bundler
+vendor/bundle/
+
 # Credentials (never commit)
 *.p8
 *.p12
 *.cer
 *.mobileprovision
+
+# Fastlane local env (secrets)
+fastlane/.env
+fastlane/.env.local
+
+# Installer package (built artifact)
+*.pkg
