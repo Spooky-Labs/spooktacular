@@ -4,12 +4,12 @@ import SwiftUI
 /// falls back to `.borderedProminent` on older versions.
 ///
 /// The `.glass` button style only exists in the macOS 26 SDK
-/// (Swift 6.1+). On older SDKs the symbol is undefined, so
-/// we gate it with `#if compiler(>=6.1)` at compile time,
+/// (Swift 6.2+ / Xcode 26). On older SDKs the symbol is undefined, so
+/// we gate it with `#if compiler(>=6.2)` at compile time,
 /// then use `#available` for the runtime check.
 struct GlassButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
-        #if compiler(>=6.1)
+        #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             content.buttonStyle(.glass)
         } else {
