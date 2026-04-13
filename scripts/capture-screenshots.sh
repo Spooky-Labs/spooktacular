@@ -17,6 +17,13 @@
 
 set -euo pipefail
 
+# CI environments don't have an interactive display session.
+# Screenshot capture requires a GUI (screencapture, osascript).
+if [ -n "${CI:-}" ]; then
+    echo "CI detected — skipping screenshot capture (requires interactive session)"
+    exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 OUTPUT_DIR="$PROJECT_DIR/fastlane/screenshots/en-US"
