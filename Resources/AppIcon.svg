@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  baseProfile="full"
+  version="1.1"
+  id="spooktacular-icon"
+  role="img"
+  width="1024"
+  height="1024"
+  viewBox="0 0 128 128"
+  shape-rendering="crispEdges"
+  image-rendering="pixelated"
+  color-interpolation="sRGB"
+  preserveAspectRatio="xMidYMid meet">
+  <metadata>
+  {
+    "brand": "Spooky Labs",
+    "app": "Spooktacular",
+    "theme": "deep-purple",
+    "style": "SNES-era pixel art",
+    "grid": "128x128",
+    "palette": {
+      "primary": "#c4b5fd",
+      "primary-dark": "#5b21b6",
+      "accent": "#a78bfa",
+      "accent-dark": "#7c3aed",
+      "bg-dark": "#0f0a1a",
+      "bg-medium": "#1a1035"
+    }
+  }
+  </metadata>
+  <defs>
+    <style type="text/css"><![CDATA[
+      :root {
+        /* Background */
+        --bg1: #07050f;
+        --bg2: #0f0a1a;
+        --bg3: #1a1035;
+        --bg4: #251648;
+
+        /* Ghost body (light — left ghost) */
+        --g1: #e8deff;
+        --g2: #d4c2f0;
+        --g3: #c4b5fd;
+        --g4: #a78bfa;
+        --g5: #8b6ce0;
+
+        /* Ghost body (deep — right ghost) */
+        --gd1: #d0bff5;
+        --gd2: #b99de0;
+        --gd3: #a78bfa;
+        --gd4: #8b6ce0;
+        --gd5: #7c3aed;
+
+        /* Eyes/face */
+        --eye: #1a1035;
+        --eyeshine: #e8deff;
+        --mouth: #7c3aed;
+        --blush: #cc88ff;
+
+        /* Fire */
+        --fire1: #fbbf24;
+        --fire2: #f59e0b;
+        --fire3: #ef4444;
+        --fire4: #dc2626;
+        --fire5: #b91c1c;
+        --ember: #ff6b35;
+        --fireglow: #fbbf24;
+
+        /* Ground */
+        --ground1: #251648;
+        --ground2: #1a1035;
+        --ground3: #0f0a1a;
+
+        /* Logs */
+        --log1: #5b21b6;
+        --log2: #4c1d95;
+        --log3: #3b1280;
+
+        /* Stars */
+        --star1: #c4b5fd;
+        --star2: #8b6ce0;
+        --star3: #5b21b6;
+
+        /* Accents */
+        --spark: #fbbf24;
+        --spark2: #f59e0b;
+      }
+    ]]></style>
+  </defs>
+  <title>Spooktacular App Icon</title>
+  <desc>Two friendly pixel-art ghosts dancing next to a campfire under a starry purple sky.</desc>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  BACKGROUND: Night sky                -->
+  <!-- ══════════════════════════════════════ -->
+  <rect x="0" y="0" width="128" height="40" fill="var(--bg1)"/>
+  <rect x="0" y="40" width="128" height="30" fill="var(--bg2)"/>
+  <rect x="0" y="70" width="128" height="25" fill="var(--bg3)"/>
+
+  <!-- Ground -->
+  <rect x="0" y="95" width="128" height="33" fill="var(--ground1)"/>
+  <rect x="0" y="95" width="128" height="2" fill="var(--ground2)"/>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  STARS                                -->
+  <!-- ══════════════════════════════════════ -->
+  <g id="stars">
+    <rect x="8" y="5" width="2" height="2" fill="var(--star1)"/>
+    <rect x="24" y="10" width="1" height="1" fill="var(--star2)"/>
+    <rect x="38" y="3" width="2" height="2" fill="var(--star2)"/>
+    <rect x="52" y="8" width="1" height="1" fill="var(--star3)"/>
+    <rect x="64" y="4" width="2" height="2" fill="var(--star1)"/>
+    <rect x="78" y="12" width="1" height="1" fill="var(--star2)"/>
+    <rect x="92" y="6" width="2" height="2" fill="var(--star2)"/>
+    <rect x="106" y="3" width="1" height="1" fill="var(--star3)"/>
+    <rect x="118" y="9" width="2" height="2" fill="var(--star1)"/>
+    <rect x="15" y="18" width="1" height="1" fill="var(--star3)"/>
+    <rect x="45" y="15" width="1" height="1" fill="var(--star3)"/>
+    <rect x="72" y="20" width="1" height="1" fill="var(--star3)"/>
+    <rect x="100" y="16" width="1" height="1" fill="var(--star3)"/>
+    <rect x="30" y="24" width="1" height="1" fill="var(--star3)"/>
+    <rect x="85" y="22" width="1" height="1" fill="var(--star3)"/>
+    <rect x="112" y="18" width="1" height="1" fill="var(--star2)"/>
+    <rect x="5" y="30" width="1" height="1" fill="var(--star3)"/>
+    <rect x="122" y="28" width="1" height="1" fill="var(--star3)"/>
+  </g>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  FIRE GLOW (ambient light on ground)  -->
+  <!-- ══════════════════════════════════════ -->
+  <g id="fireglow" opacity="0.15">
+    <rect x="38" y="80" width="52" height="15" fill="var(--fireglow)"/>
+    <rect x="44" y="75" width="40" height="5" fill="var(--fireglow)"/>
+    <rect x="50" y="70" width="28" height="5" fill="var(--fireglow)"/>
+  </g>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  CAMPFIRE LOGS                        -->
+  <!-- ══════════════════════════════════════ -->
+  <g id="logs">
+    <!-- Left log (angled) -->
+    <rect x="50" y="88" width="4" height="3" fill="var(--log1)"/>
+    <rect x="53" y="87" width="4" height="3" fill="var(--log1)"/>
+    <rect x="56" y="86" width="4" height="3" fill="var(--log2)"/>
+    <rect x="59" y="85" width="4" height="3" fill="var(--log2)"/>
+    <rect x="62" y="84" width="4" height="3" fill="var(--log3)"/>
+
+    <!-- Right log (angled other way) -->
+    <rect x="62" y="84" width="4" height="3" fill="var(--log3)"/>
+    <rect x="65" y="85" width="4" height="3" fill="var(--log2)"/>
+    <rect x="68" y="86" width="4" height="3" fill="var(--log1)"/>
+    <rect x="71" y="87" width="4" height="3" fill="var(--log1)"/>
+    <rect x="74" y="88" width="4" height="3" fill="var(--log1)"/>
+
+    <!-- Log cross detail -->
+    <rect x="58" y="87" width="12" height="2" fill="var(--log3)"/>
+  </g>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  CAMPFIRE FLAMES                      -->
+  <!-- ══════════════════════════════════════ -->
+  <g id="fire">
+    <!-- Core flame (yellow, tallest) -->
+    <rect x="61" y="54" width="6" height="4" fill="var(--fire1)"/>
+    <rect x="60" y="58" width="8" height="4" fill="var(--fire1)"/>
+    <rect x="59" y="62" width="10" height="4" fill="var(--fire2)"/>
+    <rect x="58" y="66" width="12" height="4" fill="var(--fire2)"/>
+    <rect x="57" y="70" width="14" height="4" fill="var(--ember)"/>
+    <rect x="56" y="74" width="16" height="4" fill="var(--fire3)"/>
+    <rect x="55" y="78" width="18" height="4" fill="var(--fire4)"/>
+    <rect x="54" y="82" width="20" height="4" fill="var(--fire5)"/>
+
+    <!-- Inner bright core -->
+    <rect x="62" y="60" width="4" height="6" fill="var(--fire1)"/>
+    <rect x="61" y="66" width="6" height="6" fill="var(--fire1)"/>
+    <rect x="60" y="72" width="8" height="4" fill="var(--fire2)"/>
+
+    <!-- Left tongue -->
+    <rect x="56" y="60" width="3" height="6" fill="var(--fire2)"/>
+    <rect x="55" y="66" width="3" height="6" fill="var(--fire3)"/>
+    <rect x="54" y="72" width="3" height="4" fill="var(--fire4)"/>
+
+    <!-- Right tongue -->
+    <rect x="69" y="58" width="3" height="6" fill="var(--fire2)"/>
+    <rect x="70" y="64" width="3" height="6" fill="var(--fire3)"/>
+    <rect x="71" y="70" width="3" height="4" fill="var(--fire4)"/>
+
+    <!-- Top wisp -->
+    <rect x="63" y="50" width="2" height="4" fill="var(--fire1)" opacity="0.7"/>
+    <rect x="62" y="48" width="2" height="3" fill="var(--fire2)" opacity="0.5"/>
+
+    <!-- Embers/sparks floating up -->
+    <rect x="58" y="46" width="2" height="2" fill="var(--spark)" opacity="0.8"/>
+    <rect x="68" y="42" width="2" height="2" fill="var(--spark2)" opacity="0.6"/>
+    <rect x="55" y="38" width="1" height="1" fill="var(--spark)" opacity="0.5"/>
+    <rect x="72" y="36" width="1" height="1" fill="var(--spark2)" opacity="0.4"/>
+    <rect x="60" y="34" width="1" height="1" fill="var(--spark)" opacity="0.3"/>
+    <rect x="66" y="30" width="1" height="1" fill="var(--spark2)" opacity="0.3"/>
+  </g>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  GHOST 1 (left, dancing) — light      -->
+  <!--  Leaning right, one arm up, one out   -->
+  <!-- ══════════════════════════════════════ -->
+  <g id="ghost1">
+    <!-- Head (rounded) -->
+    <rect x="19" y="38" width="2" height="2" fill="var(--g4)"/>
+    <rect x="21" y="36" width="10" height="2" fill="var(--g3)"/>
+    <rect x="31" y="38" width="2" height="2" fill="var(--g4)"/>
+
+    <rect x="17" y="40" width="2" height="2" fill="var(--g4)"/>
+    <rect x="19" y="40" width="14" height="2" fill="var(--g1)"/>
+    <rect x="33" y="40" width="2" height="2" fill="var(--g4)"/>
+
+    <!-- Eyes (happy, slightly squinted from smiling) -->
+    <rect x="17" y="42" width="2" height="4" fill="var(--g4)"/>
+    <rect x="19" y="42" width="3" height="4" fill="var(--g1)"/>
+    <!-- Left eye -->
+    <rect x="21" y="43" width="3" height="3" fill="var(--eye)"/>
+    <rect x="22" y="43" width="1" height="1" fill="var(--eyeshine)"/>
+    <rect x="24" y="42" width="4" height="4" fill="var(--g1)"/>
+    <!-- Right eye -->
+    <rect x="27" y="43" width="3" height="3" fill="var(--eye)"/>
+    <rect x="28" y="43" width="1" height="1" fill="var(--eyeshine)"/>
+    <rect x="30" y="42" width="3" height="4" fill="var(--g1)"/>
+    <rect x="33" y="42" width="2" height="4" fill="var(--g4)"/>
+
+    <!-- Cheeks + big smile -->
+    <rect x="17" y="46" width="2" height="3" fill="var(--g4)"/>
+    <rect x="19" y="46" width="2" height="3" fill="var(--g2)"/>
+    <rect x="21" y="46" width="2" height="2" fill="var(--blush)" opacity="0.4"/>
+    <rect x="23" y="46" width="6" height="3" fill="var(--g1)"/>
+    <!-- Mouth (big happy D shape) -->
+    <rect x="24" y="47" width="4" height="2" fill="var(--mouth)"/>
+    <rect x="25" y="47" width="2" height="1" fill="var(--g1)"/>
+    <rect x="29" y="46" width="2" height="2" fill="var(--blush)" opacity="0.4"/>
+    <rect x="31" y="46" width="2" height="3" fill="var(--g2)"/>
+    <rect x="33" y="46" width="2" height="3" fill="var(--g4)"/>
+
+    <!-- Body (leaning right slightly — dancing!) -->
+    <rect x="18" y="49" width="2" height="12" fill="var(--g4)"/>
+    <rect x="20" y="49" width="14" height="12" fill="var(--g2)"/>
+    <rect x="34" y="49" width="2" height="12" fill="var(--g5)"/>
+    <!-- Shading -->
+    <rect x="20" y="49" width="2" height="12" fill="var(--g3)"/>
+    <rect x="32" y="49" width="2" height="12" fill="var(--g4)"/>
+    <!-- Highlight -->
+    <rect x="24" y="50" width="6" height="10" fill="var(--g1)"/>
+
+    <!-- Tail wisps (wavy, dancing motion) -->
+    <rect x="17" y="61" width="4" height="3" fill="var(--g4)"/>
+    <rect x="21" y="63" width="4" height="4" fill="var(--g3)"/>
+    <rect x="25" y="61" width="4" height="3" fill="var(--g4)"/>
+    <rect x="29" y="63" width="4" height="4" fill="var(--g3)"/>
+    <rect x="33" y="61" width="3" height="3" fill="var(--g5)"/>
+
+    <!-- Left arm (up high, waving!) -->
+    <rect x="14" y="46" width="3" height="3" fill="var(--g3)"/>
+    <rect x="12" y="42" width="3" height="4" fill="var(--g2)"/>
+    <rect x="10" y="38" width="3" height="4" fill="var(--g3)"/>
+    <rect x="9" y="35" width="3" height="3" fill="var(--g4)"/>
+    <!-- Hand detail -->
+    <rect x="8" y="34" width="2" height="2" fill="var(--g3)"/>
+    <rect x="11" y="34" width="2" height="2" fill="var(--g3)"/>
+
+    <!-- Right arm (pointing toward fire) -->
+    <rect x="36" y="50" width="4" height="3" fill="var(--g4)"/>
+    <rect x="39" y="49" width="4" height="3" fill="var(--g3)"/>
+    <rect x="42" y="48" width="3" height="3" fill="var(--g4)"/>
+  </g>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  GHOST 2 (right, dancing) — deep      -->
+  <!--  Leaning left, both arms up           -->
+  <!-- ══════════════════════════════════════ -->
+  <g id="ghost2">
+    <!-- Head (rounded) -->
+    <rect x="95" y="38" width="2" height="2" fill="var(--gd4)"/>
+    <rect x="97" y="36" width="10" height="2" fill="var(--gd3)"/>
+    <rect x="107" y="38" width="2" height="2" fill="var(--gd4)"/>
+
+    <rect x="93" y="40" width="2" height="2" fill="var(--gd4)"/>
+    <rect x="95" y="40" width="14" height="2" fill="var(--gd1)"/>
+    <rect x="109" y="40" width="2" height="2" fill="var(--gd4)"/>
+
+    <!-- Eyes -->
+    <rect x="93" y="42" width="2" height="4" fill="var(--gd4)"/>
+    <rect x="95" y="42" width="3" height="4" fill="var(--gd1)"/>
+    <rect x="97" y="43" width="3" height="3" fill="var(--eye)"/>
+    <rect x="98" y="43" width="1" height="1" fill="var(--eyeshine)"/>
+    <rect x="100" y="42" width="4" height="4" fill="var(--gd1)"/>
+    <rect x="103" y="43" width="3" height="3" fill="var(--eye)"/>
+    <rect x="104" y="43" width="1" height="1" fill="var(--eyeshine)"/>
+    <rect x="106" y="42" width="3" height="4" fill="var(--gd1)"/>
+    <rect x="109" y="42" width="2" height="4" fill="var(--gd4)"/>
+
+    <!-- Cheeks + smile -->
+    <rect x="93" y="46" width="2" height="3" fill="var(--gd4)"/>
+    <rect x="95" y="46" width="2" height="3" fill="var(--gd2)"/>
+    <rect x="97" y="46" width="2" height="2" fill="var(--blush)" opacity="0.4"/>
+    <rect x="99" y="46" width="6" height="3" fill="var(--gd1)"/>
+    <rect x="100" y="47" width="4" height="2" fill="var(--mouth)"/>
+    <rect x="101" y="47" width="2" height="1" fill="var(--gd1)"/>
+    <rect x="105" y="46" width="2" height="2" fill="var(--blush)" opacity="0.4"/>
+    <rect x="107" y="46" width="2" height="3" fill="var(--gd2)"/>
+    <rect x="109" y="46" width="2" height="3" fill="var(--gd4)"/>
+
+    <!-- Body (leaning left — dancing!) -->
+    <rect x="92" y="49" width="2" height="12" fill="var(--gd4)"/>
+    <rect x="94" y="49" width="14" height="12" fill="var(--gd2)"/>
+    <rect x="108" y="49" width="2" height="12" fill="var(--gd5)"/>
+    <rect x="94" y="49" width="2" height="12" fill="var(--gd3)"/>
+    <rect x="106" y="49" width="2" height="12" fill="var(--gd4)"/>
+    <rect x="98" y="50" width="6" height="10" fill="var(--gd1)"/>
+
+    <!-- Tail wisps -->
+    <rect x="92" y="61" width="3" height="3" fill="var(--gd5)"/>
+    <rect x="95" y="63" width="4" height="4" fill="var(--gd3)"/>
+    <rect x="99" y="61" width="4" height="3" fill="var(--gd4)"/>
+    <rect x="103" y="63" width="4" height="4" fill="var(--gd3)"/>
+    <rect x="107" y="61" width="4" height="3" fill="var(--gd4)"/>
+
+    <!-- Left arm (toward fire) -->
+    <rect x="82" y="48" width="3" height="3" fill="var(--gd4)"/>
+    <rect x="85" y="49" width="4" height="3" fill="var(--gd3)"/>
+    <rect x="89" y="50" width="3" height="3" fill="var(--gd4)"/>
+
+    <!-- Right arm (up high, waving!) -->
+    <rect x="110" y="46" width="3" height="3" fill="var(--gd3)"/>
+    <rect x="112" y="42" width="3" height="4" fill="var(--gd2)"/>
+    <rect x="114" y="38" width="3" height="4" fill="var(--gd3)"/>
+    <rect x="115" y="35" width="3" height="3" fill="var(--gd4)"/>
+    <!-- Hand detail -->
+    <rect x="115" y="34" width="2" height="2" fill="var(--gd3)"/>
+    <rect x="118" y="34" width="2" height="2" fill="var(--gd3)"/>
+  </g>
+
+  <!-- ══════════════════════════════════════ -->
+  <!--  GROUND DETAILS                       -->
+  <!-- ══════════════════════════════════════ -->
+  <g id="ground-detail" opacity="0.3">
+    <rect x="4" y="97" width="2" height="1" fill="var(--ground3)"/>
+    <rect x="15" y="99" width="3" height="1" fill="var(--ground3)"/>
+    <rect x="30" y="97" width="1" height="1" fill="var(--ground3)"/>
+    <rect x="48" y="100" width="2" height="1" fill="var(--ground3)"/>
+    <rect x="78" y="98" width="2" height="1" fill="var(--ground3)"/>
+    <rect x="95" y="100" width="3" height="1" fill="var(--ground3)"/>
+    <rect x="110" y="97" width="2" height="1" fill="var(--ground3)"/>
+    <rect x="120" y="99" width="1" height="1" fill="var(--ground3)"/>
+  </g>
+
+</svg>
