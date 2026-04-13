@@ -37,7 +37,7 @@ Build the .app bundle (release)
 [bundle exec] fastlane mac package
 ```
 
-Package the .app into a signed .pkg for App Store submission
+Package the .app into a .pkg for App Store submission
 
 ### mac signing
 
