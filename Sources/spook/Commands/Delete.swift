@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import SpooktacularKit
 
 extension Spook {
 
@@ -11,6 +12,9 @@ extension Spook {
                 Permanently removes a VM bundle including its disk image, \
                 configuration, and any saved snapshots. This cannot be undone.
 
+                A running VM cannot be deleted unless --force is used, which \
+                stops the VM first.
+
                 EXAMPLES:
                   spook delete my-vm
                   spook delete runner-01 --force
@@ -20,11 +24,41 @@ extension Spook {
         @Argument(help: "Name of the VM to delete.")
         var name: String
 
-        @Flag(help: "Skip confirmation prompt.")
+        @Flag(help: "Stop a running VM before deleting, and skip confirmation prompt.")
         var force: Bool = false
 
         func run() async throws {
             let bundleURL = try Paths.requireBundle(for: name)
+
+            // Prevent deleting a running VM unless --force is used.
+            if PIDFile.isRunning(bundleURL: bundleURL) {
+                if force {
+                    // Stop the VM by sending SIGTERM to the owning process.
+                    if let pid = PIDFile.read(from: bundleURL) {
+                        print("Stopping VM '\(name)' (PID \(pid))...")
+                        kill(pid, SIGTERM)
+
+                        // Wait briefly for the process to exit.
+                        let deadline = Date().addingTimeInterval(10)
+                        while PIDFile.isProcessAlive(pid), Date() < deadline {
+                            try await Task.sleep(nanoseconds: 500_000_000)
+                        }
+
+                        // If still alive after timeout, force-kill.
+                        if PIDFile.isProcessAlive(pid) {
+                            kill(pid, SIGKILL)
+                            try await Task.sleep(nanoseconds: 500_000_000)
+                        }
+
+                        PIDFile.remove(from: bundleURL)
+                        print(Style.success("✓ VM '\(name)' stopped."))
+                    }
+                } else {
+                    print(Style.error("Cannot delete '\(name)': VM is currently running."))
+                    print(Style.dim("Stop it first with: spook stop \(name)"))
+                    throw ExitCode.failure
+                }
+            }
 
             if !force {
                 print(

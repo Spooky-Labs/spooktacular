@@ -20,7 +20,8 @@ extension Spook {
     /// | `GET` | `/health` | Health check |
     /// | `GET` | `/v1/vms` | List all VMs |
     /// | `GET` | `/v1/vms/:name` | Get VM details |
-    /// | `POST` | `/v1/vms` | Create a new VM |
+    /// | `POST` | `/v1/vms` | Create a new VM (requires IPSW; prefer clone) |
+    /// | `POST` | `/v1/vms/:name/clone` | Clone a VM from a base image |
     /// | `POST` | `/v1/vms/:name/start` | Start a VM |
     /// | `POST` | `/v1/vms/:name/stop` | Stop a VM |
     /// | `DELETE` | `/v1/vms/:name` | Delete a VM |
@@ -53,6 +54,9 @@ extension Spook {
         @Option(help: "Host address to bind to. Use 0.0.0.0 for all interfaces.")
         var host: String = "127.0.0.1"
 
+        @Option(help: "Path to the spook binary for spawning VM processes.")
+        var spookPath: String = ProcessInfo.processInfo.environment["SPOOK_PATH"] ?? "/usr/local/bin/spook"
+
         func run() async throws {
             try Paths.ensureDirectories()
 
@@ -66,7 +70,8 @@ extension Spook {
                 server = try HTTPAPIServer(
                     host: host,
                     port: UInt16(port),
-                    vmDirectory: Paths.vms
+                    vmDirectory: Paths.vms,
+                    spookPath: spookPath
                 )
             } catch {
                 print(Style.error("Failed to create server: \(error.localizedDescription)"))

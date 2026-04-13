@@ -22,7 +22,8 @@ import os
 /// | `GET` | `/health` | Health check |
 /// | `GET` | `/v1/vms` | List all VMs |
 /// | `GET` | `/v1/vms/:name` | Get VM details |
-/// | `POST` | `/v1/vms` | Create a new VM |
+/// | `POST` | `/v1/vms` | Create a new VM (requires IPSW; prefer clone) |
+/// | `POST` | `/v1/vms/:name/clone` | Clone a VM from a base image |
 /// | `POST` | `/v1/vms/:name/start` | Start a VM |
 /// | `POST` | `/v1/vms/:name/stop` | Stop a VM |
 /// | `DELETE` | `/v1/vms/:name` | Delete a VM |
@@ -40,7 +41,12 @@ import os
 /// ## Usage
 ///
 /// ```swift
-/// let server = try HTTPAPIServer(host: "127.0.0.1", port: 8484, vmDirectory: Paths.vms)
+/// let server = try HTTPAPIServer(
+///     host: "127.0.0.1",
+///     port: 8484,
+///     vmDirectory: Paths.vms,
+///     spookPath: "/usr/local/bin/spook"
+/// )
 /// try await server.start()
 /// ```
 ///
@@ -60,8 +66,12 @@ public actor HTTPAPIServer {
     /// The directory containing `.vm` bundle directories.
     private let vmDirectory: URL
 
+    /// The absolute path to the `spook` binary, used when spawning
+    /// detached VM processes (e.g., `spook start --headless`).
+    private let spookPath: String
+
     /// Logger for HTTP API events.
-    private let logger = Logger(subsystem: "com.spooktacular", category: "http-api")
+    private let logger = Log.httpAPI
 
     /// Tracks whether the server is currently running.
     private var isRunning = false
@@ -79,8 +89,10 @@ public actor HTTPAPIServer {
     ///   - port: The TCP port to listen on. Defaults to `8484`.
     ///   - vmDirectory: The directory containing VM bundles
     ///     (typically `~/.spooktacular/vms/`).
+    ///   - spookPath: The absolute path to the `spook` binary for
+    ///     spawning VM processes. Defaults to `/usr/local/bin/spook`.
     /// - Throws: `NWError` if the listener cannot be created.
-    public init(host: String, port: UInt16, vmDirectory: URL) throws {
+    public init(host: String, port: UInt16, vmDirectory: URL, spookPath: String = "/usr/local/bin/spook") throws {
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(host),
@@ -89,6 +101,7 @@ public actor HTTPAPIServer {
 
         self.listener = try NWListener(using: parameters)
         self.vmDirectory = vmDirectory
+        self.spookPath = spookPath
     }
 
     // MARK: - Lifecycle
@@ -111,19 +124,6 @@ public actor HTTPAPIServer {
         let endpoint = listener.parameters.requiredLocalEndpoint
         logger.notice("Starting HTTP API server on \(endpoint.debugDescription, privacy: .public)")
 
-        listener.stateUpdateHandler = { [logger] state in
-            switch state {
-            case .ready:
-                logger.notice("HTTP API server is ready and listening")
-            case .failed(let error):
-                logger.error("Listener failed: \(error.localizedDescription, privacy: .public)")
-            case .cancelled:
-                logger.notice("Listener cancelled")
-            default:
-                break
-            }
-        }
-
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else { return }
             Task {
@@ -131,25 +131,41 @@ public actor HTTPAPIServer {
             }
         }
 
-        listener.start(queue: .global(qos: .userInitiated))
-
-        // Wait until the listener transitions to .ready or fails.
+        // Use a single stateUpdateHandler that both logs state
+        // transitions AND resumes the startup continuation. A
+        // `didResume` flag prevents a double-resume crash if
+        // the listener transitions more than once after .ready.
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            // Use nonisolated(unsafe) because NWListener's
+            // stateUpdateHandler is not @Sendable but we need
+            // to track whether the continuation was resumed.
+            nonisolated(unsafe) var didResume = false
             listener.stateUpdateHandler = { [logger] state in
                 switch state {
                 case .ready:
                     logger.notice("HTTP API server is ready and listening")
-                    continuation.resume()
+                    if !didResume {
+                        didResume = true
+                        continuation.resume()
+                    }
                 case .failed(let error):
                     logger.error("Listener failed: \(error.localizedDescription, privacy: .public)")
-                    continuation.resume(throwing: error)
+                    if !didResume {
+                        didResume = true
+                        continuation.resume(throwing: error)
+                    }
                 case .cancelled:
                     logger.notice("Listener cancelled")
-                    continuation.resume(throwing: HTTPAPIServerError.cancelled)
+                    if !didResume {
+                        didResume = true
+                        continuation.resume(throwing: HTTPAPIServerError.cancelled)
+                    }
                 default:
                     break
                 }
             }
+
+            listener.start(queue: .global(qos: .userInitiated))
         }
     }
 
@@ -248,6 +264,7 @@ public actor HTTPAPIServer {
     /// - `/health` -- health check
     /// - `/v1/vms` -- list or create VMs
     /// - `/v1/vms/:name` -- get or delete a specific VM
+    /// - `/v1/vms/:name/clone` -- clone a base VM
     /// - `/v1/vms/:name/start` -- start a VM
     /// - `/v1/vms/:name/stop` -- stop a VM
     /// - `/v1/vms/:name/ip` -- resolve VM IP
@@ -276,7 +293,7 @@ public actor HTTPAPIServer {
 
         // POST /v1/vms
         case ("POST", 2):
-            return await handleCreateVM(request)
+            return handleCreateVM(request)
 
         // GET /v1/vms/:name
         case ("GET", 3):
@@ -285,6 +302,10 @@ public actor HTTPAPIServer {
         // DELETE /v1/vms/:name
         case ("DELETE", 3):
             return handleDeleteVM(name: components[2])
+
+        // POST /v1/vms/:name/clone
+        case ("POST", 4) where components[3] == "clone":
+            return handleCloneVM(name: components[2], request: request)
 
         // POST /v1/vms/:name/start
         case ("POST", 4) where components[3] == "start":
@@ -365,23 +386,42 @@ public actor HTTPAPIServer {
 
     /// Handles `POST /v1/vms`.
     ///
-    /// Creates a new VM bundle with the specification provided in the
-    /// request body. This endpoint creates the bundle directory and
-    /// configuration files but does **not** install macOS or create a
-    /// disk image -- those require the full `spook create` workflow.
+    /// Creating a VM from scratch via the API is not supported because
+    /// it requires an IPSW restore image and the full macOS install
+    /// workflow. This endpoint returns a descriptive error directing
+    /// the caller to use ``handleCloneVM(name:request:)`` instead, or
+    /// the CLI for IPSW-based creation.
+    private func handleCreateVM(_ request: HTTPRequest) -> HTTPResponse {
+        logger.info("POST /v1/vms rejected — use clone or CLI instead")
+        return HTTPResponse.error(
+            message: "Use POST /v1/vms/:name/clone to create VMs from an existing base image, "
+                + "or use the CLI: spook create <name> --from-ipsw latest",
+            statusCode: 400
+        )
+    }
+
+    /// Handles `POST /v1/vms/:name/clone`.
+    ///
+    /// Clones an existing base VM using APFS copy-on-write. This is the
+    /// recommended workflow for programmatic VM creation: maintain a
+    /// golden base image with macOS installed, then clone it for each
+    /// runner or workspace.
+    ///
+    /// The clone receives a new `VZMacMachineIdentifier` so each VM
+    /// has a unique hardware identity, as required by the Virtualization
+    /// framework.
     ///
     /// Expected request body:
     /// ```json
-    /// {
-    ///     "name": "my-vm",
-    ///     "cpu": 4,
-    ///     "memory": 8,
-    ///     "disk": 64,
-    ///     "displays": 1,
-    ///     "network": "nat"
-    /// }
+    /// {"source": "base-vm"}
     /// ```
-    private func handleCreateVM(_ request: HTTPRequest) async -> HTTPResponse {
+    ///
+    /// - Parameters:
+    ///   - name: The name for the new (cloned) VM.
+    ///   - request: The HTTP request containing the JSON body.
+    /// - Returns: An HTTP response with the cloned VM details (201)
+    ///   or an error response.
+    private func handleCloneVM(name: String, request: HTTPRequest) -> HTTPResponse {
         guard let body = request.body, !body.isEmpty else {
             return HTTPResponse.error(message: "Request body required.", statusCode: 400)
         }
@@ -390,60 +430,48 @@ public actor HTTPAPIServer {
             return HTTPResponse.error(message: "Invalid JSON in request body.", statusCode: 400)
         }
 
-        guard let name = json["name"] as? String, !name.isEmpty else {
-            return HTTPResponse.error(message: "Field 'name' is required.", statusCode: 400)
-        }
-
-        let bundleURL = SpooktacularPaths.bundleURL(for: name)
-        guard !FileManager.default.fileExists(atPath: bundleURL.path) else {
-            return HTTPResponse.error(message: "VM '\(name)' already exists.", statusCode: 409)
-        }
-
-        let cpu = json["cpu"] as? Int ?? 4
-        let memory = json["memory"] as? Int ?? 8
-        let disk = json["disk"] as? Int ?? 64
-        let displays = json["displays"] as? Int ?? 1
-        let networkString = json["network"] as? String ?? "nat"
-
-        let networkMode: NetworkMode
-        switch networkString {
-        case "nat":
-            networkMode = .nat
-        case "isolated":
-            networkMode = .isolated
-        case let s where s.hasPrefix("bridged:"):
-            let interface = String(s.dropFirst("bridged:".count))
-            networkMode = .bridged(interface: interface)
-        default:
+        guard let sourceName = json["source"] as? String, !sourceName.isEmpty else {
             return HTTPResponse.error(
-                message: "Invalid network mode '\(networkString)'. Use 'nat', 'isolated', or 'bridged:<interface>'.",
+                message: "Field 'source' is required. Provide the name of the base VM to clone.",
                 statusCode: 400
             )
         }
 
-        let spec = VirtualMachineSpecification(
-            cpuCount: cpu,
-            memorySizeInBytes: UInt64(memory) * 1024 * 1024 * 1024,
-            diskSizeInBytes: UInt64(disk) * 1024 * 1024 * 1024,
-            displayCount: displays,
-            networkMode: networkMode
-        )
+        let destinationURL = SpooktacularPaths.bundleURL(for: name)
+        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
+            return HTTPResponse.error(message: "VM '\(name)' already exists.", statusCode: 409)
+        }
+
+        let sourceURL = SpooktacularPaths.bundleURL(for: sourceName)
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+            return HTTPResponse.error(message: "Source VM '\(sourceName)' not found.", statusCode: 404)
+        }
 
         do {
+            let sourceBundle = try VirtualMachineBundle.load(from: sourceURL)
+
+            if PIDFile.isRunning(bundleURL: sourceURL) {
+                return HTTPResponse.error(
+                    message: "Source VM '\(sourceName)' is running. Stop it before cloning.",
+                    statusCode: 409
+                )
+            }
+
             try SpooktacularPaths.ensureDirectories()
-            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
-            logger.notice("Created VM '\(name, privacy: .public)' via API")
+            let clonedBundle = try CloneManager.clone(source: sourceBundle, to: destinationURL)
+
+            logger.notice("Cloned VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)' via API")
             return HTTPResponse(
                 statusCode: 201,
                 body: HTTPResponse.envelope(
                     status: "ok",
-                    data: vmToDict(name: name, bundle: bundle)
+                    data: vmToDict(name: name, bundle: clonedBundle)
                 )
             )
         } catch {
-            logger.error("Failed to create VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to clone VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             return HTTPResponse.error(
-                message: "Failed to create VM: \(error.localizedDescription)",
+                message: "Failed to clone VM: \(error.localizedDescription)",
                 statusCode: 500
             )
         }
@@ -454,6 +482,13 @@ public actor HTTPAPIServer {
     /// Starts a stopped VM by launching a detached `spook start`
     /// process in headless mode. The API does not hold the VM
     /// process -- it spawns it and returns immediately.
+    ///
+    /// The spawned process's stdout and stderr are redirected to
+    /// `~/.spooktacular/logs/<vm-name>.log` for post-mortem
+    /// debugging. The `spook` binary path is configured via the
+    /// server's ``spookPath`` property rather than introspecting
+    /// `ProcessInfo.processInfo.arguments[0]`, which is unreliable
+    /// under launchd, Docker, or other non-standard deployments.
     private func handleStartVM(name: String) -> HTTPResponse {
         let bundleURL = SpooktacularPaths.bundleURL(for: name)
 
@@ -465,24 +500,64 @@ public actor HTTPAPIServer {
             return HTTPResponse.error(message: "VM '\(name)' is already running.", statusCode: 409)
         }
 
-        // Locate the spook executable to spawn a headless start.
-        let executablePath = ProcessInfo.processInfo.arguments[0]
+        // Verify the spook binary exists at the configured path.
+        guard FileManager.default.isExecutableFile(atPath: spookPath) else {
+            logger.error("spook binary not found at \(self.spookPath, privacy: .public)")
+            return HTTPResponse.error(
+                message: "spook binary not found at '\(spookPath)'. "
+                    + "Set --spook-path or the SPOOK_PATH environment variable.",
+                statusCode: 500
+            )
+        }
+
+        // Ensure the logs directory exists and open the log file.
+        let logsDirectory = SpooktacularPaths.root.appendingPathComponent("logs")
+        do {
+            try FileManager.default.createDirectory(
+                at: logsDirectory,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            logger.error("Failed to create logs directory: \(error.localizedDescription, privacy: .public)")
+            return HTTPResponse.error(
+                message: "Failed to create logs directory: \(error.localizedDescription)",
+                statusCode: 500
+            )
+        }
+
+        let logFileURL = logsDirectory.appendingPathComponent("\(name).log")
+        let logFileHandle: FileHandle
+        do {
+            // Create or truncate the log file.
+            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+            logFileHandle = try FileHandle(forWritingTo: logFileURL)
+            logFileHandle.seekToEndOfFile()
+        } catch {
+            logger.error("Failed to open log file for VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            return HTTPResponse.error(
+                message: "Failed to open log file: \(error.localizedDescription)",
+                statusCode: 500
+            )
+        }
+
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.executableURL = URL(fileURLWithPath: spookPath)
         process.arguments = ["start", name, "--headless"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        process.standardOutput = logFileHandle
+        process.standardError = logFileHandle
 
         do {
             try process.run()
-            logger.notice("Started VM '\(name, privacy: .public)' via API (PID \(process.processIdentifier))")
+            logger.notice("Started VM '\(name, privacy: .public)' via API (PID \(process.processIdentifier), log: \(logFileURL.path, privacy: .public))")
             return HTTPResponse.ok(data: [
                 "name": name,
                 "action": "start",
                 "pid": Int(process.processIdentifier),
+                "log": logFileURL.path,
             ] as [String: Any])
         } catch {
             logger.error("Failed to start VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            try? logFileHandle.close()
             return HTTPResponse.error(
                 message: "Failed to start VM: \(error.localizedDescription)",
                 statusCode: 500

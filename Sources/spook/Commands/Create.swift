@@ -1,3 +1,4 @@
+import AppKit
 import ArgumentParser
 import Foundation
 import os
@@ -190,6 +191,16 @@ extension Spook {
         )
         var noProvision: Bool = false
 
+        @Flag(
+            help: """
+                Skip automatic Setup Assistant automation. By \
+                default, fresh IPSW installs boot the VM and walk \
+                through Setup Assistant automatically. Use this \
+                flag to configure the VM manually instead.
+                """
+        )
+        var skipSetup: Bool = false
+
         @MainActor
         func run() async throws {
             try Paths.ensureDirectories()
@@ -270,6 +281,22 @@ extension Spook {
                     fflush(stdout)
                 }
                 print()
+
+                // Automate Setup Assistant unless the user opted out.
+                let macOSMajor = version.majorVersion
+                if !skipSetup && SetupAutomation.isSupported(macOSVersion: macOSMajor) {
+                    try await automateSetupAssistant(
+                        bundle: bundle,
+                        macOSVersion: macOSMajor,
+                        macAddress: macAddress
+                    )
+                } else if !skipSetup {
+                    Log.provision.info("No Setup Assistant sequence for macOS \(macOSMajor, privacy: .public)")
+                    print(Style.warning(
+                        "No automated Setup Assistant sequence for macOS \(macOSMajor). "
+                        + "Run 'spook start \(name)' to complete setup manually."
+                    ))
+                }
 
                 // Auto-provision if a template was selected.
                 var provisionScript: URL? = nil
@@ -453,6 +480,90 @@ extension Spook {
             }
 
             return nil
+        }
+
+        // MARK: - Setup Assistant Automation
+
+        /// Boots the VM, automates Setup Assistant, waits for SSH,
+        /// and marks ``VirtualMachineMetadata/setupCompleted``.
+        ///
+        /// The method creates the VM, boots it, runs the keyboard
+        /// automation sequence for the detected macOS version, then
+        /// polls until SSH is reachable (confirming that the setup
+        /// finished and Remote Login was enabled). Once SSH is
+        /// confirmed, the metadata is updated and the VM is stopped.
+        ///
+        /// - Parameters:
+        ///   - bundle: The newly created VM bundle.
+        ///   - macOSVersion: The macOS major version (e.g., 15 for Sequoia).
+        ///   - macAddress: The VM's MAC address for IP resolution.
+        @MainActor
+        private func automateSetupAssistant(
+            bundle: VirtualMachineBundle,
+            macOSVersion: Int,
+            macAddress: String
+        ) async throws {
+            let logger = Log.provision
+
+            logger.info("Starting Setup Assistant automation for macOS \(macOSVersion, privacy: .public)")
+            print(Style.info("Automating Setup Assistant for macOS \(macOSVersion)..."))
+
+            // 1. Boot the VM.
+            let vm = try VirtualMachine(bundle: bundle)
+            guard let underlyingVM = vm.vzVM else {
+                print(Style.error("✗ Failed to create virtual machine instance for setup."))
+                throw ExitCode.failure
+            }
+
+            // Ensure AppKit event loop is available for keyboard delivery.
+            let app = NSApplication.shared
+            app.setActivationPolicy(.accessory)
+
+            try await vm.start()
+            logger.notice("VM booted for Setup Assistant automation")
+            print(Style.success("✓ VM booted."))
+
+            do {
+                // 2. Run the keyboard automation sequence.
+                let steps = SetupAutomation.sequence(for: macOSVersion)
+                logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
+                print("Running Setup Assistant automation (\(steps.count) steps)...")
+                try await SetupAutomationExecutor.run(steps: steps, on: underlyingVM)
+                logger.notice("Setup Assistant automation steps completed")
+                print(Style.success("✓ Setup Assistant automation complete."))
+
+                // 3. Wait for SSH to confirm setup finished.
+                logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
+                print("Waiting for SSH to confirm setup completed...")
+                if let ip = try await resolveIPWithRetry(macAddress: macAddress, timeout: 120) {
+                    logger.info("Resolved IP \(ip, privacy: .public), waiting for SSH")
+                    try await SSHExecutor.waitForSSH(ip: ip)
+                    logger.notice("SSH confirmed on \(ip, privacy: .public)")
+                    print(Style.success("✓ SSH available at \(ip). Setup confirmed."))
+                } else {
+                    logger.warning("Could not resolve IP — setup may still have succeeded")
+                    print(Style.warning("Could not resolve VM IP to verify SSH. Setup may still have completed."))
+                }
+
+                // 4. Mark setup as completed in the bundle metadata.
+                var metadata = bundle.metadata
+                metadata.setupCompleted = true
+                try VirtualMachineBundle.writeMetadata(metadata, to: bundle.url)
+                logger.notice("setupCompleted = true written to metadata")
+                print(Style.success("✓ Setup marked complete."))
+
+            } catch {
+                logger.error("Setup Assistant automation failed: \(error.localizedDescription, privacy: .public)")
+                print(Style.error("✗ Setup Assistant automation failed: \(error.localizedDescription)"))
+                print(Style.dim("  The VM was created. Run 'spook start \(name)' to complete setup manually."))
+            }
+
+            // 5. Stop the VM.
+            logger.info("Stopping VM after Setup Assistant automation")
+            print("Stopping VM...")
+            try? await vm.stop(graceful: false)
+            logger.notice("VM stopped after Setup Assistant automation")
+            print(Style.success("✓ VM stopped."))
         }
     }
 }

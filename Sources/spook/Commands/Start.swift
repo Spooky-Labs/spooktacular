@@ -61,6 +61,15 @@ extension Spook {
         @Option(help: "SSH private key path for --provision ssh.")
         var sshKey: String = "~/.ssh/id_ed25519"
 
+        @Flag(
+            help: """
+                Destroy the VM after it stops. Used for CI pools \
+                where each job gets a clean clone that is discarded \
+                after use.
+                """
+        )
+        var ephemeral: Bool = false
+
         @MainActor
         func run() async throws {
             let bundleURL = try Paths.requireBundle(for: name)
@@ -162,6 +171,7 @@ extension Spook {
             try PIDFile.write(to: bundleURL)
 
             // Graceful shutdown on SIGTERM and SIGINT (Ctrl+C).
+            let isEphemeral = ephemeral
             for sig in [SIGTERM, SIGINT] {
                 signal(sig, SIG_IGN)
                 let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
@@ -171,6 +181,10 @@ extension Spook {
                     Task { @MainActor in
                         try? await vm.stop(graceful: false)
                         PIDFile.remove(from: bundleURL)
+                        if isEphemeral {
+                            try? FileManager.default.removeItem(at: bundleURL)
+                            print("Ephemeral VM '\(name)' destroyed.")
+                        }
                         Foundation.exit(0)
                     }
                 }
@@ -304,6 +318,10 @@ extension Spook {
                 print(Style.dim("Running headless. Press Ctrl+C to stop."))
             }
 
+            if ephemeral {
+                print(Style.yellow("⟳ Ephemeral mode: VM will be destroyed when it stops."))
+            }
+
             // Block until the VM stops or the process is interrupted.
             // Listen to the state stream instead of leaking a continuation.
             for await state in vm.stateStream {
@@ -314,6 +332,12 @@ extension Spook {
 
             // Clean up PID file when VM stops normally.
             PIDFile.remove(from: bundleURL)
+
+            // Destroy the bundle if running in ephemeral mode.
+            if ephemeral {
+                try? FileManager.default.removeItem(at: bundleURL)
+                print("Ephemeral VM '\(name)' destroyed.")
+            }
         }
     }
 }
