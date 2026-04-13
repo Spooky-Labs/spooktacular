@@ -26,6 +26,7 @@ struct Spook: AsyncParsableCommand {
             SSH.self,
             Exec.self,
             Service.self,
+            Serve.self,
         ],
         defaultSubcommand: List.self
     )

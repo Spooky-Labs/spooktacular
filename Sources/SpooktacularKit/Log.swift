@@ -56,6 +56,9 @@ public enum Log {
     /// Image library: cached IPSWs and OCI images.
     public static let images = Logger(subsystem: subsystem, category: "images")
 
+    /// HTTP API: request routing, responses, server lifecycle.
+    public static let httpAPI = Logger(subsystem: subsystem, category: "http-api")
+
     /// App UI: SwiftUI views, sheets, navigation.
     public static let ui = Logger(subsystem: subsystem, category: "ui")
 
