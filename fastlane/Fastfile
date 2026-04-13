@@ -163,11 +163,11 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # Docs — Generate DocC documentation
+  # DocC — Generate documentation
   # ──────────────────────────────────────────────────
 
   desc "Generate DocC documentation"
-  lane :docs do
+  lane :generate_docs do
     sh("cd .. && chmod +x scripts/build-docs.sh && ./scripts/build-docs.sh --static")
   end
 
@@ -181,6 +181,24 @@ platform :mac do
       default_rule_level: :error,
       negative_apple_sentiment: true,
       placeholder_text: true
+    )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Setup — Register app ID in Apple Developer Portal
+  # ──────────────────────────────────────────────────
+
+  desc "Register app identifier in Apple Developer Portal and App Store Connect"
+  lane :register_app do
+    api_key = get_api_key
+
+    produce(
+      app_identifier: "com.spooktacular.app",
+      app_name: "Spooktacular",
+      language: "English",
+      app_version: "1.0.0",
+      platform: "osx",
+      sku: "com.spooktacular.app.macos"
     )
   end
 

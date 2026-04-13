@@ -3,6 +3,6 @@
 # Update these with your Apple Developer account details.
 
 app_identifier "com.spooktacular.app"
-# apple_id "your-apple-id@example.com"
-# team_id "XXXXXXXXXX"
-# itc_team_id "XXXXXXXXXX"
+apple_id "davisperris@gmail.com"
+team_id "4AM5US9G8B"
+itc_team_id "4AM5US9G8B"
