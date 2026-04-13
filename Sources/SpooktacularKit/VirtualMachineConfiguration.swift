@@ -74,7 +74,7 @@ public enum VirtualMachineConfiguration {
         }
 
         if !spec.sharedFolders.isEmpty {
-            configuration.directorySharingDevices = [makeSharing(spec.sharedFolders)]
+            configuration.directorySharingDevices = makeSharing(spec.sharedFolders)
         }
 
         if spec.clipboardSharingEnabled {
@@ -110,38 +110,46 @@ public enum VirtualMachineConfiguration {
         return audio
     }
 
-    /// Builds a VirtIO file-system device for shared folders.
+    /// Builds VirtIO file-system devices for shared folders.
     ///
-    /// Uses `VZSingleDirectoryShare` for one folder,
-    /// `VZMultipleDirectoryShare` for two or more.
+    /// For a single folder, returns one device tagged with
+    /// ``VZVirtioFileSystemDeviceConfiguration/macOSGuestAutomountTag``
+    /// so it appears automatically in Finder. For multiple folders,
+    /// returns one device per folder, each tagged with the folder's
+    /// ``SharedFolder/tag`` so the guest can mount them individually.
+    ///
+    /// - Parameter folders: The shared folder specifications.
+    ///   Must not be empty.
+    /// - Returns: An array of configured file-system devices.
     private static func makeSharing(
         _ folders: [SharedFolder]
-    ) -> VZVirtioFileSystemDeviceConfiguration {
-        let share: VZDirectoryShare
+    ) -> [VZVirtioFileSystemDeviceConfiguration] {
         if folders.count == 1 {
             let folder = folders[0]
-            share = VZSingleDirectoryShare(
+            let share = VZSingleDirectoryShare(
                 directory: VZSharedDirectory(
                     url: URL(fileURLWithPath: folder.hostPath),
                     readOnly: folder.readOnly
                 )
             )
-        } else {
-            let directories = Dictionary(
-                uniqueKeysWithValues: folders.map { folder in
-                    (folder.tag, VZSharedDirectory(
-                        url: URL(fileURLWithPath: folder.hostPath),
-                        readOnly: folder.readOnly
-                    ))
-                }
+            let device = VZVirtioFileSystemDeviceConfiguration(
+                tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
             )
-            share = VZMultipleDirectoryShare(directories: directories)
+            device.share = share
+            return [device]
         }
-        let device = VZVirtioFileSystemDeviceConfiguration(
-            tag: VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag
-        )
-        device.share = share
-        return device
+
+        return folders.map { folder in
+            let share = VZSingleDirectoryShare(
+                directory: VZSharedDirectory(
+                    url: URL(fileURLWithPath: folder.hostPath),
+                    readOnly: folder.readOnly
+                )
+            )
+            let device = VZVirtioFileSystemDeviceConfiguration(tag: folder.tag)
+            device.share = share
+            return device
+        }
     }
 
     /// Applies platform-specific configuration from bundle artifacts.

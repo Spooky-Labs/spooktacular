@@ -237,8 +237,7 @@ public final class VirtualMachine: NSObject, Sendable {
         Log.vm.info("Restoring VM state from \(url.lastPathComponent, privacy: .public)")
         nonisolated(unsafe) let unsafeVM = vm
         try await unsafeVM.restoreMachineStateFrom(url: url)
-        updateState(.running)
-        Log.vm.notice("VM state restored — running")
+        Log.vm.notice("VM state restored — waiting for delegate state update")
     }
 
     // MARK: - Private

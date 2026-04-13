@@ -202,7 +202,7 @@ struct VirtualMachineConfigurationTests {
         #expect(config.audioDevices.isEmpty)
     }
 
-    @Test("Multiple shared folders use a single device with VZMultipleDirectoryShare")
+    @Test("Multiple shared folders create one device per folder with unique tags")
     func sharedFolders() throws {
         let spec = VirtualMachineSpecification(sharedFolders: [
             SharedFolder(hostPath: "/tmp", tag: "first"),
@@ -211,14 +211,15 @@ struct VirtualMachineConfigurationTests {
         let config = VZVirtualMachineConfiguration()
         VirtualMachineConfiguration.applySpec(spec, to: config)
 
-        // Apple's pattern: one VZVirtioFileSystemDeviceConfiguration
-        // with a VZMultipleDirectoryShare, not one device per folder.
-        #expect(config.directorySharingDevices.count == 1)
+        // Each folder gets its own VZVirtioFileSystemDeviceConfiguration
+        // with a unique tag so the guest can mount them individually.
+        #expect(config.directorySharingDevices.count == 2)
 
-        let device = try #require(
-            config.directorySharingDevices.first as? VZVirtioFileSystemDeviceConfiguration
-        )
-        #expect(device.share is VZMultipleDirectoryShare)
+        let devices = config.directorySharingDevices
+            .compactMap { $0 as? VZVirtioFileSystemDeviceConfiguration }
+        #expect(devices.count == 2)
+        #expect(devices[0].tag == "first")
+        #expect(devices[1].tag == "second")
     }
 
     @Test("First shared folder uses macOSGuestAutomountTag")

@@ -20,6 +20,15 @@ import os
 /// - Restoring replaces the current disk and auxiliary storage
 ///   with the snapshot copies.
 ///
+/// ## APFS Copy-on-Write
+///
+/// On APFS volumes, both save and restore use `FileManager.copyItem`,
+/// which the system maps to `clonefile(2)`. This produces a
+/// copy-on-write clone instead of a byte-for-byte copy, making
+/// snapshot creation and restoration near-instantaneous regardless
+/// of disk image size. Only blocks that diverge after the clone
+/// consume additional storage.
+///
 /// ## Snapshot Directory Layout
 ///
 /// ```
@@ -152,8 +161,12 @@ public enum SnapshotManager {
 
     /// Restores a VM bundle from a previously saved snapshot.
     ///
-    /// Replaces the bundle's `disk.img` and `auxiliary.bin` with
-    /// the copies stored in the snapshot directory.
+    /// Removes the bundle's current `disk.img` and `auxiliary.bin`,
+    /// then clones the copies from the snapshot directory.
+    /// On APFS, `FileManager.copyItem` maps to `clonefile(2)`,
+    /// producing a copy-on-write clone that completes in constant
+    /// time regardless of image size. This makes restore suitable
+    /// for ephemeral CI runners that reset between every job.
     ///
     /// - Parameters:
     ///   - bundle: The VM bundle to restore. The VM must be stopped.
@@ -180,7 +193,8 @@ public enum SnapshotManager {
                 continue
             }
 
-            // Remove the current file, then copy from snapshot.
+            // Remove the current file, then clone from snapshot.
+            // On APFS, copyItem triggers clonefile(2) for COW semantics.
             if fileManager.fileExists(atPath: bundleFile.path) {
                 try fileManager.removeItem(at: bundleFile)
             }

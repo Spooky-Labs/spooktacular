@@ -261,9 +261,9 @@ public enum DiskInjector {
     /// - Throws: ``DiskInjectorError/mountFailed(reason:)`` if no
     ///   data volume is found or mounting fails.
     static func mountDataVolume(devicePath: String) throws -> String {
-        // List APFS volumes using diskutil to find the data volume.
+        // List APFS volumes scoped to our device to avoid matching unrelated containers.
         let listOutput = try runProcess("/usr/sbin/diskutil", arguments: [
-            "apfs", "list", "-plist",
+            "apfs", "list", "-plist", devicePath,
         ])
 
         guard let data = listOutput.data(using: .utf8),
@@ -278,11 +278,14 @@ public enum DiskInjector {
         }
 
         // Find the container that references our device, then find its Data volume.
+        // Append "/" to the prefix to prevent /dev/disk4 matching /dev/disk40.
+        let devicePrefix = devicePath.hasSuffix("/") ? devicePath : devicePath + "/"
         for container in containers {
             guard let designatedPhysicalStore = container["DesignatedPhysicalStore"] as? String,
-                  designatedPhysicalStore.hasPrefix(devicePath)
+                  designatedPhysicalStore == devicePath
+                      || designatedPhysicalStore.hasPrefix(devicePrefix)
                       || devicePath.hasPrefix(
-                          (designatedPhysicalStore as NSString).deletingLastPathComponent
+                          (designatedPhysicalStore as NSString).deletingLastPathComponent + "/"
                       )
             else { continue }
 
