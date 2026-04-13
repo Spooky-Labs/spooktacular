@@ -1,161 +1,218 @@
 <div align="center">
+  <img src="Resources/AppIcon.svg" width="128" height="128" alt="Spooktacular — Two ghosts dancing by a campfire">
 
-<img src="Resources/icon.svg" width="128" height="128" alt="Spooktacular">
+  # Spooktacular
 
-# Spooktacular
+  **Double your Mac CI capacity. Vanish infrastructure costs.**
 
-**Enterprise macOS virtualization for Apple Silicon.**
+  Enterprise macOS virtualization for Apple Silicon. Run 2 VMs per Mac,<br>
+  cut EC2 costs 50%, conjure clones in 48ms. MIT licensed, $0 forever.
 
-[![CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml/badge.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Swift 6](https://img.shields.io/badge/Swift-6.0-F05138?style=flat-square&logo=swift&logoColor=white)](https://swift.org)
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-000?style=flat-square&logo=apple&logoColor=white)](https://developer.apple.com/macos/)
+  [![CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml/badge.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
+  [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
+  [![macOS 14+](https://img.shields.io/badge/macOS-14+-a78bfa.svg)](https://developer.apple.com/macos/)
+  [![Tests](https://img.shields.io/badge/Tests-318_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
-[Website](https://spooktacular.app) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Roadmap](https://spooktacular.app/roadmap.html)
+  [Website](https://spooktacular.app) · [Download](https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Get Started](#-summon-your-first-vm)
 
 </div>
 
 ---
 
-## What It Does
+## Why Spooktacular
 
-Double your EC2 Mac CI capacity at zero additional cost. Spooktacular runs macOS virtual machines on Apple Silicon using Apple's [Virtualization.framework](https://developer.apple.com/documentation/virtualization), supporting up to 2 VMs per host. Instant APFS copy-on-write cloning, automated Setup Assistant, SSH provisioning, and a full CLI/GUI/API surface make it production-ready for self-hosted GitHub Actions runners, remote desktops, and fleet management.
+- **2 VMs per Mac** — Apple Silicon's kernel limit, not an artificial cap. Every EC2 Mac or Mac mini becomes two runners.
+- **48ms clones** — APFS copy-on-write duplicates a 64GB VM in milliseconds. No disk copy, no waiting.
+- **Zero-touch provisioning** — Unattended Setup Assistant automation + SSH/disk-inject scripts. No manual clicks.
+- **$0 forever** — MIT licensed. No sales calls. No per-core fees. Audit every line of [source code](https://github.com/Spooky-Labs/spooktacular).
 
-## Quick Start
+## Screenshots
+
+<div align="center">
+<table>
+<tr>
+<td align="center"><strong>SwiftUI App (Liquid Glass)</strong></td>
+<td align="center"><strong>CLI — 14 commands</strong></td>
+</tr>
+<tr>
+<td><em>Screenshot coming soon</em></td>
+<td>
+
+```
+$ spook list
+NAME        STATUS   CPU  MEM   IP
+base        stopped   8   16G   —
+runner-01   running   8   16G   192.168.64.3
+runner-02   running   8   16G   192.168.64.4
+```
+
+</td>
+</tr>
+</table>
+</div>
+
+## Summon Your First VM
 
 ```bash
+# Install (or download from https://spooktacular.app/download.html)
 brew install --cask spooktacular
 
-spook create base --from-ipsw latest --cpu 8 --memory 16
+# Summon a base VM from the latest macOS
+spook create base --from-ipsw latest
+
+# Conjure a clone — 48ms, APFS copy-on-write
 spook clone base runner-01
+
+# Haunt your CI pipeline
+spook start runner-01 --headless --github-runner \
+  --github-repo your-org/repo --github-token ghp_xxx
+
+# Double your capacity — ephemeral runners auto-destroy after one job
 spook clone base runner-02
-spook start runner-01 --headless --user-data ./setup.sh --provision ssh
-spook start runner-02 --headless --user-data ./setup.sh --provision ssh
-# Two runners. One Mac. Half the cost.
+spook start runner-02 --ephemeral --headless --github-runner \
+  --github-repo your-org/repo --github-token ghp_xxx
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Consumers                           │
-│  ┌────────────┐  ┌─────────┐  ┌──────────┐  ┌───────┐  │
-│  │  spook CLI │  │ SwiftUI │  │ HTTP API │  │  K8s  │  │
-│  │ 17 commands│  │   GUI   │  │ :8484    │  │  CRD  │  │
-│  └─────┬──────┘  └────┬────┘  └────┬─────┘  └───┬───┘  │
-│        └───────┬───────┴───────────┬────────────┘       │
-│                ▼                   ▼                     │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │              SpooktacularKit                      │   │
-│  │  VirtualMachine    CloneManager    IPResolver     │   │
-│  │  VMBundle          RestoreImage    CapacityCheck  │   │
-│  │  VMConfiguration   SetupAutomation PIDFile        │   │
-│  │  SnapshotManager   SSHExecutor     HTTPAPIServer  │   │
-│  │  VsockProvisioner  DiskInjector    Templates      │   │
-│  └──────────────────────────────────────────────────┘   │
-│                        ▼                                │
-│           Apple Virtualization.framework                 │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                SpooktacularKit                   │
+│     The library. All business logic here.        │
+│                                                  │
+│  VirtualMachine · CloneManager · SSHExecutor     │
+│  VMProvisioner · HTTPAPIServer · IPResolver      │
+│  SnapshotManager · CapacityCheck · PIDFile       │
+│  SetupAutomationExecutor · DiskInjector          │
+└─────┬──────────┬──────────┬──────────┬───────────┘
+      │          │          │          │
+ ┌────▼──┐  ┌───▼───┐  ┌──▼────┐  ┌──▼────────┐
+ │ spook │  │  GUI  │  │ serve │  │ controller │
+ │ (CLI) │  │(SwiftUI│  │(HTTP) │  │   (K8s)   │
+ └───────┘  └───────┘  └───────┘  └────────────┘
+   14 cmds   Liquid     9 REST     MacOSVM CRD
+             Glass     endpoints   Helm chart
 ```
+
+Four thin clients, one library. Every client parses input and calls SpooktacularKit.
 
 ## Features
 
-- **Instant cloning** -- APFS copy-on-write clones a 30 GB disk in milliseconds ([CloneManager.swift](Sources/SpooktacularKit/CloneManager.swift))
-- **2-VM capacity enforcement** -- Proactive kernel-limit check before boot ([CapacityCheck.swift](Sources/SpooktacularKit/CapacityCheck.swift))
-- **Setup Assistant automation** -- Keyboard sequences for macOS 15 and 26 ([SetupAutomation.swift](Sources/SpooktacularKit/SetupAutomation.swift))
-- **SSH provisioning** -- user-data scripts with output streaming ([SSHExecutor.swift](Sources/SpooktacularKit/SSHExecutor.swift))
-- **VirtIO socket provisioning** -- Agent-based script delivery, no network needed ([VsockProvisioner.swift](Sources/SpooktacularKit/VsockProvisioner.swift))
-- **IP resolution** -- DHCP leases + ARP table lookup ([IPResolver.swift](Sources/SpooktacularKit/IPResolver.swift))
-- **Snapshots** -- Save and restore disk-level VM state ([SnapshotManager.swift](Sources/SpooktacularKit/SnapshotManager.swift))
-- **Networking** -- NAT, bridged, or isolated modes ([NetworkMode.swift](Sources/SpooktacularKit/NetworkMode.swift))
-- **Shared folders** -- VirtIO file-system device with automount ([SharedFolderProvisioner.swift](Sources/SpooktacularKit/SharedFolderProvisioner.swift))
-- **LaunchDaemon service** -- Headless server with `spook service install` ([ServicePlist.swift](Sources/SpooktacularKit/ServicePlist.swift))
-- **Templates** -- `--github-runner`, `--remote-desktop`, `--openclaw` script generators
-- **SwiftUI GUI** -- NavigationSplitView, inspector panel, Liquid Glass (macOS 26+), menu bar extra
-- **Accessibility** -- Full VoiceOver support, WCAG 2.1, reduced motion
+| Feature | Source | Description |
+|---|---|---|
+| VM Creation | [`RestoreImageManager.swift`](Sources/SpooktacularKit/RestoreImageManager.swift) | Auto-download latest compatible macOS IPSW, install |
+| APFS Cloning | [`CloneManager.swift`](Sources/SpooktacularKit/CloneManager.swift) | Copy-on-write clone with new MachineIdentifier |
+| VM Lifecycle | [`VirtualMachine.swift`](Sources/SpooktacularKit/VirtualMachine.swift) | Start, stop, pause, resume, save/restore state |
+| Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularKit/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
+| SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularKit/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
+| Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularKit/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
+| VirtIO Socket | [`VsockProvisioner.swift`](Sources/SpooktacularKit/VsockProvisioner.swift) | Host-side vsock + [`spook-agent`](Sources/spook-agent/) guest daemon |
+| Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularKit/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
+| Ephemeral Runners | [`Start.swift`](Sources/spook/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
+| Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularKit/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
+| Capacity Check | [`CapacityCheck.swift`](Sources/SpooktacularKit/CapacityCheck.swift) | Enforces 2-VM kernel limit with actionable errors |
+| HTTP API | [`HTTPAPIServer.swift`](Sources/SpooktacularKit/HTTPAPIServer.swift) | 9 REST endpoints, Codable types, Network.framework |
+| Kubernetes | [`Sources/spook-controller/`](Sources/spook-controller/) | MacOSVM CRD, Swift controller, Helm chart |
+| Service | [`ServicePlist.swift`](Sources/SpooktacularKit/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
+| Networking | [`VirtualMachineConfiguration.swift`](Sources/SpooktacularKit/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
+| Accessibility | GUI sources | Full VoiceOver: labels, hints, identifiers, announcements |
 
 ## CLI Reference
 
 | Command | Description |
-|---------|-------------|
-| `spook create <name>` | Create a VM from an IPSW restore image |
-| `spook start <name>` | Boot a VM (`--headless`, `--recovery`, `--user-data`, `--provision ssh`) |
-| `spook stop <name>` | Graceful shutdown via SIGTERM (`--force` for SIGKILL) |
-| `spook list` | List all VMs with running state (`--json`) |
-| `spook clone <src> <dst>` | Instant APFS clone with new machine identifier |
-| `spook delete <name>` | Delete a VM bundle (`--force` skips confirmation) |
-| `spook ip <name>` | Resolve VM IP address via DHCP/ARP |
-| `spook ssh <name>` | Open an SSH session to a running VM |
-| `spook exec <name> --` | Run a command on a VM via SSH |
-| `spook get <name>` | Show VM configuration (`--json`, `--field cpu`) |
-| `spook set <name>` | Modify VM config (`--cpu`, `--memory`, `--network`) |
-| `spook snapshot <name>` | Save a disk-level snapshot |
-| `spook restore <name>` | Restore a VM from a snapshot |
-| `spook snapshots <name>` | List available snapshots |
-| `spook share <name>` | Manage shared folders |
-| `spook service` | Install/uninstall LaunchDaemon for headless operation |
+|---|---|
+| `spook create` | Summon a VM from an IPSW restore image |
+| `spook clone` | Conjure a clone (APFS copy-on-write) |
+| `spook start` | Start a VM (headless or windowed) |
+| `spook stop` | Stop a running VM |
+| `spook delete` | Delete a VM bundle |
+| `spook list` | List all VMs with status |
+| `spook get` | Read VM configuration fields |
+| `spook set` | Modify VM configuration |
+| `spook ip` | Resolve a running VM's IP address |
+| `spook ssh` | SSH into a running VM |
+| `spook exec` | Execute a command in a VM over SSH |
+| `spook snapshot` | Save or restore disk-level snapshots |
+| `spook service` | Install/uninstall per-VM LaunchDaemons |
+| `spook share` | Manage VirtIO shared folders |
 | `spook serve` | Start the HTTP API server |
 
 ## HTTP API
 
-The `spook serve` command starts a JSON API on `http://127.0.0.1:8484`.
+```bash
+spook serve --port 8484 --host 127.0.0.1
+```
 
-| Method | Path | Description |
-|--------|------|-------------|
+| Method | Endpoint | Description |
+|---|---|---|
 | `GET` | `/health` | Health check |
 | `GET` | `/v1/vms` | List all VMs |
 | `GET` | `/v1/vms/:name` | Get VM details |
-| `POST` | `/v1/vms/:name/clone` | Clone a VM (`{"source": "base"}`) |
+| `POST` | `/v1/vms/:name/clone` | Clone from a base VM |
 | `POST` | `/v1/vms/:name/start` | Start a VM |
 | `POST` | `/v1/vms/:name/stop` | Stop a VM |
 | `DELETE` | `/v1/vms/:name` | Delete a VM |
-| `GET` | `/v1/vms/:name/ip` | Resolve VM IP address |
-
-All responses use a JSON envelope: `{"status": "ok", "data": {...}}` or `{"status": "error", "message": "..."}`.
+| `GET` | `/v1/vms/:name/ip` | Resolve VM IP |
 
 ## Kubernetes
 
-A Kubernetes operator with a `MacOSVM` custom resource definition is planned. Manifests and Helm charts are in [`deploy/kubernetes/`](deploy/kubernetes/). See the [Kubernetes README](deploy/kubernetes/README.md) for details.
+```bash
+# Apply the CRD
+kubectl apply -f deploy/kubernetes/crds/macosvm-crd.yaml
+
+# Install the controller via Helm
+helm install spooktacular deploy/kubernetes/helm/spooktacular/
+
+# Summon a GitHub Actions runner
+kubectl apply -f deploy/kubernetes/examples/github-runner.yaml
+
+# Watch it come to life
+kubectl get mvm -w
+```
+
+The [Swift controller](Sources/spook-controller/) watches `MacOSVM` custom resources and reconciles by calling the HTTP API on Mac nodes. See [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) for the full architecture.
 
 ## Building from Source
 
 ```bash
-git clone https://github.com/Spooky-Labs/spooktacular
-cd spooktacular
-swift build
-swift test
-./build-app.sh    # .app bundle with icon
+swift build              # Debug build
+swift build -c release   # Release build
+swift test               # Run 318 tests
+./build-app.sh release   # Build .app bundle
 ```
-
-Requires macOS 14+ and Swift 6.0+.
 
 ## CI/CD
 
-Four GitHub Actions workflows automate the full lifecycle:
-
 | Workflow | Trigger | What it does |
-|----------|---------|-------------|
-| [`ci.yml`](.github/workflows/ci.yml) | Every push and PR | Runs `swift test --parallel`, verifies test count |
-| [`beta.yml`](.github/workflows/beta.yml) | Push to `main` | Builds and uploads to TestFlight |
-| [`release.yml`](.github/workflows/release.yml) | Tag `v*` | Notarizes and submits to App Store via Fastlane |
-| [`docs.yml`](.github/workflows/docs.yml) | Push to `main` | Generates DocC and deploys to GitHub Pages |
+|---|---|---|
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | Every push | 318 tests + release build + .app bundle |
+| [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
+| [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
+| [Docs](https://github.com/Spooky-Labs/spooktacular/actions/workflows/docs.yml) | Push to main | DocC generation + GitHub Pages deploy |
+
+All workflows run on `macos-26` runners with Swift 6.2 and the macOS 26 SDK.
 
 ## Contributing
 
-We use GitHub Flow. Fork, branch, PR.
+We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welcome.
 
-1. Open an issue before major changes
-2. All new code needs tests (`swift test` must pass)
-3. Run `swift build` to verify compilation
-4. Keep commits focused and messages descriptive
+1. Fork the repo
+2. Create a feature branch
+3. Write tests for new functionality
+4. Ensure `swift test` passes (318+ tests)
+5. Open a PR using our [PR template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — use it freely for any purpose.
+
+---
 
 <div align="center">
-<br>
+
 Made with 🌲🌲🌲 in Cascadia
-<br>
-<sub><a href="https://github.com/Spooky-Labs">Spooky Labs</a> · Apple, macOS, and Xcode are trademarks of Apple Inc.</sub>
+
+© 2026 [Spooky Labs](https://github.com/Spooky-Labs)
+
 </div>
