@@ -17,7 +17,10 @@ platform :mac do
 
   desc "Build the .app bundle (release)"
   lane :build do
-    sh("cd .. && chmod +x build-app.sh && ./build-app.sh release")
+    # Pass the match signing identity to build-app.sh if available.
+    # Match sets sigh_..._certificate-name after running.
+    identity = ENV["sigh_com.spooktacular.app_appstore_macos_certificate-name"] || ""
+    sh("cd .. && chmod +x build-app.sh && CODESIGN_IDENTITY='#{identity}' ./build-app.sh release")
   end
 
   # ──────────────────────────────────────────────────

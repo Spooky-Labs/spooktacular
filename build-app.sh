@@ -63,8 +63,11 @@ fi
 cp "$ENTITLEMENTS" "$CONTENTS/Entitlements.plist"
 
 # 4. Code sign
-echo "Code signing..."
-codesign --force --sign - \
+# Use the signing identity from CODESIGN_IDENTITY env var if set
+# (match sets this via MATCH_CODESIGN_IDENTITY), otherwise ad-hoc.
+SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+echo "Code signing with identity: $SIGN_IDENTITY"
+codesign --force --sign "$SIGN_IDENTITY" \
     --entitlements "$ENTITLEMENTS" \
     --deep \
     "$BUNDLE_DIR"
