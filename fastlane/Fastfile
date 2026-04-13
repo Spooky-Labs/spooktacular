@@ -24,17 +24,17 @@ platform :mac do
   # Package — Create .pkg from .app
   # ──────────────────────────────────────────────────
 
-  desc "Package the .app into a signed .pkg for App Store submission"
+  desc "Package the .app into a .pkg for App Store submission"
   lane :package do
     # App Store Connect and TestFlight require .pkg for macOS,
     # not a raw .app bundle. Use productbuild to create an
     # installer package with the app placed in /Applications.
-    sh(
-      "cd .. && productbuild " \
-      "--component Spooktacular.app /Applications " \
-      "--sign '#{ENV["INSTALLER_CERT_NAME"] || "-"}' " \
-      "Spooktacular.pkg"
-    )
+    sign_flag = ""
+    if ENV["INSTALLER_CERT_NAME"]
+      sign_flag = "--sign '#{ENV["INSTALLER_CERT_NAME"]}'"
+    end
+
+    sh("cd .. && productbuild --component Spooktacular.app /Applications #{sign_flag} Spooktacular.pkg")
     UI.success("Package created: Spooktacular.pkg")
   end
 
