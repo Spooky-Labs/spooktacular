@@ -331,7 +331,7 @@ public actor HTTPAPIServer {
     /// Returns a simple health-check response confirming the server
     /// is running.
     private func handleHealth() -> HTTPResponse {
-        HTTPResponse.ok(data: ["service": "spooktacular", "version": "0.1.0"])
+        HTTPResponse.ok(HealthResponse(service: "spooktacular", version: "0.1.0"))
     }
 
     /// Handles `GET /v1/vms`.
@@ -345,23 +345,23 @@ public actor HTTPAPIServer {
             at: vmDirectory,
             includingPropertiesForKeys: nil
         ) else {
-            return HTTPResponse.ok(data: ["vms": [Any]()])
+            return HTTPResponse.ok(VMListResponse(vms: []))
         }
 
         let bundles = contents
             .filter { $0.pathExtension == "vm" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
-        var vms: [[String: Any]] = []
+        var vms: [VMStatus] = []
         for url in bundles {
             let name = url.deletingPathExtension().lastPathComponent
             guard let bundle = try? VirtualMachineBundle.load(from: url) else {
                 continue
             }
-            vms.append(vmToDict(name: name, bundle: bundle))
+            vms.append(vmStatus(name: name, bundle: bundle))
         }
 
-        return HTTPResponse.ok(data: ["vms": vms])
+        return HTTPResponse.ok(VMListResponse(vms: vms))
     }
 
     /// Handles `GET /v1/vms/:name`.
@@ -381,7 +381,7 @@ public actor HTTPAPIServer {
             )
         }
 
-        return HTTPResponse.ok(data: vmToDict(name: name, bundle: bundle))
+        return HTTPResponse.ok(vmStatus(name: name, bundle: bundle))
     }
 
     /// Handles `POST /v1/vms`.
@@ -426,16 +426,19 @@ public actor HTTPAPIServer {
             return HTTPResponse.error(message: "Request body required.", statusCode: 400)
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
-            return HTTPResponse.error(message: "Invalid JSON in request body.", statusCode: 400)
+        struct CloneRequest: Decodable {
+            let source: String
         }
 
-        guard let sourceName = json["source"] as? String, !sourceName.isEmpty else {
+        guard let cloneRequest = try? JSONDecoder().decode(CloneRequest.self, from: body),
+              !cloneRequest.source.isEmpty else {
             return HTTPResponse.error(
                 message: "Field 'source' is required. Provide the name of the base VM to clone.",
                 statusCode: 400
             )
         }
+
+        let sourceName = cloneRequest.source
 
         let destinationURL = SpooktacularPaths.bundleURL(for: name)
         guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
@@ -461,13 +464,7 @@ public actor HTTPAPIServer {
             let clonedBundle = try CloneManager.clone(source: sourceBundle, to: destinationURL)
 
             logger.notice("Cloned VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)' via API")
-            return HTTPResponse(
-                statusCode: 201,
-                body: HTTPResponse.envelope(
-                    status: "ok",
-                    data: vmToDict(name: name, bundle: clonedBundle)
-                )
-            )
+            return HTTPResponse.ok(vmStatus(name: name, bundle: clonedBundle), statusCode: 201)
         } catch {
             logger.error("Failed to clone VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             return HTTPResponse.error(
@@ -549,12 +546,12 @@ public actor HTTPAPIServer {
         do {
             try process.run()
             logger.notice("Started VM '\(name, privacy: .public)' via API (PID \(process.processIdentifier), log: \(logFileURL.path, privacy: .public))")
-            return HTTPResponse.ok(data: [
-                "name": name,
-                "action": "start",
-                "pid": Int(process.processIdentifier),
-                "log": logFileURL.path,
-            ] as [String: Any])
+            return HTTPResponse.ok(VMActionResponse(
+                name: name,
+                action: "start",
+                pid: Int(process.processIdentifier),
+                log: logFileURL.path
+            ))
         } catch {
             logger.error("Failed to start VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             try? logFileHandle.close()
@@ -589,11 +586,12 @@ public actor HTTPAPIServer {
         let result = kill(pid, SIGTERM)
         if result == 0 {
             logger.notice("Sent SIGTERM to VM '\(name, privacy: .public)' (PID \(pid))")
-            return HTTPResponse.ok(data: [
-                "name": name,
-                "action": "stop",
-                "pid": Int(pid),
-            ] as [String: Any])
+            return HTTPResponse.ok(VMActionResponse(
+                name: name,
+                action: "stop",
+                pid: Int(pid),
+                log: nil
+            ))
         } else {
             let errorCode = errno
             logger.error("Failed to send SIGTERM to PID \(pid): errno \(errorCode)")
@@ -625,7 +623,7 @@ public actor HTTPAPIServer {
         do {
             try FileManager.default.removeItem(at: bundleURL)
             logger.notice("Deleted VM '\(name, privacy: .public)' via API")
-            return HTTPResponse.ok(data: ["name": name, "deleted": true])
+            return HTTPResponse.ok(VMDeleteResponse(name: name, deleted: true))
         } catch {
             logger.error("Failed to delete VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             return HTTPResponse.error(
@@ -666,7 +664,7 @@ public actor HTTPAPIServer {
 
         do {
             if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
-                return HTTPResponse.ok(data: ["name": name, "ip": ip, "mac": macAddress])
+                return HTTPResponse.ok(VMIPResponse(name: name, ip: ip, mac: macAddress))
             } else {
                 return HTTPResponse.error(
                     message: "Could not resolve IP for VM '\(name)'. The VM may still be booting.",
@@ -683,35 +681,34 @@ public actor HTTPAPIServer {
 
     // MARK: - Helpers
 
-    /// Converts a VM bundle into a dictionary suitable for JSON serialization.
-    private func vmToDict(name: String, bundle: VirtualMachineBundle) -> [String: Any] {
+    /// Converts a VM bundle into a typed ``VMStatus`` for JSON serialization.
+    private func vmStatus(name: String, bundle: VirtualMachineBundle) -> VMStatus {
         let spec = bundle.spec
         let metadata = bundle.metadata
-        let isRunning = PIDFile.isRunning(bundleURL: bundle.url)
 
-        var network: String
+        let network: String
         switch spec.networkMode {
         case .nat: network = "nat"
         case .bridged(let interface): network = "bridged:\(interface)"
         case .isolated: network = "isolated"
         }
 
-        return [
-            "name": name,
-            "running": isRunning,
-            "cpu": spec.cpuCount,
-            "memorySizeInGigabytes": spec.memorySizeInGigabytes,
-            "diskSizeInGigabytes": spec.diskSizeInGigabytes,
-            "displays": spec.displayCount,
-            "network": network,
-            "audio": spec.audioEnabled,
-            "microphone": spec.microphoneEnabled,
-            "macAddress": spec.macAddress as Any,
-            "setupCompleted": metadata.setupCompleted,
-            "id": metadata.id.uuidString,
-            "createdAt": ISO8601DateFormatter().string(from: metadata.createdAt),
-            "path": bundle.url.path,
-        ]
+        return VMStatus(
+            name: name,
+            running: PIDFile.isRunning(bundleURL: bundle.url),
+            cpu: spec.cpuCount,
+            memorySizeInGigabytes: spec.memorySizeInGigabytes,
+            diskSizeInGigabytes: spec.diskSizeInGigabytes,
+            displays: spec.displayCount,
+            network: network,
+            audio: spec.audioEnabled,
+            microphone: spec.microphoneEnabled,
+            macAddress: spec.macAddress,
+            setupCompleted: metadata.setupCompleted,
+            id: metadata.id.uuidString,
+            createdAt: ISO8601DateFormatter().string(from: metadata.createdAt),
+            path: bundle.url.path
+        )
     }
 }
 
@@ -822,6 +819,96 @@ enum HTTPRequestParser {
     }
 }
 
+// MARK: - API Response Types
+
+/// The status of a VM as reported by the API.
+///
+/// Every VM resource in the API includes these fields. This struct
+/// is the single source of truth for JSON serialization — both the
+/// CLI `--json` output and the HTTP API share the same shape.
+struct VMStatus: Codable, Sendable {
+    let name: String
+    let running: Bool
+    let cpu: Int
+    let memorySizeInGigabytes: UInt64
+    let diskSizeInGigabytes: UInt64
+    let displays: Int
+    let network: String
+    let audio: Bool
+    let microphone: Bool
+    let macAddress: String?
+    let setupCompleted: Bool
+    let id: String
+    let createdAt: String
+    let path: String
+}
+
+/// Response for start/stop actions.
+struct VMActionResponse: Codable, Sendable {
+    let name: String
+    let action: String
+    let pid: Int?
+    let log: String?
+}
+
+/// Response for delete actions.
+struct VMDeleteResponse: Codable, Sendable {
+    let name: String
+    let deleted: Bool
+}
+
+/// Response for IP resolution.
+struct VMIPResponse: Codable, Sendable {
+    let name: String
+    let ip: String
+    let mac: String
+}
+
+/// Response for health check.
+struct HealthResponse: Codable, Sendable {
+    let service: String
+    let version: String
+}
+
+/// Response for VM list.
+struct VMListResponse: Codable, Sendable {
+    let vms: [VMStatus]
+}
+
+// MARK: - JSON Envelope
+
+/// A typed JSON envelope for all API responses.
+///
+/// Every response follows the pattern:
+/// ```json
+/// {"status": "ok", "data": { ... }}
+/// {"status": "error", "message": "..."}
+/// ```
+///
+/// Using generics with `Codable` eliminates all `[String: Any]`
+/// and `JSONSerialization` usage, giving compile-time type safety
+/// and deterministic JSON key ordering.
+struct APIEnvelope<T: Encodable>: Encodable {
+    let status: String
+    let data: T?
+    let message: String?
+
+    init(data: T) {
+        self.status = "ok"
+        self.data = data
+        self.message = nil
+    }
+
+    init(error message: String) where T == EmptyData {
+        self.status = "error"
+        self.data = nil
+        self.message = message
+    }
+}
+
+/// Placeholder for error envelopes that carry no data payload.
+struct EmptyData: Encodable {}
+
 // MARK: - HTTP Response
 
 /// An HTTP response with status code, headers, and JSON body.
@@ -836,6 +923,13 @@ struct HTTPResponse: Sendable {
 
     /// The JSON response body as raw bytes.
     let body: Data
+
+    /// Shared encoder with sorted keys for deterministic output.
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
 
     /// The HTTP status text for common status codes.
     private var statusText: String {
@@ -853,12 +947,6 @@ struct HTTPResponse: Sendable {
     }
 
     /// Serializes the response to raw HTTP/1.1 bytes.
-    ///
-    /// Produces a complete HTTP response including the status line,
-    /// `Content-Type`, `Content-Length`, and `Connection` headers,
-    /// followed by the JSON body.
-    ///
-    /// - Returns: The serialized HTTP response as `Data`.
     func serialize() -> Data {
         var response = "HTTP/1.1 \(statusCode) \(statusText)\r\n"
         response += "Content-Type: application/json; charset=utf-8\r\n"
@@ -871,58 +959,18 @@ struct HTTPResponse: Sendable {
         return data
     }
 
-    /// Creates a JSON envelope with the given status and data.
-    ///
-    /// - Parameters:
-    ///   - status: The status string (`"ok"` or `"error"`).
-    ///   - data: The data payload dictionary.
-    /// - Returns: The serialized JSON envelope as `Data`.
-    static func envelope(status: String, data: Any) -> Data {
-        let envelope: [String: Any] = ["status": status, "data": data]
-        return (try? JSONSerialization.data(
-            withJSONObject: envelope,
-            options: [.sortedKeys]
-        )) ?? Data("{}".utf8)
+    /// Creates a success response with a typed data payload.
+    static func ok<T: Encodable>(_ data: T, statusCode: Int = 200) -> HTTPResponse {
+        let envelope = APIEnvelope(data: data)
+        let body = (try? encoder.encode(envelope)) ?? Data("{}".utf8)
+        return HTTPResponse(statusCode: statusCode, body: body)
     }
 
-    /// Creates an error envelope.
-    ///
-    /// - Parameters:
-    ///   - status: The status string (always `"error"`).
-    ///   - message: The error message.
-    /// - Returns: The serialized JSON error envelope as `Data`.
-    static func errorEnvelope(message: String) -> Data {
-        let envelope: [String: Any] = ["status": "error", "message": message]
-        return (try? JSONSerialization.data(
-            withJSONObject: envelope,
-            options: [.sortedKeys]
-        )) ?? Data("{}".utf8)
-    }
-
-    /// Creates a success response with data.
-    ///
-    /// - Parameters:
-    ///   - data: The response data payload.
-    ///   - statusCode: The HTTP status code. Defaults to 200.
-    /// - Returns: A success HTTP response.
-    static func ok(data: Any, statusCode: Int = 200) -> HTTPResponse {
-        HTTPResponse(
-            statusCode: statusCode,
-            body: envelope(status: "ok", data: data)
-        )
-    }
-
-    /// Creates an error response.
-    ///
-    /// - Parameters:
-    ///   - message: A human-readable error description.
-    ///   - statusCode: The HTTP status code.
-    /// - Returns: An error HTTP response.
+    /// Creates an error response with a message.
     static func error(message: String, statusCode: Int) -> HTTPResponse {
-        HTTPResponse(
-            statusCode: statusCode,
-            body: errorEnvelope(message: message)
-        )
+        let envelope = APIEnvelope<EmptyData>(error: message)
+        let body = (try? Self.encoder.encode(envelope)) ?? Data("{}".utf8)
+        return HTTPResponse(statusCode: statusCode, body: body)
     }
 }
 
