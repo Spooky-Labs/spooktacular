@@ -1008,4 +1008,17 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Invalid port number: \(port)."
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .malformedRequest:
+            "Ensure the HTTP request is well-formed with valid headers and body."
+        case .cancelled:
+            "Restart the server with 'spook serve'."
+        case .portInUse:
+            "Choose a different port with --port, or stop the process using the current port."
+        case .invalidPort:
+            "Use a port number between 1 and 65535."
+        }
+    }
 }

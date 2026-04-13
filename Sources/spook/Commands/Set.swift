@@ -63,6 +63,12 @@ extension Spook {
         func run() async throws {
             let bundleURL = try requireBundle(for: name)
 
+            guard !PIDFile.isRunning(bundleURL: bundleURL) else {
+                print(Style.error("Cannot modify '\(name)': VM is currently running."))
+                print(Style.dim("Stop it first with: spook stop \(name)"))
+                throw ExitCode.failure
+            }
+
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let oldSpec = bundle.spec
 

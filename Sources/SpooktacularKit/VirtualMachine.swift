@@ -11,6 +11,11 @@ public struct VirtualMachineInvalidatedError: Error, Sendable, LocalizedError {
     public var errorDescription: String? {
         "The virtual machine has been invalidated and cannot perform operations."
     }
+
+    /// Guidance on how to resolve the error.
+    public var recoverySuggestion: String? {
+        "The VM may have been stopped or deallocated. Reload the VM bundle and try again."
+    }
 }
 
 /// The lifecycle state of a virtual machine.

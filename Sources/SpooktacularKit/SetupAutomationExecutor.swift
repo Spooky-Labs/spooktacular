@@ -21,6 +21,15 @@ public enum SetupAutomationExecutorError: Error, Sendable, LocalizedError {
             "Cannot map character '\(char)' to a virtual key code."
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .virtualMachineInvalidated:
+            "Restart the VM and retry the setup automation."
+        case .unmappableCharacter:
+            "Use only ASCII alphanumeric characters, common punctuation, and whitespace in usernames and passwords."
+        }
+    }
 }
 
 /// Drives macOS Setup Assistant automation by sending keyboard events
