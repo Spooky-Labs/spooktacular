@@ -37,8 +37,10 @@ platform :mac do
     # additional_cert_types: mac_installer_distribution) or
     # the INSTALLER_CERT_NAME env var. Falls back to the
     # team-based identity name if neither is set.
+    # The installer cert identity installed by match. Use the full
+    # name from `security find-identity` or the SHA-1 hash.
     installer_identity = ENV["INSTALLER_CERT_NAME"] ||
-      "3rd Party Mac Developer Installer: #{ENV["sigh_com.spooktacular.app_appstore_macos_team-id"] || "4AM5US9G8B"}"
+      "3rd Party Mac Developer Installer: Perris Davis (4AM5US9G8B)"
 
     sh("cd .. && productbuild --component Spooktacular.app /Applications --sign '#{installer_identity}' Spooktacular.pkg")
     UI.success("Package created: Spooktacular.pkg")
