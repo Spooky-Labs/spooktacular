@@ -1,12 +1,12 @@
-name: Release (App Store)
+name: Release
 
 on:
   push:
     tags: ["v*"]
 
 jobs:
-  release:
-    name: Build, Notarize & Submit to App Store
+  build:
+    name: Build & Sign
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
@@ -24,25 +24,56 @@ jobs:
         run: fastlane signing
         working-directory: fastlane
 
-      - name: Submit to App Store (test + sign + build + notarize + deliver)
+      - name: Run tests
+        run: swift test --parallel
+
+      - name: Build signed .app bundle
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-        run: fastlane release submit:true
+        run: fastlane build
         working-directory: fastlane
 
-      - name: Build Homebrew package (notarized zip)
+      - name: Package .pkg for App Store
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-        run: fastlane homebrew
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+        run: fastlane package
         working-directory: fastlane
 
-      - name: Create GitHub Release
+      - name: Create Homebrew zip
+        run: ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-artifacts
+          path: |
+            Spooktacular.app.zip
+            Spooktacular.pkg
+          retention-days: 30
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+
+      - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.ref_name }}
@@ -51,3 +82,29 @@ jobs:
             --title "Spooktacular $TAG_NAME" \
             --generate-notes \
             Spooktacular.app.zip
+
+  testflight:
+    name: Upload to TestFlight
+    runs-on: macos-26
+    needs: build
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+
+      - name: Install Fastlane
+        run: gem install fastlane
+
+      - name: Upload to TestFlight
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+        run: fastlane beta
+        working-directory: fastlane
