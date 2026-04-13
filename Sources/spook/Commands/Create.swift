@@ -203,9 +203,9 @@ extension Spook {
 
         @MainActor
         func run() async throws {
-            try Paths.ensureDirectories()
+            try SpooktacularPaths.ensureDirectories()
 
-            let bundleURL = Paths.bundleURL(for: name)
+            let bundleURL = SpooktacularPaths.bundleURL(for: name)
             guard !FileManager.default.fileExists(atPath: bundleURL.path) else {
                 print(Style.error("✗ VM '\(name)' already exists."))
                 print(Style.dim("  Choose a different name, or delete the existing VM with 'spook delete \(name)'."))
@@ -231,10 +231,10 @@ extension Spook {
                 autoResizeDisplay: autoResize
             )
 
-            let manager = RestoreImageManager(cacheDirectory: Paths.ipswCache)
+            let manager = RestoreImageManager(cacheDirectory: SpooktacularPaths.ipswCache)
 
             do {
-                print("Fetching latest compatible macOS restore image...")
+                print(Style.info("Fetching latest compatible macOS restore image..."))
                 let restoreImage = try await manager.fetchLatestSupported()
                 let version = restoreImage.operatingSystemVersion
                 print(
@@ -245,7 +245,7 @@ extension Spook {
 
                 let ipswURL: URL
                 if fromIpsw == "latest" {
-                    print("Downloading IPSW (this may take a while)...")
+                    print(Style.info("Downloading IPSW (this may take a while)..."))
                     ipswURL = try await manager.downloadIPSW(
                         from: restoreImage
                     ) { fraction in
@@ -263,15 +263,15 @@ extension Spook {
                     }
                 }
 
-                print("Creating VM bundle '\(name)'...")
+                print(Style.info("Creating VM bundle '\(name)'..."))
                 let bundle = try manager.createBundle(
                     named: name,
-                    in: Paths.vms,
+                    in: SpooktacularPaths.vms,
                     from: restoreImage,
                     spec: spec
                 )
 
-                print("Installing macOS (10-20 minutes)...")
+                print(Style.info("Installing macOS (10-20 minutes)..."))
                 try await manager.install(
                     bundle: bundle,
                     from: ipswURL
@@ -329,7 +329,7 @@ extension Spook {
                         if noProvision {
                             Log.provision.info("Skipping SSH provisioning (--no-provision)")
                             print(Style.info("Script generated. Skipping auto-provisioning (--no-provision)."))
-                            print("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh")
+                            print(Style.dim("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh"))
                         } else {
                             Log.provision.info("Starting SSH auto-provisioning for '\(name, privacy: .public)'")
                             try await autoProvisionViaSSH(
@@ -400,7 +400,7 @@ extension Spook {
             do {
                 // 2. Resolve the VM's IP address by polling DHCP/ARP.
                 logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
-                print("Resolving VM IP address...")
+                print(Style.info("Resolving VM IP address..."))
                 guard let ip = try await resolveIPWithRetry(
                     macAddress: macAddress,
                     timeout: 120
@@ -413,17 +413,17 @@ extension Spook {
                     throw ProvisioningSkipped()
                 }
                 logger.notice("Resolved IP \(ip, privacy: .public) for MAC \(macAddress, privacy: .public)")
-                print("  IP: \(ip)")
+                Style.field("IP", ip)
 
                 // 3. Wait for SSH to become available.
                 logger.info("Waiting for SSH on \(ip, privacy: .public)")
-                print("Waiting for SSH...")
+                print(Style.info("Waiting for SSH..."))
                 try await SSHExecutor.waitForSSH(ip: ip)
                 logger.notice("SSH available on \(ip, privacy: .public)")
 
                 // 4. Execute the provisioning script.
                 logger.info("Executing provisioning script on \(ip, privacy: .public)")
-                print("Executing provisioning script...")
+                print(Style.info("Executing provisioning script..."))
                 try await SSHExecutor.execute(
                     script: script,
                     on: ip,
@@ -448,7 +448,7 @@ extension Spook {
 
             // 5. Stop the VM.
             logger.info("Stopping VM '\(bundle.url.lastPathComponent, privacy: .public)' after provisioning")
-            print("Stopping VM...")
+            print(Style.info("Stopping VM..."))
             try? await vm.stop(graceful: false)
             logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' stopped after provisioning")
             print(Style.success("✓ VM stopped."))
@@ -527,14 +527,14 @@ extension Spook {
                 // 2. Run the keyboard automation sequence.
                 let steps = SetupAutomation.sequence(for: macOSVersion)
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
-                print("Running Setup Assistant automation (\(steps.count) steps)...")
+                print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
                 try await SetupAutomationExecutor.run(steps: steps, on: underlyingVM)
                 logger.notice("Setup Assistant automation steps completed")
                 print(Style.success("✓ Setup Assistant automation complete."))
 
                 // 3. Wait for SSH to confirm setup finished.
                 logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
-                print("Waiting for SSH to confirm setup completed...")
+                print(Style.info("Waiting for SSH to confirm setup completed..."))
                 if let ip = try await resolveIPWithRetry(macAddress: macAddress, timeout: 120) {
                     logger.info("Resolved IP \(ip, privacy: .public), waiting for SSH")
                     try await SSHExecutor.waitForSSH(ip: ip)
@@ -560,7 +560,7 @@ extension Spook {
 
             // 5. Stop the VM.
             logger.info("Stopping VM after Setup Assistant automation")
-            print("Stopping VM...")
+            print(Style.info("Stopping VM..."))
             try? await vm.stop(graceful: false)
             logger.notice("VM stopped after Setup Assistant automation")
             print(Style.success("✓ VM stopped."))

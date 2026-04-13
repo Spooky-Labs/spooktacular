@@ -37,7 +37,7 @@ extension Spook {
         var field: String?
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let spec = bundle.spec

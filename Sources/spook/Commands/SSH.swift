@@ -41,7 +41,7 @@ extension Spook {
         var key: String = "~/.ssh/id_ed25519"
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             guard PIDFile.isRunning(bundleURL: bundleURL) else {
                 print(Style.error("✗ VM '\(name)' is not running."))
@@ -66,7 +66,7 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            print("Connecting to \(user)@\(ip)...")
+            print(Style.info("Connecting to \(user)@\(ip)..."))
 
             // Build the ssh command and exec it, replacing this process.
             var args = SSHExecutor.sshOptions

@@ -48,7 +48,7 @@ extension Spook {
         var command: [String] = []
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             guard !command.isEmpty else {
                 print(Style.error("✗ No command specified."))

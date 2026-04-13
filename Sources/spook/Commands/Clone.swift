@@ -27,11 +27,11 @@ extension Spook {
         var destination: String
 
         func run() async throws {
-            try Paths.ensureDirectories()
+            try SpooktacularPaths.ensureDirectories()
 
-            let sourceURL = try Paths.requireBundle(for: source)
+            let sourceURL = try requireBundle(for: source)
 
-            let destinationURL = Paths.bundleURL(for: destination)
+            let destinationURL = SpooktacularPaths.bundleURL(for: destination)
             guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
                 print(Style.error("✗ VM '\(destination)' already exists."))
                 throw ExitCode.failure

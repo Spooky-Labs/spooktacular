@@ -24,11 +24,11 @@ extension Spook {
         var json: Bool = false
 
         func run() async throws {
-            try Paths.ensureDirectories()
+            try SpooktacularPaths.ensureDirectories()
 
             let fileManager = FileManager.default
             let contents = try fileManager.contentsOfDirectory(
-                at: Paths.vms,
+                at: SpooktacularPaths.vms,
                 includingPropertiesForKeys: nil
             ).filter { $0.pathExtension == "vm" }
 

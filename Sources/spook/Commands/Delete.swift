@@ -28,14 +28,14 @@ extension Spook {
         var force: Bool = false
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             // Prevent deleting a running VM unless --force is used.
             if PIDFile.isRunning(bundleURL: bundleURL) {
                 if force {
                     // Stop the VM by sending SIGTERM to the owning process.
                     if let pid = PIDFile.read(from: bundleURL) {
-                        print("Stopping VM '\(name)' (PID \(pid))...")
+                        print(Style.info("Stopping VM '\(name)' (PID \(pid))..."))
                         kill(pid, SIGTERM)
 
                         // Wait briefly for the process to exit.

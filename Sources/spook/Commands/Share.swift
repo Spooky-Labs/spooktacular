@@ -68,7 +68,7 @@ extension Spook.Share {
         var readOnly: Bool = false
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             var isDir: ObjCBool = false
             guard FileManager.default.fileExists(atPath: path, isDirectory: &isDir) else {
@@ -103,8 +103,8 @@ extension Spook.Share {
             Style.field("Tag", shareTag)
             Style.field("Read-only", readOnly ? "yes" : "no")
             print("")
-            print("The share will be available on next 'spook start \(name)'.")
-            print("In the guest, mount with: mount_virtiofs \(shareTag) /Volumes/\(shareTag)")
+            print(Style.dim("The share will be available on next 'spook start \(name)'."))
+            print(Style.dim("In the guest, mount with: mount_virtiofs \(shareTag) /Volumes/\(shareTag)"))
         }
     }
 
@@ -128,7 +128,7 @@ extension Spook.Share {
         var tag: String
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let filtered = bundle.spec.sharedFolders.filter { $0.tag != tag }
@@ -146,7 +146,7 @@ extension Spook.Share {
             )
 
             print(Style.success("✓ Removed shared folder '\(tag)' from VM '\(name)'."))
-            print("Changes take effect on next 'spook start \(name)'.")
+            print(Style.dim("Changes take effect on next 'spook start \(name)'."))
         }
     }
 
@@ -168,14 +168,14 @@ extension Spook.Share {
         var name: String
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let folders = bundle.spec.sharedFolders
 
             guard !folders.isEmpty else {
-                print("No shared folders configured for VM '\(name)'.")
-                print("Run 'spook share \(name) add <path>' to add one.")
+                print(Style.dim("No shared folders configured for VM '\(name)'."))
+                print(Style.dim("Run 'spook share \(name) add <path>' to add one."))
                 return
             }
 

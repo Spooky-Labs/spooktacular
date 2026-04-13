@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import os
 
 /// Executes scripts on a VM via SSH.
@@ -142,28 +143,59 @@ public enum SSHExecutor {
 
     /// Checks whether a TCP port is open on the given IP.
     ///
-    /// Attempts a non-blocking TCP connection with a short timeout.
+    /// Uses Network.framework's `NWConnection` for an async-safe
+    /// TCP probe that does not block the calling actor.
     ///
     /// - Parameters:
     ///   - ip: The target IPv4 address.
     ///   - port: The target TCP port.
-    /// - Returns: `true` if the connection succeeds.
+    /// - Returns: `true` if a TCP connection can be established
+    ///   within 2 seconds.
     static func isPortOpen(ip: String, port: Int) async -> Bool {
-        // Use /usr/bin/nc (netcat) with a 2-second timeout for
-        // a quick TCP connect check. The -z flag scans without
-        // sending data. Available on all macOS versions.
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/nc")
-        process.arguments = ["-z", "-w", "2", ip, "\(port)"]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus == 0
-        } catch {
+        guard let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else {
             return false
+        }
+        let endpoint = NWEndpoint.hostPort(
+            host: NWEndpoint.Host(ip),
+            port: nwPort
+        )
+        let connection = NWConnection(to: endpoint, using: .tcp)
+
+        // Track whether the continuation has already been resumed
+        // to avoid double-resume from the timeout and state handler
+        // racing.
+        nonisolated(unsafe) var resumed = false
+        let lock = NSLock()
+
+        return await withCheckedContinuation { continuation in
+            connection.stateUpdateHandler = { state in
+                lock.lock()
+                defer { lock.unlock() }
+                guard !resumed else { return }
+
+                switch state {
+                case .ready:
+                    resumed = true
+                    connection.cancel()
+                    continuation.resume(returning: true)
+                case .failed, .cancelled:
+                    resumed = true
+                    continuation.resume(returning: false)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: .global(qos: .utility))
+
+            // Timeout after 2 seconds.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !resumed else { return }
+                resumed = true
+                connection.cancel()
+                continuation.resume(returning: false)
+            }
         }
     }
 

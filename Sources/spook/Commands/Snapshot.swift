@@ -29,7 +29,7 @@ extension Spook {
         var label: String
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             guard !PIDFile.isRunning(bundleURL: bundleURL) else {
                 print(Style.error("✗ VM '\(name)' is currently running."))
@@ -39,7 +39,7 @@ extension Spook {
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
-            print("Saving snapshot '\(label)' for VM '\(name)'...")
+            print(Style.info("Saving snapshot '\(label)' for VM '\(name)'..."))
 
             do {
                 try SnapshotManager.save(bundle: bundle, label: label)
@@ -83,7 +83,7 @@ extension Spook {
         var label: String
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             guard !PIDFile.isRunning(bundleURL: bundleURL) else {
                 print(Style.error("✗ VM '\(name)' is currently running."))
@@ -93,7 +93,7 @@ extension Spook {
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
-            print("Restoring VM '\(name)' to snapshot '\(label)'...")
+            print(Style.info("Restoring VM '\(name)' to snapshot '\(label)'..."))
 
             do {
                 try SnapshotManager.restore(bundle: bundle, label: label)
@@ -126,14 +126,14 @@ extension Spook {
         var name: String
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let snapshots = try SnapshotManager.list(bundle: bundle)
 
             guard !snapshots.isEmpty else {
-                print("No snapshots found for VM '\(name)'.")
-                print("Run 'spook snapshot \(name) <label>' to create one.")
+                print(Style.dim("No snapshots found for VM '\(name)'."))
+                print(Style.dim("Run 'spook snapshot \(name) <label>' to create one."))
                 return
             }
 

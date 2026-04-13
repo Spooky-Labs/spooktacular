@@ -58,7 +58,7 @@ extension Spook {
         var spookPath: String = ProcessInfo.processInfo.environment["SPOOK_PATH"] ?? "/usr/local/bin/spook"
 
         func run() async throws {
-            try Paths.ensureDirectories()
+            try SpooktacularPaths.ensureDirectories()
 
             guard port > 0 && port <= 65535 else {
                 print(Style.error("Invalid port \(port). Must be between 1 and 65535."))
@@ -70,7 +70,7 @@ extension Spook {
                 server = try HTTPAPIServer(
                     host: host,
                     port: UInt16(port),
-                    vmDirectory: Paths.vms,
+                    vmDirectory: SpooktacularPaths.vms,
                     spookPath: spookPath
                 )
             } catch {
@@ -97,7 +97,7 @@ extension Spook {
             print(Style.bold("Spooktacular HTTP API Server"))
             print()
             Style.field("Endpoint", "http://\(host):\(port)")
-            Style.field("VM directory", Style.dim(Paths.vms.path))
+            Style.field("VM directory", Style.dim(SpooktacularPaths.vms.path))
             print()
             print(Style.dim("Press Ctrl+C to stop."))
             print()

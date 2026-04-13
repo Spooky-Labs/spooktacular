@@ -36,15 +36,15 @@ extension Spook {
         var force: Bool = false
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             guard let pid = PIDFile.read(from: bundleURL) else {
-                print("VM '\(name)' is not running (no PID file found).")
+                print(Style.dim("VM '\(name)' is not running (no PID file found)."))
                 return
             }
 
             guard PIDFile.isProcessAlive(pid) else {
-                print("VM '\(name)' is not running (stale PID file, process \(pid) exited).")
+                print(Style.dim("VM '\(name)' is not running (stale PID file, process \(pid) exited)."))
                 // Clean up the stale PID file.
                 PIDFile.remove(from: bundleURL)
                 return
@@ -53,7 +53,7 @@ extension Spook {
             let signalNumber: Int32 = force ? SIGKILL : SIGTERM
             let signalName = force ? "SIGKILL" : "SIGTERM"
 
-            print("Sending \(signalName) to VM '\(name)' (PID \(pid))...")
+            print(Style.info("Sending \(signalName) to VM '\(name)' (PID \(pid))..."))
             let result = kill(pid, signalNumber)
 
             if result == 0 {
@@ -70,7 +70,7 @@ extension Spook {
                 // Clean up stale PID file if the process no longer exists.
                 if errorCode == ESRCH {
                     PIDFile.remove(from: bundleURL)
-                    print("Cleaned up stale PID file.")
+                    print(Style.dim("Cleaned up stale PID file."))
                 }
                 throw ExitCode.failure
             }

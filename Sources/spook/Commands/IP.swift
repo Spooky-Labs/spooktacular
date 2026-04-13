@@ -29,7 +29,7 @@ extension Spook {
         var name: String
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             guard PIDFile.isRunning(bundleURL: bundleURL) else {
                 print(Style.error("✗ VM '\(name)' is not running."))

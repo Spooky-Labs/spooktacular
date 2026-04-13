@@ -1,5 +1,28 @@
+import ArgumentParser
 import Foundation
 import SpooktacularKit
+
+// MARK: - CLI Bundle Lookup
+
+/// Returns the bundle URL for the given VM name, printing styled
+/// error messages and throwing `ExitCode.failure` if the bundle
+/// does not exist.
+///
+/// This wraps ``SpooktacularPaths/requireBundle(for:)`` with
+/// CLI-friendly styled output.
+///
+/// - Parameter name: The VM name.
+/// - Returns: The bundle URL.
+/// - Throws: `ExitCode.failure` if the bundle does not exist.
+func requireBundle(for name: String) throws -> URL {
+    do {
+        return try SpooktacularPaths.requireBundle(for: name)
+    } catch {
+        print(Style.error("✗ VM '\(name)' not found."))
+        print(Style.dim("  Run 'spook list' to see available virtual machines."))
+        throw ExitCode.failure
+    }
+}
 
 /// Styled terminal output with ANSI color codes.
 ///

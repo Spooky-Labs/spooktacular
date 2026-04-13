@@ -72,12 +72,12 @@ extension Spook {
 
         @MainActor
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             // Enforce the 2-VM concurrency limit before proceeding.
-            try Paths.ensureDirectories()
+            try SpooktacularPaths.ensureDirectories()
             do {
-                try CapacityCheck.ensureCapacity(in: Paths.vms)
+                try CapacityCheck.ensureCapacity(in: SpooktacularPaths.vms)
             } catch let error as CapacityError {
                 print(Style.error("✗ \(error.localizedDescription)"))
                 if let recovery = error.recoverySuggestion {
@@ -158,7 +158,7 @@ extension Spook {
             }
 
             let modeLabel = recovery ? " in Recovery mode" : ""
-            print("Starting VM '\(name)'\(modeLabel)...")
+            print(Style.info("Starting VM '\(name)'\(modeLabel)..."))
 
             let vm = try VirtualMachine(bundle: bundle)
 
@@ -225,12 +225,12 @@ extension Spook {
 
                     // Resolve the VM's IP to connect via SSH.
                     if let macAddress = bundle.spec.macAddress {
-                        print("Resolving VM IP address...")
+                        print(Style.info("Resolving VM IP address..."))
                         if let ip = try await IPResolver.resolveIP(macAddress: macAddress) {
-                            print("Waiting for SSH on \(ip)...")
+                            print(Style.info("Waiting for SSH on \(ip)..."))
                             try await SSHExecutor.waitForSSH(ip: ip)
 
-                            print("Executing user-data script...")
+                            print(Style.info("Executing user-data script..."))
                             try await SSHExecutor.execute(
                                 script: scriptURL,
                                 on: ip,
@@ -263,7 +263,7 @@ extension Spook {
                         fallbackIP = try? await IPResolver.resolveIP(macAddress: macAddress)
                     }
 
-                    print("Provisioning via guest agent (vsock)...")
+                    print(Style.info("Provisioning via guest agent (vsock)..."))
                     do {
                         try await VsockProvisioner.provision(
                             virtualMachine: vm,
@@ -290,6 +290,10 @@ extension Spook {
                 }
             }
 
+            if ephemeral {
+                print(Style.yellow("⟳ Ephemeral mode: VM will be destroyed when it stops."))
+            }
+
             if !headless {
                 let app = NSApplication.shared
                 app.setActivationPolicy(.regular)
@@ -314,29 +318,48 @@ extension Spook {
 
                 app.activate(ignoringOtherApps: true)
                 print(Style.dim("Press Ctrl+C to stop the VM."))
+
+                // Monitor VM state in the background so the process
+                // exits when the VM stops, even while the AppKit
+                // event loop is running.
+                let isEphemeralCapture = ephemeral
+                Task { @MainActor in
+                    for await state in vm.stateStream {
+                        if state == .stopped || state == .error {
+                            break
+                        }
+                    }
+                    PIDFile.remove(from: bundleURL)
+                    if isEphemeralCapture {
+                        try? FileManager.default.removeItem(at: bundleURL)
+                        print("Ephemeral VM '\(name)' destroyed.")
+                    }
+                    NSApp.terminate(nil)
+                }
+
+                // Run the AppKit event loop. This blocks until
+                // NSApp.terminate() is called (from the state
+                // monitor above or the SIGTERM handler).
+                app.run()
             } else {
                 print(Style.dim("Running headless. Press Ctrl+C to stop."))
-            }
 
-            if ephemeral {
-                print(Style.yellow("⟳ Ephemeral mode: VM will be destroyed when it stops."))
-            }
-
-            // Block until the VM stops or the process is interrupted.
-            // Listen to the state stream instead of leaking a continuation.
-            for await state in vm.stateStream {
-                if state == .stopped || state == .error {
-                    break
+                // Block until the VM stops or the process is interrupted.
+                // Listen to the state stream instead of leaking a continuation.
+                for await state in vm.stateStream {
+                    if state == .stopped || state == .error {
+                        break
+                    }
                 }
-            }
 
-            // Clean up PID file when VM stops normally.
-            PIDFile.remove(from: bundleURL)
+                // Clean up PID file when VM stops normally.
+                PIDFile.remove(from: bundleURL)
 
-            // Destroy the bundle if running in ephemeral mode.
-            if ephemeral {
-                try? FileManager.default.removeItem(at: bundleURL)
-                print("Ephemeral VM '\(name)' destroyed.")
+                // Destroy the bundle if running in ephemeral mode.
+                if ephemeral {
+                    try? FileManager.default.removeItem(at: bundleURL)
+                    print("Ephemeral VM '\(name)' destroyed.")
+                }
             }
         }
     }

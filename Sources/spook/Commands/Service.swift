@@ -108,7 +108,7 @@ extension Spook.Service {
                 Style.field("Log", Style.dim("/var/log/spooktacular.\(name).log"))
                 Style.field("Error log", Style.dim("/var/log/spooktacular.\(name).error.log"))
                 print("")
-                print("The daemon will start '\(name)' automatically at boot.")
+                print(Style.dim("The daemon will start '\(name)' automatically at boot."))
                 print("To uninstall: \(Style.bold("sudo spook service uninstall \(name)"))")
             } else {
                 print(Style.error("✗ launchctl load failed (exit \(process.terminationStatus))."))
@@ -148,7 +148,7 @@ extension Spook.Service {
             let plistPath = ServicePlist.plistPath(for: name)
 
             guard FileManager.default.fileExists(atPath: plistPath) else {
-                print("No LaunchDaemon installed for VM '\(name)' (no plist at \(plistPath)).")
+                print(Style.dim("No LaunchDaemon installed for VM '\(name)' (no plist at \(plistPath))."))
                 return
             }
 
@@ -176,7 +176,7 @@ extension Spook.Service {
             }
 
             print(Style.success("✓ LaunchDaemon uninstalled for VM '\(name)'."))
-            print("The daemon will no longer start '\(name)' at boot.")
+            print(Style.dim("The daemon will no longer start '\(name)' at boot."))
         }
     }
 }

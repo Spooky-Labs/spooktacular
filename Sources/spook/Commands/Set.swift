@@ -61,7 +61,7 @@ extension Spook {
         var autoResize: Bool?
 
         func run() async throws {
-            let bundleURL = try Paths.requireBundle(for: name)
+            let bundleURL = try requireBundle(for: name)
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let oldSpec = bundle.spec
@@ -79,15 +79,15 @@ extension Spook {
             let data = try VirtualMachineBundle.encoder.encode(newSpec)
             try data.write(to: bundleURL.appendingPathComponent(VirtualMachineBundle.configFileName))
 
-            print("Updated VM '\(name)' configuration.")
+            print(Style.success("✓ Updated VM '\(name)' configuration."))
 
-            if let cpuCount = cpu { print("  CPU: \(max(cpuCount, VirtualMachineSpecification.minimumCPUCount)) cores") }
-            if let memorySize = memory { print("  Memory: \(memorySize) GB") }
-            if let displayCount = displays { print("  Displays: \(min(max(displayCount, 1), 2))") }
-            if let networkMode = network { print("  Network: \(networkMode)") }
-            if let audioEnabled = audio { print("  Audio: \(audioEnabled ? "enabled" : "disabled")") }
-            if let microphoneEnabled = microphone { print("  Microphone: \(microphoneEnabled ? "enabled" : "disabled")") }
-            if let autoResizeEnabled = autoResize { print("  Auto-resize: \(autoResizeEnabled ? "enabled" : "disabled")") }
+            if let cpuCount = cpu { Style.field("CPU", "\(max(cpuCount, VirtualMachineSpecification.minimumCPUCount)) cores") }
+            if let memorySize = memory { Style.field("Memory", "\(memorySize) GB") }
+            if let displayCount = displays { Style.field("Displays", "\(min(max(displayCount, 1), 2))") }
+            if let networkMode = network { Style.field("Network", "\(networkMode)") }
+            if let audioEnabled = audio { Style.field("Audio", audioEnabled ? "enabled" : "disabled") }
+            if let microphoneEnabled = microphone { Style.field("Microphone", microphoneEnabled ? "enabled" : "disabled") }
+            if let autoResizeEnabled = autoResize { Style.field("Auto-resize", autoResizeEnabled ? "enabled" : "disabled") }
         }
     }
 }
