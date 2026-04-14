@@ -266,6 +266,19 @@ spec:
                         containing sensitive template config values. Keys
                         in the Secret override keys in templateConfig.
 
+                runnerConfig:
+                  type: object
+                  description: >-
+                    Set by RunnerPoolReconciler when this VM is managed
+                    by a RunnerPool. Do not set manually.
+                  properties:
+                    poolName:
+                      type: string
+                    runnerIndex:
+                      type: integer
+                    runnerState:
+                      type: string
+
             # -----------------------------------------------------------------
             # Status — written by the controller, read-only for users.
             # -----------------------------------------------------------------
