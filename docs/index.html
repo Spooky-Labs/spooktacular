@@ -55,7 +55,7 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 .hero .badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 1.25rem; font-size: 0.8rem; color: var(--dim); margin-bottom: 2rem; }
 .hero .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-.hero-ghost { width: 128px; height: 128px; margin: 0 auto 2rem; animation: ghostFloat 4s ease-in-out infinite; border-radius: 28px; overflow: hidden; box-shadow: 0 8px 32px rgba(124,58,237,0.3), 0 0 0 1px rgba(167,139,250,0.15); }
+.hero-ghost { width: 128px; height: 128px; margin: 0 auto 2rem; animation: ghostFloat 4s ease-in-out infinite; }
 @keyframes ghostFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 .hero h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; max-width: 800px; margin: 0 auto; }
 .hero h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -152,7 +152,7 @@ tr:hover { background: rgba(15,10,26,0.5); }
 
 footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
 footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 2rem; }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
 footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
 footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
 footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
@@ -202,7 +202,7 @@ Spooktacular
 <div class="container">
 <div class="badge" aria-label="Status"><span class="dot" aria-hidden="true"></span> Open Source &middot; MIT Licensed &middot; Apple Silicon Native</div>
 <div class="hero-ghost" aria-hidden="true">
-<svg viewBox="0 0 128 128" width="120" height="120" style="image-rendering: pixelated;"><rect x="0" y="0" width="128" height="40" fill="#07050f"/><rect x="0" y="40" width="128" height="30" fill="#0f0a1a"/><rect x="0" y="70" width="128" height="25" fill="#1a1035"/><rect x="0" y="95" width="128" height="33" fill="#251648"/><g opacity="0.15"><rect x="38" y="80" width="52" height="15" fill="#fbbf24"/><rect x="44" y="75" width="40" height="5" fill="#fbbf24"/><rect x="50" y="70" width="28" height="5" fill="#fbbf24"/></g><rect x="50" y="88" width="4" height="3" fill="#5b21b6"/><rect x="53" y="87" width="4" height="3" fill="#5b21b6"/><rect x="56" y="86" width="4" height="3" fill="#4c1d95"/><rect x="59" y="85" width="4" height="3" fill="#4c1d95"/><rect x="62" y="84" width="4" height="3" fill="#3b1280"/><rect x="65" y="85" width="4" height="3" fill="#4c1d95"/><rect x="68" y="86" width="4" height="3" fill="#5b21b6"/><rect x="71" y="87" width="4" height="3" fill="#5b21b6"/><rect x="74" y="88" width="4" height="3" fill="#5b21b6"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="59" y="62" width="10" height="4" fill="#f59e0b"/><rect x="58" y="66" width="12" height="4" fill="#f59e0b"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="62" y="60" width="4" height="6" fill="#fbbf24"/><rect x="61" y="66" width="6" height="6" fill="#fbbf24"/><rect x="60" y="72" width="8" height="4" fill="#f59e0b"/><rect x="56" y="60" width="3" height="6" fill="#f59e0b"/><rect x="55" y="66" width="3" height="6" fill="#ef4444"/><rect x="69" y="58" width="3" height="6" fill="#f59e0b"/><rect x="70" y="64" width="3" height="6" fill="#ef4444"/><rect x="63" y="50" width="2" height="4" fill="#fbbf24" opacity="0.7"/><rect x="58" y="46" width="2" height="2" fill="#fbbf24" opacity="0.8"/><rect x="68" y="42" width="2" height="2" fill="#f59e0b" opacity="0.6"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="22" y="43" width="1" height="1" fill="#e8deff"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="28" y="43" width="1" height="1" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="25" y="47" width="2" height="1" fill="#e8deff"/><rect x="18" y="49" width="2" height="12" fill="#a78bfa"/><rect x="20" y="49" width="14" height="12" fill="#d4c2f0"/><rect x="34" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="24" y="50" width="6" height="10" fill="#e8deff"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="21" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="29" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="14" y="46" width="3" height="3" fill="#c4b5fd"/><rect x="12" y="42" width="3" height="4" fill="#d4c2f0"/><rect x="10" y="38" width="3" height="4" fill="#c4b5fd"/><rect x="9" y="35" width="3" height="3" fill="#a78bfa"/><rect x="36" y="50" width="4" height="3" fill="#a78bfa"/><rect x="39" y="49" width="4" height="3" fill="#c4b5fd"/><rect x="42" y="48" width="3" height="3" fill="#a78bfa"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="98" y="43" width="1" height="1" fill="#e8deff"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="104" y="43" width="1" height="1" fill="#e8deff"/><rect x="100" y="47" width="4" height="2" fill="#7c3aed"/><rect x="92" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/><rect x="108" y="49" width="2" height="12" fill="#7c3aed"/><rect x="98" y="50" width="6" height="10" fill="#d0bff5"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="95" y="63" width="4" height="4" fill="#a78bfa"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="103" y="63" width="4" height="4" fill="#a78bfa"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="82" y="48" width="3" height="3" fill="#8b6ce0"/><rect x="85" y="49" width="4" height="3" fill="#a78bfa"/><rect x="110" y="46" width="3" height="3" fill="#a78bfa"/><rect x="112" y="42" width="3" height="4" fill="#b99de0"/><rect x="114" y="38" width="3" height="4" fill="#a78bfa"/><rect x="115" y="35" width="3" height="3" fill="#8b6ce0"/><rect x="8" y="5" width="2" height="2" fill="#c4b5fd"/><rect x="38" y="3" width="2" height="2" fill="#8b6ce0"/><rect x="64" y="4" width="2" height="2" fill="#c4b5fd"/><rect x="92" y="6" width="2" height="2" fill="#8b6ce0"/><rect x="118" y="9" width="2" height="2" fill="#c4b5fd"/></svg>
+<svg viewBox="0 0 128 128" width="120" height="120" style="image-rendering: pixelated;"><g opacity="0.15"><rect x="38" y="80" width="52" height="15" fill="#fbbf24"/><rect x="44" y="75" width="40" height="5" fill="#fbbf24"/><rect x="50" y="70" width="28" height="5" fill="#fbbf24"/></g><rect x="50" y="88" width="4" height="3" fill="#5b21b6"/><rect x="53" y="87" width="4" height="3" fill="#5b21b6"/><rect x="56" y="86" width="4" height="3" fill="#4c1d95"/><rect x="59" y="85" width="4" height="3" fill="#4c1d95"/><rect x="62" y="84" width="4" height="3" fill="#3b1280"/><rect x="65" y="85" width="4" height="3" fill="#4c1d95"/><rect x="68" y="86" width="4" height="3" fill="#5b21b6"/><rect x="71" y="87" width="4" height="3" fill="#5b21b6"/><rect x="74" y="88" width="4" height="3" fill="#5b21b6"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="59" y="62" width="10" height="4" fill="#f59e0b"/><rect x="58" y="66" width="12" height="4" fill="#f59e0b"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="62" y="60" width="4" height="6" fill="#fbbf24"/><rect x="61" y="66" width="6" height="6" fill="#fbbf24"/><rect x="60" y="72" width="8" height="4" fill="#f59e0b"/><rect x="56" y="60" width="3" height="6" fill="#f59e0b"/><rect x="55" y="66" width="3" height="6" fill="#ef4444"/><rect x="69" y="58" width="3" height="6" fill="#f59e0b"/><rect x="70" y="64" width="3" height="6" fill="#ef4444"/><rect x="63" y="50" width="2" height="4" fill="#fbbf24" opacity="0.7"/><rect x="58" y="46" width="2" height="2" fill="#fbbf24" opacity="0.8"/><rect x="68" y="42" width="2" height="2" fill="#f59e0b" opacity="0.6"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="22" y="43" width="1" height="1" fill="#e8deff"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="28" y="43" width="1" height="1" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="25" y="47" width="2" height="1" fill="#e8deff"/><rect x="18" y="49" width="2" height="12" fill="#a78bfa"/><rect x="20" y="49" width="14" height="12" fill="#d4c2f0"/><rect x="34" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="24" y="50" width="6" height="10" fill="#e8deff"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="21" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="29" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="14" y="46" width="3" height="3" fill="#c4b5fd"/><rect x="12" y="42" width="3" height="4" fill="#d4c2f0"/><rect x="10" y="38" width="3" height="4" fill="#c4b5fd"/><rect x="9" y="35" width="3" height="3" fill="#a78bfa"/><rect x="36" y="50" width="4" height="3" fill="#a78bfa"/><rect x="39" y="49" width="4" height="3" fill="#c4b5fd"/><rect x="42" y="48" width="3" height="3" fill="#a78bfa"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="98" y="43" width="1" height="1" fill="#e8deff"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="104" y="43" width="1" height="1" fill="#e8deff"/><rect x="100" y="47" width="4" height="2" fill="#7c3aed"/><rect x="92" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/><rect x="108" y="49" width="2" height="12" fill="#7c3aed"/><rect x="98" y="50" width="6" height="10" fill="#d0bff5"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="95" y="63" width="4" height="4" fill="#a78bfa"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="103" y="63" width="4" height="4" fill="#a78bfa"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="82" y="48" width="3" height="3" fill="#8b6ce0"/><rect x="85" y="49" width="4" height="3" fill="#a78bfa"/><rect x="110" y="46" width="3" height="3" fill="#a78bfa"/><rect x="112" y="42" width="3" height="4" fill="#b99de0"/><rect x="114" y="38" width="3" height="4" fill="#a78bfa"/><rect x="115" y="35" width="3" height="3" fill="#8b6ce0"/><rect x="8" y="5" width="2" height="2" fill="#c4b5fd"/><rect x="38" y="3" width="2" height="2" fill="#8b6ce0"/><rect x="64" y="4" width="2" height="2" fill="#c4b5fd"/><rect x="92" y="6" width="2" height="2" fill="#8b6ce0"/><rect x="118" y="9" width="2" height="2" fill="#c4b5fd"/></svg>
 </div>
 <h1 id="hero-heading">Double your Mac capacity.<br><span class="gradient">Same hardware.</span></h1>
 <p class="lead">Run 2 macOS VMs on every Apple Silicon Mac &mdash; the maximum <a href="https://www.apple.com/legal/sla/" style="color: var(--accent)">Apple's EULA</a> allows. Each VM gets Metal GPU access, <a href="https://developer.apple.com/documentation/apple-silicon/porting-your-macos-apps-to-apple-silicon" style="color: var(--accent)">unified memory</a>, and full macOS — perfect for CI/CD, code signing, AI agents, and remote desktops.</p>
@@ -315,23 +315,23 @@ Spooktacular
 
 <section aria-labelledby="getstarted-heading">
 <div class="container">
-<h2 id="getstarted-heading">Summon your first VM</h2>
-<p class="subtitle">Install, conjure, clone, haunt. No soul required.</p>
+<h2 id="getstarted-heading">Create your first VM</h2>
+<p class="subtitle">Install, create, clone, run. No configuration required.</p>
 <div class="terminal" style="max-width: 100%;" role="figure" aria-label="Getting started terminal commands">
-<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">Terminal &mdash; zero to haunted in 60 seconds</span></div>
+<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">Terminal &mdash; zero to running in 60 seconds</span></div>
 <div class="terminal-body">
 <div><span class="cmt"># Install</span></div>
 <div><span class="dim">$</span> <span class="cmd">brew install --cask spooktacular</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Summon your first VM from the latest macOS IPSW</span></div>
+<div><span class="cmt"># Create your first VM from the latest macOS IPSW</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook create dev --from-ipsw latest</span></div>
-<div><span class="ok">&#10003; VM 'dev' summoned (download + install + setup automated)</span></div>
+<div><span class="ok">&#10003; VM 'dev' created (download + install + setup automated)</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Conjure clones for CI (48ms, APFS copy-on-write)</span></div>
+<div><span class="cmt"># Clone for CI (48ms, APFS copy-on-write)</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook clone dev runner-01</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook clone dev runner-02</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Start runners that haunt your pipeline</span></div>
+<div><span class="cmt"># Start runners for your pipeline</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --provision ssh \</span></div>
 <div><span class="cmd">    --template github-runner --var repo=org/app</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook start runner-02 --headless --ephemeral \</span></div>
@@ -351,10 +351,10 @@ Spooktacular
 
 <div class="bottom-cta">
 <div class="container">
-<h2>Ready to haunt your CI pipeline?</h2>
-<p>No account, no license key, no sales call. Your VMs, your crypt. MIT licensed, open source, yours to keep.</p>
+<h2>Ready to run your CI pipeline?</h2>
+<p>No account, no license key, no sales call. Your VMs, yours to keep. MIT licensed, open source, free forever.</p>
 <div class="buttons">
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Summon Your First VM</a>
+<a href="get-started.html" class="btn-primary">Get Started</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
 </div>
 </div>
@@ -365,16 +365,36 @@ Spooktacular
 <div class="foot-inner">
 <div class="foot-grid">
 <div class="foot-col">
-<div class="footer-logo"><svg viewBox="0 0 128 128" width="24" height="24" aria-hidden="true" style="image-rendering: pixelated;"><rect x="0" y="0" width="128" height="95" fill="#07050f"/><rect x="0" y="95" width="128" height="33" fill="#251648"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="6" fill="#e8deff"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="6" fill="#d0bff5"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="92" y="49" width="18" height="12" fill="#b99de0"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/></svg> Spooktacular</div>
-<span class="tagline">Enterprise macOS Virtualization</span>
+<h4>Product</h4>
+<a href="features.html">Features</a>
+<a href="compare.html">Compare</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
+<a href="download.html">Downloads</a>
 </div>
-<div class="foot-col"><h4>Product</h4><a href="features.html">Features</a><a href="compare.html">Compare</a><a href="roadmap.html">Roadmap</a><a href="versioning.html">Versioning</a></div>
-<div class="foot-col"><h4>Resources</h4><a href="api/documentation/spooktacularkit/">API Reference</a><a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a><a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Issues</a><a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a></div>
-<div class="foot-col"><h4>Legal</h4><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a></div>
+<div class="foot-col">
+<h4>Resources</h4>
+<a href="api/documentation/spooktacularkit/">API Reference</a>
+<a href="get-started.html">Get Started</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
+</div>
+<div class="foot-col">
+<h4>Legal</h4>
+<a href="privacy.html">Privacy Policy</a>
+<a href="terms.html">Terms of Use</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
+</div>
+<div class="foot-col">
+<h4>Community</h4>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
+</div>
 </div>
 <div class="foot-bottom">
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 <p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-<p>&copy; 2026 Spooky Labs</p>
 </div>
 </div>
 </footer>
