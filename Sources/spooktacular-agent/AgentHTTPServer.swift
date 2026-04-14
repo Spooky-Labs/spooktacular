@@ -50,11 +50,17 @@ enum AgentHTTPServer {
         var svm_cid: UInt32
     }
 
-    /// The authentication token for this server session, or `nil` for legacy mode.
+    /// The full-access authentication token, or `nil` for legacy mode.
     ///
     /// Set exactly once before the accept loop begins and never mutated
     /// afterward, so concurrent reads from connection-handler queues are safe.
     nonisolated(unsafe) private static var authToken: String?
+
+    /// The read-only authentication token, or `nil` if not configured.
+    ///
+    /// When a request presents this token, only read-only (basic scope)
+    /// endpoints are permitted. Mutation endpoints return 403 Forbidden.
+    nonisolated(unsafe) private static var readonlyToken: String?
 
     /// Starts the vsock HTTP server and blocks forever.
     ///
@@ -64,10 +70,12 @@ enum AgentHTTPServer {
     ///
     /// - Parameters:
     ///   - port: The vsock port to listen on (default: 9470).
-    ///   - token: The authentication token, or `nil` for legacy (unauthenticated) mode.
+    ///   - token: The full-access authentication token, or `nil` for legacy mode.
+    ///   - readonlyToken: The read-only token, or `nil` if not configured.
     /// - Returns: Never returns; loops until the process is terminated.
-    static func listen(port: UInt32 = 9470, token: String? = nil) -> Never {
+    static func listen(port: UInt32 = 9470, token: String? = nil, readonlyToken: String? = nil) -> Never {
         self.authToken = token
+        self.readonlyToken = readonlyToken
         log.info("Starting HTTP server on vsock port \(port)")
 
         let fd = socket(AF_VSOCK, SOCK_STREAM, 0)
@@ -161,7 +169,7 @@ enum AgentHTTPServer {
 
         log.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
 
-        let response = routeRequest(request, token: authToken)
+        let response = routeRequest(request, token: authToken, readonlyToken: readonlyToken)
         writeAll(fd: fd, data: response)
     }
 

@@ -49,47 +49,87 @@ import os
 private let agentPort: UInt32 = 9470
 
 /// Path to the shared-folder token file used for agent authentication.
+///
+/// The file may contain one or two lines:
+/// - Line 1: Full-access token (read + mutation)
+/// - Line 2 (optional): Read-only token (health, list apps, list ports, etc.)
 private let tokenFilePath = "/Volumes/My Shared Files/.agent-token"
 
-/// Environment variable name for the agent authentication token.
+/// Environment variable name for the full-access agent authentication token.
 private let tokenEnvVar = "SPOOK_AGENT_TOKEN"
+
+/// Environment variable name for the read-only agent authentication token.
+private let readonlyTokenEnvVar = "SPOOK_AGENT_READONLY_TOKEN"
 
 /// Logger for the guest agent.
 private let log = Logger(subsystem: "com.spooktacular.agent", category: "agent")
 
 // MARK: - Token Loading
 
-/// Loads the agent authentication token from the file system or environment.
+/// Tokens loaded from file or environment.
+struct AgentTokens {
+    /// Full-access token (read + mutation). `nil` means legacy mode.
+    let fullAccess: String?
+    /// Read-only token (health, list, inspect only). `nil` means no read-only token.
+    let readOnly: String?
+}
+
+/// Loads agent authentication tokens from the file system or environment.
 ///
-/// The function checks the following sources in order:
-/// 1. The file at ``tokenFilePath`` (``/Volumes/My Shared Files/.agent-token``).
+/// **Full-access token** is loaded from:
+/// 1. Line 1 of the file at ``tokenFilePath``.
 /// 2. The ``SPOOK_AGENT_TOKEN`` environment variable.
 ///
-/// If neither source provides a token, the agent runs in legacy mode
+/// **Read-only token** is loaded from:
+/// 1. Line 2 of the file at ``tokenFilePath`` (if present).
+/// 2. The ``SPOOK_AGENT_READONLY_TOKEN`` environment variable.
+///
+/// If no full-access token is found, the agent runs in legacy mode
 /// (no authentication) and a warning is logged.
 ///
-/// - Returns: The token string, or `nil` for legacy (unauthenticated) mode.
-private func loadToken() -> String? {
+/// - Returns: The loaded tokens.
+private func loadTokens() -> AgentTokens {
+    var fullAccess: String?
+    var readOnly: String?
+
     // Try file first
-    if let fileToken = try? String(contentsOfFile: tokenFilePath, encoding: .utf8) {
-        let trimmed = fileToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            log.notice("Loaded auth token from \(tokenFilePath, privacy: .public)")
-            return trimmed
+    if let fileContents = try? String(contentsOfFile: tokenFilePath, encoding: .utf8) {
+        let lines = fileContents.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+
+        if let first = lines.first, !first.isEmpty {
+            fullAccess = first
+            log.notice("Loaded full-access token from \(tokenFilePath, privacy: .public)")
+        }
+        if lines.count >= 2 {
+            readOnly = lines[1]
+            log.notice("Loaded read-only token from \(tokenFilePath, privacy: .public)")
         }
     }
 
-    // Try environment variable
+    // Environment variables override file
     if let envToken = ProcessInfo.processInfo.environment[tokenEnvVar] {
         let trimmed = envToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
-            log.notice("Loaded auth token from environment variable \(tokenEnvVar, privacy: .public)")
-            return trimmed
+            fullAccess = trimmed
+            log.notice("Loaded full-access token from \(tokenEnvVar, privacy: .public)")
         }
     }
 
-    log.warning("No auth token found — running in legacy mode (unauthenticated). Set \(tokenEnvVar, privacy: .public) or place a token at \(tokenFilePath, privacy: .public).")
-    return nil
+    if let envReadonly = ProcessInfo.processInfo.environment[readonlyTokenEnvVar] {
+        let trimmed = envReadonly.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            readOnly = trimmed
+            log.notice("Loaded read-only token from \(readonlyTokenEnvVar, privacy: .public)")
+        }
+    }
+
+    if fullAccess == nil {
+        log.warning("No auth token found — running in legacy mode (unauthenticated). Set \(tokenEnvVar, privacy: .public) or place a token at \(tokenFilePath, privacy: .public).")
+    }
+
+    return AgentTokens(fullAccess: fullAccess, readOnly: readOnly)
 }
 
 // MARK: - Entry Point
@@ -111,8 +151,8 @@ enum SpookAgent {
             return
         }
 
-        let token = loadToken()
+        let tokens = loadTokens()
         log.notice("spooktacular-agent starting on vsock port \(agentPort)")
-        AgentHTTPServer.listen(port: agentPort, token: token)
+        AgentHTTPServer.listen(port: agentPort, token: tokens.fullAccess, readonlyToken: tokens.readOnly)
     }
 }

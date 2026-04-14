@@ -12,7 +12,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 14+](https://img.shields.io/badge/macOS-14+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-328_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-360_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Download](https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Get Started](#-summon-your-first-vm)
 
@@ -113,7 +113,7 @@ Four thin clients, one library. Every client parses input and calls Spooktacular
 | Ephemeral Runners | [`Start.swift`](Sources/spook/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
 | Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularKit/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
 | Capacity Check | [`CapacityCheck.swift`](Sources/SpooktacularKit/CapacityCheck.swift) | Enforces 2-VM kernel limit with actionable errors |
-| HTTP API | [`HTTPAPIServer.swift`](Sources/SpooktacularKit/HTTPAPIServer.swift) | 9 REST endpoints, Codable types, Network.framework |
+| HTTP API | [`HTTPAPIServer.swift`](Sources/SpooktacularKit/HTTPAPIServer.swift) | 9 REST endpoints, TLS support, bearer token auth |
 | Kubernetes | [`Sources/spook-controller/`](Sources/spook-controller/) | MacOSVM CRD, Swift controller, Helm chart |
 | Service | [`ServicePlist.swift`](Sources/SpooktacularKit/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
 | Networking | [`VirtualMachineConfiguration.swift`](Sources/SpooktacularKit/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
@@ -199,12 +199,22 @@ kubectl get mvm -w
 
 The [Swift controller](Sources/spook-controller/) watches `MacOSVM` custom resources and reconciles by calling the HTTP API on Mac nodes. See [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) for the full architecture.
 
+## Security
+
+Spooktacular is a **single-tenant, single-host** system. The security model is designed for teams that own their Mac hardware:
+
+- **HTTP API**: TLS via `--tls-cert`/`--tls-key`, bearer token required in production
+- **Guest agent**: Scoped tokens (full-access vs read-only), host CID verification, audit logging
+- **Capacity**: flock-serialized PID writes prevent TOCTOU races
+
+See [SECURITY.md](SECURITY.md) for the full threat model, known limitations, and what this tool is **not** designed for.
+
 ## Building from Source
 
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 318 tests
+swift test               # Run 360 tests
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -212,7 +222,7 @@ swift test               # Run 318 tests
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | Every push | 318 tests + release build + .app bundle |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | Every push | 360 tests + release build + .app bundle |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [Docs](https://github.com/Spooky-Labs/spooktacular/actions/workflows/docs.yml) | Push to main | DocC generation + GitHub Pages deploy |
@@ -226,7 +236,7 @@ We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welco
 1. Fork the repo
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure `swift test` passes (318+ tests)
+4. Ensure `swift test` passes (360+ tests)
 5. Open a PR using our [PR template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ## License

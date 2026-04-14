@@ -91,7 +91,14 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
 /// Routes an ``AgentHTTPRequest`` to the appropriate handler.
 ///
 /// When a non-nil `token` is supplied the router enforces Bearer-token
-/// authentication. If the token is `nil` the agent runs in legacy mode
+/// authentication with scope-based authorization:
+///
+/// - **Full-access token**: Grants access to all endpoints (read + mutation).
+/// - **Read-only token**: Grants access to read-only endpoints only.
+///   Mutation endpoints (exec, write clipboard, launch/quit apps, upload files)
+///   return 403 Forbidden.
+///
+/// If neither token is configured the agent runs in legacy mode
 /// (no auth, warning already logged at startup).
 ///
 /// After dispatching every request the router emits an audit-level log
@@ -99,24 +106,38 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
 ///
 /// - Parameters:
 ///   - request: The parsed HTTP request.
-///   - token: The expected Bearer token, or `nil` for legacy mode.
+///   - token: The full-access Bearer token, or `nil` for legacy mode.
+///   - readonlyToken: The read-only Bearer token, or `nil` if not configured.
 /// - Returns: A complete HTTP/1.1 response as raw bytes.
-func routeRequest(_ request: AgentHTTPRequest, token: String? = nil) -> Data {
+func routeRequest(_ request: AgentHTTPRequest, token: String? = nil, readonlyToken: String? = nil) -> Data {
 
     // --- Auth gate ---
-    if let token {
+    let hasAnyToken = token != nil || readonlyToken != nil
+    if hasAnyToken {
         let authHeader = request.headers["authorization"] ?? ""
-        let expected = "Bearer \(token)"
 
-        guard authHeader == expected else {
+        // Determine which token was presented
+        let isFullAccess = token != nil && authHeader == "Bearer \(token!)"
+        let isReadOnly = readonlyToken != nil && authHeader == "Bearer \(readonlyToken!)"
+
+        guard isFullAccess || isReadOnly else {
             let response = errorResponse(message: "Unauthorized.", statusCode: 401)
             emitAuditLog(method: request.method, path: request.path, statusCode: 401)
             return response
         }
 
-        // Scope check (structural hook — any valid token passes today).
-        // Keeping the lookup so the branch is exercised in tests.
-        _ = endpointScope(method: request.method, path: request.path)
+        // Enforce scope: read-only tokens cannot access mutation endpoints
+        if isReadOnly {
+            let scope = endpointScope(method: request.method, path: request.path)
+            if scope == .elevated {
+                let response = errorResponse(
+                    message: "Forbidden. Read-only token cannot access mutation endpoints.",
+                    statusCode: 403
+                )
+                emitAuditLog(method: request.method, path: request.path, statusCode: 403)
+                return response
+            }
+        }
     }
 
     // --- Dispatch ---
@@ -221,6 +242,7 @@ private func buildHTTPResponse(statusCode: Int, body: Data) -> Data {
     case 201: statusText = "Created"
     case 400: statusText = "Bad Request"
     case 401: statusText = "Unauthorized"
+    case 403: statusText = "Forbidden"
     case 404: statusText = "Not Found"
     case 500: statusText = "Internal Server Error"
     default:  statusText = "Unknown"
