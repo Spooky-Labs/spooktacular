@@ -35,11 +35,11 @@ actor NodeManager {
     /// - Parameters:
     ///   - apiPort: Port where `spook serve` listens on each node.
     ///   - scheme: URL scheme for node API calls. Defaults to the value of
-    ///     the `NODE_API_SCHEME` environment variable, falling back to `"http"`.
+    ///     the `NODE_API_SCHEME` environment variable, falling back to `"https"`.
     ///   - labelSelector: Kubernetes label selector for Mac host nodes.
     init(
         apiPort: UInt16 = 8484,
-        scheme: String = ProcessInfo.processInfo.environment["NODE_API_SCHEME"] ?? "http",
+        scheme: String = ProcessInfo.processInfo.environment["NODE_API_SCHEME"] ?? "https",
         labelSelector: String = "spooktacular.app/role=mac-host"
     ) {
         self.apiPort = apiPort

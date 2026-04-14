@@ -246,7 +246,7 @@ swift test               # Run 360 tests
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | Every push | 360 tests + release build + .app bundle |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | Pull request to main | 411 tests + release build + .app bundle |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [Docs](https://github.com/Spooky-Labs/spooktacular/actions/workflows/docs.yml) | Push to main | DocC generation + GitHub Pages deploy |
