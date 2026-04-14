@@ -36,7 +36,7 @@ import os
 /// | `POST` | `/v1/vms/:name/stop` | Stop a VM |
 /// | `DELETE` | `/v1/vms/:name` | Delete a VM |
 /// | `GET` | `/v1/vms/:name/ip` | Resolve VM IP address |
-/// | `GET` | `/metrics` | Prometheus metrics (unauthenticated) |
+/// | `GET` | `/metrics` | Prometheus metrics |
 ///
 /// ## Response Format
 ///
@@ -510,7 +510,7 @@ public actor HTTPAPIServer {
     ///
     /// Path matching uses simple prefix/component matching:
     /// - `/health` -- health check (unauthenticated)
-    /// - `/metrics` -- Prometheus metrics (unauthenticated)
+    /// - `/metrics` -- Prometheus metrics (authenticated when token set)
     /// - `/v1/vms` -- list or create VMs
     /// - `/v1/vms/:name` -- get or delete a specific VM
     /// - `/v1/vms/:name/clone` -- clone a base VM
@@ -580,8 +580,8 @@ public actor HTTPAPIServer {
     /// Handles `GET /metrics`.
     ///
     /// Returns all collected metrics in Prometheus text exposition format
-    /// (version 0.0.4). This endpoint is **unauthenticated** so that
-    /// Prometheus can scrape it without a Bearer token.
+    /// (version 0.0.4). Requires authentication when `SPOOK_API_TOKEN`
+    /// is set. Configure Prometheus with a Bearer token header.
     ///
     /// The response uses `Content-Type: text/plain; version=0.0.4; charset=utf-8`
     /// as required by the Prometheus specification.

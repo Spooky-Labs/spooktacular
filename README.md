@@ -77,26 +77,35 @@ spook start runner-02 --ephemeral --headless --github-runner \
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────┐
-│                SpooktacularKit                   │
-│     The library. All business logic here.        │
-│                                                  │
-│  VirtualMachine · CloneManager · SSHExecutor     │
-│  GuestAgentClient · HTTPAPIServer · IPResolver   │
-│  SnapshotManager · CapacityCheck · PIDFile       │
-│  VMProvisioner · DiskInjector · ProcessRunner    │
-└─────┬──────────┬──────────┬──────────┬───────────┘
-      │          │          │          │
- ┌────▼──┐  ┌───▼───┐  ┌──▼────┐  ┌──▼────────┐
- │ spook │  │  GUI  │  │ serve │  │ controller │
- │ (CLI) │  │(SwiftUI│  │(HTTP) │  │   (K8s)   │
- └───────┘  └───────┘  └───────┘  └────────────┘
-   15 cmds   Liquid     9 REST     MacOSVM CRD
-             Glass     + metrics   RunnerPool CRD
-                       endpoints   Helm chart
+┌─────────────────────────────────────────┐
+│              SpookCore                  │
+│  Domain types · Protocols · Policies    │
+│  TenancyModel · RunnerStateMachine      │
+│  AuthorizationContext · ReusePolicy     │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────▼───────────────────────┐
+│           SpookApplication              │
+│  Use cases · Ports · Orchestration      │
+│  RunnerPoolManager · GitHubRunner       │
+│  WebhookVerifier · Metrics · Tenancy    │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────▼───────────────────────┐
+│       SpookInfrastructureApple          │
+│  VZ* · Network · Security · CryptoKit  │
+│  HTTPAPIServer · GuestAgentClient       │
+│  Keychain · TLS · ProcessRunner         │
+└─────┬──────────┬──────────┬─────────────┘
+      │          │          │
+ ┌────▼──┐  ┌───▼───┐  ┌──▼────────┐
+ │ spook │  │  GUI  │  │ controller │
+ │ (CLI) │  │(SwiftUI│  │   (K8s)   │
+ └───────┘  └───────┘  └────────────┘
 ```
 
-Four thin clients, one library. Every client parses input and calls SpooktacularKit.
+Clean Architecture with compiler-enforced boundaries. SpookCore imports Foundation only.
+SpookApplication depends on SpookCore only. Infrastructure wraps Apple frameworks.
 
 ## Features
 
