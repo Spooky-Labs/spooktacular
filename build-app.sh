@@ -62,16 +62,11 @@ fi
 # Copy entitlements
 cp "$ENTITLEMENTS" "$CONTENTS/Entitlements.plist"
 
-# Embed provisioning profile if available (required for TestFlight)
-# Match stores profiles in ~/Library/Developer/Xcode/UserData/Provisioning Profiles/
-PROFILE_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
-if [ -d "$PROFILE_DIR" ]; then
-    # Find the most recent .provisionprofile
-    PROFILE=$(ls -t "$PROFILE_DIR"/*.provisionprofile 2>/dev/null | head -1)
-    if [ -n "$PROFILE" ]; then
-        echo "Embedding provisioning profile: $(basename "$PROFILE")"
-        cp "$PROFILE" "$CONTENTS/embedded.provisionprofile"
-    fi
+# Embed provisioning profile if PROVISIONING_PROFILE path is set
+# (Fastlane sets this after match runs)
+if [ -n "${PROVISIONING_PROFILE:-}" ] && [ -f "$PROVISIONING_PROFILE" ]; then
+    echo "Embedding provisioning profile: $(basename "$PROVISIONING_PROFILE")"
+    cp "$PROVISIONING_PROFILE" "$CONTENTS/embedded.provisionprofile"
 fi
 
 # 4. Code sign

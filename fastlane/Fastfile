@@ -17,10 +17,16 @@ platform :mac do
 
   desc "Build the .app bundle (release)"
   lane :build do
-    # Pass the match signing identity to build-app.sh if available.
-    # Match sets sigh_..._certificate-name after running.
+    # Pass signing identity and provisioning profile from match.
     identity = ENV["sigh_com.spooktacular.app_appstore_macos_certificate-name"] || ""
-    sh("cd .. && chmod +x build-app.sh && CODESIGN_IDENTITY='#{identity}' ./build-app.sh release")
+    profile = ENV["sigh_com.spooktacular.app_appstore_macos_profile-path"] || ""
+
+    sh(
+      "cd .. && chmod +x build-app.sh && " \
+      "CODESIGN_IDENTITY='#{identity}' " \
+      "PROVISIONING_PROFILE='#{profile}' " \
+      "./build-app.sh release"
+    )
   end
 
   # ──────────────────────────────────────────────────
@@ -91,12 +97,56 @@ platform :mac do
 
     pilot(
       api_key: api_key,
-      app_identifier: CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier),
+      app_identifier: "com.spooktacular.app",
       app_platform: "osx",
       pkg: "Spooktacular.pkg",
+      team_id: "4AM5US9G8B",
+
+      # Beta app metadata
+      beta_app_description: "Spooktacular is an enterprise macOS virtualization tool for Apple Silicon. " \
+        "Run 2 macOS VMs per Mac — the maximum Apple's EULA allows. " \
+        "Build iOS apps, sign code, run CI pipelines, host remote desktops, " \
+        "and deploy computer-using AI agents. " \
+        "Features: APFS copy-on-write cloning (48ms), SSH provisioning, " \
+        "disk-inject provisioning, unattended Setup Assistant, ephemeral runners, " \
+        "HTTP REST API, Kubernetes operator, 14 CLI commands, SwiftUI GUI with Liquid Glass.",
+      beta_app_feedback_email: "davisperris@gmail.com",
+
+      # Beta review info
+      beta_app_review_info: {
+        contact_email: "davisperris@gmail.com",
+        contact_first_name: "Perris",
+        contact_last_name: "Davis",
+        contact_phone: "+1 (555) 000-0000",
+        demo_account_required: false,
+        notes: "Spooktacular uses Apple's Virtualization.framework to create and manage " \
+          "macOS virtual machines on Apple Silicon Macs. The app requires the " \
+          "com.apple.security.virtualization entitlement. No VMs can be created on " \
+          "Intel Macs. The app includes a bundled CLI tool (spook) and an HTTP API server. " \
+          "No account or network connection is required to use the app — all VMs run locally."
+      },
+
+      # Build info
+      changelog: options[:changelog] || "v1.0.0 — First release.\n\n" \
+        "• Create macOS VMs from IPSW restore images\n" \
+        "• APFS copy-on-write cloning in 48ms\n" \
+        "• Unattended Setup Assistant automation\n" \
+        "• SSH and disk-inject provisioning\n" \
+        "• GitHub Actions runner template with ephemeral mode\n" \
+        "• Remote desktop and OpenClaw templates\n" \
+        "• HTTP REST API (9 endpoints)\n" \
+        "• Kubernetes operator (MacOSVM CRD)\n" \
+        "• SwiftUI GUI with Liquid Glass (macOS 26+)\n" \
+        "• Menu bar extra for quick access\n" \
+        "• Full VoiceOver accessibility\n" \
+        "• 318 tests across 39 suites",
+
+      uses_non_exempt_encryption: false,
+      demo_account_required: false,
       skip_submission: false,
       skip_waiting_for_build_processing: true,
-      changelog: options[:changelog] || "Bug fixes and improvements."
+      notify_external_testers: false,
+      expire_previous_builds: true
     )
   end
 
