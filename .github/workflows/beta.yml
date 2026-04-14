@@ -23,26 +23,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Fastlane
-        run: gem install fastlane
+      - name: Install dependencies
+        run: bundle install
+        working-directory: fastlane
 
       - name: Sync code signing
-        run: fastlane signing
+        run: bundle exec fastlane signing
         working-directory: fastlane
 
       - name: Build signed .app
         run: |
-          BUILD_NUMBER="${{ github.run_number }}" fastlane build
+          BUILD_NUMBER="${{ github.run_number }}" bundle exec fastlane build
         working-directory: fastlane
 
       - name: Package .pkg
-        run: fastlane package
+        run: bundle exec fastlane package
         working-directory: fastlane
 
       - name: Upload to TestFlight
         run: |
-          fastlane run upload_to_testflight \
-            pkg:"Spooktacular.pkg" \
+          bundle exec fastlane run upload_to_testflight \
+            pkg:"../Spooktacular.pkg" \
             app_platform:"osx" \
             skip_waiting_for_build_processing:true
         working-directory: fastlane
