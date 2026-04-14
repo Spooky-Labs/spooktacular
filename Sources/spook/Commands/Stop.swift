@@ -75,6 +75,7 @@ extension Spook {
                     } else {
                         print(Style.warning("VM '\(name)' has not exited yet (PID \(pid) still alive)."))
                         print(Style.dim("  Use 'spook stop \(name) --force' to send SIGKILL."))
+                        throw ExitCode.failure
                     }
                 } else {
                     let errorCode = errno

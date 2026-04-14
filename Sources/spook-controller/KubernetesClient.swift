@@ -85,9 +85,14 @@ actor KubernetesClient {
 
                 let (bytes, response) = try await session.bytes(for: req)
 
-                if let http = response as? HTTPURLResponse, http.statusCode == 410 {
-                    continuation.finish()
-                    return
+                if let http = response as? HTTPURLResponse {
+                    if http.statusCode == 410 {
+                        continuation.finish()
+                        return
+                    }
+                    if !(200..<300).contains(http.statusCode) {
+                        throw ControllerError.apiError("Watch returned HTTP \(http.statusCode)")
+                    }
                 }
 
                 for try await line in bytes.lines {
@@ -150,37 +155,108 @@ actor KubernetesClient {
 
     // MARK: - Lease
 
-    /// Attempts to acquire or renew a coordination Lease. Returns `true` on success.
+    /// Attempts to acquire or renew a coordination Lease with optimistic concurrency.
+    ///
+    /// - If the lease exists and is held by another identity that hasn't expired, backs off.
+    /// - If the lease exists and is held by self or has expired, updates with `resourceVersion`.
+    /// - If PUT returns 409 Conflict, backs off.
+    /// - If the lease doesn't exist, creates it via POST.
+    /// - `acquireTime` is only set on initial acquisition, not on renewals.
     func upsertLease(name: String, holderIdentity: String, durationSeconds: Int) async throws -> Bool {
-        let now = ISO8601DateFormatter().string(from: Date())
-        let leaseBody: [String: Any] = [
+        let formatter = ISO8601DateFormatter()
+        let now = Date()
+        let nowString = formatter.string(from: now)
+        let url = baseURL.appendingPathComponent(
+            "/apis/coordination.k8s.io/v1/namespaces/\(namespace)/leases/\(name)")
+
+        // Step 1: Try to GET the existing lease.
+        var existingData: Data?
+        do {
+            existingData = try await request(url: url, method: "GET")
+        } catch {
+            // 404 means no lease exists — fall through to POST.
+            existingData = nil
+        }
+
+        if let existingData,
+           let json = try? JSONSerialization.jsonObject(with: existingData) as? [String: Any],
+           let metadata = json["metadata"] as? [String: Any],
+           let resourceVersion = metadata["resourceVersion"] as? String {
+            let spec = json["spec"] as? [String: Any] ?? [:]
+            let existingHolder = spec["holderIdentity"] as? String
+            let renewTimeString = spec["renewTime"] as? String
+            let existingAcquireTime = spec["acquireTime"] as? String
+
+            // Step 2: If held by another identity and not expired, back off.
+            if let existingHolder, existingHolder != holderIdentity {
+                if let renewTimeString, let renewTime = formatter.date(from: renewTimeString) {
+                    let expiresAt = renewTime.addingTimeInterval(TimeInterval(durationSeconds))
+                    if expiresAt > now {
+                        logger.info("Lease '\(name, privacy: .public)' held by '\(existingHolder, privacy: .public)', not expired — backing off")
+                        return false
+                    }
+                } else {
+                    // No renewTime means we can't verify expiry — back off to be safe.
+                    return false
+                }
+            }
+
+            // Step 3: Holder == self OR lease is expired — PUT with resourceVersion.
+            let isRenewal = existingHolder == holderIdentity
+            var updateSpec: [String: Any] = [
+                "holderIdentity": holderIdentity,
+                "leaseDurationSeconds": durationSeconds,
+                "renewTime": nowString,
+            ]
+            // Preserve acquireTime on renewals; set it on new acquisitions.
+            if isRenewal, let existingAcquireTime {
+                updateSpec["acquireTime"] = existingAcquireTime
+            } else {
+                updateSpec["acquireTime"] = nowString
+            }
+
+            let putBody: [String: Any] = [
+                "apiVersion": "coordination.k8s.io/v1",
+                "kind": "Lease",
+                "metadata": ["name": name, "namespace": namespace, "resourceVersion": resourceVersion],
+                "spec": updateSpec,
+            ]
+            let putData = try JSONSerialization.data(withJSONObject: putBody)
+
+            do {
+                try await request(url: url, method: "PUT", body: putData, contentType: "application/json")
+                return true
+            } catch let error as ControllerError {
+                // Step 4: 409 Conflict means another writer updated — back off.
+                if case .apiError(let msg) = error, msg.contains("HTTP 409") {
+                    logger.info("Lease '\(name, privacy: .public)' conflict on PUT — backing off")
+                    return false
+                }
+                throw error
+            }
+        }
+
+        // Step 5: Lease doesn't exist — POST to create.
+        let createBody: [String: Any] = [
             "apiVersion": "coordination.k8s.io/v1",
             "kind": "Lease",
             "metadata": ["name": name, "namespace": namespace],
             "spec": [
                 "holderIdentity": holderIdentity,
                 "leaseDurationSeconds": durationSeconds,
-                "acquireTime": now,
-                "renewTime": now,
+                "acquireTime": nowString,
+                "renewTime": nowString,
             ],
         ]
-        let data = try JSONSerialization.data(withJSONObject: leaseBody)
-        let url = baseURL.appendingPathComponent(
-            "/apis/coordination.k8s.io/v1/namespaces/\(namespace)/leases/\(name)")
+        let createData = try JSONSerialization.data(withJSONObject: createBody)
+        let createURL = baseURL.appendingPathComponent(
+            "/apis/coordination.k8s.io/v1/namespaces/\(namespace)/leases")
 
-        // Try PUT (update). On 404, fall back to POST (create).
         do {
-            try await request(url: url, method: "PUT", body: data, contentType: "application/json")
+            try await request(url: createURL, method: "POST", body: createData, contentType: "application/json")
             return true
         } catch {
-            let createURL = baseURL.appendingPathComponent(
-                "/apis/coordination.k8s.io/v1/namespaces/\(namespace)/leases")
-            do {
-                try await request(url: createURL, method: "POST", body: data, contentType: "application/json")
-                return true
-            } catch {
-                return false
-            }
+            return false
         }
     }
 

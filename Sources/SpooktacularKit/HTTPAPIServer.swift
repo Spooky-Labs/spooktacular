@@ -487,6 +487,10 @@ public actor HTTPAPIServer {
 
         let sourceName = cloneRequest.source
 
+        guard sourceName.wholeMatch(of: Self.vmNamePattern) != nil else {
+            return HTTPResponse.error(message: "Invalid source VM name.", statusCode: 400)
+        }
+
         let destinationURL = SpooktacularPaths.bundleURL(for: name)
         guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
             return HTTPResponse.error(message: "VM '\(name)' already exists.", statusCode: 409)

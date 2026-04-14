@@ -63,7 +63,7 @@ public enum RemoteDesktopTemplate {
             -activate -configure -access -on -restart -agent -privs -all
 
         # Enable Remote Login (SSH).
-        sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist
+        sudo launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist 2>/dev/null || true
 
         echo "Screen Sharing enabled. Connect via VNC."
         """

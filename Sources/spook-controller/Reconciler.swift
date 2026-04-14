@@ -228,6 +228,9 @@ actor Reconciler {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 30
+        if let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"], !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try? JSONSerialization.data(withJSONObject: body)

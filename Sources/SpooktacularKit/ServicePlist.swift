@@ -45,7 +45,7 @@ public enum ServicePlist {
     ///   - vmName: The name of the virtual machine to start.
     /// - Returns: A UTF-8 XML string suitable for writing to disk.
     public static func generate(executablePath: String, vmName: String) -> String {
-        let daemonLabel = label(for: vmName)
+        let safeLabel = xmlEscape(label(for: vmName))
         let safePath = xmlEscape(executablePath)
         let safeName = xmlEscape(vmName)
         return """
@@ -55,7 +55,7 @@ public enum ServicePlist {
         <plist version="1.0">
         <dict>
             <key>Label</key>
-            <string>\(daemonLabel)</string>
+            <string>\(safeLabel)</string>
             <key>ProgramArguments</key>
             <array>
                 <string>\(safePath)</string>

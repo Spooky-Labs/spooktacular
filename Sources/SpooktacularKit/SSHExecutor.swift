@@ -252,9 +252,13 @@ public enum SSHExecutor {
         process.standardOutput = FileHandle.standardOutput
         process.standardError = FileHandle.standardError
 
-        try process.run()
-        process.waitUntilExit()
-        return process.terminationStatus
+        let status = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int32, Error>) in
+            process.terminationHandler = { p in
+                continuation.resume(returning: p.terminationStatus)
+            }
+            do { try process.run() } catch { continuation.resume(throwing: error) }
+        }
+        return status
     }
 }
 

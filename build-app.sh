@@ -26,6 +26,7 @@ CONTENTS="$BUNDLE_DIR/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 ENTITLEMENTS="$PROJECT_DIR/Spooktacular.entitlements"
+CLI_ENTITLEMENTS="$PROJECT_DIR/SpookCLI.entitlements"
 
 # 1. Build all targets together
 echo "Compiling..."
@@ -80,7 +81,7 @@ SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 echo "Code signing with identity: $SIGN_IDENTITY"
 # Sign inner binaries first, then the main executable, then the bundle.
 # Never use --deep — it masks signing order bugs.
-codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$MACOS_DIR/$CLI_NAME"
+codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$CLI_ENTITLEMENTS" "$MACOS_DIR/$CLI_NAME"
 codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$MACOS_DIR/$APP_NAME"
 codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$BUNDLE_DIR"
 

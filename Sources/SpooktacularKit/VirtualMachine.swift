@@ -84,9 +84,17 @@ public final class VirtualMachine: NSObject, Sendable {
     ///
     /// Set when the ``VZVirtualMachineDelegate`` reports an error
     /// or when a lifecycle method (`start`, `pause`, `resume`) throws.
-    /// Reset to `nil` on the next successful state transition away
-    /// from ``VirtualMachineState/error``.
+    /// Reset to `nil` when the VM begins a new lifecycle
+    /// (transitioning to ``VirtualMachineState/starting`` or
+    /// ``VirtualMachineState/resuming``).
     public private(set) var lastError: Error?
+
+    /// The last network attachment disconnection error, if any.
+    ///
+    /// Set when the ``VZVirtualMachineDelegate`` reports a network
+    /// device disconnection. Callers can observe this to detect
+    /// unexpected network failures.
+    public private(set) var lastNetworkError: Error?
 
     /// An asynchronous stream of state changes.
     ///
@@ -198,27 +206,30 @@ public final class VirtualMachine: NSObject, Sendable {
             Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             try vm.requestStop()
 
-            // Poll state for up to `gracefulStopTimeout` seconds.
+            // Poll state off the main actor to avoid blocking UI.
             // macOS guests typically ignore requestStop(), so we
             // escalate to a force-stop if the VM is still running.
-            let deadline = Self.gracefulStopTimeout
-            for tick in 0..<deadline {
-                if state == .stopped { return }
-                try await Task.sleep(for: .seconds(1))
-                Log.vm.debug("Waiting for graceful stop… \(tick + 1, privacy: .public)/\(deadline, privacy: .public)s")
-            }
+            let stopped = await Task.detached { [weak self] in
+                for _ in 0..<60 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    if await self?.state == .stopped { return true }
+                }
+                return false
+            }.value
 
-            // Still running — escalate to force-stop.
-            Log.vm.warning("Graceful stop timed out after \(deadline, privacy: .public)s for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
-            nonisolated(unsafe) let unsafeVM = vm
-            try await unsafeVM.stop()
-            updateState(.stopped)
-            Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' force-stopped after graceful timeout")
+            if !stopped {
+                // Still running — escalate to force-stop.
+                Log.vm.warning("Graceful stop timed out for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
+                nonisolated(unsafe) let unsafeVM = vm
+                try await unsafeVM.stop()
+                // Don't call updateState — the delegate's guestDidStop will handle it
+                Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' force-stopped after graceful timeout")
+            }
         } else {
             Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             nonisolated(unsafe) let unsafeVM = vm
             try await unsafeVM.stop()
-            updateState(.stopped)
+            // Don't call updateState — the delegate's guestDidStop will handle it
             Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' stopped")
         }
     }
@@ -308,7 +319,8 @@ public final class VirtualMachine: NSObject, Sendable {
 
     private func updateState(_ newState: VirtualMachineState) {
         Log.vm.debug("State transition: \(self.state.rawValue, privacy: .public) → \(newState.rawValue, privacy: .public)")
-        if newState != .error {
+        // Only clear lastError at the start of a new lifecycle
+        if newState == .starting || newState == .resuming {
             lastError = nil
         }
         state = newState
@@ -353,5 +365,8 @@ extension VirtualMachine: VZVirtualMachineDelegate {
         Log.vm.warning(
             "Network attachment disconnected — domain: \(nsError.domain, privacy: .public), code: \(nsError.code, privacy: .public), description: \(nsError.localizedDescription, privacy: .public)"
         )
+        Task { @MainActor [weak self] in
+            self?.lastNetworkError = error
+        }
     }
 }

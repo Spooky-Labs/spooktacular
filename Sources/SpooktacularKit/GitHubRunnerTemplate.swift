@@ -118,8 +118,7 @@ public enum GitHubRunnerTemplate {
 
         # Download the latest runner for macOS ARM64.
         LATEST=$(curl -s https://api.github.com/repos/actions/runner/releases/latest \\
-            | grep -o 'https.*osx-arm64.*tar.gz' \\
-            | head -1)
+            | python3 -c "import sys,json; assets=json.load(sys.stdin)['assets']; print(next(a['browser_download_url'] for a in assets if 'osx-arm64' in a['name'] and a['name'].endswith('.tar.gz')))" 2>/dev/null)
 
         if [ -z "$LATEST" ]; then
             echo "Error: Could not determine latest runner URL." >&2

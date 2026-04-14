@@ -93,7 +93,8 @@ extension Spook {
                     guard otherBundle != bundleURL else { continue }
                     if let loaded = try? VirtualMachineBundle.load(from: otherBundle),
                        loaded.metadata.isEphemeral,
-                       !PIDFile.isRunning(bundleURL: otherBundle) {
+                       let pid = PIDFile.read(from: otherBundle),
+                       !PIDFile.isProcessAlive(pid) {
                         try? fm.removeItem(at: otherBundle)
                         print(Style.dim("Cleaned up stale ephemeral VM '\(otherBundle.deletingPathExtension().lastPathComponent)'."))
                     }
