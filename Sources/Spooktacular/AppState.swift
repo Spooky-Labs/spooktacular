@@ -1,5 +1,6 @@
 import SwiftUI
 import os
+@preconcurrency import Virtualization
 import SpooktacularKit
 
 /// The shared application state for Spooktacular.
@@ -26,6 +27,9 @@ final class AppState {
 
     /// Running VM instances, keyed by name.
     var runningVMs: [String: VirtualMachine] = [:]
+
+    /// Guest agent clients for running VMs.
+    var agentClients: [String: GuestAgentClient] = [:]
 
     // MARK: - Error Handling
 
@@ -104,6 +108,10 @@ final class AppState {
             try await vm.start()
             runningVMs[name] = vm
 
+            if let socketDevice = vm.vzVM?.socketDevices.first as? VZVirtioSocketDevice {
+                agentClients[name] = GuestAgentClient(socketDevice: socketDevice)
+            }
+
             AccessibilityNotification.Announcement(
                 "Virtual machine \(name) started"
             ).post()
@@ -119,6 +127,7 @@ final class AppState {
         do {
             try await vm.stop(graceful: false)
             runningVMs.removeValue(forKey: name)
+            agentClients.removeValue(forKey: name)
 
             AccessibilityNotification.Announcement(
                 "Virtual machine \(name) stopped"
@@ -133,6 +142,7 @@ final class AppState {
         Task {
             do {
                 if let vm = runningVMs.removeValue(forKey: name) {
+                    agentClients.removeValue(forKey: name)
                     Log.vm.info("Stopping running VM '\(name, privacy: .public)' before deletion")
                     try await vm.stop(graceful: false)
                 }
@@ -198,6 +208,7 @@ final class AppState {
             }
         }
         runningVMs.removeAll()
+        agentClients.removeAll()
     }
 
     // MARK: - Private

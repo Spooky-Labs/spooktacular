@@ -1,52 +1,61 @@
-/// LaunchDaemon plist generation and installation for `spook-agent`.
+/// LaunchDaemon and LaunchAgent plist generation and installation for `spook-agent`.
 ///
-/// The ``install()`` function writes a LaunchDaemon property list to
-/// `/Library/LaunchDaemons/com.spooktacular.agent.plist` and loads it
-/// with `launchctl`. The daemon is configured to:
+/// Two installation modes are provided:
 ///
-/// - Start at boot (`RunAtLoad`).
-/// - Restart automatically if the process exits (`KeepAlive`).
-/// - Log stdout and stderr to `/var/log/spook-agent.log`.
+/// - **LaunchDaemon** (`--install-daemon`): Installs to
+///   `/Library/LaunchDaemons/` and runs as root at boot. This mode
+///   cannot access the clipboard or window server.
+/// - **LaunchAgent** (`--install-agent`): Installs to
+///   `~/Library/LaunchAgents/` and runs in the user's GUI session.
+///   This is required for clipboard, app control, and any endpoint
+///   that needs the window server.
 ///
 /// ## Usage
 ///
 /// ```bash
+/// # LaunchAgent (recommended -- clipboard and app control work):
+/// spook-agent --install-agent
+///
+/// # LaunchDaemon (root, no GUI access):
 /// sudo spook-agent --install-daemon
 /// ```
 ///
 /// The binary must already be installed at `/usr/local/bin/spook-agent`
-/// before running this command.
+/// before running either command.
 
 import Foundation
 import os
 
-/// Helpers for installing the spook-agent LaunchDaemon.
+/// Helpers for installing the spook-agent as a LaunchDaemon or LaunchAgent.
 enum LaunchDaemon {
 
-    /// The filesystem path where the plist is installed.
-    private static let plistPath = "/Library/LaunchDaemons/com.spooktacular.agent.plist"
+    /// The LaunchDaemon label and plist path.
+    private static let daemonLabel = "com.spooktacular.agent"
+    private static let daemonPlistPath = "/Library/LaunchDaemons/com.spooktacular.agent.plist"
 
-    /// The LaunchDaemon label.
-    private static let label = "com.spooktacular.agent"
+    /// The LaunchAgent label and plist directory.
+    private static let agentLabel = "com.spooktacular.agent"
 
     /// The expected install path for the agent binary.
-    private static let agentPath = "/usr/local/bin/spook-agent"
+    private static let agentBinaryPath = "/usr/local/bin/spook-agent"
 
-    /// The plist content as an XML property list string.
+    // MARK: - LaunchDaemon
+
+    /// The LaunchDaemon plist content.
     ///
-    /// Using a string literal avoids pulling in `PropertyListSerialization`
-    /// and keeps the output deterministic and human-readable.
-    private static let plistContent = """
+    /// Runs at boot as root with `KeepAlive`. Logs to
+    /// `/var/log/spook-agent.log`.
+    private static let daemonPlistContent = """
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
     "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
     <plist version="1.0">
     <dict>
         <key>Label</key>
-        <string>\(label)</string>
+        <string>\(daemonLabel)</string>
         <key>ProgramArguments</key>
         <array>
-            <string>\(agentPath)</string>
+            <string>\(agentBinaryPath)</string>
         </array>
         <key>RunAtLoad</key>
         <true/>
@@ -62,31 +71,29 @@ enum LaunchDaemon {
 
     /// Writes the LaunchDaemon plist and loads it via `launchctl`.
     ///
-    /// Prints status messages to stdout so the caller can verify
-    /// installation succeeded. Exits the process with status 1 on
-    /// failure.
-    static func install() {
+    /// Exits the process with status 1 on failure.
+    static func installDaemon() {
         let log = Logger(subsystem: "com.spooktacular.agent", category: "install")
 
-        guard FileManager.default.fileExists(atPath: agentPath) else {
-            log.error("Agent binary not found at \(agentPath, privacy: .public)")
-            print("Error: \(agentPath) not found. Copy the binary there first.")
+        guard FileManager.default.fileExists(atPath: agentBinaryPath) else {
+            log.error("Agent binary not found at \(agentBinaryPath, privacy: .public)")
+            print("Error: \(agentBinaryPath) not found. Copy the binary there first.")
             exit(1)
         }
 
         do {
-            try plistContent.write(toFile: plistPath, atomically: true, encoding: .utf8)
+            try daemonPlistContent.write(toFile: daemonPlistPath, atomically: true, encoding: .utf8)
         } catch {
             log.error("Failed to write plist: \(error.localizedDescription, privacy: .public)")
-            print("Error: Could not write \(plistPath). Are you running as root?")
+            print("Error: Could not write \(daemonPlistPath). Are you running as root?")
             exit(1)
         }
 
-        print("Wrote \(plistPath)")
+        print("Wrote \(daemonPlistPath)")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["bootstrap", "system", plistPath]
+        process.arguments = ["bootstrap", "system", daemonPlistPath]
 
         do {
             try process.run()
@@ -102,7 +109,109 @@ enum LaunchDaemon {
             log.notice("LaunchDaemon installed and loaded")
         } else {
             print("Warning: launchctl exited with status \(process.terminationStatus).")
-            print("The plist was written but may not be loaded. Try: sudo launchctl bootstrap system \(plistPath)")
+            print("The plist was written but may not be loaded. Try: sudo launchctl bootstrap system \(daemonPlistPath)")
+        }
+    }
+
+    // MARK: - LaunchAgent
+
+    /// The LaunchAgent plist content.
+    ///
+    /// Runs at login in the user's GUI session with `KeepAlive`.
+    /// This gives the agent access to the clipboard and window server.
+    /// Logs to `~/Library/Logs/spook-agent.log`.
+    private static func agentPlistContent(logPath: String) -> String {
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
+        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>Label</key>
+            <string>\(agentLabel)</string>
+            <key>ProgramArguments</key>
+            <array>
+                <string>\(agentBinaryPath)</string>
+            </array>
+            <key>RunAtLoad</key>
+            <true/>
+            <key>KeepAlive</key>
+            <true/>
+            <key>StandardOutPath</key>
+            <string>\(logPath)</string>
+            <key>StandardErrorPath</key>
+            <string>\(logPath)</string>
+        </dict>
+        </plist>
+        """
+    }
+
+    /// Writes the LaunchAgent plist and loads it via `launchctl bootstrap gui/<uid>`.
+    ///
+    /// The LaunchAgent installs to `~/Library/LaunchAgents/` so it runs
+    /// in the user's GUI session, giving the agent access to the
+    /// clipboard, running applications, and the window server.
+    ///
+    /// Exits the process with status 1 on failure.
+    static func installAgent() {
+        let log = Logger(subsystem: "com.spooktacular.agent", category: "install")
+
+        guard FileManager.default.fileExists(atPath: agentBinaryPath) else {
+            log.error("Agent binary not found at \(agentBinaryPath, privacy: .public)")
+            print("Error: \(agentBinaryPath) not found. Copy the binary there first.")
+            exit(1)
+        }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let launchAgentsDir = home.appendingPathComponent("Library/LaunchAgents")
+        let logsDir = home.appendingPathComponent("Library/Logs")
+        let plistPath = launchAgentsDir.appendingPathComponent("\(agentLabel).plist").path
+        let logPath = logsDir.appendingPathComponent("spook-agent.log").path
+
+        // Ensure directories exist
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: launchAgentsDir, withIntermediateDirectories: true)
+            try fm.createDirectory(at: logsDir, withIntermediateDirectories: true)
+        } catch {
+            log.error("Failed to create directories: \(error.localizedDescription, privacy: .public)")
+            print("Error: Could not create ~/Library/LaunchAgents or ~/Library/Logs.")
+            exit(1)
+        }
+
+        let plistContent = agentPlistContent(logPath: logPath)
+
+        do {
+            try plistContent.write(toFile: plistPath, atomically: true, encoding: .utf8)
+        } catch {
+            log.error("Failed to write plist: \(error.localizedDescription, privacy: .public)")
+            print("Error: Could not write \(plistPath).")
+            exit(1)
+        }
+
+        print("Wrote \(plistPath)")
+
+        // Load via launchctl bootstrap gui/<uid>
+        let uid = getuid()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["bootstrap", "gui/\(uid)", plistPath]
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            log.error("launchctl failed: \(error.localizedDescription, privacy: .public)")
+            print("Error: launchctl bootstrap failed.")
+            exit(1)
+        }
+
+        if process.terminationStatus == 0 {
+            print("LaunchAgent loaded. spook-agent will start at login.")
+            log.notice("LaunchAgent installed and loaded for UID \(uid)")
+        } else {
+            print("Warning: launchctl exited with status \(process.terminationStatus).")
+            print("The plist was written but may not be loaded. Try: launchctl bootstrap gui/\(uid) \(plistPath)")
         }
     }
 }

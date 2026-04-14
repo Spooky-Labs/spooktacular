@@ -126,6 +126,8 @@ struct VMRow: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
+    @State private var agentConnected: Bool?
+
     private var isRunning: Bool { appState.isRunning(name) }
 
     var body: some View {
@@ -158,16 +160,41 @@ struct VMRow: View {
             Spacer()
 
             if isRunning {
-                Text("Running")
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.green)
-                    .glassStatusBadge()
+                HStack(spacing: 6) {
+                    if let connected = agentConnected {
+                        Image(systemName: "circle.fill")
+                            .font(.system(size: 6))
+                            .foregroundStyle(connected ? .green : .yellow)
+                            .accessibilityLabel(connected ? "Agent connected" : "Agent checking")
+                    }
+
+                    Text("Running")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundStyle(.green)
+                }
+                .glassStatusBadge()
             }
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+        .task(id: isRunning) {
+            guard isRunning else { agentConnected = nil; return }
+            guard let client = appState.agentClients[name] else {
+                agentConnected = false
+                return
+            }
+            while !Task.isCancelled {
+                do {
+                    _ = try await client.health()
+                    agentConnected = true
+                } catch {
+                    agentConnected = false
+                }
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
     }
 
     private var accessibilityDescription: String {
@@ -177,6 +204,9 @@ struct VMRow: View {
             let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
             parts.append("\(bundle.spec.cpuCount) CPU cores")
             parts.append("\(memoryInGigabytes) gigabytes memory")
+        }
+        if let connected = agentConnected {
+            parts.append(connected ? "agent connected" : "agent not connected")
         }
         return parts.joined(separator: ", ")
     }

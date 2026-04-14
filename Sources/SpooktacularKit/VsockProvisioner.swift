@@ -5,18 +5,12 @@ import os
 /// Provisions a running VM by sending a script over VirtIO socket.
 ///
 /// The guest must have the Spooktacular agent installed, which
-/// listens on vsock port 9470 for incoming script payloads.
-/// The protocol is intentionally minimal:
+/// listens on vsock port 9470 for incoming HTTP requests.
 ///
-/// 1. Host connects to port ``agentPort`` on the guest's vsock device.
-/// 2. Host writes the script length as a 4-byte big-endian `UInt32`.
-/// 3. Host writes the script content as UTF-8 bytes.
-/// 4. Guest agent reads the length, reads that many bytes, executes
-///    the script, and writes a 4-byte big-endian exit code back.
-/// 5. Host reads the exit code and reports success or failure.
-///
-/// If the vsock connection fails (agent not installed), the
-/// provisioner falls back to SSH when an IP address is available.
+/// The provisioner creates a ``GuestAgentClient``, calls
+/// ``GuestAgentClient/exec(_:)`` with the script content, and
+/// checks the exit code. If the vsock connection fails (agent not
+/// installed), it falls back to SSH when an IP address is available.
 ///
 /// ## Usage
 ///
@@ -43,12 +37,14 @@ public enum VsockProvisioner {
     /// `spook-agent` binary.
     public static let agentPort: UInt32 = 9470
 
-    // MARK: - Wire Protocol Helpers
+    // MARK: - Legacy Wire Protocol Helpers
 
     /// Encodes a script payload as a length-prefixed frame.
     ///
     /// The frame format is a 4-byte big-endian `UInt32` length
-    /// followed by the script content as UTF-8 bytes.
+    /// followed by the script content as UTF-8 bytes. This helper
+    /// is retained for backward compatibility with tests and older
+    /// agent versions.
     ///
     /// - Parameter script: The script content to encode.
     /// - Returns: The framed data ready to write to the socket.
@@ -61,6 +57,9 @@ public enum VsockProvisioner {
     }
 
     /// Decodes an exit code from a 4-byte big-endian response.
+    ///
+    /// Retained for backward compatibility with tests and older
+    /// agent versions.
     ///
     /// - Parameter data: Exactly 4 bytes of response data from
     ///   the guest agent.
@@ -75,10 +74,10 @@ public enum VsockProvisioner {
 
     /// Sends a script to the guest agent via VirtIO socket.
     ///
-    /// Connects to the VM's vsock device on ``agentPort``,
-    /// writes the script content using the length-prefixed protocol,
-    /// and waits for the exit code response. Falls back to SSH
-    /// provisioning if the vsock connection fails (agent not installed).
+    /// Creates a ``GuestAgentClient`` and calls ``GuestAgentClient/exec(_:)``
+    /// with the full script content. If the agent returns a non-zero
+    /// exit code, throws ``VsockProvisionerError/scriptFailed(exitCode:)``.
+    /// Falls back to SSH provisioning if the vsock connection fails.
     ///
     /// - Parameters:
     ///   - virtualMachine: The running VM to provision.
@@ -111,59 +110,81 @@ public enum VsockProvisioner {
         Log.provision.info("Attempting vsock connection on port \(agentPort)")
 
         do {
-            let connection = try await socketDevice.connect(toPort: agentPort)
+            let client = GuestAgentClient(socketDevice: socketDevice)
+            let result = try await client.exec(scriptContent)
 
-            let fd = connection.fileDescriptor
-            let writeFD = dup(fd)
-            let readFD = dup(fd)
-            guard writeFD >= 0, readFD >= 0 else {
-                Log.provision.error("Failed to duplicate vsock file descriptor")
-                throw VsockProvisionerError.agentNotResponding
-            }
-            let writeHandle = FileHandle(fileDescriptor: writeFD, closeOnDealloc: true)
-            let readHandle = FileHandle(fileDescriptor: readFD, closeOnDealloc: true)
-
-            let frame = encodeFrame(scriptContent)
-            writeHandle.write(frame)
-
-            Log.provision.info(
-                "Script sent via vsock (\(frame.count) bytes), waiting for completion"
-            )
-
-            let responseData: Data = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let data = readHandle.readData(ofLength: 4)
-                    continuation.resume(returning: data)
+            if result.exitCode != 0 {
+                Log.provision.error(
+                    "Guest agent reported exit code \(result.exitCode)"
+                )
+                if !result.stderr.isEmpty {
+                    Log.provision.error(
+                        "stderr: \(result.stderr, privacy: .public)"
+                    )
                 }
+                throw VsockProvisionerError.scriptFailed(
+                    exitCode: result.exitCode
+                )
             }
 
-            if let exitCode = decodeExitCode(from: responseData), exitCode != 0 {
-                Log.provision.error("Guest agent reported exit code \(exitCode)")
-                throw VsockProvisionerError.scriptFailed(exitCode: Int32(exitCode))
+            if !result.stdout.isEmpty {
+                Log.provision.info(
+                    "stdout: \(result.stdout, privacy: .public)"
+                )
             }
-            try? writeHandle.close()
-            try? readHandle.close()
 
             Log.provision.notice("Vsock provisioning complete")
 
         } catch let error as VsockProvisionerError {
             throw error
+        } catch let error as GuestAgentError {
+            Log.provision.warning(
+                "Guest agent error: \(error.localizedDescription ?? "unknown", privacy: .public)"
+            )
+            try await sshFallback(
+                fallbackIP: fallbackIP, script: script,
+                sshUser: sshUser, sshKey: sshKey
+            )
         } catch {
             Log.provision.warning(
                 "Vsock connection failed: \(error.localizedDescription, privacy: .public)"
             )
-            Log.provision.info("Falling back to SSH provisioning")
-
-            if let ip = fallbackIP {
-                Log.provision.info("SSH fallback to \(ip, privacy: .public)")
-                try await SSHExecutor.waitForSSH(ip: ip)
-                try await SSHExecutor.execute(
-                    script: script, on: ip, user: sshUser, key: sshKey
-                )
-            } else {
-                throw VsockProvisionerError.agentNotResponding
-            }
+            try await sshFallback(
+                fallbackIP: fallbackIP, script: script,
+                sshUser: sshUser, sshKey: sshKey
+            )
         }
+    }
+
+    // MARK: - SSH Fallback
+
+    /// Attempts SSH provisioning as a fallback when the vsock agent
+    /// is not available.
+    ///
+    /// - Parameters:
+    ///   - fallbackIP: The IP address for SSH, or `nil` to throw.
+    ///   - script: The script file URL to execute remotely.
+    ///   - sshUser: The SSH user name.
+    ///   - sshKey: The SSH private key path, or `nil`.
+    /// - Throws: ``VsockProvisionerError/agentNotResponding`` when
+    ///   no fallback IP is provided. ``SSHError`` if SSH fails.
+    private static func sshFallback(
+        fallbackIP: String?,
+        script: URL,
+        sshUser: String,
+        sshKey: String?
+    ) async throws {
+        Log.provision.info("Falling back to SSH provisioning")
+
+        guard let ip = fallbackIP else {
+            throw VsockProvisionerError.agentNotResponding
+        }
+
+        Log.provision.info("SSH fallback to \(ip, privacy: .public)")
+        try await SSHExecutor.waitForSSH(ip: ip)
+        try await SSHExecutor.execute(
+            script: script, on: ip, user: sshUser, key: sshKey
+        )
     }
 }
 

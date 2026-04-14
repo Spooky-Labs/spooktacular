@@ -67,4 +67,7 @@ public enum Log {
 
     /// Capacity: concurrent VM limit enforcement.
     public static let capacity = Logger(subsystem: subsystem, category: "capacity")
+
+    /// Guest agent: host-side client communication with spook-agent.
+    public static let guestAgent = Logger(subsystem: subsystem, category: "guest-agent")
 }
