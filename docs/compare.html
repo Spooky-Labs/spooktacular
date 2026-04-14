@@ -74,7 +74,7 @@ tr:hover { background: rgba(15,10,26,0.5); }
 .cat-row td { background: var(--surface); font-weight: 600; color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.55rem 1rem; }
 
 /* Pricing cards */
-.pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin: 2rem 0; }
+.pricing-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.25rem; margin: 2rem 0; }
 .price-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; position: relative; transition: border-color 0.25s; }
 .price-card:hover { border-color: rgba(139,108,224,0.3); }
 .price-card.featured { border-color: var(--accent); }
@@ -86,7 +86,7 @@ tr:hover { background: rgba(15,10,26,0.5); }
 .price-card ul { list-style: none; padding: 0; }
 .price-card li { padding: 0.3rem 0; color: var(--dim); font-size: 0.82rem; }
 .price-card li::before { content: "\2713 "; color: var(--green); font-weight: 700; }
-@media (max-width: 900px) { .pricing-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 1000px) { .pricing-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 500px) { .pricing-grid { grid-template-columns: 1fr; } }
 
 /* TCO Section */
@@ -471,6 +471,7 @@ Spooktacular
 <li><strong>Pool auto-replacement:</strong> Anka replaces failed VMs automatically. We don't have pool management yet.</li>
 <li><strong>Enterprise support:</strong> Anka and Orka offer paid support contracts. We are community-supported only.</li>
 </ul>
+<p style="color: var(--dim); font-size: 0.85rem; margin-top: 0.75rem; font-style: italic;">Note: GhostVM previously had an edge on clipboard/exec/apps via its guest agent. Spooktacular now ships the same capabilities with 12 HTTP endpoints over vsock, plus file transfer, port discovery, and health monitoring that GhostVM does not offer.</p>
 </div>
 </div>
 </section>
@@ -532,6 +533,20 @@ Spooktacular
 <li>Web UI</li>
 <li>Autoscaling</li>
 <li>MacStadium lock-in</li>
+</ul>
+</div>
+
+<div class="price-card">
+<h3>GhostVM</h3>
+<div class="price">$0 <span>forever</span></div>
+<p class="price-note">MIT licensed, open source</p>
+<ul>
+<li>GUI + CLI interface</li>
+<li>Clipboard/exec/apps agent</li>
+<li>No Kubernetes support</li>
+<li>No HTTP API</li>
+<li>No templates or ephemeral</li>
+<li>No capacity enforcement</li>
 </ul>
 </div>
 
