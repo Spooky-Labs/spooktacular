@@ -1,6 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
+@testable import SpookInfrastructureApple
+@testable import SpookApplication
+@testable import SpookCore
 
 // MARK: - Guest Agent Model Round-Trip Tests
 

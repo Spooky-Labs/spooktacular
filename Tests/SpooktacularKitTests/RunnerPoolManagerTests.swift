@@ -1,5 +1,8 @@
 import Testing
 @testable import SpooktacularKit
+@testable import SpookInfrastructureApple
+@testable import SpookApplication
+@testable import SpookCore
 
 // MARK: - Runner Pool Manager Tests
 

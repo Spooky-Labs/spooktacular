@@ -2,6 +2,9 @@ import Testing
 import Foundation
 @preconcurrency import Virtualization
 @testable import SpooktacularKit
+@testable import SpookInfrastructureApple
+@testable import SpookApplication
+@testable import SpookCore
 
 @Suite("VirtualMachineConfiguration")
 struct VirtualMachineConfigurationTests {

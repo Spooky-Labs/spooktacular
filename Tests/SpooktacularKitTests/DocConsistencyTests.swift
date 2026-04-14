@@ -124,24 +124,20 @@ struct DocConsistencyTests {
     /// These layers must depend only on Foundation (or have no imports at all).
     private static let allowedImports: Set<String> = ["Foundation"]
 
-    @Test("Entities/ files import only Foundation")
-    func entitiesLayerCompliance() throws {
-        try assertLayerImports(layer: "Sources/SpooktacularKit/Entities")
+    @Test("SpookCore files import only Foundation")
+    func coreLayerCompliance() throws {
+        try assertLayerImports(layer: "Sources/SpookCore")
     }
 
-    @Test("Interfaces/ files import only Foundation")
-    func interfacesLayerCompliance() throws {
-        try assertLayerImports(layer: "Sources/SpooktacularKit/Interfaces")
-    }
-
-    @Test("UseCases/ files import only Foundation")
-    func useCasesLayerCompliance() throws {
-        try assertLayerImports(layer: "Sources/SpooktacularKit/UseCases")
+    @Test("SpookApplication files import only Foundation or SpookCore")
+    func applicationLayerCompliance() throws {
+        try assertLayerImports(layer: "Sources/SpookApplication", allowed: ["Foundation", "SpookCore"])
     }
 
     /// Scans all `.swift` files in the given layer directory and verifies that
-    /// every `import` statement references only Foundation.
-    private func assertLayerImports(layer: String) throws {
+    /// every `import` statement references only allowed modules.
+    private func assertLayerImports(layer: String, allowed: Set<String>? = nil) throws {
+        let allowedSet = allowed ?? Self.allowedImports
         let root = try projectRoot()
         let layerPath = root + "/" + layer
         let fm = FileManager.default
@@ -172,7 +168,7 @@ struct DocConsistencyTests {
             for match in matches {
                 guard let range = Range(match.range(at: 1), in: head) else { continue }
                 let module = String(head[range])
-                if !Self.allowedImports.contains(module) {
+                if !allowedSet.contains(module) {
                     violations.append("\(file) imports \(module)")
                 }
             }

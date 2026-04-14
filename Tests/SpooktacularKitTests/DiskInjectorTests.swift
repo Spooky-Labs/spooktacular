@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
+@testable import SpookInfrastructureApple
 
 @Suite("DiskInjector")
 struct DiskInjectorTests {

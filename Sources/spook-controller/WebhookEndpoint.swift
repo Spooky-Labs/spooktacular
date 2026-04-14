@@ -33,7 +33,7 @@ enum WebhookEndpoint {
         // 1. Verify signature
         let signature = headers["x-hub-signature-256"]
             ?? headers["X-Hub-Signature-256"] ?? ""
-        guard WebhookSignatureVerifier.verify(body: body, signature: signature, secret: secret) else {
+        guard WebhookSignatureVerifier.verify(body: body, signature: signature, secret: secret, hmac: CryptoKitHMACProvider()) else {
             logger.warning("Webhook signature verification failed")
             return 401
         }
