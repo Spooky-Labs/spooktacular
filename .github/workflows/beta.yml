@@ -10,30 +10,48 @@ concurrency:
 
 jobs:
   beta:
-    name: Build & Upload to TestFlight
+    name: Test → Build → TestFlight
     runs-on: macos-26
+    env:
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0  # needed for git describe
 
       - name: Install Fastlane
         run: gem install fastlane
 
+      # 1. Tests
+      - name: Run tests
+        run: swift test --parallel
+
+      # 2. Sign
       - name: Sync code signing via match
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
         run: fastlane signing
         working-directory: fastlane
 
-      - name: Build & upload to TestFlight
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-        run: fastlane beta
+      # 3. Build with auto-versioning from git
+      - name: Build signed .app bundle
+        run: |
+          BUILD_NUMBER="${{ github.run_number }}" \
+          fastlane build
+        working-directory: fastlane
+
+      # 4. Package .pkg for TestFlight
+      - name: Package .pkg
+        run: fastlane package
+        working-directory: fastlane
+
+      # 5. Upload to TestFlight
+      - name: Upload to TestFlight
+        run: |
+          fastlane run upload_to_testflight \
+            pkg:"Spooktacular.pkg" \
+            app_platform:"osx" \
+            skip_waiting_for_build_processing:true
         working-directory: fastlane
