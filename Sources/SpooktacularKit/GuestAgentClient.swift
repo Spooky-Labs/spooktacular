@@ -21,7 +21,7 @@ import os
 /// | `POST` | `/api/v1/exec` | Execute a shell command |
 /// | `GET` | `/api/v1/apps` | List running applications |
 /// | `POST` | `/api/v1/apps/launch` | Launch an app by bundle ID |
-/// | `DELETE` | `/api/v1/apps` | Quit an app by bundle ID |
+/// | `POST` | `/api/v1/apps/quit` | Quit an app by bundle ID |
 /// | `GET` | `/api/v1/apps/frontmost` | Get the frontmost app |
 /// | `GET` | `/api/v1/fs` | List a directory |
 /// | `POST` | `/api/v1/files` | Upload a file |
@@ -148,7 +148,7 @@ public actor GuestAgentClient {
     public func quitApp(bundleID: String) async throws {
         let body = GuestAppRequest(bundleID: bundleID)
         let _: GuestEmptyResponse = try await request(
-            method: "DELETE", path: "/api/v1/apps",
+            method: "POST", path: "/api/v1/apps/quit",
             body: try encoder.encode(body)
         )
     }
@@ -223,7 +223,7 @@ public actor GuestAgentClient {
     /// 6. Closes both file descriptors.
     ///
     /// - Parameters:
-    ///   - method: The HTTP method (`"GET"`, `"POST"`, `"DELETE"`).
+    ///   - method: The HTTP method (`"GET"`, `"POST"`).
     ///   - path: The request path (e.g., `"/health"`).
     ///   - body: Optional JSON body data for POST/DELETE requests.
     /// - Returns: The decoded response of type `T`.

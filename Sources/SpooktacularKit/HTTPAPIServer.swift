@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Security
 import os
 
 // MARK: - HTTP API Server
@@ -11,10 +12,12 @@ import os
 /// listing, creating, starting, stopping, and deleting VMs, as well as
 /// resolving VM IP addresses and performing health checks.
 ///
-/// The server binds to localhost by default and does **not** provide TLS.
-/// Set the `SPOOK_API_TOKEN` environment variable to require Bearer-token
-/// authentication on all endpoints except `/health`. Use a reverse proxy
-/// (e.g., Caddy, nginx) for production deployments that require encryption.
+/// The server binds to localhost by default. TLS can be enabled by
+/// providing `NWProtocolTLS.Options` at initialization; otherwise the
+/// server uses plain HTTP. Set the `SPOOK_API_TOKEN` environment
+/// variable to require Bearer-token authentication on all endpoints
+/// except `/health`. When TLS is enabled and the server is not
+/// running in insecure mode, an API token is required.
 ///
 /// ## Endpoints
 ///
@@ -87,6 +90,11 @@ public actor HTTPAPIServer {
     /// (development mode).
     private let apiToken: String?
 
+    /// Whether the server is running in insecure mode (no TLS, no
+    /// required API token). When `true`, the server accepts plain HTTP
+    /// connections and does not enforce token authentication.
+    public let insecureMode: Bool
+
     /// Logger for HTTP API events.
     private let logger = Log.httpAPI
 
@@ -108,13 +116,35 @@ public actor HTTPAPIServer {
     ///     (typically `~/.spooktacular/vms/`).
     ///   - spookPath: The absolute path to the `spook` binary for
     ///     spawning VM processes. Defaults to `/usr/local/bin/spook`.
-    /// - Throws: `NWError` if the listener cannot be created.
-    public init(host: String, port: UInt16 = 8484, vmDirectory: URL, spookPath: String = "/usr/local/bin/spook") throws {
+    ///   - tlsOptions: Optional TLS configuration for the NWListener.
+    ///     When provided, the server accepts HTTPS connections using
+    ///     the supplied certificate and key. When `nil`, the server
+    ///     uses plain HTTP.
+    ///   - insecureMode: When `true`, disables the requirement for an
+    ///     API token when TLS is not configured. The server logs a
+    ///     prominent warning when running in insecure mode.
+    /// - Throws: ``HTTPAPIServerError/invalidPort(_:)`` if the port
+    ///   number is invalid, or ``HTTPAPIServerError/missingAPIToken``
+    ///   if TLS is disabled, `insecureMode` is `false`, and no
+    ///   `SPOOK_API_TOKEN` environment variable is set.
+    public init(
+        host: String,
+        port: UInt16 = 8484,
+        vmDirectory: URL,
+        spookPath: String = "/usr/local/bin/spook",
+        tlsOptions: NWProtocolTLS.Options? = nil,
+        insecureMode: Bool = false
+    ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw HTTPAPIServerError.invalidPort(port)
         }
 
-        let parameters = NWParameters.tcp
+        let parameters: NWParameters
+        if let tlsOptions {
+            parameters = NWParameters(tls: tlsOptions)
+        } else {
+            parameters = NWParameters.tcp
+        }
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
             host: NWEndpoint.Host(host),
             port: nwPort
@@ -123,9 +153,17 @@ public actor HTTPAPIServer {
         self.listener = try NWListener(using: parameters)
         self.vmDirectory = vmDirectory
         self.spookPath = spookPath
+        self.insecureMode = insecureMode
 
         let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"]
         self.apiToken = token?.isEmpty == false ? token : nil
+
+        if insecureMode {
+            Log.httpAPI.warning("⚠️  SERVER RUNNING IN INSECURE MODE — no TLS, no required API token")
+            Log.httpAPI.warning("⚠️  Do NOT expose this server to untrusted networks")
+        } else if tlsOptions == nil && self.apiToken == nil {
+            throw HTTPAPIServerError.missingAPIToken
+        }
     }
 
     // MARK: - Lifecycle
@@ -744,6 +782,11 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
     /// The port number is invalid (e.g., 0).
     case invalidPort(UInt16)
 
+    /// No API token is configured and the server is not running in
+    /// insecure mode. An API token is required to prevent
+    /// unauthenticated access to VM management endpoints.
+    case missingAPIToken
+
     public var errorDescription: String? {
         switch self {
         case .malformedRequest:
@@ -754,6 +797,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Port \(port) is already in use."
         case .invalidPort(let port):
             "Invalid port number: \(port)."
+        case .missingAPIToken:
+            "No API token configured."
         }
     }
 
@@ -767,6 +812,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Choose a different port with --port, or stop the process using the current port."
         case .invalidPort:
             "Use a port number between 1 and 65535."
+        case .missingAPIToken:
+            "Set the SPOOK_API_TOKEN environment variable, provide TLS certificates with --tls-cert and --tls-key, or use --insecure to bypass (not recommended for production)."
         }
     }
 }

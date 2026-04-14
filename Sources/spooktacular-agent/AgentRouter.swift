@@ -29,6 +29,9 @@ import os
 /// Logger for agent route handlers.
 private let log = Logger(subsystem: "com.spooktacular.agent", category: "router")
 
+/// Logger dedicated to the audit trail, visible in Console.app at `.notice` level.
+private let auditLog = Logger(subsystem: "com.spooktacular.agent", category: "audit")
+
 /// The agent version, reported in health checks.
 private let agentVersion = "1.0.0"
 
@@ -45,44 +48,139 @@ private let jsonEncoder: JSONEncoder = {
 /// Shared JSON decoder.
 private let jsonDecoder = JSONDecoder()
 
+// MARK: - Authorization Scope
+
+/// The authorization scope required by an endpoint.
+///
+/// Used to classify endpoints for future RBAC support. Currently any
+/// valid token grants both scopes.
+private enum EndpointScope {
+    /// Read-only endpoints that inspect state without mutating it.
+    case basic
+    /// Mutation endpoints that change state (exec, write clipboard, launch/quit apps, upload files).
+    case elevated
+}
+
+/// Returns the ``EndpointScope`` for the given method/path pair,
+/// or `nil` if the route is unknown.
+private func endpointScope(method: String, path: String) -> EndpointScope? {
+    switch (method, path) {
+    // Read-only — basic scope
+    case ("GET", "/health"),
+         ("GET", "/api/v1/clipboard"),
+         ("GET", "/api/v1/apps"),
+         ("GET", "/api/v1/apps/frontmost"),
+         ("GET", "/api/v1/fs"),
+         ("GET", "/api/v1/files"),
+         ("GET", "/api/v1/ports"):
+        return .basic
+    // Mutation — elevated scope
+    case ("POST", "/api/v1/exec"),
+         ("POST", "/api/v1/clipboard"),
+         ("POST", "/api/v1/apps/launch"),
+         ("POST", "/api/v1/apps/quit"),
+         ("POST", "/api/v1/files"):
+        return .elevated
+    default:
+        return nil
+    }
+}
+
 // MARK: - Router
 
 /// Routes an ``AgentHTTPRequest`` to the appropriate handler.
 ///
-/// Returns a raw HTTP response as `Data`, ready to write to the socket.
-/// Unmatched routes receive a 404 response.
+/// When a non-nil `token` is supplied the router enforces Bearer-token
+/// authentication. If the token is `nil` the agent runs in legacy mode
+/// (no auth, warning already logged at startup).
 ///
-/// - Parameter request: The parsed HTTP request.
+/// After dispatching every request the router emits an audit-level log
+/// entry via `os.Logger` at `.notice` so it appears in Console.app.
+///
+/// - Parameters:
+///   - request: The parsed HTTP request.
+///   - token: The expected Bearer token, or `nil` for legacy mode.
 /// - Returns: A complete HTTP/1.1 response as raw bytes.
-func routeRequest(_ request: AgentHTTPRequest) -> Data {
+func routeRequest(_ request: AgentHTTPRequest, token: String? = nil) -> Data {
+
+    // --- Auth gate ---
+    if let token {
+        let authHeader = request.headers["authorization"] ?? ""
+        let expected = "Bearer \(token)"
+
+        guard authHeader == expected else {
+            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401)
+            return response
+        }
+
+        // Scope check (structural hook — any valid token passes today).
+        // Keeping the lookup so the branch is exercised in tests.
+        _ = endpointScope(method: request.method, path: request.path)
+    }
+
+    // --- Dispatch ---
+    let response: Data
+    let statusCode: Int
+
     switch (request.method, request.path) {
     case ("GET", "/health"):
-        return handleHealth()
+        response = handleHealth()
+        statusCode = 200
     case ("GET", "/api/v1/clipboard"):
-        return handleGetClipboard()
+        response = handleGetClipboard()
+        statusCode = 200
     case ("POST", "/api/v1/clipboard"):
-        return handleSetClipboard(request)
+        response = handleSetClipboard(request)
+        statusCode = 200
     case ("POST", "/api/v1/exec"):
-        return handleExec(request)
+        response = handleExec(request)
+        statusCode = 200
     case ("GET", "/api/v1/apps"):
-        return handleListApps()
+        response = handleListApps()
+        statusCode = 200
     case ("POST", "/api/v1/apps/launch"):
-        return handleLaunchApp(request)
+        response = handleLaunchApp(request)
+        statusCode = 200
     case ("POST", "/api/v1/apps/quit"):
-        return handleQuitApp(request)
+        response = handleQuitApp(request)
+        statusCode = 200
     case ("GET", "/api/v1/apps/frontmost"):
-        return handleFrontmostApp()
+        response = handleFrontmostApp()
+        statusCode = 200
     case ("GET", "/api/v1/fs"):
-        return handleListFS(request)
+        response = handleListFS(request)
+        statusCode = 200
     case ("POST", "/api/v1/files"):
-        return handleUploadFile(request)
+        response = handleUploadFile(request)
+        statusCode = 201
     case ("GET", "/api/v1/files"):
-        return handleListFiles()
+        response = handleListFiles()
+        statusCode = 200
     case ("GET", "/api/v1/ports"):
-        return handleListPorts()
+        response = handleListPorts()
+        statusCode = 200
     default:
-        return errorResponse(message: "Not found.", statusCode: 404)
+        response = errorResponse(message: "Not found.", statusCode: 404)
+        statusCode = 404
     }
+
+    emitAuditLog(method: request.method, path: request.path, statusCode: statusCode)
+    return response
+}
+
+/// Emits an audit log entry at `.notice` level.
+///
+/// The message includes an ISO-8601 timestamp so the audit trail is
+/// self-contained even when log timestamps are stripped.
+///
+/// - Parameters:
+///   - method: The HTTP method (e.g., `"GET"`).
+///   - path: The request path (e.g., `"/api/v1/exec"`).
+///   - statusCode: The HTTP status code of the response.
+private func emitAuditLog(method: String, path: String, statusCode: Int) {
+    let timestamp = ISO8601DateFormatter().string(from: Date())
+    auditLog.notice("AUDIT: \(method, privacy: .public) \(path, privacy: .public) → \(statusCode) [\(timestamp, privacy: .public)]")
 }
 
 // MARK: - Response Builders
@@ -122,6 +220,7 @@ private func buildHTTPResponse(statusCode: Int, body: Data) -> Data {
     case 200: statusText = "OK"
     case 201: statusText = "Created"
     case 400: statusText = "Bad Request"
+    case 401: statusText = "Unauthorized"
     case 404: statusText = "Not Found"
     case 500: statusText = "Internal Server Error"
     default:  statusText = "Unknown"

@@ -1,5 +1,7 @@
 import ArgumentParser
 import Foundation
+import Network
+import Security
 import SpooktacularKit
 
 extension Spook {
@@ -8,10 +10,13 @@ extension Spook {
     ///
     /// The server exposes a RESTful JSON API for listing, creating,
     /// starting, stopping, and deleting virtual machines. It binds to
-    /// localhost by default and uses plain HTTP (no TLS).
+    /// localhost by default.
     ///
-    /// Use a reverse proxy (e.g., Caddy, nginx) if you need TLS or
-    /// authentication in production.
+    /// TLS can be enabled by providing PEM-encoded certificate and
+    /// private key files via `--tls-cert` and `--tls-key`. When TLS
+    /// is not configured and no `SPOOK_API_TOKEN` is set, use
+    /// `--insecure` to acknowledge the risk of running without
+    /// authentication or encryption.
     ///
     /// ## Endpoints
     ///
@@ -33,9 +38,12 @@ extension Spook {
                 Starts a lightweight HTTP API server that exposes \
                 RESTful endpoints for managing virtual machines \
                 programmatically. The server binds to localhost by \
-                default and uses plain HTTP.
+                default.
 
-                Use a reverse proxy for TLS and authentication.
+                TLS is enabled by providing --tls-cert and --tls-key \
+                with PEM-encoded certificate and private key files. \
+                When TLS is not configured and no SPOOK_API_TOKEN is \
+                set, pass --insecure to run without authentication.
 
                 The server responds with JSON in a consistent format:
                   {"status": "ok", "data": {...}}
@@ -45,6 +53,8 @@ extension Spook {
                   spook serve
                   spook serve --port 9090
                   spook serve --host 0.0.0.0 --port 8484
+                  spook serve --tls-cert cert.pem --tls-key key.pem
+                  spook serve --insecure
                 """
         )
 
@@ -57,6 +67,15 @@ extension Spook {
         @Option(help: "Path to the spook binary for spawning VM processes.")
         var spookPath: String = ProcessInfo.processInfo.environment["SPOOK_PATH"] ?? HTTPAPIServer.defaultSpookPath
 
+        @Option(name: .customLong("tls-cert"), help: "Path to a PEM-encoded TLS certificate file.")
+        var tlsCert: String?
+
+        @Option(name: .customLong("tls-key"), help: "Path to a PEM-encoded TLS private key file.")
+        var tlsKey: String?
+
+        @Flag(help: "Run without TLS or a required API token. Not recommended for production.")
+        var insecure: Bool = false
+
         func run() async throws {
             try SpooktacularPaths.ensureDirectories()
 
@@ -65,14 +84,46 @@ extension Spook {
                 throw ExitCode.failure
             }
 
+            // Validate flag combinations.
+            let hasCert = tlsCert != nil
+            let hasKey = tlsKey != nil
+            if hasCert != hasKey {
+                print(Style.error("Both --tls-cert and --tls-key must be provided together."))
+                throw ExitCode.failure
+            }
+            if insecure && hasCert {
+                print(Style.error("--insecure and TLS flags (--tls-cert, --tls-key) are mutually exclusive."))
+                throw ExitCode.failure
+            }
+
+            // Load TLS identity when certificate and key are provided.
+            var tlsOptions: NWProtocolTLS.Options?
+            if let certPath = tlsCert, let keyPath = tlsKey {
+                let identity = try Self.loadTLSIdentity(certPath: certPath, keyPath: keyPath)
+                let options = NWProtocolTLS.Options()
+                sec_protocol_options_set_local_identity(
+                    options.securityProtocolOptions,
+                    sec_identity_create(identity)!
+                )
+                tlsOptions = options
+            }
+
             let server: HTTPAPIServer
             do {
                 server = try HTTPAPIServer(
                     host: host,
                     port: UInt16(port),
                     vmDirectory: SpooktacularPaths.vms,
-                    spookPath: spookPath
+                    spookPath: spookPath,
+                    tlsOptions: tlsOptions,
+                    insecureMode: insecure
                 )
+            } catch let error as HTTPAPIServerError {
+                print(Style.error(error.localizedDescription))
+                if let suggestion = error.recoverySuggestion {
+                    print(Style.dim(suggestion))
+                }
+                throw ExitCode.failure
             } catch {
                 print(Style.error("Failed to create server: \(error.localizedDescription)"))
                 throw ExitCode.failure
@@ -93,9 +144,19 @@ extension Spook {
                 source.resume()
             }
 
+            let scheme = tlsOptions != nil ? "https" : "http"
+
             print(Style.bold("Spooktacular HTTP API Server"))
             print()
-            Style.field("Endpoint", "http://\(host):\(port)")
+            Style.field("Endpoint", "\(scheme)://\(host):\(port)")
+            if tlsOptions != nil {
+                Style.field("TLS", "enabled")
+            }
+            if insecure {
+                print()
+                print(Style.warning("WARNING: Running in insecure mode — no TLS, no required API token."))
+                print(Style.warning("Do NOT expose this server to untrusted networks."))
+            }
             Style.field("VM directory", Style.dim(SpooktacularPaths.vms.path))
             print()
             print(Style.dim("Press Ctrl+C to stop."))
@@ -109,6 +170,191 @@ extension Spook {
             }
 
             try await Task.sleep(for: .seconds(Double(Int.max)))
+        }
+
+        // MARK: - TLS Identity Loading
+
+        /// Loads a TLS identity from PEM-encoded certificate and private
+        /// key files using Security.framework.
+        ///
+        /// - Parameters:
+        ///   - certPath: Absolute or relative path to the PEM certificate file.
+        ///   - keyPath: Absolute or relative path to the PEM private key file.
+        /// - Returns: A `SecIdentity` combining the certificate and key.
+        /// - Throws: An error if the files cannot be read or the identity
+        ///   cannot be created.
+        private static func loadTLSIdentity(certPath: String, keyPath: String) throws -> SecIdentity {
+            // Read PEM files.
+            let certURL = URL(fileURLWithPath: certPath)
+            let keyURL = URL(fileURLWithPath: keyPath)
+
+            let certPEM = try Data(contentsOf: certURL)
+            let keyPEM = try Data(contentsOf: keyURL)
+
+            // Import the certificate and key as PKCS#12 by converting
+            // through Security.framework's import functions.
+            var importedItems: CFArray?
+
+            // Import certificate.
+            let certStatus = SecItemImport(
+                certPEM as CFData,
+                "pem" as CFString,
+                nil,
+                nil,
+                [],
+                nil,
+                nil,
+                &importedItems
+            )
+
+            guard certStatus == errSecSuccess,
+                  let certItems = importedItems as? [Any],
+                  let certificate = certItems.first
+            else {
+                // Fallback: try DER-decoding from PEM content.
+                guard let derData = Self.pemToDER(certPEM),
+                      let cert = SecCertificateCreateWithData(nil, derData as CFData) else {
+                    throw TLSLoadingError.invalidCertificate(certPath)
+                }
+                // Import private key and create identity with the DER certificate.
+                let identity = try Self.createIdentity(
+                    certificate: cert,
+                    keyPEM: keyPEM,
+                    keyPath: keyPath
+                )
+                return identity
+            }
+
+            // If SecItemImport gave us a SecCertificate directly, use it.
+            let cert: SecCertificate
+            if let directCert = certificate as! SecCertificate? {
+                cert = directCert
+            } else {
+                guard let derData = Self.pemToDER(certPEM),
+                      let fallbackCert = SecCertificateCreateWithData(nil, derData as CFData) else {
+                    throw TLSLoadingError.invalidCertificate(certPath)
+                }
+                cert = fallbackCert
+            }
+
+            return try Self.createIdentity(certificate: cert, keyPEM: keyPEM, keyPath: keyPath)
+        }
+
+        /// Creates a `SecIdentity` from a certificate and PEM-encoded private key.
+        private static func createIdentity(
+            certificate: SecCertificate,
+            keyPEM: Data,
+            keyPath: String
+        ) throws -> SecIdentity {
+            // Import the private key.
+            var keyItems: CFArray?
+            let keyStatus = SecItemImport(
+                keyPEM as CFData,
+                "pem" as CFString,
+                nil,
+                nil,
+                [],
+                nil,
+                nil,
+                &keyItems
+            )
+
+            guard keyStatus == errSecSuccess,
+                  let items = keyItems as? [Any],
+                  let key = items.first
+            else {
+                throw TLSLoadingError.invalidPrivateKey(keyPath)
+            }
+
+            let privateKey = key as! SecKey
+
+            // Add items to the temporary keychain so
+            // SecIdentityCreateWithCertificate can find the pair.
+            let addCertQuery: [String: Any] = [
+                kSecClass as String: kSecClassCertificate,
+                kSecValueRef as String: certificate,
+            ]
+            SecItemDelete(addCertQuery as CFDictionary)
+            let certAddStatus = SecItemAdd(addCertQuery as CFDictionary, nil)
+            if certAddStatus != errSecSuccess && certAddStatus != errSecDuplicateItem {
+                throw TLSLoadingError.keychainError(certAddStatus)
+            }
+
+            let addKeyQuery: [String: Any] = [
+                kSecClass as String: kSecClassKey,
+                kSecValueRef as String: privateKey,
+            ]
+            SecItemDelete(addKeyQuery as CFDictionary)
+            let keyAddStatus = SecItemAdd(addKeyQuery as CFDictionary, nil)
+            if keyAddStatus != errSecSuccess && keyAddStatus != errSecDuplicateItem {
+                throw TLSLoadingError.keychainError(keyAddStatus)
+            }
+
+            // Use SecIdentityCreateWithCertificate on macOS.
+            var identityRef: SecIdentity?
+            let idStatus = SecIdentityCreateWithCertificate(nil, certificate, &identityRef)
+            guard idStatus == errSecSuccess, let identity = identityRef else {
+                throw TLSLoadingError.identityCreationFailed(idStatus)
+            }
+
+            return identity
+        }
+
+        /// Strips PEM headers/footers and decodes the Base64 payload to DER data.
+        private static func pemToDER(_ pem: Data) -> Data? {
+            guard let pemString = String(data: pem, encoding: .utf8) else {
+                return nil
+            }
+            let lines = pemString.components(separatedBy: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.hasPrefix("-----") && !$0.isEmpty }
+            let base64 = lines.joined()
+            return Data(base64Encoded: base64)
+        }
+    }
+}
+
+// MARK: - TLS Loading Errors
+
+/// Errors that can occur when loading TLS certificates and keys from PEM files.
+enum TLSLoadingError: Error, LocalizedError {
+
+    /// The PEM certificate file could not be parsed.
+    case invalidCertificate(String)
+
+    /// The PEM private key file could not be parsed.
+    case invalidPrivateKey(String)
+
+    /// A Security.framework keychain operation failed.
+    case keychainError(OSStatus)
+
+    /// `SecIdentityCreateWithCertificate` failed to pair the
+    /// certificate with its private key.
+    case identityCreationFailed(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidCertificate(let path):
+            "Failed to load TLS certificate from '\(path)'."
+        case .invalidPrivateKey(let path):
+            "Failed to load TLS private key from '\(path)'."
+        case .keychainError(let status):
+            "Keychain operation failed (OSStatus \(status))."
+        case .identityCreationFailed(let status):
+            "Failed to create TLS identity from certificate and key (OSStatus \(status))."
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .invalidCertificate:
+            "Ensure the file is a valid PEM-encoded X.509 certificate."
+        case .invalidPrivateKey:
+            "Ensure the file is a valid PEM-encoded private key (RSA or EC)."
+        case .keychainError:
+            "Check that the certificate and key are valid and not corrupted."
+        case .identityCreationFailed:
+            "Ensure the private key matches the certificate. Generate a new pair if needed."
         }
     }
 }

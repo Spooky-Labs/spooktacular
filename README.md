@@ -5,7 +5,7 @@
 
   **Double your Mac capacity. Same hardware.**
 
-  Enterprise macOS virtualization for Apple Silicon. Run 2 VMs per Mac —<br>
+  macOS Virtualization for Teams on Apple Silicon. Run 2 VMs per Mac —<br>
   the maximum Apple's EULA allows. Clone in 48ms. MIT licensed, $0 forever.
 
   [![CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml/badge.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)

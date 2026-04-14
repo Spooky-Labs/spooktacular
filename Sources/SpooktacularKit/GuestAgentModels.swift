@@ -92,7 +92,7 @@ struct GuestClipboardContent: Codable, Sendable {
 }
 
 /// JSON body for `POST /api/v1/apps/launch` and
-/// `DELETE /api/v1/apps`.
+/// `POST /api/v1/apps/quit`.
 struct GuestAppRequest: Codable, Sendable {
     let bundleID: String
 }

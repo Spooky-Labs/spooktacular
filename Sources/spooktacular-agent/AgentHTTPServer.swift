@@ -50,15 +50,24 @@ enum AgentHTTPServer {
         var svm_cid: UInt32
     }
 
+    /// The authentication token for this server session, or `nil` for legacy mode.
+    ///
+    /// Set exactly once before the accept loop begins and never mutated
+    /// afterward, so concurrent reads from connection-handler queues are safe.
+    nonisolated(unsafe) private static var authToken: String?
+
     /// Starts the vsock HTTP server and blocks forever.
     ///
     /// Creates a vsock socket, binds to the given port, and enters
     /// an accept loop. Each accepted connection is dispatched to a
     /// background queue for HTTP parsing and routing.
     ///
-    /// - Parameter port: The vsock port to listen on (default: 9470).
+    /// - Parameters:
+    ///   - port: The vsock port to listen on (default: 9470).
+    ///   - token: The authentication token, or `nil` for legacy (unauthenticated) mode.
     /// - Returns: Never returns; loops until the process is terminated.
-    static func listen(port: UInt32 = 9470) -> Never {
+    static func listen(port: UInt32 = 9470, token: String? = nil) -> Never {
+        self.authToken = token
         log.info("Starting HTTP server on vsock port \(port)")
 
         let fd = socket(AF_VSOCK, SOCK_STREAM, 0)
@@ -152,7 +161,7 @@ enum AgentHTTPServer {
 
         log.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
 
-        let response = routeRequest(request)
+        let response = routeRequest(request, token: authToken)
         writeAll(fd: fd, data: response)
     }
 

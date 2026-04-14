@@ -25,12 +25,25 @@ actor NodeManager {
 
     private var nodes: [String: NodeEndpoint] = [:]
     private let apiPort: UInt16
+    private let scheme: String
     private let labelSelector: String
     private let healthSession = URLSession(configuration: .ephemeral)
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "node-mgr")
 
-    init(apiPort: UInt16 = 8484, labelSelector: String = "spooktacular.app/role=mac-host") {
+    /// Creates a node manager.
+    ///
+    /// - Parameters:
+    ///   - apiPort: Port where `spook serve` listens on each node.
+    ///   - scheme: URL scheme for node API calls. Defaults to the value of
+    ///     the `NODE_API_SCHEME` environment variable, falling back to `"http"`.
+    ///   - labelSelector: Kubernetes label selector for Mac host nodes.
+    init(
+        apiPort: UInt16 = 8484,
+        scheme: String = ProcessInfo.processInfo.environment["NODE_API_SCHEME"] ?? "http",
+        labelSelector: String = "spooktacular.app/role=mac-host"
+    ) {
         self.apiPort = apiPort
+        self.scheme = scheme
         self.labelSelector = labelSelector
     }
 
@@ -45,7 +58,7 @@ actor NodeManager {
             for node in k8sNodes {
                 let name = node.metadata.name
                 guard let ip = node.status?.addresses?.first(where: { $0.type == "InternalIP" })?.address,
-                      let apiURL = URL(string: "http://\(ip):\(apiPort)")
+                      let apiURL = URL(string: "\(scheme)://\(ip):\(apiPort)")
                 else { continue }
                 discovered[name] = NodeEndpoint(name: name, apiURL: apiURL, healthy: true)
             }

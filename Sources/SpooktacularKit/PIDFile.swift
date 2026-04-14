@@ -153,15 +153,38 @@ public enum PIDFile {
 
     // MARK: - Atomic Capacity Reservation
 
+    /// Acquires an exclusive file lock to serialize capacity checks
+    /// across concurrent processes.
+    ///
+    /// Uses `flock(fd, LOCK_EX)` on `~/.spooktacular/.capacity.lock`
+    /// to ensure only one process at a time can write a PID file and
+    /// count running VMs. If the lock file cannot be opened, the body
+    /// executes without a lock as a graceful fallback.
+    ///
+    /// - Parameter body: The closure to execute while holding the lock.
+    /// - Returns: The value returned by `body`.
+    /// - Throws: Any error thrown by `body`.
+    private static func withCapacityLock<T>(_ body: () throws -> T) throws -> T {
+        let lockPath = SpooktacularPaths.root.appendingPathComponent(".capacity.lock").path
+        let fd = open(lockPath, O_CREAT | O_RDWR, 0o644)
+        guard fd >= 0 else { return try body() } // fallback if lock fails
+        defer { flock(fd, LOCK_UN); close(fd) }
+        flock(fd, LOCK_EX)
+        return try body()
+    }
+
     /// Writes the PID file and then verifies the VM concurrency
     /// limit has not been exceeded.
     ///
     /// This method closes the TOCTOU (time-of-check-to-time-of-use)
     /// gap that exists when capacity is checked *before* writing the
-    /// PID file. By writing first, this process's VM is visible to
-    /// any concurrent starter that also calls this method. If the
-    /// resulting count exceeds the limit the PID file is removed
-    /// and a ``CapacityError/limitReached(running:)`` error is thrown.
+    /// PID file. An exclusive file lock (via ``withCapacityLock(_:)``)
+    /// serializes concurrent callers so that two processes cannot both
+    /// write PIDs before either counts. By writing first, this
+    /// process's VM is visible to any concurrent starter that also
+    /// calls this method. If the resulting count exceeds the limit
+    /// the PID file is removed and a
+    /// ``CapacityError/limitReached(running:)`` error is thrown.
     ///
     /// - Parameters:
     ///   - bundleURL: The file URL of the `.vm` bundle directory.
@@ -170,11 +193,13 @@ public enum PIDFile {
     /// - Throws: ``CapacityError/limitReached(running:)`` if the
     ///   host is already at the concurrent VM limit.
     public static func writeAndEnsureCapacity(bundleURL: URL, vmDirectory: URL) throws {
-        try write(to: bundleURL)
-        let running = CapacityCheck.runningVMs(in: vmDirectory)
-        if running.count > CapacityCheck.maxConcurrentVMs {
-            remove(from: bundleURL)
-            throw CapacityError.limitReached(running: running)
+        try withCapacityLock {
+            try write(to: bundleURL)
+            let running = CapacityCheck.runningVMs(in: vmDirectory)
+            if running.count > CapacityCheck.maxConcurrentVMs {
+                remove(from: bundleURL)
+                throw CapacityError.limitReached(running: running)
+            }
         }
     }
 }

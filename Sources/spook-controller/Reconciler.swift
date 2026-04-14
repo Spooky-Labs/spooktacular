@@ -23,6 +23,15 @@ actor Reconciler {
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "reconciler")
     private var inFlight: Set<String> = []
 
+    /// Tracks consecutive failed delete attempts per VM name for exponential backoff.
+    private var deleteRetries: [String: Int] = [:]
+
+    /// Maximum number of delete retries before requiring a force-cleanup annotation.
+    private static let maxDeleteRetries = 10
+
+    /// Annotation that operators can set to force finalizer removal after retries are exhausted.
+    private static let forceCleanupAnnotation = "spooktacular.app/force-cleanup"
+
     init(client: KubernetesClient, nodeManager: NodeManager) {
         self.client = client
         self.nodeManager = nodeManager
@@ -136,31 +145,85 @@ actor Reconciler {
     }
 
     /// DELETED: stop then remove the VM from the node, then remove the finalizer.
+    ///
+    /// The finalizer is only removed after the node confirms a successful delete
+    /// (HTTP 200). If the node is unreachable or the delete fails, the finalizer
+    /// stays in place so Kubernetes cannot garbage-collect the resource while the
+    /// VM is still running on the node. After ``maxDeleteRetries`` consecutive
+    /// failures, operators can annotate the resource with
+    /// `spooktacular.app/force-cleanup: "true"` to force finalizer removal.
     private func handleDeleted(_ vm: MacOSVM) async {
         let name = vm.metadata.name
         let nodeName = vm.spec.nodeName
+        let retryCount = deleteRetries[name] ?? 0
 
+        // --- Check retry exhaustion ---
+        if retryCount >= Self.maxDeleteRetries {
+            let forceValue = vm.metadata.annotations?[Self.forceCleanupAnnotation]
+            if forceValue == "true" {
+                logger.error("Force-cleanup annotation present on '\(name, privacy: .public)' after \(retryCount) retries — removing finalizer without confirmed node delete")
+                await removeFinalizer(name: name, existing: vm.metadata.finalizers)
+                deleteRetries.removeValue(forKey: name)
+                return
+            } else {
+                await setStatus(
+                    name: name, phase: .failed, nodeName: nodeName,
+                    message: "Delete failed after \(retryCount) retries. Set annotation '\(Self.forceCleanupAnnotation): \"true\"' to force cleanup."
+                )
+                return
+            }
+        }
+
+        // --- Exponential backoff ---
+        if retryCount > 0 {
+            let delay = min(1 << retryCount, 60)
+            logger.info("Backoff \(delay)s before delete retry \(retryCount) for '\(name, privacy: .public)'")
+            try? await Task.sleep(for: .seconds(delay))
+        }
+
+        // --- Node reachability ---
         guard let endpoint = await nodeManager.endpoint(for: nodeName) else {
-            logger.warning("Cannot delete '\(name, privacy: .public)': node '\(nodeName, privacy: .public)' not found")
-            await removeFinalizer(name: name, existing: vm.metadata.finalizers)
+            logger.warning("Cannot delete '\(name, privacy: .public)': node '\(nodeName, privacy: .public)' unreachable")
+            await setStatus(
+                name: name, phase: .stopping, nodeName: nodeName,
+                message: "Node unreachable, will retry"
+            )
+            deleteRetries[name] = retryCount + 1
             return
         }
 
+        // --- Stop the VM ---
         if case .success = await callNodeAPI(endpoint: endpoint, method: "POST",
                                              path: "/v1/vms/\(name)/stop", body: nil) {
             logger.info("Stopped '\(name, privacy: .public)' on \(nodeName, privacy: .public)")
             try? await Task.sleep(for: .seconds(2))
         }
 
+        // --- Delete the VM ---
         let result = await callNodeAPI(endpoint: endpoint, method: "DELETE",
                                        path: "/v1/vms/\(name)", body: nil)
         switch result {
-        case .success: logger.notice("Deleted '\(name, privacy: .public)' from \(nodeName, privacy: .public)")
-        case .conflict: logger.warning("VM '\(name, privacy: .public)' still running, may need retry")
-        case .failure(let msg): logger.error("Delete failed for '\(name, privacy: .public)': \(msg, privacy: .public)")
-        }
+        case .success:
+            logger.notice("Deleted '\(name, privacy: .public)' from \(nodeName, privacy: .public)")
+            await removeFinalizer(name: name, existing: vm.metadata.finalizers)
+            deleteRetries.removeValue(forKey: name)
 
-        await removeFinalizer(name: name, existing: vm.metadata.finalizers)
+        case .conflict:
+            deleteRetries[name] = retryCount + 1
+            logger.warning("VM '\(name, privacy: .public)' still running on \(nodeName, privacy: .public), retry \(retryCount + 1)")
+            await setStatus(
+                name: name, phase: .stopping, nodeName: nodeName,
+                message: "Delete returned conflict, retry \(retryCount + 1)/\(Self.maxDeleteRetries)"
+            )
+
+        case .failure(let msg):
+            deleteRetries[name] = retryCount + 1
+            logger.error("Delete failed for '\(name, privacy: .public)': \(msg, privacy: .public) (retry \(retryCount + 1))")
+            await setStatus(
+                name: name, phase: .stopping, nodeName: nodeName,
+                message: "Delete failed: \(msg) — retry \(retryCount + 1)/\(Self.maxDeleteRetries)"
+            )
+        }
     }
 
     // MARK: - Finalizers
