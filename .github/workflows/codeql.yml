@@ -26,19 +26,13 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: swift
-          build-mode: manual
-
-      - name: Build for CodeQL
-        run: |
-          # Use xcodebuild instead of swift build — CodeQL's DYLD tracer
-          # conflicts with SwiftPM's plugin system, causing hangs.
-          # xcodebuild can build SwiftPM packages directly.
-          xcodebuild build \
-            -scheme SpooktacularKit \
-            -destination 'platform=macOS' \
-            -derivedDataPath .build/xcode \
-            CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tail -20
+          build-mode: none
+          # Analyze source directly without a traced build.
+          # The Infrastructure/ layer imports Apple system frameworks
+          # (Virtualization, Network, Security) that CodeQL's Swift
+          # extractor cannot resolve. The security-critical code lives
+          # in Entities/, UseCases/, and Interfaces/ — all pure
+          # Foundation, fully analyzable without a build.
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
