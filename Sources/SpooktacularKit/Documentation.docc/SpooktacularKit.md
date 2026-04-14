@@ -57,6 +57,7 @@ VirtualMachineConfiguration.applySpec(spec, to: config)
 - <doc:Provisioning>
 - <doc:CLIReference>
 - <doc:GitHubActionsGuide>
+- <doc:JenkinsGuide>
 - <doc:EC2MacDeployment>
 - <doc:KubernetesGuide>
 - <doc:MLWorkloads>
