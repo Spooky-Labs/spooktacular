@@ -14,7 +14,7 @@ jobs:
   analyze:
     name: CodeQL Analysis
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       security-events: write
       actions: read
@@ -26,13 +26,9 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: swift
-          build-mode: none
-          # Analyze source directly without a traced build.
-          # The Infrastructure/ layer imports Apple system frameworks
-          # (Virtualization, Network, Security) that CodeQL's Swift
-          # extractor cannot resolve. The security-critical code lives
-          # in Entities/, UseCases/, and Interfaces/ — all pure
-          # Foundation, fully analyzable without a build.
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
