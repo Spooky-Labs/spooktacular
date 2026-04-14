@@ -39,8 +39,8 @@ actor Reconciler {
     ///   - client: Kubernetes API client.
     ///   - nodeManager: Node discovery and communication manager.
     ///   - tlsProvider: TLS identity for mutual TLS with Mac nodes.
-    ///     Required in production. When `nil`, falls back to an ephemeral
-    ///     session (development only).
+    ///     Required in production — pass `nil` only in development with
+    ///     `SPOOK_INSECURE_CONTROLLER=1`.
     init(
         client: KubernetesClient,
         nodeManager: NodeManager,

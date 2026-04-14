@@ -38,12 +38,11 @@ actor NodeManager {
     ///   - scheme: URL scheme for node API calls. Defaults to the value of
     ///     the `NODE_API_SCHEME` environment variable, falling back to `"https"`.
     ///   - labelSelector: Kubernetes label selector for Mac host nodes.
-    ///   - tlsProvider: Optional ``TLSIdentityProvider`` for mutual TLS.
-    ///     When supplied, the manager uses a session configured with a
-    ///     client certificate and pinned CA trust. When `nil`, an
-    ///     ephemeral session is used (suitable for development / tests).
-    ///     Bearer token authentication is retained as a secondary auth
-    ///     layer regardless of this setting (defense in depth).
+    ///   - tlsProvider: ``TLSIdentityProvider`` for mutual TLS. Required
+    ///     in production — the controller must present a client certificate
+    ///     and pin the node's CA. Pass `nil` only in development with
+    ///     `SPOOK_INSECURE_CONTROLLER=1`. Bearer token authentication is
+    ///     retained as a secondary auth layer (defense in depth).
     init(
         apiPort: UInt16 = 8484,
         scheme: String = ProcessInfo.processInfo.environment["NODE_API_SCHEME"] ?? "https",

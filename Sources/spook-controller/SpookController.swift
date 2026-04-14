@@ -43,8 +43,12 @@ struct SpookController {
         let namespace = env["WATCH_NAMESPACE"] ?? client.namespace
         logger.notice("Watching ns=\(namespace, privacy: .public), selector=\(labelSelector, privacy: .public)")
 
-        // Load TLS identity for mTLS with Mac nodes (required in production).
+        // Load TLS identity for mTLS with Mac nodes.
+        // Required in production. Use SPOOK_INSECURE_CONTROLLER=1 to bypass
+        // (development only — logs a prominent warning).
+        let insecure = env["SPOOK_INSECURE_CONTROLLER"] == "1"
         let tlsProvider: KeychainTLSProvider?
+
         if let certPath = env["TLS_CERT_PATH"],
            let keyPath = env["TLS_KEY_PATH"],
            let caPath = env["TLS_CA_PATH"] {
@@ -55,9 +59,12 @@ struct SpookController {
                 logger.fault("Failed to load TLS identity: \(error.localizedDescription, privacy: .public)")
                 return
             }
-        } else {
+        } else if insecure {
             tlsProvider = nil
-            logger.warning("No TLS identity configured (TLS_CERT_PATH, TLS_KEY_PATH, TLS_CA_PATH). Running without mTLS — not suitable for production.")
+            logger.warning("⚠️  INSECURE MODE: No mTLS configured. Controller-to-node traffic is NOT authenticated. Do NOT use in production.")
+        } else {
+            logger.fault("mTLS is required. Set TLS_CERT_PATH, TLS_KEY_PATH, and TLS_CA_PATH, or set SPOOK_INSECURE_CONTROLLER=1 for development.")
+            return
         }
 
         let nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector, tlsProvider: tlsProvider)
