@@ -24,6 +24,11 @@ if [[ "${1:-}" == "--static" ]]; then
         --transform-for-static-hosting \
         --hosting-base-path api
     echo "✓ Static docs generated at docs/api/"
+
+    # Post-process: inject Spooktacular branding (navbar, footer, purple theme)
+    chmod +x "$PROJECT_DIR/scripts/customize-docs.sh"
+    "$PROJECT_DIR/scripts/customize-docs.sh"
+
     echo "  Live at: https://spooktacular.app/api/documentation/spooktacularkit/"
 
 elif [[ "${1:-}" == "--serve" ]]; then
