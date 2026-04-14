@@ -25,29 +25,25 @@ jobs:
       - name: Run tests
         run: swift test --parallel
 
-      # 2. Install Fastlane via Bundler
+      # 2. Install Fastlane via Bundler (Gemfile at project root)
       - name: Install dependencies
         run: bundle install
-        working-directory: fastlane
 
       # 3. Sign
-      - name: Sync code signing via match
+      - name: Sync code signing
         run: bundle exec fastlane signing
-        working-directory: fastlane
 
       # 4. Build with version from tag
-      - name: Build signed .app bundle
+      - name: Build signed .app
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           MARKETING_VERSION="$VERSION" \
           BUILD_NUMBER="${{ github.run_number }}" \
           bundle exec fastlane build
-        working-directory: fastlane
 
-      # 5. Notarize via Fastlane (wraps notarytool internally)
+      # 5. Notarize via Fastlane (wraps notarytool, handles stapling)
       - name: Notarize .app
         run: bundle exec fastlane notarize_app
-        working-directory: fastlane
 
       # 6. Create notarized zip for GitHub Release
       - name: Create notarized zip
@@ -56,7 +52,6 @@ jobs:
       # 7. Package .pkg for App Store
       - name: Package .pkg
         run: bundle exec fastlane package
-        working-directory: fastlane
 
       # 8. GitHub Release with notarized zip
       - name: Create GitHub Release
@@ -73,7 +68,6 @@ jobs:
         continue-on-error: true
         run: |
           bundle exec fastlane run upload_to_testflight \
-            pkg:"../Spooktacular.pkg" \
+            pkg:"$PWD/Spooktacular.pkg" \
             app_platform:"osx" \
             skip_waiting_for_build_processing:true
-        working-directory: fastlane

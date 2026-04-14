@@ -1,5 +1,12 @@
 default_platform(:mac)
 
+# Project root (Fastfile runs from fastlane/, so parent is root)
+PROJECT_ROOT = File.expand_path("..", __dir__)
+APP_BUNDLE = File.join(PROJECT_ROOT, "Spooktacular.app")
+PKG_FILE = File.join(PROJECT_ROOT, "Spooktacular.pkg")
+APP_IDENTIFIER = "com.spooktacular.app"
+TEAM_ID = "4AM5US9G8B"
+
 platform :mac do
 
   # ──────────────────────────────────────────────────
@@ -8,7 +15,9 @@ platform :mac do
 
   desc "Run all unit tests"
   lane :test do
-    sh("cd .. && swift test")
+    Dir.chdir(PROJECT_ROOT) do
+      sh("swift", "test")
+    end
   end
 
   # ──────────────────────────────────────────────────
@@ -17,16 +26,15 @@ platform :mac do
 
   desc "Build the .app bundle (release)"
   lane :build do
-    # Pass signing identity and provisioning profile from match.
-    identity = ENV["sigh_com.spooktacular.app_appstore_macos_certificate-name"] || ""
-    profile = ENV["sigh_com.spooktacular.app_appstore_macos_profile-path"] || ""
+    identity = ENV["sigh_#{APP_IDENTIFIER}_appstore_macos_certificate-name"] || ""
+    profile = ENV["sigh_#{APP_IDENTIFIER}_appstore_macos_profile-path"] || ""
 
-    sh(
-      "cd .. && chmod +x build-app.sh && " \
-      "CODESIGN_IDENTITY='#{identity}' " \
-      "PROVISIONING_PROFILE='#{profile}' " \
-      "./build-app.sh release"
-    )
+    Dir.chdir(PROJECT_ROOT) do
+      sh(
+        { "CODESIGN_IDENTITY" => identity, "PROVISIONING_PROFILE" => profile },
+        "./build-app.sh", "release"
+      )
+    end
   end
 
   # ──────────────────────────────────────────────────
@@ -35,21 +43,16 @@ platform :mac do
 
   desc "Package the .app into a .pkg for App Store submission"
   lane :package do
-    # App Store Connect and TestFlight require .pkg for macOS,
-    # not a raw .app bundle. Use productbuild to create an
-    # installer package with the app placed in /Applications.
-    #
-    # The installer cert identity comes from match (via
-    # additional_cert_types: mac_installer_distribution) or
-    # the INSTALLER_CERT_NAME env var. Falls back to the
-    # team-based identity name if neither is set.
-    # The installer cert identity installed by match. Use the full
-    # name from `security find-identity` or the SHA-1 hash.
     installer_identity = ENV["INSTALLER_CERT_NAME"] ||
-      "3rd Party Mac Developer Installer: Perris Davis (4AM5US9G8B)"
+      "3rd Party Mac Developer Installer: Perris Davis (#{TEAM_ID})"
 
-    sh("cd .. && productbuild --component Spooktacular.app /Applications --sign '#{installer_identity}' Spooktacular.pkg")
-    UI.success("Package created: Spooktacular.pkg")
+    Dir.chdir(PROJECT_ROOT) do
+      sh("productbuild",
+         "--component", "Spooktacular.app", "/Applications",
+         "--sign", installer_identity,
+         "Spooktacular.pkg")
+    end
+    UI.success("Package created: #{PKG_FILE}")
   end
 
   # ──────────────────────────────────────────────────
@@ -58,7 +61,7 @@ platform :mac do
 
   desc "Sync code-signing certificates and profiles via match"
   lane :signing do
-    setup_ci if ENV['CI']
+    setup_ci if ENV["CI"]
 
     api_key = get_api_key
     match(
@@ -77,13 +80,13 @@ platform :mac do
   lane :notarize_app do
     api_key = get_api_key
     notarize(
-      package: "../Spooktacular.app",
-      bundle_id: "com.spooktacular.app",
+      package: APP_BUNDLE,
+      bundle_id: APP_IDENTIFIER,
       api_key: api_key,
       verbose: true,
       print_log: true
     )
-    UI.success("Notarization complete — ticket stapled to Spooktacular.app")
+    UI.success("Notarization complete — ticket stapled to #{APP_BUNDLE}")
   end
 
   # ──────────────────────────────────────────────────
@@ -98,81 +101,40 @@ platform :mac do
     package
 
     api_key = get_api_key
+    changelog = options[:changelog] || default_changelog
 
     pilot(
       api_key: api_key,
-      app_identifier: "com.spooktacular.app",
+      app_identifier: APP_IDENTIFIER,
       app_platform: "osx",
-      pkg: "Spooktacular.pkg",
-      team_id: "4AM5US9G8B",
+      pkg: PKG_FILE,
+      team_id: TEAM_ID,
 
-      # Beta app metadata
-      beta_app_description: "Spooktacular is an enterprise macOS virtualization tool for Apple Silicon. " \
-        "Run 2 macOS VMs per Mac — the maximum Apple's EULA allows. " \
-        "Build iOS apps, sign code, run CI pipelines, host remote desktops, " \
-        "and deploy computer-using AI agents. " \
-        "Features: APFS copy-on-write cloning (48ms), SSH provisioning, " \
-        "disk-inject provisioning, unattended Setup Assistant, ephemeral runners, " \
-        "HTTP REST API, Kubernetes operator, 14 CLI commands, SwiftUI GUI with Liquid Glass.",
+      beta_app_description: app_description,
       beta_app_feedback_email: "davisperris@gmail.com",
 
-      # Beta review info
       beta_app_review_info: {
         contact_email: "davisperris@gmail.com",
         contact_first_name: "Perris",
         contact_last_name: "Davis",
         contact_phone: "+1 (555) 000-0000",
         demo_account_required: false,
-        notes: "Spooktacular uses Apple's Virtualization.framework to create and manage " \
-          "macOS virtual machines on Apple Silicon Macs. The app requires the " \
-          "com.apple.security.virtualization entitlement. No VMs can be created on " \
-          "Intel Macs. The app includes a bundled CLI tool (spook) and an HTTP API server. " \
-          "No account or network connection is required to use the app — all VMs run locally."
+        notes: review_notes
       },
 
-      # Build info
-      changelog: options[:changelog] || "v1.0.0 — First release.\n\n" \
-        "• Create macOS VMs from IPSW restore images\n" \
-        "• APFS copy-on-write cloning in 48ms\n" \
-        "• Unattended Setup Assistant automation\n" \
-        "• SSH and disk-inject provisioning\n" \
-        "• GitHub Actions runner template with ephemeral mode\n" \
-        "• Remote desktop and OpenClaw templates\n" \
-        "• HTTP REST API (9 endpoints)\n" \
-        "• Kubernetes operator (MacOSVM CRD)\n" \
-        "• SwiftUI GUI with Liquid Glass (macOS 26+)\n" \
-        "• Menu bar extra for quick access\n" \
-        "• Full VoiceOver accessibility\n" \
-        "• 360 tests across 45 suites",
+      changelog: changelog,
 
-      # Localized beta app info
       localized_app_info: {
         "en-US" => {
           feedback_email: "davisperris@gmail.com",
           marketing_url: "https://spooktacular.app",
           privacy_policy_url: "https://spooktacular.app/privacy.html",
-          description: "Spooktacular is an enterprise macOS virtualization tool for Apple Silicon. " \
-            "Run 2 macOS VMs per Mac — the maximum Apple's EULA allows. " \
-            "Build iOS apps, sign code, run CI pipelines, host remote desktops, " \
-            "and deploy computer-using AI agents. Each VM gets Metal GPU access " \
-            "and unified memory."
+          description: app_description
         }
       },
 
-      # Localized build info (what to test)
       localized_build_info: {
-        "en-US" => {
-          whats_new: options[:changelog] || "v1.0.0 — First release.\n\n" \
-            "• Create macOS VMs from IPSW restore images\n" \
-            "• APFS copy-on-write cloning in 48ms\n" \
-            "• Unattended Setup Assistant automation\n" \
-            "• SSH and disk-inject provisioning\n" \
-            "• GitHub Actions runner template with ephemeral mode\n" \
-            "• HTTP REST API (9 endpoints)\n" \
-            "• Kubernetes operator (MacOSVM CRD)\n" \
-            "• SwiftUI GUI with Liquid Glass (macOS 26+)\n" \
-            "• 360 tests across 45 suites"
-        }
+        "en-US" => { whats_new: changelog }
       },
 
       uses_non_exempt_encryption: false,
@@ -200,37 +162,30 @@ platform :mac do
 
     deliver(
       api_key: api_key,
-      app_identifier: "com.spooktacular.app",
+      app_identifier: APP_IDENTIFIER,
       app_platform: "osx",
-      team_id: "4AM5US9G8B",
+      team_id: TEAM_ID,
 
-      # Metadata & screenshots from directories
       metadata_path: "./metadata",
       screenshots_path: "./screenshots",
 
-      # Binary
-      pkg: "Spooktacular.pkg",
+      pkg: PKG_FILE,
       skip_binary_upload: false,
 
-      # Metadata control
       skip_metadata: false,
       skip_screenshots: false,
       overwrite_screenshots: true,
 
-      # Age rating from JSON config
       app_rating_config_path: "./metadata/age_rating_config.json",
 
-      # Categories
       primary_category: "DEVELOPER_TOOLS",
       secondary_category: "BUSINESS",
 
-      # Submission
       submit_for_review: options[:submit] || false,
       automatic_release: options[:auto_release] || false,
       phased_release: true,
       force: true,
 
-      # Review information (also reads from metadata/review_information/*.txt)
       app_review_information: {
         first_name: "Perris",
         last_name: "Davis",
@@ -238,13 +193,9 @@ platform :mac do
         email_address: "davisperris@gmail.com",
         demo_user: "",
         demo_password: "",
-        notes: "Spooktacular uses Apple's Virtualization.framework (com.apple.security.virtualization " \
-          "entitlement) to create and manage macOS VMs on Apple Silicon. Works only on Apple Silicon Macs. " \
-          "The app includes a GUI, a bundled CLI (spook), and an HTTP API server. No account or internet " \
-          "connection required — all VMs run locally. No demo account needed."
+        notes: review_notes
       },
 
-      # Compliance
       submission_information: {
         export_compliance_uses_encryption: false,
         add_id_info_uses_idfa: false
@@ -260,7 +211,10 @@ platform :mac do
   lane :homebrew do
     build
     notarize_app
-    sh("cd .. && ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip")
+    Dir.chdir(PROJECT_ROOT) do
+      sh("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent",
+         "Spooktacular.app", "Spooktacular.app.zip")
+    end
     UI.success("Homebrew package ready: Spooktacular.app.zip")
   end
 
@@ -272,13 +226,11 @@ platform :mac do
   lane :screenshots do
     build
 
-    # Shell-based capture (SwiftPM projects don't have an Xcode
-    # project for XCUITest / Fastlane snapshot).
-    sh("cd .. && chmod +x scripts/capture-screenshots.sh && ./scripts/capture-screenshots.sh")
-    sh("cd .. && chmod +x scripts/process-screenshots.sh && ./scripts/process-screenshots.sh")
+    Dir.chdir(PROJECT_ROOT) do
+      sh("./scripts/capture-screenshots.sh")
+      sh("./scripts/process-screenshots.sh")
+    end
 
-    # Add device frames and promotional text via frameit.
-    # Config: screenshots/Framefile.json + en-US/title.strings
     frameit(
       path: "./screenshots",
       white: false,
@@ -286,7 +238,6 @@ platform :mac do
     )
 
     UI.success("Screenshots captured, processed, and framed.")
-    UI.message("Output: fastlane/screenshots/en-US/")
   end
 
   # ──────────────────────────────────────────────────
@@ -295,7 +246,9 @@ platform :mac do
 
   desc "Generate DocC documentation"
   lane :generate_docs do
-    sh("cd .. && chmod +x scripts/build-docs.sh && ./scripts/build-docs.sh --static")
+    Dir.chdir(PROJECT_ROOT) do
+      sh("./scripts/build-docs.sh", "--static")
+    end
   end
 
   # ──────────────────────────────────────────────────
@@ -312,15 +265,15 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # Setup — Register app ID in Apple Developer Portal
+  # Setup — Register app ID
   # ──────────────────────────────────────────────────
 
-  desc "Register app identifier in Apple Developer Portal and App Store Connect"
+  desc "Register app identifier in Apple Developer Portal"
   lane :register_app do
-    api_key = get_api_key
+    get_api_key
 
     produce(
-      app_identifier: "com.spooktacular.app",
+      app_identifier: APP_IDENTIFIER,
       app_name: "Spooktacular",
       language: "English",
       app_version: "1.0.0",
@@ -341,6 +294,34 @@ platform :mac do
       is_key_content_base64: true,
       in_house: false
     )
+  end
+
+  # Shared text — defined once, used everywhere.
+
+  def self.app_description
+    "macOS Virtualization for Teams on Apple Silicon. " \
+    "Run 2 macOS VMs per Mac — the maximum Apple's EULA allows. " \
+    "Build iOS apps, sign code, run CI pipelines, host remote desktops, " \
+    "and deploy computer-using AI agents."
+  end
+
+  def self.review_notes
+    "Spooktacular uses Apple's Virtualization.framework " \
+    "(com.apple.security.virtualization entitlement) to create and manage " \
+    "macOS VMs on Apple Silicon. Works only on Apple Silicon Macs. " \
+    "The app includes a GUI, a bundled CLI (spook), and an HTTP API server. " \
+    "No account or internet connection required — all VMs run locally."
+  end
+
+  def self.default_changelog
+    "• Create and clone macOS VMs (APFS copy-on-write, ~48ms)\n" \
+    "• GitHub Actions, CircleCI, and Jenkins runner pools\n" \
+    "• Ephemeral, warm-pool, and persistent runner modes\n" \
+    "• SSH and disk-inject provisioning\n" \
+    "• HTTP REST API with TLS and bearer token auth\n" \
+    "• Kubernetes operator (MacOSVM + RunnerPool CRDs)\n" \
+    "• SwiftUI GUI with Liquid Glass (macOS 26+)\n" \
+    "• Full VoiceOver accessibility"
   end
 
   after_all do |lane|

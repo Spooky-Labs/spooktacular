@@ -25,25 +25,19 @@ jobs:
 
       - name: Install dependencies
         run: bundle install
-        working-directory: fastlane
 
       - name: Sync code signing
         run: bundle exec fastlane signing
-        working-directory: fastlane
 
       - name: Build signed .app
-        run: |
-          BUILD_NUMBER="${{ github.run_number }}" bundle exec fastlane build
-        working-directory: fastlane
+        run: BUILD_NUMBER="${{ github.run_number }}" bundle exec fastlane build
 
       - name: Package .pkg
         run: bundle exec fastlane package
-        working-directory: fastlane
 
       - name: Upload to TestFlight
         run: |
           bundle exec fastlane run upload_to_testflight \
-            pkg:"../Spooktacular.pkg" \
+            pkg:"$PWD/Spooktacular.pkg" \
             app_platform:"osx" \
             skip_waiting_for_build_processing:true
-        working-directory: fastlane
