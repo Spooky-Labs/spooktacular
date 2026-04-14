@@ -75,11 +75,15 @@ platform :mac do
 
   desc "Notarize the .app for direct distribution"
   lane :notarize_app do
+    api_key = get_api_key
     notarize(
-      package: "Spooktacular.app",
+      package: "../Spooktacular.app",
       bundle_id: "com.spooktacular.app",
-      verbose: true
+      api_key: api_key,
+      verbose: true,
+      print_log: true
     )
+    UI.success("Notarization complete — ticket stapled to Spooktacular.app")
   end
 
   # ──────────────────────────────────────────────────

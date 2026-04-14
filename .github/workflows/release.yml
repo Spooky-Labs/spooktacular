@@ -18,57 +18,47 @@ jobs:
       MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
-      - name: Install Fastlane
-        run: gem install fastlane
-
-      # 1. Tests — same code that was already tested on main,
-      #    but verify nothing broke between merge and tag
+      # 1. Tests — verify nothing broke between merge and tag
       - name: Run tests
         run: swift test --parallel
 
-      # 2. Sign
-      - name: Sync code signing via match
-        run: fastlane signing
+      # 2. Install Fastlane via Bundler
+      - name: Install dependencies
+        run: bundle install
         working-directory: fastlane
 
-      # 3. Build with version from tag
+      # 3. Sign
+      - name: Sync code signing via match
+        run: bundle exec fastlane signing
+        working-directory: fastlane
+
+      # 4. Build with version from tag
       - name: Build signed .app bundle
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           MARKETING_VERSION="$VERSION" \
           BUILD_NUMBER="${{ github.run_number }}" \
-          fastlane build
+          bundle exec fastlane build
         working-directory: fastlane
 
-      # 4. Notarize with xcrun notarytool (not Fastlane)
-      - name: Write API key to disk
-        run: echo "$APPLE_API_KEY_P8" | base64 --decode > /tmp/AuthKey.p8
-
+      # 5. Notarize via Fastlane (wraps notarytool internally)
       - name: Notarize .app
-        run: |
-          ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
-          xcrun notarytool submit Spooktacular.app.zip \
-            --key /tmp/AuthKey.p8 \
-            --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER_ID" \
-            --wait
-
-      - name: Staple notarization ticket
-        run: xcrun stapler staple Spooktacular.app
-
-      # 5. Re-zip after stapling
-      - name: Create notarized zip
-        run: |
-          rm -f Spooktacular.app.zip
-          ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
-
-      # 6. Package .pkg for App Store
-      - name: Package .pkg
-        run: fastlane package
+        run: bundle exec fastlane notarize_app
         working-directory: fastlane
 
-      # 7. GitHub Release with notarized zip
+      # 6. Create notarized zip for GitHub Release
+      - name: Create notarized zip
+        run: ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
+
+      # 7. Package .pkg for App Store
+      - name: Package .pkg
+        run: bundle exec fastlane package
+        working-directory: fastlane
+
+      # 8. GitHub Release with notarized zip
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -78,16 +68,12 @@ jobs:
             --generate-notes \
             Spooktacular.app.zip
 
-      # 8. Submit to App Store (promote from TestFlight)
+      # 9. Submit to App Store
       - name: Submit to App Store
         continue-on-error: true
         run: |
-          fastlane run upload_to_testflight \
-            pkg:"Spooktacular.pkg" \
+          bundle exec fastlane run upload_to_testflight \
+            pkg:"../Spooktacular.pkg" \
             app_platform:"osx" \
             skip_waiting_for_build_processing:true
         working-directory: fastlane
-
-      - name: Cleanup
-        if: always()
-        run: rm -f /tmp/AuthKey.p8
