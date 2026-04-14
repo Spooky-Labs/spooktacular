@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Generates user-data scripts for remote desktop (Screen Sharing) VMs.
 ///
@@ -40,7 +39,6 @@ public enum RemoteDesktopTemplate {
         let url = try ScriptFile.writeToTempDirectory(
             script: scriptContent(), fileName: "remote-desktop-setup.sh"
         )
-        Log.provision.info("Generated remote desktop script")
         return url
     }
 

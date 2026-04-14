@@ -1,4 +1,4 @@
-import Virtualization
+import Foundation
 
 /// Delivers keyboard events to a running virtual machine.
 ///

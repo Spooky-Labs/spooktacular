@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 // MARK: - Response Models
 
@@ -76,8 +75,8 @@ public enum GitHubServiceError: Error, LocalizedError, Sendable {
 /// ```
 public actor GitHubRunnerService {
     private let auth: any GitHubAuthProvider
-    private let session: URLSession
-    private let logger = Logger(subsystem: "com.spooktacular", category: "github")
+    private let http: any HTTPClient
+    private let log: any LogProvider
 
     private static let apiBase = "https://api.github.com"
     private static let apiVersion = "2022-11-28"
@@ -86,10 +85,16 @@ public actor GitHubRunnerService {
     ///
     /// - Parameters:
     ///   - auth: The authentication provider to use for API requests.
-    ///   - session: The URL session to use. Defaults to `.shared`.
-    public init(auth: any GitHubAuthProvider, session: URLSession = .shared) {
+    ///   - http: The HTTP client for making requests.
+    ///   - log: The logger for diagnostic messages.
+    public init(
+        auth: any GitHubAuthProvider,
+        http: any HTTPClient = URLSessionHTTPClient(),
+        log: any LogProvider = SilentLogProvider()
+    ) {
         self.auth = auth
-        self.session = session
+        self.http = http
+        self.log = log
     }
 
     /// Creates a registration token for adding a self-hosted runner.
@@ -101,7 +106,7 @@ public actor GitHubRunnerService {
         let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners/registration-token")!
         let (data, _) = try await request(url: url, method: "POST")
         let response = try JSONDecoder().decode(RegistrationTokenResponse.self, from: data)
-        logger.info("Created registration token for \(scope, privacy: .public)")
+        log.info("Created registration token for \(scope)")
         return response.token
     }
 
@@ -114,7 +119,7 @@ public actor GitHubRunnerService {
     public func removeRunner(runnerId: Int, scope: String) async throws {
         let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners/\(runnerId)")!
         let (_, _) = try await request(url: url, method: "DELETE")
-        logger.info("Removed runner \(runnerId) from \(scope, privacy: .public)")
+        log.info("Removed runner \(runnerId) from \(scope)")
     }
 
     /// Lists all self-hosted runners for the given scope.
@@ -126,7 +131,7 @@ public actor GitHubRunnerService {
         let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners")!
         let (data, _) = try await request(url: url, method: "GET")
         let response = try JSONDecoder().decode(RunnerListResponse.self, from: data)
-        logger.info("Listed \(response.runners.count) runners for \(scope, privacy: .public)")
+        log.info("Listed \(response.runners.count) runners for \(scope)")
         return response.runners
     }
 
@@ -148,11 +153,7 @@ public actor GitHubRunnerService {
         urlRequest.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         urlRequest.setValue(Self.apiVersion, forHTTPHeaderField: "X-GitHub-Api-Version")
 
-        let (data, response) = try await session.data(for: urlRequest)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw GitHubServiceError.invalidResponse
-        }
+        let (data, httpResponse) = try await http.execute(urlRequest)
 
         guard (200...299).contains(httpResponse.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? "<unreadable>"
