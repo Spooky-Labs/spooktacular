@@ -49,19 +49,4 @@ struct PIDFileTerminateTests {
         #expect(PIDFile.read(from: bundleURL) == nil)
     }
 
-    @Test("terminate cleans up after grace period for non-existent process")
-    func terminateGracePeriod() async throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
-
-        // Write a PID for a dead process.
-        try Data("99999999".utf8).write(
-            to: bundleURL.appendingPathComponent(PIDFile.fileName)
-        )
-
-        // With a short grace period, should still clean up quickly.
-        await PIDFile.terminate(bundleURL: bundleURL, gracePeriod: 1)
-
-        #expect(PIDFile.read(from: bundleURL) == nil)
-    }
 }

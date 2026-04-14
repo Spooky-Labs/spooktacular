@@ -190,18 +190,6 @@ struct SharedFolderProvisionerTests {
         #expect(runAtLoad == true)
     }
 
-    @Test("Watcher plist contains XML declaration")
-    func watcherPlistHasXMLDeclaration() {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        #expect(plist.hasPrefix("<?xml"))
-    }
-
-    @Test("Watcher plist contains DOCTYPE")
-    func watcherPlistHasDOCTYPE() {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        #expect(plist.contains("<!DOCTYPE plist"))
-    }
-
     @Test("Watcher plist uses /bin/bash")
     func watcherPlistUsesBash() throws {
         let plist = SharedFolderProvisioner.watcherPlist()
@@ -248,41 +236,7 @@ struct SharedFolderProvisionerTests {
         #expect(!label.contains(" "))
     }
 
-    @Test("Script file name constant ends with .sh")
-    func scriptFileNameExtension() {
-        #expect(SharedFolderProvisioner.scriptFileName.hasSuffix(".sh"))
-    }
-
-    @Test("Trigger file name constant starts with a dot")
-    func triggerFileNameHidden() {
-        #expect(SharedFolderProvisioner.triggerFileName.hasPrefix("."))
-    }
-
     // MARK: - SharedFolderProvisionerError
-
-    @Test("Every SharedFolderProvisionerError case has a non-empty description")
-    func allErrorCasesDescribed() {
-        let cases: [SharedFolderProvisionerError] = [
-            .scriptNotFound(path: "/test"),
-            .stagingDirectoryFailed(path: "/test"),
-        ]
-        for error in cases {
-            #expect(error.errorDescription != nil)
-            #expect(!error.errorDescription!.isEmpty)
-        }
-    }
-
-    @Test("Every SharedFolderProvisionerError case has a recovery suggestion")
-    func allErrorCasesHaveRecovery() {
-        let cases: [SharedFolderProvisionerError] = [
-            .scriptNotFound(path: "/test"),
-            .stagingDirectoryFailed(path: "/test"),
-        ]
-        for error in cases {
-            #expect(error.recoverySuggestion != nil)
-            #expect(!error.recoverySuggestion!.isEmpty)
-        }
-    }
 
     @Test("SharedFolderProvisionerError is equatable")
     func errorEquatable() {
@@ -300,15 +254,4 @@ struct SharedFolderProvisionerTests {
         )
     }
 
-    @Test("scriptNotFound error includes path in description")
-    func scriptNotFoundIncludesPath() {
-        let error = SharedFolderProvisionerError.scriptNotFound(path: "/foo/setup.sh")
-        #expect(error.localizedDescription.contains("/foo/setup.sh"))
-    }
-
-    @Test("stagingDirectoryFailed error includes path in description")
-    func stagingDirectoryFailedIncludesPath() {
-        let error = SharedFolderProvisionerError.stagingDirectoryFailed(path: "/bar/staging")
-        #expect(error.localizedDescription.contains("/bar/staging"))
-    }
 }

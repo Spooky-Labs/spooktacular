@@ -88,6 +88,11 @@ struct NetworkModeTests {
         #expect(NetworkMode(serialized: "") == nil)
     }
 
+    @Test("bridged serialized includes interface name")
+    func bridgedSerializedFormat() {
+        #expect(NetworkMode.bridged(interface: "en1").serialized == "bridged:en1")
+    }
+
     // MARK: - Serialized round-trip
 
     @Test(

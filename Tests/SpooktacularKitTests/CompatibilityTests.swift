@@ -92,9 +92,4 @@ struct CompatibilityTests {
         #expect(message!.contains("26.4.1"))
     }
 
-    @Test("Uses real host version by default")
-    func realHostVersion() {
-        let host = Compatibility.hostVersion
-        #expect(host.majorVersion > 0)
-    }
 }

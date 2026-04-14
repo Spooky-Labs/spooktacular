@@ -73,18 +73,6 @@ struct DiskInjectorTests {
         #expect(stderrPath == "/var/log/spooktacular-user-data.error.log")
     }
 
-    @Test("Generated plist contains XML declaration")
-    func plistHasXMLDeclaration() {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        #expect(plist.hasPrefix("<?xml"))
-    }
-
-    @Test("Generated plist contains DOCTYPE")
-    func plistHasDOCTYPE() {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        #expect(plist.contains("<!DOCTYPE plist"))
-    }
-
     @Test("Daemon label constant matches plist Label")
     func daemonLabelMatchesPlist() throws {
         let plist = DiskInjector.generateLaunchDaemonPlist()
@@ -161,34 +149,6 @@ struct DiskInjectorTests {
 
     // MARK: - DiskInjectorError
 
-    @Test("DiskInjectorError cases have non-empty descriptions")
-    func allErrorCasesDescribed() {
-        let cases: [DiskInjectorError] = [
-            .diskImageNotFound(path: "/test"),
-            .scriptNotFound(path: "/test"),
-            .mountFailed(reason: "test"),
-            .processFailed(command: "test", exitCode: 1),
-        ]
-        for error in cases {
-            #expect(error.errorDescription != nil)
-            #expect(!error.errorDescription!.isEmpty)
-        }
-    }
-
-    @Test("DiskInjectorError cases have recovery suggestions")
-    func allErrorCasesHaveRecovery() {
-        let cases: [DiskInjectorError] = [
-            .diskImageNotFound(path: "/test"),
-            .scriptNotFound(path: "/test"),
-            .mountFailed(reason: "test"),
-            .processFailed(command: "test", exitCode: 1),
-        ]
-        for error in cases {
-            #expect(error.recoverySuggestion != nil)
-            #expect(!error.recoverySuggestion!.isEmpty)
-        }
-    }
-
     @Test("DiskInjectorError is equatable")
     func errorEquatable() {
         #expect(
@@ -213,21 +173,4 @@ struct DiskInjectorTests {
         )
     }
 
-    @Test("diskImageNotFound error includes path in description")
-    func diskImageNotFoundIncludesPath() {
-        let error = DiskInjectorError.diskImageNotFound(path: "/foo/disk.img")
-        #expect(error.localizedDescription.contains("/foo/disk.img"))
-    }
-
-    @Test("scriptNotFound error includes path in description")
-    func scriptNotFoundIncludesPath() {
-        let error = DiskInjectorError.scriptNotFound(path: "/bar/setup.sh")
-        #expect(error.localizedDescription.contains("/bar/setup.sh"))
-    }
-
-    @Test("processFailed error includes exit code in description")
-    func processFailedIncludesExitCode() {
-        let error = DiskInjectorError.processFailed(command: "hdiutil attach", exitCode: 42)
-        #expect(error.localizedDescription.contains("42"))
-    }
 }

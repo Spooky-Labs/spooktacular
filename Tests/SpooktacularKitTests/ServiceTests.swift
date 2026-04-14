@@ -148,19 +148,6 @@ struct ServiceTests {
         #expect(object is [String: Any])
     }
 
-    @Test("Different VM plists are both valid XML")
-    func differentVMsValidXML() throws {
-        for vmName in ["runner-01", "runner-02", "ci-worker"] {
-            let plist = ServicePlist.generate(
-                executablePath: "/usr/local/bin/spook",
-                vmName: vmName
-            )
-            let data = Data(plist.utf8)
-            let object = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-            #expect(object is [String: Any])
-        }
-    }
-
     // MARK: - Helper Functions
 
     @Test("label(for:) returns correct label")

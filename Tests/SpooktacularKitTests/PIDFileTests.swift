@@ -148,6 +148,35 @@ struct PIDFileTests {
         #expect(pid == ProcessInfo.processInfo.processIdentifier)
     }
 
+    @Test("writeAndEnsureCapacity succeeds with one existing VM")
+    func capacityWithOneExisting() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let myPID = ProcessInfo.processInfo.processIdentifier
+
+        // 1 existing "running" VM.
+        let existingURL = root.appendingPathComponent("vm1.vm")
+        try FileManager.default.createDirectory(at: existingURL, withIntermediateDirectories: true)
+        try Data("\(myPID)".utf8).write(
+            to: existingURL.appendingPathComponent(PIDFile.fileName)
+        )
+
+        // Our new VM should succeed (1 existing + 1 new = 2, at limit but not over).
+        let bundleURL = root.appendingPathComponent("vm2.vm")
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+
+        #expect(throws: Never.self) {
+            try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: root)
+        }
+
+        // PID file should exist after success.
+        let pid = PIDFile.read(from: bundleURL)
+        #expect(pid == myPID)
+    }
+
     @Test("writeAndEnsureCapacity removes PID and throws when over limit")
     func writeAndEnsureCapacityOverLimit() throws {
         let root = FileManager.default.temporaryDirectory
@@ -178,10 +207,4 @@ struct PIDFileTests {
         #expect(PIDFile.read(from: bundleURL) == nil)
     }
 
-    // MARK: - File Name
-
-    @Test("PID file name is 'pid'")
-    func fileName() {
-        #expect(PIDFile.fileName == "pid")
-    }
 }

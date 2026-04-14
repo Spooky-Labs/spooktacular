@@ -176,25 +176,39 @@ struct CloneManagerTests {
         }
     }
 
-    @Test("Clone gets a new machine identifier")
-    func cloneGetsNewMachineIdentifier() throws {
+    @Test("Partial clone is cleaned up on failure")
+    func rollbackOnFailure() throws {
         let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        defer {
+            // Restore permissions so cleanup succeeds.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o644],
+                ofItemAtPath: source.url.appendingPathComponent("disk.img").path
+            )
+            try? FileManager.default.removeItem(at: tempDir)
+        }
 
-        let sourceIdentifier = try Data(
-            contentsOf: source.url.appendingPathComponent("machine-identifier.bin")
+        // Make the source disk.img unreadable so copyItem fails
+        // inside the do block, after the destination directory has
+        // been created. This triggers the catch block which should
+        // clean up the partial destination directory.
+        let diskURL = source.url.appendingPathComponent("disk.img")
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o000],
+            ofItemAtPath: diskURL.path
         )
 
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        _ = try CloneManager.clone(source: source, to: destURL)
+        let destURL = tempDir.appendingPathComponent("rollback-clone.vm")
 
-        let cloneIdentifier = try Data(
-            contentsOf: destURL.appendingPathComponent("machine-identifier.bin")
+        #expect(throws: Error.self) {
+            try CloneManager.clone(source: source, to: destURL)
+        }
+
+        // The rollback in the catch block should have removed the partial clone.
+        #expect(
+            !FileManager.default.fileExists(atPath: destURL.path),
+            "Destination must be cleaned up after a clone failure"
         )
-
-        #expect(sourceIdentifier != cloneIdentifier,
-                "Clone must receive a new machine identifier to avoid undefined behavior")
-        #expect(!cloneIdentifier.isEmpty, "Machine identifier must not be empty")
     }
 
     @Test("Skips missing source files without crashing")

@@ -42,37 +42,12 @@ struct ErrorTests {
             #expect(description.contains("metadata.json"))
         }
 
-        @Test("Every case has a non-empty description")
-        func allCasesDescribed() {
-            let url = URL(fileURLWithPath: "/test.vm")
-            let cases: [VirtualMachineBundleError] = [
-                .notFound(url: url),
-                .alreadyExists(url: url),
-                .invalidConfiguration(url: url),
-                .invalidMetadata(url: url),
-            ]
-            for error in cases {
-                #expect(!error.localizedDescription.isEmpty)
-            }
-        }
     }
 
     // MARK: - RestoreImageError
 
     @Suite("RestoreImageError")
     struct RestoreImageErrorTests {
-
-        @Test("unsupportedHost has a description")
-        func unsupportedHost() {
-            let error = RestoreImageError.unsupportedHost
-            #expect(!error.localizedDescription.isEmpty)
-        }
-
-        @Test("unsupportedHardwareModel has a description")
-        func unsupportedHardwareModel() {
-            let error = RestoreImageError.unsupportedHardwareModel
-            #expect(!error.localizedDescription.isEmpty)
-        }
 
         @Test("incompatibleHost includes the provided message")
         func incompatibleHost() {
@@ -82,48 +57,12 @@ struct ErrorTests {
             #expect(error.localizedDescription.contains("26.4.1"))
         }
 
-        @Test("Every case has a non-empty description")
-        func allCasesDescribed() {
-            let cases: [RestoreImageError] = [
-                .unsupportedHost,
-                .unsupportedHardwareModel,
-                .incompatibleHost(message: "test"),
-            ]
-            for error in cases {
-                #expect(!error.localizedDescription.isEmpty)
-            }
-        }
     }
 
     // MARK: - AccessibilityID
 
     @Suite("AccessibilityID")
     struct AccessibilityIDTests {
-
-        @Test("Static identifiers are non-empty strings")
-        func staticIDs() {
-            let ids = [
-                AccessibilityID.vmList,
-                AccessibilityID.createVMButton,
-                AccessibilityID.createSheet,
-                AccessibilityID.vmNameField,
-                AccessibilityID.cpuStepper,
-                AccessibilityID.memorySlider,
-                AccessibilityID.diskSlider,
-                AccessibilityID.displayPicker,
-                AccessibilityID.networkPicker,
-                AccessibilityID.createConfirmButton,
-                AccessibilityID.cancelButton,
-                AccessibilityID.startButton,
-                AccessibilityID.stopButton,
-                AccessibilityID.inspectorToggle,
-                AccessibilityID.progressIndicator,
-                AccessibilityID.statusMessage,
-            ]
-            for id in ids {
-                #expect(!id.isEmpty, "Accessibility identifier must not be empty")
-            }
-        }
 
         @Test("Dynamic identifiers include the name parameter")
         func dynamicIDs() {

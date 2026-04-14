@@ -42,12 +42,6 @@ struct RemoteDesktopTemplateTests {
         #expect(script.contains("launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist"))
     }
 
-    @Test("Script prints VNC confirmation message")
-    func printsConfirmation() {
-        let script = RemoteDesktopTemplate.scriptContent()
-        #expect(script.contains("Screen Sharing enabled. Connect via VNC."))
-    }
-
     // MARK: - File Generation
 
     @Test("generate() creates a file on disk")

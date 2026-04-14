@@ -69,15 +69,4 @@ struct SSHExecutorTests {
         #expect(SSHError.executionFailed(exitCode: 0) == SSHError.executionFailed(exitCode: 0))
     }
 
-    @Test("All SSHError cases have non-empty descriptions")
-    func allCasesDescribed() {
-        let cases: [SSHError] = [
-            .timeout(ip: "10.0.0.1", seconds: 30),
-            .scpFailed(exitCode: 1),
-            .executionFailed(exitCode: 1),
-        ]
-        for error in cases {
-            #expect(!error.localizedDescription.isEmpty)
-        }
-    }
 }

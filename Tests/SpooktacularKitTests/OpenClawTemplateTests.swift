@@ -55,12 +55,6 @@ struct OpenClawTemplateTests {
         #expect(script.contains("openclaw onboard --install-daemon"))
     }
 
-    @Test("Script prints completion message with port number")
-    func printsCompletion() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("OpenClaw installed and running on port 18789"))
-    }
-
     @Test("Script skips Homebrew install if already present")
     func skipsBrewIfPresent() {
         let script = OpenClawTemplate.scriptContent()

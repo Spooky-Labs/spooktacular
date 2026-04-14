@@ -232,6 +232,15 @@ struct VirtualMachineConfigurationTests {
         )
     }
 
+    @Test("Custom MAC address is ignored in isolated mode")
+    func macAddressIgnoredInIsolated() throws {
+        let mac = MACAddress("aa:bb:cc:dd:ee:ff")!
+        let spec = VirtualMachineSpecification(networkMode: .isolated, macAddress: mac)
+        let config = VZVirtualMachineConfiguration()
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
+        #expect(config.networkDevices.isEmpty)
+    }
+
     @Test("Sets custom MAC address when specified")
     func customMACAddress() throws {
         let macString = "AA:BB:CC:DD:EE:FF"

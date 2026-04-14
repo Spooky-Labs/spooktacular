@@ -70,6 +70,23 @@ struct VirtualMachineBundleTests {
             #expect(a != b)
         }
 
+        @Test("with() overrides only specified fields")
+        func withOverrides() {
+            let original = VirtualMachineSpecification(cpuCount: 4, memorySizeInBytes: .gigabytes(8))
+            let modified = original.with(cpuCount: 12)
+            #expect(modified.cpuCount == 12)
+            #expect(modified.memorySizeInBytes == original.memorySizeInBytes)
+            #expect(modified.diskSizeInBytes == original.diskSizeInBytes)
+            #expect(modified.networkMode == original.networkMode)
+        }
+
+        @Test("with(macAddress: .some(nil)) clears MAC address")
+        func withClearsMACAddress() {
+            let original = VirtualMachineSpecification(macAddress: MACAddress("aa:bb:cc:dd:ee:ff"))
+            let cleared = original.with(macAddress: .some(nil))
+            #expect(cleared.macAddress == nil)
+        }
+
         @Test("Default spec has audio enabled")
         func defaultAudioEnabled() {
             let spec = VirtualMachineSpecification()
