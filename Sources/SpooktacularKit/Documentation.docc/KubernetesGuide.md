@@ -2,7 +2,7 @@
 
 Manage macOS virtual machines as Kubernetes resources with custom CRDs and an operator.
 
-> Important: The Kubernetes operator is on the roadmap. This guide describes the planned architecture. For current VM management, use the `spook` CLI.
+> Tip: The Kubernetes operator is shipped. See `deploy/kubernetes/` for CRDs, Helm chart, and examples. The Swift controller is at `Sources/spook-controller/`.
 
 ## Overview
 
@@ -27,7 +27,7 @@ scheduling, provisioning, health checking, and cleanup.
 │  │  (Deployment in cluster)             │  │
 │  └────────┬─────────────────┬───────────┘  │
 └───────────│─────────────────│──────────────┘
-            │ HTTPS :9470     │ HTTPS :9470
+            │ HTTPS :8484     │ HTTPS :8484
    ┌────────▼──────┐  ┌──────▼────────┐
    │  Mac Host 01  │  │  Mac Host 02  │
    │  Spooktacular │  │  Spooktacular │
@@ -68,9 +68,9 @@ helm repo update
 helm install spooktacular-operator spooktacular/operator \
     --namespace spooktacular-system \
     --create-namespace \
-    --set nodes[0].host=10.0.1.50:9470 \
+    --set nodes[0].host=10.0.1.50:8484 \
     --set nodes[0].token="$(ssh ec2-user@10.0.1.50 'cat ~/.spooktacular/api-token')" \
-    --set nodes[1].host=10.0.1.51:9470 \
+    --set nodes[1].host=10.0.1.51:8484 \
     --set nodes[1].token="$(ssh ec2-user@10.0.1.51 'cat ~/.spooktacular/api-token')"
 ```
 
@@ -83,19 +83,19 @@ For larger deployments, use a values file:
 replicaCount: 2  # operator HA
 
 nodes:
-  - host: 10.0.1.50:9470
+  - host: 10.0.1.50:8484
     token: <api-token-for-host-50>
     labels:
       xcode: "16.2"
       chip: "m2-pro"
       location: "us-east-1a"
-  - host: 10.0.1.51:9470
+  - host: 10.0.1.51:8484
     token: <api-token-for-host-51>
     labels:
       xcode: "16.2"
       chip: "m4"
       location: "us-east-1b"
-  - host: 10.0.1.52:9470
+  - host: 10.0.1.52:8484
     token: <api-token-for-host-52>
     labels:
       xcode: "15.4"
@@ -123,11 +123,11 @@ metadata:
   namespace: spooktacular-system
 data:
   nodes.yaml: |
-    - host: 10.0.1.50:9470
+    - host: 10.0.1.50:8484
       token: <token>
       labels:
         xcode: "16.2"
-    - host: 10.0.1.51:9470
+    - host: 10.0.1.51:8484
       token: <token>
       labels:
         xcode: "16.2"
@@ -649,7 +649,7 @@ Mac host.
 # Verify connectivity from the operator pod
 kubectl exec -n spooktacular-system deployment/spooktacular-operator -- \
     curl -s -H "Authorization: Bearer <token>" \
-    http://10.0.1.50:9470/v1/health
+    http://10.0.1.50:8484/v1/health
 
 # Check that Spooktacular is running on the Mac host
 ssh ec2-user@10.0.1.50 'spook service status'

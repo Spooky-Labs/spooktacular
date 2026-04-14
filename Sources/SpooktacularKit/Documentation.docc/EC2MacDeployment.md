@@ -1,6 +1,6 @@
-# Deploying on EC2 Mac
+# Deploying on Mac Infrastructure
 
-Run Spooktacular on AWS EC2 Mac dedicated hosts to double your macOS CI capacity.
+Run Spooktacular on Mac mini farms, Mac Studios, cloud Mac instances, or any Apple Silicon hardware to double your macOS capacity.
 
 ## Overview
 
