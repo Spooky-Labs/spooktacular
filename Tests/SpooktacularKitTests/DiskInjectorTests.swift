@@ -85,44 +85,6 @@ struct DiskInjectorTests {
         #expect(plist.contains("<!DOCTYPE plist"))
     }
 
-    // MARK: - MAC Address Generation
-
-    @Test("Generated MAC address has valid format")
-    func macAddressFormat() {
-        let mac = DiskInjector.generateMACAddress()
-        // Should be XX:XX:XX:XX:XX:XX where X is a hex digit.
-        let parts = mac.split(separator: ":")
-        #expect(parts.count == 6)
-        for part in parts {
-            #expect(part.count == 2)
-            #expect(part.allSatisfy { $0.isHexDigit })
-        }
-    }
-
-    @Test("Generated MAC address has locally administered bit set")
-    func macAddressLocallyAdministered() throws {
-        let mac = DiskInjector.generateMACAddress()
-        let firstOctet = try #require(UInt8(mac.prefix(2), radix: 16))
-        // Bit 1 (locally administered) must be set.
-        #expect(firstOctet & 0x02 == 0x02)
-    }
-
-    @Test("Generated MAC address has multicast bit cleared")
-    func macAddressUnicast() throws {
-        let mac = DiskInjector.generateMACAddress()
-        let firstOctet = try #require(UInt8(mac.prefix(2), radix: 16))
-        // Bit 0 (multicast) must be cleared.
-        #expect(firstOctet & 0x01 == 0x00)
-    }
-
-    @Test("Generated MAC addresses are unique")
-    func macAddressUniqueness() {
-        let addresses = (0..<100).map { _ in DiskInjector.generateMACAddress() }
-        let unique = Set(addresses)
-        // With 6 random bytes, collisions in 100 samples should never happen.
-        #expect(unique.count == 100)
-    }
-
     @Test("Daemon label constant matches plist Label")
     func daemonLabelMatchesPlist() throws {
         let plist = DiskInjector.generateLaunchDaemonPlist()

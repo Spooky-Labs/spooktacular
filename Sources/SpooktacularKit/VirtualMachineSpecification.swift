@@ -150,10 +150,9 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     /// An explicit MAC address for the VM's primary network device.
     ///
     /// When `nil`, the Virtualization framework generates a random
-    /// MAC address. Set this to a valid MAC string (e.g.
-    /// `"AA:BB:CC:DD:EE:FF"`) when you need a stable network
-    /// identity across reboots. Defaults to `nil`.
-    public let macAddress: String?
+    /// MAC address. Set this to a valid ``MACAddress`` when you need
+    /// a stable network identity across reboots. Defaults to `nil`.
+    public let macAddress: MACAddress?
 
     /// Whether the guest display automatically resizes to match
     /// the host window.
@@ -194,7 +193,7 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     ///     to `false`. Ignored when `audioEnabled` is `false`.
     ///   - sharedFolders: Host directories to share with the guest.
     ///     Defaults to an empty array.
-    ///   - macAddress: Explicit MAC address string, or `nil` for
+    ///   - macAddress: Explicit MAC address, or `nil` for
     ///     auto-generated. Defaults to `nil`.
     ///   - autoResizeDisplay: Resize guest display to match host
     ///     window. Defaults to `true`.
@@ -210,7 +209,7 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         audioEnabled: Bool = true,
         microphoneEnabled: Bool = false,
         sharedFolders: [SharedFolder] = [],
-        macAddress: String? = nil,
+        macAddress: MACAddress? = nil,
         autoResizeDisplay: Bool = true,
         clipboardSharingEnabled: Bool = true
     ) {
@@ -262,7 +261,7 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     ///   - audioEnabled: Attach audio output device.
     ///   - microphoneEnabled: Attach microphone input.
     ///   - sharedFolders: Host directories to share.
-    ///   - macAddress: Explicit MAC address string.
+    ///   - macAddress: Explicit MAC address.
     ///   - autoResizeDisplay: Resize guest display to match host.
     ///   - clipboardSharingEnabled: Share clipboard.
     /// - Returns: A new specification with the overridden values.
@@ -275,7 +274,7 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         audioEnabled: Bool? = nil,
         microphoneEnabled: Bool? = nil,
         sharedFolders: [SharedFolder]? = nil,
-        macAddress: String?? = nil,
+        macAddress: MACAddress?? = nil,
         autoResizeDisplay: Bool? = nil,
         clipboardSharingEnabled: Bool? = nil
     ) -> VirtualMachineSpecification {

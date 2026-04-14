@@ -247,7 +247,7 @@ struct SharePersistenceTests {
             audioEnabled: false,
             microphoneEnabled: true,
             sharedFolders: [],
-            macAddress: "AA:BB:CC:DD:EE:FF",
+            macAddress: MACAddress("AA:BB:CC:DD:EE:FF")!,
             autoResizeDisplay: false,
             clipboardSharingEnabled: false
         )
@@ -273,12 +273,12 @@ struct SharePersistenceTests {
 
         let reloaded = try VirtualMachineBundle.load(from: bundle.url)
         #expect(reloaded.spec.cpuCount == 8)
-        #expect(reloaded.spec.memorySizeInBytes == 16 * 1024 * 1024 * 1024)
-        #expect(reloaded.spec.diskSizeInBytes == 100 * 1024 * 1024 * 1024)
+        #expect(reloaded.spec.memorySizeInBytes == UInt64(16) * 1024 * 1024 * 1024)
+        #expect(reloaded.spec.diskSizeInBytes == UInt64(100) * 1024 * 1024 * 1024)
         #expect(reloaded.spec.displayCount == 2)
         #expect(reloaded.spec.audioEnabled == false)
         #expect(reloaded.spec.microphoneEnabled == true)
-        #expect(reloaded.spec.macAddress == "AA:BB:CC:DD:EE:FF")
+        #expect(reloaded.spec.macAddress == MACAddress("aa:bb:cc:dd:ee:ff"))
         #expect(reloaded.spec.autoResizeDisplay == false)
         #expect(reloaded.spec.clipboardSharingEnabled == false)
         #expect(reloaded.spec.sharedFolders.count == 1)

@@ -80,7 +80,7 @@ extension Spook {
 
             Style.header("  ⬡ Network")
             Style.field("Mode", spec.networkMode.serialized)
-            Style.field("MAC address", Style.dim(spec.macAddress ?? "auto"))
+            Style.field("MAC address", Style.dim(spec.macAddress?.rawValue ?? "auto"))
 
             Style.header("  ♪ Audio")
             Style.field("Speaker", spec.audioEnabled

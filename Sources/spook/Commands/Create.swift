@@ -1,4 +1,3 @@
-import AppKit
 import ArgumentParser
 import Foundation
 import os
@@ -217,7 +216,7 @@ extension Spook {
 
             // Generate a stable MAC address so IP resolution works
             // immediately after the first boot, without manual setup.
-            let macAddress = DiskInjector.generateMACAddress()
+            let macAddress = MACAddress.generate()
 
             let spec = VirtualMachineSpecification(
                 cpuCount: cpu,
@@ -353,7 +352,7 @@ extension Spook {
                 Style.field("CPU", "\(spec.cpuCount) cores")
                 Style.field("Memory", "\(memory) GB")
                 Style.field("Disk", "\(disk) GB")
-                Style.field("MAC", macAddress)
+                Style.field("MAC", macAddress.rawValue)
                 print()
                 print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
 
@@ -381,7 +380,7 @@ extension Spook {
         private func autoProvisionViaSSH(
             bundle: VirtualMachineBundle,
             script: URL,
-            macAddress: String
+            macAddress: MACAddress
         ) async throws {
             let logger = Log.provision
 
@@ -442,7 +441,7 @@ extension Spook {
         private func automateSetupAssistant(
             bundle: VirtualMachineBundle,
             macOSVersion: Int,
-            macAddress: String
+            macAddress: MACAddress
         ) async throws {
             let logger = Log.provision
 
@@ -455,19 +454,16 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Ensure AppKit event loop is available for keyboard delivery.
-            let app = NSApplication.shared
-            app.setActivationPolicy(.accessory)
-
             try await vm.start()
             logger.notice("VM booted for Setup Assistant automation")
             print(Style.success("✓ VM booted."))
 
             do {
+                let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
                 let steps = SetupAutomation.sequence(for: macOSVersion)
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
                 print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
-                try await SetupAutomationExecutor.run(steps: steps, on: underlyingVM)
+                try await SetupAutomationExecutor.run(steps: steps, using: driver)
                 logger.notice("Setup Assistant automation steps completed")
                 print(Style.success("✓ Setup Assistant automation complete."))
 

@@ -235,7 +235,8 @@ struct VirtualMachineConfigurationTests {
     @Test("Sets custom MAC address when specified")
     func customMACAddress() throws {
         let macString = "AA:BB:CC:DD:EE:FF"
-        let spec = VirtualMachineSpecification(macAddress: macString)
+        let mac = MACAddress(macString)!
+        let spec = VirtualMachineSpecification(macAddress: mac)
         let config = VZVirtualMachineConfiguration()
         try VirtualMachineConfiguration.applySpec(spec, to: config)
 

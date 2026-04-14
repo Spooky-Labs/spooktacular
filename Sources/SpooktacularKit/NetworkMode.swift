@@ -86,4 +86,81 @@ public enum NetworkMode: Sendable, Codable, Equatable, Hashable {
         case .isolated: "isolated"
         }
     }
+
+    /// Creates a network mode from its serialized string representation.
+    ///
+    /// Accepts `"nat"`, `"isolated"`, or `"bridged:<interface>"`.
+    ///
+    /// ```swift
+    /// let mode = NetworkMode(serialized: "bridged:en0")
+    /// // .bridged(interface: "en0")
+    /// ```
+    ///
+    /// - Parameter serialized: The serialized string.
+    /// - Returns: The parsed network mode, or `nil` if the string
+    ///   is not recognized.
+    public init?(serialized: String) {
+        switch serialized {
+        case "nat": self = .nat
+        case "isolated": self = .isolated
+        default:
+            if serialized.hasPrefix("bridged:") {
+                self = .bridged(interface: String(serialized.dropFirst("bridged:".count)))
+            } else {
+                return nil
+            }
+        }
+    }
+
+    // MARK: - Codable
+
+    /// Encodes the network mode as a plain string using ``serialized``.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(serialized)
+    }
+
+    /// Decodes a network mode from its serialized string representation.
+    ///
+    /// Supports the canonical format (`"nat"`, `"isolated"`,
+    /// `"bridged:<interface>"`) and falls back to the compiler-
+    /// synthesized keyed format for backward compatibility with
+    /// existing `config.json` files.
+    public init(from decoder: Decoder) throws {
+        // Try single-value (canonical) format first.
+        if let container = try? decoder.singleValueContainer(),
+           let string = try? container.decode(String.self),
+           let mode = NetworkMode(serialized: string) {
+            self = mode
+            return
+        }
+
+        // Fall back to synthesized keyed format for migration.
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if container.contains(.nat) {
+            self = .nat
+        } else if container.contains(.isolated) {
+            self = .isolated
+        } else if let nested = try? container.nestedContainer(
+            keyedBy: BridgedKeys.self, forKey: .bridged
+        ) {
+            let interface = try nested.decode(String.self, forKey: .interface)
+            self = .bridged(interface: interface)
+        } else {
+            throw DecodingError.dataCorrupted(
+                .init(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "Unknown NetworkMode format"
+                )
+            )
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case nat, isolated, bridged
+    }
+
+    private enum BridgedKeys: String, CodingKey {
+        case interface
+    }
 }

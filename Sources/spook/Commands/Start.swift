@@ -177,11 +177,11 @@ extension Spook {
                     print("\nReceived \(sigName) — stopping VM '\(name)'...")
                     Task { @MainActor in
                         try? await vm.stop(graceful: false)
-                        PIDFile.remove(from: bundleURL)
-                        if isEphemeral {
-                            try? FileManager.default.removeItem(at: bundleURL)
-                            print("Ephemeral VM '\(name)' destroyed.")
-                        }
+                        cleanupAfterStop(
+                            bundleURL: bundleURL,
+                            name: name,
+                            ephemeral: isEphemeral
+                        )
                         Foundation.exit(0)
                     }
                 }
@@ -275,46 +275,22 @@ extension Spook {
             }
 
             if !headless {
-                let app = NSApplication.shared
-                app.setActivationPolicy(.regular)
-
-                let window = NSWindow(
-                    contentRect: NSRect(x: 0, y: 0, width: 1920, height: 1200),
-                    styleMask: [.titled, .closable, .resizable, .miniaturizable],
-                    backing: .buffered,
-                    defer: false
-                )
-                window.title = "Spooktacular — \(name)"
-                window.center()
-
-                let vmView = VZVirtualMachineView()
-                vmView.virtualMachine = underlyingVM
-                vmView.capturesSystemKeys = true
-                if #available(macOS 14.0, *) {
-                    vmView.automaticallyReconfiguresDisplay = true
-                }
-                window.contentView = vmView
-                window.makeKeyAndOrderFront(nil)
-
-                app.activate(ignoringOtherApps: true)
-                print(Style.dim("Press Ctrl+C to stop the VM."))
-
                 let isEphemeralCapture = ephemeral
-                Task { @MainActor in
-                    for await state in vm.stateStream {
-                        if state == .stopped || state == .error {
-                            break
-                        }
-                    }
-                    PIDFile.remove(from: bundleURL)
-                    if isEphemeralCapture {
-                        try? FileManager.default.removeItem(at: bundleURL)
-                        print("Ephemeral VM '\(name)' destroyed.")
-                    }
-                    NSApp.terminate(nil)
-                }
+                let nameCapture = name
+                let bundleCapture = bundleURL
 
-                app.run()
+                await presentVMWindow(
+                    name: name,
+                    virtualMachine: underlyingVM,
+                    stateStream: vm.stateStream,
+                    onStop: {
+                        cleanupAfterStop(
+                            bundleURL: bundleCapture,
+                            name: nameCapture,
+                            ephemeral: isEphemeralCapture
+                        )
+                    }
+                )
             } else {
                 print(Style.dim("Running headless. Press Ctrl+C to stop."))
 
@@ -324,11 +300,11 @@ extension Spook {
                     }
                 }
 
-                PIDFile.remove(from: bundleURL)
-                if ephemeral {
-                    try? FileManager.default.removeItem(at: bundleURL)
-                    print("Ephemeral VM '\(name)' destroyed.")
-                }
+                cleanupAfterStop(
+                    bundleURL: bundleURL,
+                    name: name,
+                    ephemeral: ephemeral
+                )
             }
         }
 
@@ -352,5 +328,20 @@ extension Spook {
                 throw ExitCode.failure
             }
         }
+    }
+}
+
+// MARK: - Cleanup
+
+/// Removes the PID file and, for ephemeral VMs, deletes the bundle.
+///
+/// Called from both the state-stream observer and the signal handler
+/// to avoid duplicating cleanup logic.
+@MainActor
+private func cleanupAfterStop(bundleURL: URL, name: String, ephemeral: Bool) {
+    PIDFile.remove(from: bundleURL)
+    if ephemeral {
+        try? FileManager.default.removeItem(at: bundleURL)
+        print("Ephemeral VM '\(name)' destroyed.")
     }
 }

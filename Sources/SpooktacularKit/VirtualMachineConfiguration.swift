@@ -235,7 +235,7 @@ public enum VirtualMachineConfiguration {
 
     private static func makeNetworkDevices(
         for mode: NetworkMode,
-        macAddress: String? = nil
+        macAddress: MACAddress? = nil
     ) throws -> [VZNetworkDeviceConfiguration] {
         let devices: [VZVirtioNetworkDeviceConfiguration]
 
@@ -260,8 +260,8 @@ public enum VirtualMachineConfiguration {
             devices = [device]
         }
 
-        if let macString = macAddress,
-           let mac = VZMACAddress(string: macString),
+        if let macAddress,
+           let mac = VZMACAddress(string: macAddress.rawValue),
            let first = devices.first {
             first.macAddress = mac
         }

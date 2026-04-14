@@ -96,27 +96,38 @@ extension Spook {
         }
 
         private func printJSON(_ bundles: [(String, VirtualMachineBundle)]) {
-            var entries: [[String: Any]] = []
-            for (name, bundle) in bundles {
-                entries.append([
-                    "name": name,
-                    "running": PIDFile.isRunning(bundleURL: bundle.url),
-                    "cpu": bundle.spec.cpuCount,
-                    "memorySizeInGigabytes": bundle.spec.memorySizeInGigabytes,
-                    "diskSizeInGigabytes": bundle.spec.diskSizeInGigabytes,
-                    "displays": bundle.spec.displayCount,
-                    "network": bundle.spec.networkMode.serialized,
-                    "audio": bundle.spec.audioEnabled,
-                    "setupCompleted": bundle.metadata.setupCompleted,
-                    "id": bundle.metadata.id.uuidString,
-                    "path": bundle.url.path,
-                ])
+            struct VMEntry: Encodable {
+                let name: String
+                let running: Bool
+                let cpu: Int
+                let memorySizeInGigabytes: UInt64
+                let diskSizeInGigabytes: UInt64
+                let displays: Int
+                let network: String
+                let audio: Bool
+                let setupCompleted: Bool
+                let id: String
+                let path: String
             }
 
-            if let data = try? JSONSerialization.data(
-                withJSONObject: entries,
-                options: [.prettyPrinted, .sortedKeys]
-            ), let string = String(data: data, encoding: .utf8) {
+            let entries = bundles.map { (name, bundle) in
+                VMEntry(
+                    name: name,
+                    running: PIDFile.isRunning(bundleURL: bundle.url),
+                    cpu: bundle.spec.cpuCount,
+                    memorySizeInGigabytes: bundle.spec.memorySizeInGigabytes,
+                    diskSizeInGigabytes: bundle.spec.diskSizeInGigabytes,
+                    displays: bundle.spec.displayCount,
+                    network: bundle.spec.networkMode.serialized,
+                    audio: bundle.spec.audioEnabled,
+                    setupCompleted: bundle.metadata.setupCompleted,
+                    id: bundle.metadata.id.uuidString,
+                    path: bundle.url.path
+                )
+            }
+
+            if let data = try? VirtualMachineBundle.encoder.encode(entries),
+               let string = String(data: data, encoding: .utf8) {
                 print(string)
             }
         }

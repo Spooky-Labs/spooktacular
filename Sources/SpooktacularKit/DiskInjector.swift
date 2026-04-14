@@ -148,30 +148,13 @@ public enum DiskInjector {
         """
     }
 
-    // MARK: - MAC Address Generation
-
-    /// Generates a locally administered MAC address from random bytes.
-    ///
-    /// The first octet has bit 1 (the "locally administered" bit) set
-    /// and bit 0 (the multicast bit) cleared, producing addresses in
-    /// the `02:xx:xx:xx:xx:xx` family. This ensures the address will
-    /// not collide with any manufacturer-assigned (globally unique)
-    /// MAC address.
-    ///
-    /// Uses `UUID` as the entropy source, which calls through to the
-    /// platform's cryptographic random number generator.
-    ///
-    /// - Returns: A MAC address string in `XX:XX:XX:XX:XX:XX` format.
-    public static func generateMACAddress() -> String {
-        let u = UUID().uuid
-        var octets: [UInt8] = [u.0, u.1, u.2, u.3, u.4, u.5]
-        octets[0] = (octets[0] | 0x02) & 0xFE
-        return octets.map { String(format: "%02X", $0) }.joined(separator: ":")
-    }
-
     // MARK: - Internal Helpers
 
     /// Runs a process and captures its standard output.
+    ///
+    /// Delegates to ``ProcessRunner/run(_:arguments:)`` and maps
+    /// any ``ProcessRunnerError`` to ``DiskInjectorError/processFailed(command:exitCode:)``
+    /// so the public error contract is preserved.
     ///
     /// - Parameters:
     ///   - path: Absolute path to the executable.
@@ -184,30 +167,17 @@ public enum DiskInjector {
         _ path: String,
         arguments: [String]
     ) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        guard process.terminationStatus == 0 else {
-            let command = ([path] + arguments).joined(separator: " ")
-            Log.provision.error("Process failed: \(command, privacy: .public) exit \(process.terminationStatus)")
-            throw DiskInjectorError.processFailed(
-                command: command,
-                exitCode: process.terminationStatus
-            )
+        do {
+            return try ProcessRunner.run(path, arguments: arguments)
+        } catch let error as ProcessRunnerError {
+            switch error {
+            case .processFailed(let command, let exitCode):
+                throw DiskInjectorError.processFailed(
+                    command: command,
+                    exitCode: exitCode
+                )
+            }
         }
-
-        return output
     }
 
     /// Parses the whole-disk device path from `hdiutil attach -plist` output.

@@ -22,8 +22,9 @@ import os
 /// ## Usage
 ///
 /// ```swift
+/// let mac = MACAddress("aa:bb:cc:dd:ee:ff")!
 /// try await VMProvisioner.provisionViaSSH(
-///     macAddress: "aa:bb:cc:dd:ee:ff",
+///     macAddress: mac,
 ///     script: scriptURL,
 ///     user: "admin",
 ///     key: "~/.ssh/id_ed25519"
@@ -59,23 +60,23 @@ public enum VMProvisioner {
     /// - Returns: The resolved IP address.
     @discardableResult
     public static func provisionViaSSH(
-        macAddress: String,
+        macAddress: MACAddress,
         script: URL,
         user: String = "admin",
         key: String? = nil,
         timeout: TimeInterval = 120,
         pollInterval: TimeInterval = 5
     ) async throws -> String {
-        Log.provision.info("Resolving IP for MAC \(macAddress, privacy: .public)")
+        Log.provision.info("Resolving IP for MAC \(macAddress.rawValue, privacy: .public)")
         guard let ip = try await IPResolver.resolveIPWithRetry(
             macAddress: macAddress,
             timeout: timeout,
             pollInterval: pollInterval
         ) else {
-            Log.provision.error("Failed to resolve IP for MAC \(macAddress, privacy: .public) within \(Int(timeout))s")
+            Log.provision.error("Failed to resolve IP for MAC \(macAddress.rawValue, privacy: .public) within \(Int(timeout))s")
             throw VMProvisionerError.ipResolutionTimedOut(macAddress: macAddress, timeout: timeout)
         }
-        Log.provision.notice("Resolved IP \(ip, privacy: .public) for MAC \(macAddress, privacy: .public)")
+        Log.provision.notice("Resolved IP \(ip, privacy: .public) for MAC \(macAddress.rawValue, privacy: .public)")
 
         Log.provision.info("Waiting for SSH on \(ip, privacy: .public)")
         try await SSHExecutor.waitForSSH(ip: ip)
@@ -104,12 +105,12 @@ public enum VMProvisionerError: Error, LocalizedError, Sendable, Equatable {
     /// - Parameters:
     ///   - macAddress: The MAC address that was being resolved.
     ///   - timeout: The timeout duration in seconds.
-    case ipResolutionTimedOut(macAddress: String, timeout: TimeInterval)
+    case ipResolutionTimedOut(macAddress: MACAddress, timeout: TimeInterval)
 
     public var errorDescription: String? {
         switch self {
         case .ipResolutionTimedOut(let macAddress, let timeout):
-            "Could not resolve an IP address for MAC \(macAddress) within \(Int(timeout)) seconds."
+            "Could not resolve an IP address for MAC \(macAddress.rawValue) within \(Int(timeout)) seconds."
         }
     }
 

@@ -156,7 +156,7 @@ final class AppState {
     func cloneVM(_ source: String, to destination: String) {
         do {
             guard let sourceBundle = vms[source] else { return }
-            let destinationURL = vmsDirectory.appendingPathComponent("\(destination).vm")
+            let destinationURL = SpooktacularPaths.bundleURL(for: destination)
             let clone = try CloneManager.clone(source: sourceBundle, to: destinationURL)
             vms[destination] = clone
 
@@ -170,14 +170,31 @@ final class AppState {
 
     // MARK: - Shutdown
 
-    /// Stops all running VMs. Called synchronously on application termination.
+    /// Stops all running VMs on application termination.
+    ///
+    /// Each VM gets a 2-second window to stop. If a VM hangs,
+    /// the timeout expires and the app continues quitting so the
+    /// user is never stuck waiting.
     func stopAllRunningVMs() {
         for (name, vm) in runningVMs {
-            do {
-                try vm.vzVM?.requestStop()
-                Log.vm.info("Requested stop for VM '\(name, privacy: .public)' on quit")
-            } catch {
-                Log.vm.error("Failed to stop VM '\(name, privacy: .public)' on quit: \(error.localizedDescription, privacy: .public)")
+            Task { @MainActor in
+                do {
+                    try await withThrowingTaskGroup(of: Void.self) { group in
+                        group.addTask {
+                            try await vm.stop(graceful: false)
+                        }
+                        group.addTask {
+                            try await Task.sleep(for: .seconds(2))
+                            throw CancellationError()
+                        }
+                        // Wait for whichever finishes first, cancel the other.
+                        _ = try await group.next()
+                        group.cancelAll()
+                    }
+                    Log.vm.info("Stopped VM '\(name, privacy: .public)' on quit")
+                } catch {
+                    Log.vm.error("Failed to stop VM '\(name, privacy: .public)' on quit: \(error.localizedDescription, privacy: .public)")
+                }
             }
         }
         runningVMs.removeAll()

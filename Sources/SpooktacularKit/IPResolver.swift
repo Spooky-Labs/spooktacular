@@ -22,7 +22,8 @@ import os
 /// ## Usage
 ///
 /// ```swift
-/// let ip = try await IPResolver.resolveIP(macAddress: "aa:bb:cc:dd:ee:ff")
+/// let mac = MACAddress("aa:bb:cc:dd:ee:ff")!
+/// let ip = try await IPResolver.resolveIP(macAddress: mac)
 /// print(ip ?? "not found")
 /// ```
 ///
@@ -38,13 +39,11 @@ public enum IPResolver {
     ///
     /// Tries DHCP leases first, then falls back to the ARP table.
     ///
-    /// - Parameter macAddress: The VM's MAC address as a
-    ///   colon-separated hex string (e.g., `"aa:bb:cc:dd:ee:ff"`).
-    ///   Case-insensitive.
+    /// - Parameter macAddress: The VM's MAC address.
     /// - Returns: The IPv4 address string, or `nil` if no mapping
     ///   was found.
-    public static func resolveIP(macAddress: String) async throws -> String? {
-        let normalizedMAC = macAddress.lowercased()
+    public static func resolveIP(macAddress: MACAddress) async throws -> String? {
+        let normalizedMAC = macAddress.rawValue
         Log.network.info("Resolving IP for MAC \(normalizedMAC)")
 
         Log.network.debug("Trying DHCP leases for MAC \(normalizedMAC)")
@@ -72,15 +71,14 @@ public enum IPResolver {
     /// in the host's lease table or ARP cache.
     ///
     /// - Parameters:
-    ///   - macAddress: The VM's MAC address as a colon-separated
-    ///     hex string (e.g., `"aa:bb:cc:dd:ee:ff"`). Case-insensitive.
+    ///   - macAddress: The VM's MAC address.
     ///   - timeout: Maximum time to wait in seconds. Defaults to
     ///     120 seconds.
     ///   - pollInterval: Seconds between retries. Defaults to 5.
     /// - Returns: The resolved IPv4 address, or `nil` if the
     ///   timeout expires without a match.
     public static func resolveIPWithRetry(
-        macAddress: String,
+        macAddress: MACAddress,
         timeout: TimeInterval = 120,
         pollInterval: TimeInterval = 5
     ) async throws -> String? {
@@ -91,7 +89,7 @@ public enum IPResolver {
             if let ip = try await resolveIP(macAddress: macAddress) {
                 return ip
             }
-            Log.provision.debug("IP not yet available for MAC \(macAddress, privacy: .public), retrying in \(Int(pollInterval))s")
+            Log.provision.debug("IP not yet available for MAC \(macAddress.rawValue, privacy: .public), retrying in \(Int(pollInterval))s")
             try await Task.sleep(nanoseconds: sleepNanoseconds)
         }
 
@@ -182,7 +180,7 @@ public enum IPResolver {
     /// - Returns: The IP address from the ARP entry, or `nil`
     ///   if not found.
     public static func resolveFromARP(macAddress: String) async throws -> String? {
-        let output = try await runProcess("/usr/sbin/arp", arguments: ["-an"])
+        let output = try await ProcessRunner.runAsync("/usr/sbin/arp", arguments: ["-an"])
         return parseARPOutput(output, macAddress: macAddress)
     }
 
@@ -212,31 +210,4 @@ public enum IPResolver {
         return nil
     }
 
-    // MARK: - Process Execution
-
-    /// Runs a process and returns its standard output as a string.
-    ///
-    /// - Parameters:
-    ///   - path: The absolute path to the executable.
-    ///   - arguments: Command-line arguments.
-    /// - Returns: The process's standard output as a UTF-8 string.
-    /// - Throws: An error if the process fails to launch.
-    static func runProcess(
-        _ path: String,
-        arguments: [String]
-    ) async throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
-        process.arguments = arguments
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        try process.run()
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
-    }
 }
