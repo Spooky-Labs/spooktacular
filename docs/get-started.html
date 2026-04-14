@@ -331,6 +331,42 @@ Spooktacular
 </div>
 </section>
 
+<!-- Step 7: Remote Control -->
+<section class="step-section" id="step-7" aria-labelledby="step7-heading">
+<div class="step-label">Step 7</div>
+<h2 id="step7-heading">Remote Control</h2>
+<p class="sub">Use the guest agent to interact with your VM without SSH or screen sharing. The <code style="color: var(--accent);">spook remote</code> command talks to the agent over VirtIO socket.</p>
+
+<div class="code-example">
+<div class="code-header">
+<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+<span class="title">Terminal</span>
+</div>
+<pre><span class="cmt"># Check agent health</span>
+<span class="dim">$</span> <span class="cmd">spook remote health runner-01</span>
+<span class="ok">&#10003;</span> Agent v1.0.0 &mdash; uptime 4h32m
+
+<span class="cmt"># Execute a command inside the VM</span>
+<span class="dim">$</span> <span class="cmd">spook remote exec runner-01 -- "sw_vers"</span>
+<span class="file">ProductName:      macOS</span>
+<span class="file">ProductVersion:   15.4</span>
+<span class="file">BuildVersion:     24E5xxx</span>
+
+<span class="cmt"># Read the guest clipboard</span>
+<span class="dim">$</span> <span class="cmd">spook remote clipboard get runner-01</span>
+<span class="file">hello world</span>
+
+<span class="cmt"># List running applications</span>
+<span class="dim">$</span> <span class="cmd">spook remote apps runner-01</span>
+<span class="file">Xcode (16.3)  Finder  Terminal  Safari</span></pre>
+</div>
+
+<div class="explain">
+<h4>What's the guest agent?</h4>
+<p>The guest agent is a lightweight daemon that runs inside the VM and exposes 12 HTTP endpoints over VirtIO socket. It enables clipboard sync, remote command execution, app control, file transfer, port discovery, and health monitoring -- all without SSH or network access. The host-side <code style="color: var(--accent);">GuestAgentClient</code> actor in SpooktacularKit provides a type-safe Swift API for all endpoints.</p>
+</div>
+</section>
+
 </div>
 
 <!-- Next Steps CTA -->
