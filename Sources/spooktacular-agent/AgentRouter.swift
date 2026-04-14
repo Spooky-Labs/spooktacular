@@ -12,7 +12,7 @@
 /// | `GET` | `/health` | ``handleHealth()`` |
 /// | `GET` | `/api/v1/clipboard` | ``handleGetClipboard()`` |
 /// | `POST` | `/api/v1/clipboard` | ``handleSetClipboard(_:)`` |
-/// | `POST` | `/api/v1/exec` | ``handleExec(_:)`` (admin only) |
+/// | `POST` | `/api/v1/exec` | ``handleExec(_:)`` (break-glass only) |
 /// | `GET` | `/api/v1/apps` | ``handleListApps()`` |
 /// | `POST` | `/api/v1/apps/launch` | ``handleLaunchApp(_:)`` |
 /// | `POST` | `/api/v1/apps/quit` | ``handleQuitApp(_:)`` |
@@ -55,23 +55,23 @@ private let jsonDecoder = JSONDecoder()
 /// Three-tier model:
 /// - ``readonly``: GET endpoints that inspect state without mutating it.
 /// - ``runner``: Mutation endpoints except exec (launch/quit apps, set clipboard, upload files).
-/// - ``admin``: Break-glass scope that includes exec and everything else.
+/// - ``breakGlass``: Shell execution only — requires explicit break-glass authorization.
 private enum EndpointScope: String {
     /// Read-only endpoints that inspect state without mutating it.
     case readonly
     /// Runner-level mutation endpoints (apps, clipboard, files) — excludes exec.
     case runner
-    /// Admin (break-glass) endpoints — everything including exec.
-    case admin
+    /// Break-glass endpoints — raw shell execution only.
+    case breakGlass
 }
 
 /// Returns the ``EndpointScope`` for the given method/path pair,
 /// or `nil` if the route is unknown.
 private func endpointScope(method: String, path: String) -> EndpointScope? {
     switch (method, path) {
-    // Admin — break-glass scope (exec)
+    // Break-glass — raw shell execution
     case ("POST", "/api/v1/exec"):
-        return .admin
+        return .breakGlass
     // Runner — mutation except exec
     case ("POST", "/api/v1/clipboard"),
          ("POST", "/api/v1/apps/launch"),
@@ -98,8 +98,8 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
 ///
 /// Used to enforce scope-based access control and to annotate audit log entries.
 private enum AuthTier: String {
-    /// Admin (break-glass) — all endpoints including exec.
-    case admin
+    /// Break-glass — all endpoints including exec.
+    case breakGlass = "break-glass"
     /// Runner — mutation endpoints except exec.
     case runner
     /// Read-only — GET endpoints only.
@@ -113,7 +113,7 @@ private enum AuthTier: String {
 /// When any token is configured the router enforces Bearer-token
 /// authentication with three-tier scope-based authorization:
 ///
-/// - **Admin token**: Grants access to all endpoints including exec (break-glass).
+/// - **Break-glass token**: Grants access to all endpoints including exec.
 /// - **Runner token**: Grants access to read-only and mutation endpoints,
 ///   but NOT exec. Exec returns 403 Forbidden.
 /// - **Read-only token**: Grants access to read-only endpoints only.
@@ -128,31 +128,32 @@ private enum AuthTier: String {
 ///
 /// - Parameters:
 ///   - request: The parsed HTTP request.
-///   - adminToken: The admin (break-glass) Bearer token, or `nil` for legacy mode.
+///   - adminToken: The break-glass Bearer token, or `nil` for legacy mode.
+///     Internally referred to as `breakGlassToken` to convey intent.
 ///   - runnerToken: The runner Bearer token, or `nil` if not configured.
 ///   - readonlyToken: The read-only Bearer token, or `nil` if not configured.
 /// - Returns: A complete HTTP/1.1 response as raw bytes.
 func routeRequest(
     _ request: AgentHTTPRequest,
-    adminToken: String? = nil,
+    adminToken breakGlassToken: String? = nil,
     runnerToken: String? = nil,
     readonlyToken: String? = nil
 ) -> Data {
 
     // --- Auth gate ---
-    let hasAnyToken = adminToken != nil || runnerToken != nil || readonlyToken != nil
+    let hasAnyToken = breakGlassToken != nil || runnerToken != nil || readonlyToken != nil
     let authTier: AuthTier
 
     if hasAnyToken {
         let authHeader = request.headers["authorization"] ?? ""
 
         // Determine which token was presented
-        let isAdmin = adminToken != nil && authHeader == "Bearer \(adminToken!)"
+        let isBreakGlass = breakGlassToken != nil && authHeader == "Bearer \(breakGlassToken!)"
         let isRunner = runnerToken != nil && authHeader == "Bearer \(runnerToken!)"
         let isReadOnly = readonlyToken != nil && authHeader == "Bearer \(readonlyToken!)"
 
-        if isAdmin {
-            authTier = .admin
+        if isBreakGlass {
+            authTier = .breakGlass
         } else if isRunner {
             authTier = .runner
         } else if isReadOnly {
@@ -167,25 +168,25 @@ func routeRequest(
         let scope = endpointScope(method: request.method, path: request.path)
         switch authTier {
         case .readonly:
-            if scope == .runner || scope == .admin {
-                let response = errorResponse(
-                    message: "Forbidden. Read-only token cannot access mutation endpoints.",
-                    statusCode: 403
-                )
+            if scope == .runner || scope == .breakGlass {
+                let message = scope == .breakGlass
+                    ? "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details."
+                    : "Forbidden. Read-only token cannot access mutation endpoints."
+                let response = errorResponse(message: message, statusCode: 403)
                 emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: authTier)
                 return response
             }
         case .runner:
-            if scope == .admin {
+            if scope == .breakGlass {
                 let response = errorResponse(
-                    message: "Forbidden. Runner token cannot access admin endpoints.",
+                    message: "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details.",
                     statusCode: 403
                 )
                 emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: authTier)
                 return response
             }
-        case .admin, .legacy:
-            break // Admin and legacy allow everything
+        case .breakGlass, .legacy:
+            break // Break-glass and legacy allow everything
         }
     } else {
         authTier = .legacy
@@ -352,6 +353,10 @@ private func handleSetClipboard(_ request: AgentHTTPRequest) -> Data {
 
 // MARK: - Exec
 
+/// **Break-glass only.** Raw shell execution is not available to
+/// read-only or runner tokens. Requires explicit break-glass
+/// authorization. Every invocation is audit-logged.
+///
 /// Handles `POST /api/v1/exec`.
 ///
 /// Runs a shell command via `/bin/bash -c` and captures stdout,

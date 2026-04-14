@@ -80,9 +80,29 @@ to your account.
 
 5. **SSH key pair** registered in the target region.
 
-## Quick Start with Terraform
+## Quick Start
 
-The fastest path from zero to running VMs:
+### Option 1: Systems Manager (Recommended for Enterprise)
+
+Install Spooktacular on an EC2 Mac fleet using AWS Systems Manager:
+
+```bash
+# Install on a single host
+aws ssm send-command \
+  --instance-ids i-0abc123def456 \
+  --document-name "SpooktacularInstall" \
+  --parameters 'Action=install'
+
+# Install across a fleet
+aws ssm send-command \
+  --targets "Key=tag:spooktacular,Values=managed" \
+  --document-name "SpooktacularInstall" \
+  --parameters 'Action=install'
+```
+
+### Option 2: Terraform
+
+Use the included Terraform module for automated Dedicated Host + instance provisioning.
 
 ```bash
 cd deploy/ec2-mac/terraform
@@ -117,9 +137,25 @@ spook doctor
 spook list
 ```
 
-## Manual Setup Alternative
+### Option 3: Manual Install (Development Only)
 
-If you prefer to set up without Terraform:
+For local development or testing, download the signed binary from GitHub Releases:
+
+```bash
+# Download the latest signed release
+curl -fsSL https://github.com/Spooky-Labs/spooktacular/releases/latest/download/spook -o /usr/local/bin/spook
+chmod +x /usr/local/bin/spook
+spook doctor
+```
+
+> **Note:** For production deployments, use SSM or the notarized .app/.pkg installer.
+> Do not pipe untrusted scripts to bash in production environments.
+
+## Manual Host Setup
+
+If you need to provision the underlying infrastructure manually (without
+Terraform), allocate a Dedicated Host and launch an instance before using
+one of the install options above:
 
 ### 1. Allocate a Dedicated Host
 
@@ -143,7 +179,7 @@ aws ec2 run-instances \
   --user-data file://deploy/ec2-mac/bootstrap.sh
 ```
 
-### 3. Or run bootstrap via SSM after launch
+### 3. Install Spooktacular via SSM
 
 ```bash
 aws ssm send-command \

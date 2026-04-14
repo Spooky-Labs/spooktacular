@@ -218,9 +218,15 @@ Three CI integrations: **GitHub Actions**, **CircleCI**, **Jenkins**. Three life
 Turn one EC2 Mac Dedicated Host into two schedulable macOS worker slots:
 
 ```bash
-# Bootstrap an EC2 Mac instance (or use the Terraform module)
-curl -fsSL https://raw.githubusercontent.com/Spooky-Labs/spooktacular/main/deploy/ec2-mac/bootstrap.sh | bash
+# Enterprise: install via Systems Manager
+aws ssm send-command --instance-ids i-xxx --document-name "SpooktacularInstall"
 
+# Development: download signed binary
+curl -fsSL https://github.com/Spooky-Labs/spooktacular/releases/latest/download/spook -o /usr/local/bin/spook
+spook doctor
+```
+
+```bash
 # Validate the host
 spook doctor
 # ✓ Apple Silicon (arm64)

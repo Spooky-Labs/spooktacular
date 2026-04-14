@@ -20,8 +20,7 @@ import os
 /// will fail with ``HTTPAPIServerError/missingAPIToken``.
 ///
 /// Set the `SPOOK_API_TOKEN` environment variable to require
-/// Bearer-token authentication on all endpoints except `/health`
-/// and `/metrics`.
+/// Bearer-token authentication on all endpoints except `/health`.
 ///
 /// ## Endpoints
 ///
@@ -529,15 +528,15 @@ public actor HTTPAPIServer {
             return handleHealth()
         }
 
-        if request.method == "GET" && request.path == "/metrics" {
-            return await handleMetrics()
-        }
-
         if let token = apiToken {
             let header = request.headers["authorization"] ?? ""
             guard header == "Bearer \(token)" else {
                 return HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
             }
+        }
+
+        if request.method == "GET" && request.path == "/metrics" {
+            return await handleMetrics()
         }
 
         guard components.count >= 2,

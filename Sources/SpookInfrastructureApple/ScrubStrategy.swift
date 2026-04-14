@@ -2,6 +2,18 @@ import Foundation
 import SpookCore
 import SpookApplication
 
+/// The outcome of a ``recycleWithValidation(vm:source:using:on:)`` call.
+///
+/// Callers inspect this to decide whether the VM is safe to schedule
+/// new work on (``clean``) or whether it was destroyed because it
+/// failed post-recycle validation (``destroyed``).
+public enum RecycleResult: Sendable {
+    /// The VM passed validation and is safe to reuse.
+    case clean
+    /// Validation failed; the VM was stopped and deleted to prevent dirty reuse.
+    case destroyed
+}
+
 /// Recycles a VM by running an in-place cleanup script inside the guest.
 ///
 /// Fastest strategy, lowest isolation. The cleanup script kills user
@@ -48,5 +60,36 @@ public struct ScrubStrategy: RecycleStrategy {
     public func validate(vm: String, using node: any NodeClient, on endpoint: URL) async throws -> Bool {
         let result = try await node.execInGuest(vm: vm, command: validationScript, on: endpoint)
         return result.exitCode == 0
+    }
+
+    /// Recycles the VM and validates the result. If validation fails,
+    /// destroys the VM to prevent dirty reuse.
+    ///
+    /// This is the only method callers should use. Direct calls to
+    /// `recycle()` without validation are unsafe for production.
+    ///
+    /// - Parameters:
+    ///   - vm: The name of the VM to recycle.
+    ///   - source: The source template name (unused by scrub, but required by the protocol).
+    ///   - node: A ``NodeClient`` to communicate with the node.
+    ///   - endpoint: The endpoint URL of the node.
+    /// - Returns: ``RecycleResult/clean`` if validation passes,
+    ///   ``RecycleResult/destroyed`` if validation failed and the VM was torn down.
+    public func recycleWithValidation(
+        vm: String,
+        source: String,
+        using node: any NodeClient,
+        on endpoint: URL
+    ) async throws -> RecycleResult {
+        try await recycle(vm: vm, source: source, using: node, on: endpoint)
+        let valid = try await validate(vm: vm, using: node, on: endpoint)
+        if valid {
+            log.info("VM '\(vm)' passed scrub validation")
+            return .clean
+        }
+        log.error("VM '\(vm)' failed scrub validation — destroying")
+        try await node.stop(vm: vm, on: endpoint)
+        try await node.delete(vm: vm, on: endpoint)
+        return .destroyed
     }
 }

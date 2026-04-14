@@ -61,6 +61,39 @@ Spooktacular supports three deployment topologies, each with different security 
 
 - **EC2 Mac fleet**: Mac instances run on AWS EC2 dedicated hosts (e.g., `mac2-m2pro.metal`). Each host runs `spook serve` as a LaunchDaemon. In enterprise mode, hosts integrate with EC2 Host Resource Groups (HRG) for placement, implement drain procedures for 24-hour minimum allocation compliance, and can use IMDS for instance identity verification. Keychain-based secret storage is recommended over environment variables in this model.
 
+## Security Operations
+
+### Severity Classification
+
+| Severity | Response Time | Fix Target | Example |
+|----------|--------------|------------|---------|
+| Critical | 4 hours | 24 hours | Remote code execution, auth bypass |
+| High | 24 hours | 1 week | Privilege escalation, data exposure |
+| Medium | 1 week | 2 weeks | Information disclosure, DoS |
+| Low | 2 weeks | Next release | Minor hardening improvements |
+
+### Credential Rotation
+
+- **API tokens**: Rotate via Keychain (`security delete-generic-password` + `security add-generic-password`). No restart required — server reads token on each request.
+- **TLS certificates**: Replace cert/key files on disk. Server detects changes via `DispatchSource` file watcher and reloads automatically (zero-downtime rotation).
+- **Guest agent tokens**: Update the token file at `/Volumes/My Shared Files/.agent-token` or the `SPOOK_AGENT_TOKEN` environment variable. Agent reads on each request.
+
+### Incident Response
+
+1. **Contain**: Stop scheduling new VMs on the affected host. In a controller deployment, cordon the node via Kubernetes.
+2. **Investigate**: Query audit logs (`log show --predicate 'subsystem == "com.spooktacular.agent" AND category == "audit"' --last 1h`).
+3. **Remediate**: Rotate credentials, destroy affected VMs, restore from known-good base image.
+4. **Recover**: Uncordon the host, verify `spook doctor` passes, resume scheduling.
+
+### Deployment Support Matrix
+
+| Topology | Supported | Identity Model | Audit |
+|----------|-----------|---------------|-------|
+| Single host, single team | Yes | Bearer token + optional TLS | os.Logger |
+| Multi-host, single team | Yes | Mandatory mTLS + bearer token | os.Logger |
+| EC2 Mac fleet | Yes | mTLS + IMDS identity | os.Logger + CloudWatch forwarding |
+| Multi-tenant | Planned | Federated identity + tenant isolation | External SIEM required |
+
 ## Reporting a Vulnerability
 
 **Do not open a public issue for security vulnerabilities.**
@@ -68,7 +101,7 @@ Spooktacular supports three deployment topologies, each with different security 
 Instead, please report vulnerabilities privately via one of these channels:
 
 1. **GitHub Security Advisories** (preferred): [Report a vulnerability](https://github.com/Spooky-Labs/spooktacular/security/advisories/new)
-2. **Email**: davisperris@gmail.com
+2. **Email**: security@spooktacular.app
 
 ### What to include
 
@@ -99,3 +132,16 @@ The following are in scope for security reports:
 - Apple Virtualization.framework bugs (report to Apple)
 - macOS kernel vulnerabilities (report to Apple)
 - Denial of service via resource exhaustion (2-VM limit is kernel-enforced)
+
+## Architectural Invariants
+
+These rules are enforced by the compiler (separate SwiftPM targets) and runtime checks:
+
+1. **No production control-plane call without mTLS.** Controller refuses to start without TLS certificates (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`). The `SPOOK_INSECURE_CONTROLLER=1` bypass exists for local development only and logs a prominent warning.
+2. **No VM returned to a warm pool without positive scrub validation.** `ScrubStrategy.recycleWithValidation()` runs a verification script; failed validation triggers stop + delete via `NodeClient`.
+3. **No runner considered Ready until both guest health check and GitHub registration are confirmed.** `RunnerStateMachine` transitions through `booting` (requires `.healthCheckPassed`) and `registering` (requires `.runnerRegistered`) before reaching `.ready`.
+4. **No break-glass operation without separate scope and audit.** Shell execution requires `AuthScope.breakGlass` tier; every invocation is audit-logged at `.notice` level. Disabled by default in multi-tenant mode (planned).
+5. **No domain logic in Apple-framework adapters.** `SpookCore` and `SpookApplication` import Foundation only (compiler-enforced via separate SwiftPM targets with no framework dependencies).
+6. **No Apple-framework types in domain objects.** `SpookCore` has zero framework imports beyond Foundation across all 22 source files.
+7. **No tenantless request path.** `AuthorizationContext` requires `TenantID` at construction. Single-tenant deployments use `TenantID.default`.
+8. **No cross-tenant warm-pool reuse.** `MultiTenantIsolation.canReuse()` returns `true` only when `fromTenant == forTenant`. (Multi-tenant mode is planned.)

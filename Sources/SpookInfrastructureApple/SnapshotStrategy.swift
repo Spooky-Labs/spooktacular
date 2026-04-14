@@ -37,4 +37,35 @@ public struct SnapshotStrategy: RecycleStrategy {
     public func validate(vm: String, using node: any NodeClient, on endpoint: URL) async throws -> Bool {
         try await node.health(vm: vm, on: endpoint)
     }
+
+    /// Recycles the VM and validates the result. If validation fails,
+    /// destroys the VM to prevent dirty reuse.
+    ///
+    /// Restores the snapshot, boots the VM, then runs a health check.
+    /// If the health check fails the VM is stopped and deleted.
+    ///
+    /// - Parameters:
+    ///   - vm: The name of the VM to recycle.
+    ///   - source: The source template name (used if a fresh clone is needed later).
+    ///   - node: A ``NodeClient`` to communicate with the node.
+    ///   - endpoint: The endpoint URL of the node.
+    /// - Returns: ``RecycleResult/clean`` if health passes,
+    ///   ``RecycleResult/destroyed`` if health failed and the VM was torn down.
+    public func recycleWithValidation(
+        vm: String,
+        source: String,
+        using node: any NodeClient,
+        on endpoint: URL
+    ) async throws -> RecycleResult {
+        try await recycle(vm: vm, source: source, using: node, on: endpoint)
+        let valid = try await validate(vm: vm, using: node, on: endpoint)
+        if valid {
+            log.info("VM '\(vm)' passed snapshot health check")
+            return .clean
+        }
+        log.error("VM '\(vm)' failed snapshot health check — destroying")
+        try await node.stop(vm: vm, on: endpoint)
+        try await node.delete(vm: vm, on: endpoint)
+        return .destroyed
+    }
 }

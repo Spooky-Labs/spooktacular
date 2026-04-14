@@ -34,4 +34,34 @@ public struct RecloneStrategy: RecycleStrategy {
     public func validate(vm: String, using node: any NodeClient, on endpoint: URL) async throws -> Bool {
         try await node.health(vm: vm, on: endpoint)
     }
+
+    /// Recycles the VM and validates the result. If validation fails,
+    /// destroys the VM to prevent dirty reuse.
+    ///
+    /// Because reclone produces a fresh clone, validation is a simple
+    /// health check. A healthy clone always returns ``RecycleResult/clean``.
+    ///
+    /// - Parameters:
+    ///   - vm: The name of the VM to recycle.
+    ///   - source: The source template name used for cloning.
+    ///   - node: A ``NodeClient`` to communicate with the node.
+    ///   - endpoint: The endpoint URL of the node.
+    /// - Returns: ``RecycleResult/clean`` after a successful health check.
+    public func recycleWithValidation(
+        vm: String,
+        source: String,
+        using node: any NodeClient,
+        on endpoint: URL
+    ) async throws -> RecycleResult {
+        try await recycle(vm: vm, source: source, using: node, on: endpoint)
+        let valid = try await validate(vm: vm, using: node, on: endpoint)
+        if valid {
+            log.info("VM '\(vm)' passed reclone health check")
+            return .clean
+        }
+        log.error("VM '\(vm)' failed reclone health check — destroying")
+        try await node.stop(vm: vm, on: endpoint)
+        try await node.delete(vm: vm, on: endpoint)
+        return .destroyed
+    }
 }
