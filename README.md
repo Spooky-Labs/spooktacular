@@ -3,10 +3,10 @@
 
   # Spooktacular
 
-  **Double your Mac CI capacity. Zero additional cost.**
+  **Double your Mac capacity. Same hardware.**
 
-  Enterprise macOS virtualization for Apple Silicon. Run 2 VMs per Mac,<br>
-  clone in 48ms, cut EC2 costs 50%. Open source, MIT licensed, $0 forever.
+  Enterprise macOS virtualization for Apple Silicon. Run 2 VMs per Mac —<br>
+  the maximum Apple's EULA allows. Clone in 48ms. MIT licensed, $0 forever.
 
   [![CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml/badge.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
@@ -22,9 +22,9 @@
 
 ## Why Spooktacular
 
-- **2 VMs per Mac** — Apple Silicon's kernel limit, not an artificial cap. Every EC2 Mac or Mac mini becomes two runners.
+- **2 VMs per Mac** — The maximum Apple's [EULA (Section 2B(iii))](https://www.apple.com/legal/sla/) allows, enforced at the kernel level. Every Mac mini, Mac Studio, or Mac Pro becomes two workloads.
 - **48ms clones** — APFS copy-on-write duplicates a 64GB VM in milliseconds. No disk copy, no waiting.
-- **Zero-touch provisioning** — Unattended Setup Assistant automation + SSH/disk-inject scripts. No manual clicks.
+- **Everything that needs a Mac** — CI/CD runners, iOS/macOS code signing, remote desktops, MDM profile signing, computer-using AI agents (iMessage, Final Cut Pro, Xcode).
 - **$0 forever** — MIT licensed. No sales calls. No per-core fees. Audit every line of [source code](https://github.com/Spooky-Labs/spooktacular).
 
 ## Screenshots
