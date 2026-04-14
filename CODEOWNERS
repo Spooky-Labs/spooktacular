@@ -1,0 +1,33 @@
+# Spooktacular Code Owners
+# These users are automatically requested for review on PRs
+# that modify files matching the patterns below.
+#
+# Order matters — last match wins.
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @WikipediaBrown
+
+# Core library
+Sources/SpooktacularKit/ @WikipediaBrown
+
+# CLI
+Sources/spook/ @WikipediaBrown
+
+# GUI
+Sources/Spooktacular/ @WikipediaBrown
+
+# Kubernetes operator
+Sources/spook-controller/ @WikipediaBrown
+deploy/kubernetes/ @WikipediaBrown
+
+# Guest agent
+Sources/spook-agent/ @WikipediaBrown
+
+# CI/CD and build
+.github/ @WikipediaBrown
+build-app.sh @WikipediaBrown
+fastlane/ @WikipediaBrown
+
+# Website
+docs/ @WikipediaBrown

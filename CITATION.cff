@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: Spooktacular
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: Perris
+    family-names: Davis
+    alias: WikipediaBrown
+repository-code: "https://github.com/Spooky-Labs/spooktacular"
+url: "https://spooktacular.app"
+license: MIT
+keywords:
+  - macos
+  - virtualization
+  - apple-silicon
+  - ci-cd
+  - kubernetes
+  - virtual-machine
+  - github-actions
+  - swift
