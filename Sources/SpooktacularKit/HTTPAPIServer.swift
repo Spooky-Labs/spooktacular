@@ -32,6 +32,7 @@ import os
 /// | `POST` | `/v1/vms/:name/stop` | Stop a VM |
 /// | `DELETE` | `/v1/vms/:name` | Delete a VM |
 /// | `GET` | `/v1/vms/:name/ip` | Resolve VM IP address |
+/// | `GET` | `/metrics` | Prometheus metrics (unauthenticated) |
 ///
 /// ## Response Format
 ///
@@ -328,6 +329,7 @@ public actor HTTPAPIServer {
     ///
     /// Path matching uses simple prefix/component matching:
     /// - `/health` -- health check (unauthenticated)
+    /// - `/metrics` -- Prometheus metrics (unauthenticated)
     /// - `/v1/vms` -- list or create VMs
     /// - `/v1/vms/:name` -- get or delete a specific VM
     /// - `/v1/vms/:name/clone` -- clone a base VM
@@ -344,6 +346,10 @@ public actor HTTPAPIServer {
 
         if request.method == "GET" && request.path == "/health" {
             return handleHealth()
+        }
+
+        if request.method == "GET" && request.path == "/metrics" {
+            return await handleMetrics()
         }
 
         if let token = apiToken {
@@ -388,6 +394,22 @@ public actor HTTPAPIServer {
     /// is running.
     private func handleHealth() -> HTTPResponse {
         HTTPResponse.ok(HealthResponse(service: "spooktacular", version: "0.1.0"))
+    }
+
+    /// Handles `GET /metrics`.
+    ///
+    /// Returns all collected metrics in Prometheus text exposition format
+    /// (version 0.0.4). This endpoint is **unauthenticated** so that
+    /// Prometheus can scrape it without a Bearer token.
+    ///
+    /// The response uses `Content-Type: text/plain; version=0.0.4; charset=utf-8`
+    /// as required by the Prometheus specification.
+    private func handleMetrics() async -> HTTPResponse {
+        let text = await MetricsCollector.shared.prometheusText()
+        return HTTPResponse.plainText(
+            text,
+            contentType: "text/plain; version=0.0.4; charset=utf-8"
+        )
     }
 
     /// Handles `GET /v1/vms`.

@@ -48,7 +48,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - CI triggers on PRs only; Beta triggers on merge to main
 - Release workflow notarizes and staples before publishing
 - HTTPAPIServer split into HTTPRequest, HTTPResponse, APIModels
-- 328 tests in 43 suites (was 297 in 36)
+- 360 tests in 45 suites (was 297 in 36)
 
 ## [0.1.0] - 2026-04-13
 

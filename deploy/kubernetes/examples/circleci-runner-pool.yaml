@@ -1,0 +1,57 @@
+# =============================================================================
+# Example: CircleCI Machine Runner Pool
+# =============================================================================
+#
+# This RunnerPool maintains CircleCI Machine Runner 3.0 agents on macOS VMs.
+# Jobs targeting the specified resource class are routed to these runners.
+#
+# Prerequisites:
+#   1. A base VM named "macos-15-ci" exists on Mac nodes.
+#   2. A CircleCI runner token (from circleci.com > Self-Hosted Runners).
+#   3. A resource class created in your CircleCI organization.
+#
+# Usage:
+#   kubectl create secret generic circleci-runner-token \
+#     --from-literal=token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+#   kubectl apply -f circleci-runner-pool.yaml
+#   kubectl get rp -w
+#
+# In .circleci/config.yml:
+#   jobs:
+#     build-ios:
+#       machine: true
+#       resource_class: my-org/macos-arm64
+#       steps:
+#         - checkout
+#         - run: xcodebuild test ...
+#
+# =============================================================================
+
+apiVersion: spooktacular.app/v1alpha1
+kind: RunnerPool
+metadata:
+  name: circleci-macos
+  namespace: default
+  labels:
+    app.kubernetes.io/name: circleci-runner-pool
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: ci
+spec:
+  minRunners: 1
+  maxRunners: 2
+  sourceVM: macos-15-ci
+  cpu: 4
+  memoryInGigabytes: 8
+  diskInGigabytes: 64
+
+  ci:
+    circleci:
+      resourceClass: "my-org/macos-arm64"
+      secretRef: circleci-runner-token
+
+  mode: ephemeral
+  network: nat
+
+  nodeSelector:
+    spooktacular.app/pool: ci

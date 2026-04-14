@@ -98,8 +98,9 @@ macNodes: []
 # -----------------------------------------------------------------------------
 # TLS settings for communication between the controller and Mac nodes.
 tls:
-  # Enable mTLS for controller-to-node communication.
-  enabled: false
+  # Enable TLS for controller-to-node communication. Strongly recommended
+  # for production. Set to false only for local development.
+  enabled: true
 
   # Name of an existing Secret containing TLS certificates.
   # The Secret should have keys: ca.crt, tls.crt, tls.key

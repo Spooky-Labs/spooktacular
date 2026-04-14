@@ -1,0 +1,340 @@
+{{- if .Values.crds.install }}
+# =============================================================================
+# RunnerPool Custom Resource Definition
+# =============================================================================
+#
+# Defines the RunnerPool resource type for managing pools of CI/CD runners on
+# macOS VMs. A RunnerPool declaratively specifies a desired number of runner
+# VMs, the CI system they connect to, and how they are recycled.
+#
+# This is the Kubernetes-native equivalent of GitHub's Actions Runner Controller
+# (ARC) runner scale sets, adapted for macOS VMs on Apple Silicon.
+#
+# Install with:
+#   kubectl apply -f runnerpool-crd.yaml
+#
+# Once installed:
+#   kubectl apply -f my-pool.yaml
+#   kubectl get runnerpool          (or: kubectl get rp)
+#   kubectl describe rp my-pool
+#
+# =============================================================================
+
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: runnerpools.spooktacular.app
+  labels:
+    app.kubernetes.io/name: spooktacular
+    app.kubernetes.io/part-of: spooktacular
+  annotations:
+    spooktacular.app/managed-by: helm
+spec:
+  group: spooktacular.app
+
+  names:
+    kind: RunnerPool
+    listKind: RunnerPoolList
+    plural: runnerpools
+    singular: runnerpool
+    shortNames:
+      - rp
+    categories:
+      - spooktacular
+
+  scope: Namespaced
+
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+
+      schema:
+        openAPIV3Schema:
+          type: object
+          description: >-
+            RunnerPool declares a managed pool of CI/CD runner VMs. The
+            Spooktacular controller maintains the desired number of runner VMs,
+            automatically creating new ones when runners complete jobs (ephemeral
+            mode) or recycling existing ones (warm pool mode).
+          required:
+            - spec
+          properties:
+
+            spec:
+              type: object
+              description: Desired state of the runner pool.
+              required:
+                - sourceVM
+                - ci
+              properties:
+
+                # ==============================================================
+                # Pool Size
+                # ==============================================================
+                minRunners:
+                  type: integer
+                  description: >-
+                    Minimum number of runner VMs to keep ready. The controller
+                    will create VMs up to this count even when no jobs are
+                    queued. Set to 0 for scale-to-zero.
+                  default: 1
+                  minimum: 0
+                  maximum: 10
+
+                maxRunners:
+                  type: integer
+                  description: >-
+                    Maximum number of runner VMs in this pool. Bounded by the
+                    2-VM-per-host kernel limit times the number of available
+                    nodes.
+                  default: 2
+                  minimum: 1
+                  maximum: 100
+
+                # ==============================================================
+                # Base Image
+                # ==============================================================
+                sourceVM:
+                  type: string
+                  description: >-
+                    Name of the base VM to clone runners from. Must exist on
+                    all nodes matching the nodeSelector. The base image should
+                    have SSH enabled and any required build tools pre-installed.
+                  minLength: 1
+                  maxLength: 253
+
+                # ==============================================================
+                # Compute Resources (per runner)
+                # ==============================================================
+                cpu:
+                  type: integer
+                  default: 4
+                  minimum: 2
+                  maximum: 32
+
+                memoryInGigabytes:
+                  type: integer
+                  default: 8
+                  minimum: 4
+                  maximum: 128
+
+                diskInGigabytes:
+                  type: integer
+                  default: 64
+                  minimum: 32
+                  maximum: 2048
+
+                # ==============================================================
+                # CI System Configuration
+                # ==============================================================
+                ci:
+                  type: object
+                  description: >-
+                    CI system this pool connects to. Exactly one of github,
+                    circleci, or jenkins must be specified.
+                  properties:
+                    github:
+                      type: object
+                      description: GitHub Actions runner configuration.
+                      required:
+                        - scope
+                      properties:
+                        scope:
+                          type: string
+                          description: >-
+                            Where to register the runner. Format:
+                            "org/ORGNAME" for organization-level runners,
+                            "repo/OWNER/REPO" for repository-level runners.
+                          minLength: 1
+                        labels:
+                          type: string
+                          description: >-
+                            Comma-separated labels for the runner.
+                            Example: "macos,arm64,xcode-16"
+                          default: "self-hosted,macOS,ARM64"
+                        runnerGroup:
+                          type: string
+                          description: Runner group to join.
+                          default: "Default"
+                        secretRef:
+                          type: string
+                          description: >-
+                            Name of a Secret containing a "token" key with a
+                            GitHub PAT or runner registration token.
+
+                    circleci:
+                      type: object
+                      description: CircleCI Machine Runner 3.0 configuration.
+                      required:
+                        - resourceClass
+                      properties:
+                        resourceClass:
+                          type: string
+                          description: >-
+                            CircleCI resource class for this runner pool.
+                            Format: "NAMESPACE/RESOURCE_CLASS".
+                            Example: "my-org/macos-arm64"
+                          minLength: 1
+                        secretRef:
+                          type: string
+                          description: >-
+                            Name of a Secret containing a "token" key with
+                            the CircleCI runner token.
+
+                    jenkins:
+                      type: object
+                      description: Jenkins SSH agent configuration.
+                      required:
+                        - controllerURL
+                      properties:
+                        controllerURL:
+                          type: string
+                          description: >-
+                            URL of the Jenkins controller.
+                            Example: "https://jenkins.internal:8443"
+                        agentName:
+                          type: string
+                          description: >-
+                            Name prefix for agents. Each runner gets a
+                            unique suffix. Example: "mac-arm64" produces
+                            "mac-arm64-001", "mac-arm64-002", etc.
+                          default: "spooktacular"
+                        secretRef:
+                          type: string
+                          description: >-
+                            Name of a Secret containing SSH credentials
+                            for the Jenkins controller to connect to agents.
+
+                # ==============================================================
+                # Lifecycle Mode
+                # ==============================================================
+                mode:
+                  type: string
+                  description: >-
+                    How runners are recycled after completing a job.
+                    - ephemeral: Clone fresh VM per job, destroy after
+                      completion. Guarantees clean state. (Default)
+                    - warm-pool: Pre-boot VMs, scrub and return to pool
+                      after each job. Faster startup, requires trust in scrub.
+                    - persistent: Long-lived runners that handle multiple
+                      jobs. Lowest overhead, no isolation between jobs.
+                  default: ephemeral
+                  enum:
+                    - ephemeral
+                    - warm-pool
+                    - persistent
+
+                # ==============================================================
+                # Provisioning
+                # ==============================================================
+                provisioning:
+                  type: object
+                  properties:
+                    mode:
+                      type: string
+                      default: ssh
+                      enum:
+                        - ssh
+                        - disk-inject
+                    user:
+                      type: string
+                      default: admin
+                    script:
+                      type: string
+                      description: >-
+                        Additional provisioning script run after CI agent
+                        installation. Use for installing build dependencies.
+                      maxLength: 65536
+
+                # ==============================================================
+                # Scheduling
+                # ==============================================================
+                network:
+                  type: string
+                  default: nat
+                  enum:
+                    - nat
+                    - bridged
+                    - isolated
+
+                nodeSelector:
+                  type: object
+                  description: >-
+                    Constrain which Mac nodes this pool can use.
+                  additionalProperties:
+                    type: string
+                  x-kubernetes-map-type: atomic
+
+            # -----------------------------------------------------------------
+            # Status
+            # -----------------------------------------------------------------
+            status:
+              type: object
+              description: Observed state of the runner pool.
+              properties:
+                readyRunners:
+                  type: integer
+                  description: Number of runners currently ready for jobs.
+                busyRunners:
+                  type: integer
+                  description: Number of runners currently executing a job.
+                pendingRunners:
+                  type: integer
+                  description: Number of runners being created or provisioned.
+                totalRunners:
+                  type: integer
+                  description: Total runner count (ready + busy + pending).
+                phase:
+                  type: string
+                  description: >-
+                    Overall pool health.
+                    - Healthy: At least minRunners are ready.
+                    - Scaling: Creating runners to meet minRunners.
+                    - Degraded: Some runners failed; pool partially available.
+                    - Failed: No runners available.
+                  enum:
+                    - Healthy
+                    - Scaling
+                    - Degraded
+                    - Failed
+                message:
+                  type: string
+                  description: Human-readable status detail.
+                lastScaleTime:
+                  type: string
+                  format: date-time
+                  description: When the pool last scaled up or down.
+
+      subresources:
+        status: {}
+
+      additionalPrinterColumns:
+        - name: Ready
+          type: integer
+          jsonPath: .status.readyRunners
+
+        - name: Busy
+          type: integer
+          jsonPath: .status.busyRunners
+
+        - name: Min
+          type: integer
+          jsonPath: .spec.minRunners
+
+        - name: Max
+          type: integer
+          jsonPath: .spec.maxRunners
+
+        - name: Mode
+          type: string
+          jsonPath: .spec.mode
+
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+{{- end }}

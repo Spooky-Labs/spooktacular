@@ -1,0 +1,73 @@
+# =============================================================================
+# Example: Jenkins SSH Agent Pool
+# =============================================================================
+#
+# This RunnerPool maintains Jenkins SSH agents on macOS VMs. The Jenkins
+# controller connects to each agent via SSH — no inbound TCP from agents
+# required. This follows CloudBees' recommended pattern for Mac agents.
+#
+# Prerequisites:
+#   1. A base VM named "macos-15-ci" exists on Mac nodes with SSH enabled.
+#   2. Jenkins controller URL and SSH credentials for agent connection.
+#   3. The Jenkins SSH Build Agents plugin installed on the controller.
+#
+# Usage:
+#   kubectl create secret generic jenkins-ssh-key \
+#     --from-file=ssh-privatekey=~/.ssh/jenkins_agent_key
+#
+#   kubectl apply -f jenkins-runner-pool.yaml
+#   kubectl get rp -w
+#
+# On the Jenkins controller:
+#   1. Manage Jenkins > Nodes > New Node
+#   2. Set "Remote root directory" to /Users/admin/jenkins
+#   3. Set "Launch method" to "Launch agents via SSH"
+#   4. Host: <VM IP from kubectl get rp jenkins-macos>
+#   5. Credentials: SSH key from the Secret above
+#
+# =============================================================================
+
+apiVersion: spooktacular.app/v1alpha1
+kind: RunnerPool
+metadata:
+  name: jenkins-macos
+  namespace: default
+  labels:
+    app.kubernetes.io/name: jenkins-runner-pool
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: ci
+spec:
+  minRunners: 2
+  maxRunners: 4
+  sourceVM: macos-15-ci
+  cpu: 8
+  memoryInGigabytes: 16
+  diskInGigabytes: 128
+
+  ci:
+    jenkins:
+      controllerURL: "https://jenkins.internal:8443"
+      agentName: "mac-arm64"
+      secretRef: jenkins-ssh-key
+
+  # Persistent mode for Jenkins — agents stay registered across jobs.
+  # Jenkins handles its own job isolation via workspaces.
+  mode: persistent
+
+  # Bridged networking so Jenkins controller can SSH directly to agents.
+  network: bridged
+
+  provisioning:
+    mode: ssh
+    user: admin
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      # Create Jenkins workspace directory
+      mkdir -p /Users/admin/jenkins
+      # Install Java runtime (required for Jenkins agent)
+      brew install --cask temurin
+      echo "Jenkins agent node ready."
+
+  nodeSelector:
+    spooktacular.app/pool: ci

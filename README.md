@@ -91,8 +91,9 @@ spook start runner-02 --ephemeral --headless --github-runner \
  │ spook │  │  GUI  │  │ serve │  │ controller │
  │ (CLI) │  │(SwiftUI│  │(HTTP) │  │   (K8s)   │
  └───────┘  └───────┘  └───────┘  └────────────┘
-   14 cmds   Liquid     9 REST     MacOSVM CRD
-             Glass     endpoints   Helm chart
+   15 cmds   Liquid     9 REST     MacOSVM CRD
+             Glass     + metrics   RunnerPool CRD
+                       endpoints   Helm chart
 ```
 
 Four thin clients, one library. Every client parses input and calls SpooktacularKit.
@@ -181,23 +182,46 @@ spook remote ports my-vm
 
 The host-side [`GuestAgentClient`](Sources/SpooktacularKit/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spooktacular-agent --install-agent` (LaunchAgent for clipboard/app access).
 
-## Kubernetes
+## Runner Pools (Kubernetes)
+
+The fastest way to get CI runners on Mac:
 
 ```bash
-# Apply the CRD
-kubectl apply -f deploy/kubernetes/crds/macosvm-crd.yaml
-
-# Install the controller via Helm
+# Install CRDs + controller
+kubectl apply -f deploy/kubernetes/crds/
 helm install spooktacular deploy/kubernetes/helm/spooktacular/
 
-# Summon a GitHub Actions runner
-kubectl apply -f deploy/kubernetes/examples/github-runner.yaml
+# Create a GitHub Actions runner pool — 2 ephemeral runners
+kubectl create secret generic github-runner-token \
+  --from-literal=token=ghp_xxx
+kubectl apply -f deploy/kubernetes/examples/github-runner-pool.yaml
 
-# Watch it come to life
-kubectl get mvm -w
+# Watch runners come online
+kubectl get rp -w
+# NAME              READY  BUSY  MIN  MAX  MODE       PHASE    AGE
+# ios-ci-runners    2      0     2    4    ephemeral  Healthy  30s
 ```
 
-The [Swift controller](Sources/spook-controller/) watches `MacOSVM` custom resources and reconciles by calling the HTTP API on Mac nodes. See [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) for the full architecture.
+Three CI integrations: **GitHub Actions**, **CircleCI**, **Jenkins**. Three lifecycle modes: **ephemeral** (fresh clone per job), **warm-pool** (scrub and reuse), **persistent** (long-lived agents). See [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) for the full architecture.
+
+## EC2 Mac Quickstart
+
+Turn one EC2 Mac Dedicated Host into two schedulable macOS worker slots:
+
+```bash
+# Bootstrap an EC2 Mac instance (or use the Terraform module)
+curl -fsSL https://raw.githubusercontent.com/Spooky-Labs/spooktacular/main/deploy/ec2-mac/bootstrap.sh | bash
+
+# Validate the host
+spook doctor
+# ✓ Apple Silicon (arm64)
+# ✓ macOS 15.4.0
+# ✓ Disk space: 234 GB free
+# ✓ Base VM found: base
+# ✓ Capacity: 0/2 VMs running
+```
+
+Includes Terraform module, SSM automation, and bootstrap script. See [`deploy/ec2-mac/README.md`](deploy/ec2-mac/README.md).
 
 ## Security
 

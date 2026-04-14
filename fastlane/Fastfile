@@ -139,7 +139,7 @@ platform :mac do
         "• SwiftUI GUI with Liquid Glass (macOS 26+)\n" \
         "• Menu bar extra for quick access\n" \
         "• Full VoiceOver accessibility\n" \
-        "• 318 tests across 39 suites",
+        "• 360 tests across 45 suites",
 
       # Localized beta app info
       localized_app_info: {
@@ -167,7 +167,7 @@ platform :mac do
             "• HTTP REST API (9 endpoints)\n" \
             "• Kubernetes operator (MacOSVM CRD)\n" \
             "• SwiftUI GUI with Liquid Glass (macOS 26+)\n" \
-            "• 318 tests across 39 suites"
+            "• 360 tests across 45 suites"
         }
       },
 

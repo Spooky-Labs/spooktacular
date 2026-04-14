@@ -100,7 +100,7 @@ the build is clean.
 Every release follows the same pipeline:
 
 ```
-Feature branch → PR → CI (235+ tests) → Code review → Merge to main
+Feature branch → PR → CI (360+ tests) → Code review → Merge to main
     ↓
 Push to main → TestFlight beta (automatic)
     ↓

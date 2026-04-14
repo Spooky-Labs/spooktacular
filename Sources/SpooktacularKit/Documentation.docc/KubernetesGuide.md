@@ -18,10 +18,10 @@ Spooktacular HTTP API on your Mac nodes.
 │  ┌──────────────────────────────────────┐  │
 │  │  spook-controller (Deployment)       │  │
 │  │  Watches MacOSVM CRDs               │  │
-│  │  Calls HTTP API on Mac nodes        │  │
+│  │  Calls HTTPS API on Mac nodes       │  │
 │  └──────────┬──────────────┬────────────┘  │
 └─────────────│──────────────│───────────────┘
-              │ HTTP :8484   │ HTTP :8484
+              │ HTTPS :8484  │ HTTPS :8484
      ┌────────▼──────┐  ┌───▼───────────┐
      │  Mac Host 01  │  │  Mac Host 02  │
      │  spook serve  │  │  spook serve  │
@@ -39,7 +39,7 @@ Mac nodes can't run OCI containers). Each Mac supports up to
 ## Prerequisites
 
 - A Kubernetes cluster (v1.26+) with `kubectl` access
-- One or more Apple Silicon Macs running `spook serve --host 0.0.0.0`
+- One or more Apple Silicon Macs running `spook serve --host 0.0.0.0 --tls-cert cert.pem --tls-key key.pem`
 - Helm v3 for installing the operator
 - A base VM on each Mac (created with `spook create base --from-ipsw latest`)
 

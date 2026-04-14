@@ -36,18 +36,22 @@ struct EmptyData: Encodable {}
 
 // MARK: - HTTP Response
 
-/// An HTTP response with status code, headers, and JSON body.
+/// An HTTP response with status code, headers, and body.
 ///
 /// Serializes to a complete HTTP/1.1 response including the status
 /// line, headers (`Content-Type`, `Content-Length`,
-/// `Connection: close`), and body. The body is always JSON.
+/// `Connection: close`), and body. The body is JSON by default but
+/// can be plain text when using ``plainText(_:statusCode:contentType:)``.
 struct HTTPResponse: Sendable {
 
     /// The HTTP status code (e.g., 200, 404, 500).
     let statusCode: Int
 
-    /// The JSON response body as raw bytes.
+    /// The response body as raw bytes.
     let body: Data
+
+    /// The value for the `Content-Type` header.
+    let contentType: String
 
     /// Shared encoder with sorted keys for deterministic output.
     private static let encoder: JSONEncoder = {
@@ -75,7 +79,7 @@ struct HTTPResponse: Sendable {
     /// Serializes the response to raw HTTP/1.1 bytes.
     func serialize() -> Data {
         var response = "HTTP/1.1 \(statusCode) \(statusText)\r\n"
-        response += "Content-Type: application/json; charset=utf-8\r\n"
+        response += "Content-Type: \(contentType)\r\n"
         response += "Content-Length: \(body.count)\r\n"
         response += "Connection: close\r\n"
         response += "\r\n"
@@ -85,17 +89,37 @@ struct HTTPResponse: Sendable {
         return data
     }
 
-    /// Creates a success response with a typed data payload.
+    /// Creates a success response with a typed JSON data payload.
     static func ok<T: Encodable>(_ data: T, statusCode: Int = 200) -> HTTPResponse {
         let envelope = APIEnvelope(data: data)
         let body = (try? encoder.encode(envelope)) ?? Data("{}".utf8)
-        return HTTPResponse(statusCode: statusCode, body: body)
+        return HTTPResponse(statusCode: statusCode, body: body, contentType: "application/json; charset=utf-8")
     }
 
-    /// Creates an error response with a message.
+    /// Creates an error response with a JSON message.
     static func error(message: String, statusCode: Int) -> HTTPResponse {
         let envelope = APIEnvelope<EmptyData>(error: message)
         let body = (try? Self.encoder.encode(envelope)) ?? Data("{}".utf8)
-        return HTTPResponse(statusCode: statusCode, body: body)
+        return HTTPResponse(statusCode: statusCode, body: body, contentType: "application/json; charset=utf-8")
+    }
+
+    /// Creates a plain-text response with a custom content type.
+    ///
+    /// - Parameters:
+    ///   - text: The plain-text body.
+    ///   - statusCode: The HTTP status code. Defaults to `200`.
+    ///   - contentType: The `Content-Type` header value. Defaults to
+    ///     `"text/plain; charset=utf-8"`.
+    /// - Returns: An ``HTTPResponse`` with the given text body.
+    static func plainText(
+        _ text: String,
+        statusCode: Int = 200,
+        contentType: String = "text/plain; charset=utf-8"
+    ) -> HTTPResponse {
+        HTTPResponse(
+            statusCode: statusCode,
+            body: Data(text.utf8),
+            contentType: contentType
+        )
     }
 }

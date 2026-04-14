@@ -52,7 +52,7 @@ Adding new flags, JSON fields, or config keys is a minor bump.
 ### Release Process
 
 ```
-Feature branch → PR → CI (235+ tests) → Review → Merge
+Feature branch → PR → CI (360+ tests) → Review → Merge
     → TestFlight (automatic on main)
     → GitHub Release + App Store (automatic on tag)
     → Notarized Homebrew zip (automatic on tag)

@@ -1,0 +1,331 @@
+# ==============================================================================
+# AWS Systems Manager Document: Spooktacular Installation
+# ==============================================================================
+#
+# Installs and configures Spooktacular on EC2 Mac instances.
+#
+# Usage:
+#   # Register the document
+#   aws ssm create-document \
+#     --name "SpooktacularInstall" \
+#     --document-type "Command" \
+#     --content file://deploy/ec2-mac/ssm/install-spooktacular.yaml \
+#     --document-format YAML
+#
+#   # Run on a single instance
+#   aws ssm send-command \
+#     --document-name "SpooktacularInstall" \
+#     --targets "Key=instanceids,Values=i-0123456789abcdef0"
+#
+#   # Run across all tagged Mac instances
+#   aws ssm send-command \
+#     --document-name "SpooktacularInstall" \
+#     --targets "Key=tag:Role,Values=spooktacular-host" \
+#     --parameters 'Version=latest,CreateBaseVM=true'
+#
+# ==============================================================================
+
+schemaVersion: "2.2"
+description: |
+  Install and configure Spooktacular on an EC2 Mac instance.
+  Creates a base macOS VM and starts the API server with TLS.
+  This document is idempotent -- safe to run multiple times.
+
+parameters:
+  Version:
+    type: String
+    default: "latest"
+    description: |
+      Spooktacular version to install. Use "latest" for the most recent
+      release, or a specific version like "1.2.0".
+    allowedPattern: "^(latest|[0-9]+\\.[0-9]+\\.[0-9]+)$"
+
+  CreateBaseVM:
+    type: String
+    default: "true"
+    description: |
+      Whether to create a base VM from the latest macOS restore image.
+      Set to "false" to skip this step (e.g., if base VMs are managed
+      separately or pre-baked into the AMI).
+    allowedValues:
+      - "true"
+      - "false"
+
+  APIPort:
+    type: String
+    default: "8484"
+    description: "Port for the Spooktacular HTTP API server."
+    allowedPattern: "^[0-9]+$"
+
+  APIHost:
+    type: String
+    default: "0.0.0.0"
+    description: "Bind address for the Spooktacular HTTP API server."
+
+mainSteps:
+  # --------------------------------------------------------------------------
+  # Step 1: Validate the host
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: ValidateHost
+    description: "Verify this is an Apple Silicon Mac running macOS 14+."
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "=== Host Validation ==="
+
+          # Verify macOS
+          if [[ "$(uname)" != "Darwin" ]]; then
+              echo "ERROR: This document must run on macOS." >&2
+              exit 1
+          fi
+
+          # Verify Apple Silicon
+          if [[ "$(uname -m)" != "arm64" ]]; then
+              echo "ERROR: Apple Silicon (arm64) required." >&2
+              exit 1
+          fi
+
+          # Verify macOS 14+
+          MACOS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
+          if [[ "${MACOS_MAJOR}" -lt 14 ]]; then
+              echo "ERROR: macOS 14+ required. Found: $(sw_vers -productVersion)" >&2
+              exit 1
+          fi
+
+          echo "Host: $(uname -m), macOS $(sw_vers -productVersion)"
+          echo "Validation passed."
+
+  # --------------------------------------------------------------------------
+  # Step 2: Install Spooktacular
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: InstallSpooktacular
+    description: "Install Spooktacular via Homebrew or GitHub releases."
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          VERSION="{{ Version }}"
+          GITHUB_RELEASES="https://github.com/Spooky-Labs/spooktacular/releases"
+
+          echo "=== Installing Spooktacular (${VERSION}) ==="
+
+          if command -v spook &>/dev/null; then
+              echo "Spooktacular already installed: $(spook --version 2>/dev/null || echo 'unknown')"
+              if [[ "${VERSION}" == "latest" ]]; then
+                  echo "Skipping reinstall."
+                  exit 0
+              fi
+          fi
+
+          # Try Homebrew first
+          if command -v brew &>/dev/null; then
+              echo "Attempting Homebrew install..."
+              if brew install --cask spooktacular 2>&1; then
+                  echo "Homebrew install succeeded."
+                  exit 0
+              fi
+              echo "Homebrew install failed, falling back to GitHub."
+          fi
+
+          # Fallback: GitHub releases
+          echo "Downloading from GitHub releases..."
+          DOWNLOAD_URL="${GITHUB_RELEASES}/latest/download/spook"
+          if [[ "${VERSION}" != "latest" ]]; then
+              DOWNLOAD_URL="${GITHUB_RELEASES}/download/v${VERSION}/spook"
+          fi
+
+          curl -fsSL "${DOWNLOAD_URL}" -o /usr/local/bin/spook
+          chmod +x /usr/local/bin/spook
+          echo "Installed: $(spook --version 2>/dev/null || echo 'unknown')"
+
+  # --------------------------------------------------------------------------
+  # Step 3: Configure TLS
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: ConfigureTLS
+    description: "Generate self-signed TLS certificate if none exists."
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          CERT_DIR="/etc/spooktacular/tls"
+          echo "=== Configuring TLS ==="
+
+          sudo mkdir -p "${CERT_DIR}"
+
+          if [[ -f "${CERT_DIR}/cert.pem" && -f "${CERT_DIR}/key.pem" ]]; then
+              echo "TLS certificates already exist. Skipping."
+              exit 0
+          fi
+
+          INSTANCE_IP="$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/local-ipv4 || echo '127.0.0.1')"
+          HOSTNAME_VALUE="$(hostname -f 2>/dev/null || hostname)"
+
+          sudo openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+              -keyout "${CERT_DIR}/key.pem" \
+              -out "${CERT_DIR}/cert.pem" \
+              -days 365 \
+              -subj "/CN=spooktacular/O=Spooktacular" \
+              -addext "subjectAltName=IP:${INSTANCE_IP},IP:127.0.0.1,DNS:${HOSTNAME_VALUE},DNS:localhost"
+
+          sudo chmod 600 "${CERT_DIR}/key.pem"
+          sudo chmod 644 "${CERT_DIR}/cert.pem"
+          echo "TLS certificate generated for ${INSTANCE_IP}."
+
+  # --------------------------------------------------------------------------
+  # Step 4: Generate API token
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: GenerateAPIToken
+    description: "Generate a random API bearer token for authentication."
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          TOKEN_FILE="/etc/spooktacular/api-token"
+          echo "=== Configuring API Token ==="
+
+          sudo mkdir -p /etc/spooktacular
+
+          if [[ -f "${TOKEN_FILE}" ]]; then
+              echo "API token already exists. Skipping."
+              exit 0
+          fi
+
+          API_TOKEN="$(openssl rand -hex 32)"
+          echo "${API_TOKEN}" | sudo tee "${TOKEN_FILE}" >/dev/null
+          sudo chmod 600 "${TOKEN_FILE}"
+          echo "API token generated at ${TOKEN_FILE}."
+
+  # --------------------------------------------------------------------------
+  # Step 5: Create base VM (optional)
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: CreateBaseVM
+    description: "Create a base macOS VM from the latest restore image."
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          CREATE_BASE="{{ CreateBaseVM }}"
+          echo "=== Base VM Setup ==="
+
+          if [[ "${CREATE_BASE}" != "true" ]]; then
+              echo "Skipping base VM creation (CreateBaseVM=${CREATE_BASE})."
+              exit 0
+          fi
+
+          if spook list 2>/dev/null | grep -q "^base "; then
+              echo "Base VM already exists. Skipping."
+              exit 0
+          fi
+
+          echo "Creating base VM from latest macOS restore image..."
+          echo "This may take 15-30 minutes on first run."
+          spook create base --from-ipsw latest
+          echo "Base VM created."
+      timeoutSeconds: "3600"
+
+  # --------------------------------------------------------------------------
+  # Step 6: Install and start LaunchDaemon
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: InstallLaunchDaemon
+    description: "Install spook serve as a LaunchDaemon with TLS."
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          API_PORT="{{ APIPort }}"
+          API_HOST="{{ APIHost }}"
+          PLIST_PATH="/Library/LaunchDaemons/app.spooktacular.serve.plist"
+          CERT_DIR="/etc/spooktacular/tls"
+          TOKEN_FILE="/etc/spooktacular/api-token"
+          SPOOK_BIN="$(command -v spook)"
+          API_TOKEN="$(sudo cat "${TOKEN_FILE}")"
+
+          echo "=== Installing LaunchDaemon ==="
+
+          sudo tee "${PLIST_PATH}" >/dev/null <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>Label</key>
+              <string>app.spooktacular.serve</string>
+              <key>ProgramArguments</key>
+              <array>
+                  <string>${SPOOK_BIN}</string>
+                  <string>serve</string>
+                  <string>--host</string>
+                  <string>${API_HOST}</string>
+                  <string>--port</string>
+                  <string>${API_PORT}</string>
+                  <string>--tls-cert</string>
+                  <string>${CERT_DIR}/cert.pem</string>
+                  <string>--tls-key</string>
+                  <string>${CERT_DIR}/key.pem</string>
+                  <string>--api-token</string>
+                  <string>${API_TOKEN}</string>
+              </array>
+              <key>RunAtLoad</key>
+              <true/>
+              <key>KeepAlive</key>
+              <true/>
+              <key>StandardOutPath</key>
+              <string>/var/log/spooktacular-serve.log</string>
+              <key>StandardErrorPath</key>
+              <string>/var/log/spooktacular-serve.log</string>
+          </dict>
+          </plist>
+          PLIST
+
+          sudo chmod 644 "${PLIST_PATH}"
+          sudo chown root:wheel "${PLIST_PATH}"
+
+          # Reload the daemon
+          if sudo launchctl list | grep -q "app.spooktacular.serve"; then
+              sudo launchctl unload "${PLIST_PATH}" 2>/dev/null || true
+          fi
+          sudo launchctl load "${PLIST_PATH}"
+
+          sleep 3
+          if curl -sf -k "https://localhost:${API_PORT}/health" >/dev/null 2>&1; then
+              echo "API server running on port ${API_PORT} (TLS enabled)."
+          else
+              echo "WARNING: API server not yet responding. Check /var/log/spooktacular-serve.log"
+          fi
+
+  # --------------------------------------------------------------------------
+  # Step 7: Validate
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: Validate
+    description: "Run spook doctor to validate the installation."
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "=== Validation ==="
+          spook doctor
+
+          echo ""
+          echo "Spooktacular ready -- 2 VM slots available."
+          echo "API endpoint: https://$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/local-ipv4 || echo 'localhost'):{{ APIPort }}"

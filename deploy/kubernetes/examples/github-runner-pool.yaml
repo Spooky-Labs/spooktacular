@@ -1,0 +1,97 @@
+# =============================================================================
+# Example: GitHub Actions Runner Pool (Ephemeral)
+# =============================================================================
+#
+# This RunnerPool maintains 2 ephemeral GitHub Actions runners on macOS. Each
+# runner handles one job then is destroyed and replaced with a fresh clone —
+# guaranteeing a clean environment for every CI run.
+#
+# This is the recommended pattern for production CI/CD on Mac.
+#
+# Prerequisites:
+#   1. A base VM named "macos-15-ci" exists on Mac nodes.
+#   2. A GitHub PAT with `admin:org` scope (org runners) or `repo` scope.
+#   3. The Spooktacular controller + RunnerPool CRD installed.
+#
+# Usage:
+#   kubectl create secret generic github-runner-token \
+#     --from-literal=token=ghp_xxxxxxxxxxxxxxxxxxxx
+#
+#   kubectl apply -f github-runner-pool.yaml
+#   kubectl get rp -w
+#
+# Expected output:
+#   NAME              READY  BUSY  MIN  MAX  MODE       PHASE    AGE
+#   ios-ci-runners    2      0     2    4    ephemeral  Healthy  30s
+#
+# =============================================================================
+
+apiVersion: spooktacular.app/v1alpha1
+kind: RunnerPool
+metadata:
+  name: ios-ci-runners
+  namespace: default
+  labels:
+    app.kubernetes.io/name: github-runner-pool
+    app.kubernetes.io/part-of: spooktacular
+    spooktacular.app/workload: ci
+spec:
+  # ---------------------------------------------------------------------------
+  # Pool sizing — keep 2 runners warm, scale up to 4 when queue is busy.
+  # Each Mac host supports 2 VMs, so maxRunners=4 requires 2 Mac nodes.
+  # ---------------------------------------------------------------------------
+  minRunners: 2
+  maxRunners: 4
+
+  # ---------------------------------------------------------------------------
+  # Base image — should have Xcode, Homebrew, and SSH pre-configured.
+  # ---------------------------------------------------------------------------
+  sourceVM: macos-15-ci
+
+  # ---------------------------------------------------------------------------
+  # Resources per runner — sized for Xcode builds + test suites.
+  # ---------------------------------------------------------------------------
+  cpu: 4
+  memoryInGigabytes: 8
+  diskInGigabytes: 64
+
+  # ---------------------------------------------------------------------------
+  # CI system: GitHub Actions
+  # ---------------------------------------------------------------------------
+  ci:
+    github:
+      scope: "org/my-org"
+      labels: "macos,arm64,xcode-16,self-hosted"
+      runnerGroup: "Default"
+      secretRef: github-runner-token
+
+  # ---------------------------------------------------------------------------
+  # Ephemeral mode: fresh clone per job, destroy after completion.
+  # This matches GitHub's --ephemeral runner flag behavior.
+  # ---------------------------------------------------------------------------
+  mode: ephemeral
+
+  # ---------------------------------------------------------------------------
+  # NAT networking — runners don't need routable IPs for CI.
+  # ---------------------------------------------------------------------------
+  network: nat
+
+  # ---------------------------------------------------------------------------
+  # Additional provisioning — install CI-specific tools after runner agent.
+  # ---------------------------------------------------------------------------
+  provisioning:
+    mode: ssh
+    user: admin
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      # Verify build tools are available
+      xcodebuild -version
+      sw_vers
+      echo "Runner $(hostname) ready for jobs."
+
+  # ---------------------------------------------------------------------------
+  # Schedule on nodes labeled for CI workloads.
+  # ---------------------------------------------------------------------------
+  nodeSelector:
+    spooktacular.app/pool: ci

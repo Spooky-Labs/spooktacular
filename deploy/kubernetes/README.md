@@ -57,7 +57,7 @@ the Spooktacular controller handle provisioning, lifecycle, and cleanup.
 
 - Mac nodes cannot run containers (no OCI runtime on macOS). Each Mac runs
   `spook serve` as a native LaunchDaemon.
-- The controller runs on Linux and reaches Mac nodes over HTTP.
+- The controller runs on Linux and reaches Mac nodes over HTTPS (TLS required by default).
 - VMs are declared as `MacOSVM` custom resources and managed with `kubectl`.
 - The controller handles scheduling, cloning, provisioning, and status updates.
 
@@ -93,8 +93,10 @@ brew install spooktacular
 # Create a base VM image
 spook create macos-15-base --restore-image latest
 
-# Start the API server (or install as a LaunchDaemon)
-spook serve --host 0.0.0.0 --port 8484
+# Start the API server with TLS (or install as a LaunchDaemon)
+spook serve --host 0.0.0.0 --port 8484 \
+  --tls-cert /etc/spooktacular/tls/cert.pem \
+  --tls-key /etc/spooktacular/tls/key.pem
 ```
 
 To install as a persistent LaunchDaemon:
@@ -204,13 +206,47 @@ The controller will stop the VM on the Mac node and clean up disk resources.
 kubectl get events --field-selector involvedObject.kind=MacOSVM
 ```
 
+## Runner Pools
+
+Runner pools are the recommended way to manage CI/CD runners. A `RunnerPool`
+declaratively specifies a pool of runner VMs, the CI system they connect to,
+and how they are recycled between jobs.
+
+```bash
+# Install the RunnerPool CRD
+kubectl apply -f deploy/kubernetes/crds/runnerpool-crd.yaml
+
+# Create a GitHub Actions runner pool (2 ephemeral runners)
+kubectl create secret generic github-runner-token \
+  --from-literal=token=ghp_xxxxxxxxxxxxxxxxxxxx
+kubectl apply -f deploy/kubernetes/examples/github-runner-pool.yaml
+
+# Watch the pool scale up
+kubectl get rp -w
+# NAME              READY  BUSY  MIN  MAX  MODE       PHASE    AGE
+# ios-ci-runners    2      0     2    4    ephemeral  Healthy  30s
+```
+
+Three lifecycle modes:
+- **ephemeral** — Fresh APFS clone per job, destroy after completion. Clean state guaranteed.
+- **warm-pool** — Pre-booted VMs returned to pool after scrub. Faster startup.
+- **persistent** — Long-lived runners for systems like Jenkins that manage their own isolation.
+
+Three CI integrations:
+- **GitHub Actions** — Ephemeral runners with auto-registration and `--ephemeral` flag.
+- **CircleCI** — Machine Runner 3.0 bound to a resource class.
+- **Jenkins** — SSH-based agents following CloudBees best practices.
+
 ## Examples
 
 | File | Description |
 |------|-------------|
-| `examples/github-runner.yaml` | Persistent GitHub Actions self-hosted runner |
+| `examples/github-runner.yaml` | Persistent GitHub Actions self-hosted runner (single VM) |
+| `examples/github-runner-pool.yaml` | **Ephemeral GitHub runner pool (recommended)** |
+| `examples/circleci-runner-pool.yaml` | CircleCI Machine Runner 3.0 pool |
+| `examples/jenkins-runner-pool.yaml` | Jenkins SSH agent pool |
 | `examples/remote-desktop.yaml` | Remote desktop VM with VNC access |
-| `examples/ephemeral-pool.yaml` | Pool of 3 ephemeral CI runners |
+| `examples/ephemeral-pool.yaml` | Legacy: pool of 3 ephemeral runners (use RunnerPool instead) |
 
 ## Helm Chart Reference
 
@@ -225,7 +261,7 @@ kubectl get events --field-selector involvedObject.kind=MacOSVM
 | `controller.reconcileInterval` | `30` | Reconcile interval (seconds) |
 | `controller.nodeTimeout` | `30` | HTTP timeout for node calls |
 | `macNodes` | `[]` | List of Mac node endpoints |
-| `tls.enabled` | `false` | Enable mTLS to nodes |
+| `tls.enabled` | `true` | Enable TLS to nodes (strongly recommended) |
 | `rbac.create` | `true` | Create RBAC resources |
 | `serviceAccount.create` | `true` | Create ServiceAccount |
 | `metrics.enabled` | `true` | Enable Prometheus metrics |
