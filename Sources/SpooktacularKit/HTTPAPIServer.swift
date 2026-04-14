@@ -125,7 +125,7 @@ public actor HTTPAPIServer {
         self.spookPath = spookPath
 
         let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"]
-        self.apiToken = (token?.isEmpty == false) ? token : nil
+        self.apiToken = token?.isEmpty == false ? token : nil
     }
 
     // MARK: - Lifecycle
@@ -304,12 +304,10 @@ public actor HTTPAPIServer {
             .split(separator: "/")
             .map(String.init)
 
-        // GET /health — always unauthenticated.
         if request.method == "GET" && request.path == "/health" {
             return handleHealth()
         }
 
-        // Authenticate if a token is configured.
         if let token = apiToken {
             let header = request.headers["authorization"] ?? ""
             guard header == "Bearer \(token)" else {
@@ -317,7 +315,6 @@ public actor HTTPAPIServer {
             }
         }
 
-        // /v1/vms routes
         guard components.count >= 2,
               components[0] == "v1",
               components[1] == "vms"
@@ -325,7 +322,6 @@ public actor HTTPAPIServer {
             return HTTPResponse.error(message: "Not found.", statusCode: 404)
         }
 
-        // Path traversal protection: validate VM name if present.
         if components.count >= 3 {
             let vmName = components[2]
             guard vmName.wholeMatch(of: Self.vmNamePattern) != nil else {
@@ -334,40 +330,15 @@ public actor HTTPAPIServer {
         }
 
         switch (request.method, components.count) {
-        // GET /v1/vms
-        case ("GET", 2):
-            return handleListVMs()
-
-        // POST /v1/vms
-        case ("POST", 2):
-            return handleCreateVM(request)
-
-        // GET /v1/vms/:name
-        case ("GET", 3):
-            return handleGetVM(name: components[2])
-
-        // DELETE /v1/vms/:name
-        case ("DELETE", 3):
-            return handleDeleteVM(name: components[2])
-
-        // POST /v1/vms/:name/clone
-        case ("POST", 4) where components[3] == "clone":
-            return handleCloneVM(name: components[2], request: request)
-
-        // POST /v1/vms/:name/start
-        case ("POST", 4) where components[3] == "start":
-            return handleStartVM(name: components[2])
-
-        // POST /v1/vms/:name/stop
-        case ("POST", 4) where components[3] == "stop":
-            return handleStopVM(name: components[2])
-
-        // GET /v1/vms/:name/ip
-        case ("GET", 4) where components[3] == "ip":
-            return await handleGetIP(name: components[2])
-
-        default:
-            return HTTPResponse.error(message: "Not found.", statusCode: 404)
+        case ("GET", 2):    return handleListVMs()
+        case ("POST", 2):   return handleCreateVM(request)
+        case ("GET", 3):    return handleGetVM(name: components[2])
+        case ("DELETE", 3): return handleDeleteVM(name: components[2])
+        case ("POST", 4) where components[3] == "clone": return handleCloneVM(name: components[2], request: request)
+        case ("POST", 4) where components[3] == "start": return handleStartVM(name: components[2])
+        case ("POST", 4) where components[3] == "stop":  return handleStopVM(name: components[2])
+        case ("GET", 4)  where components[3] == "ip":    return await handleGetIP(name: components[2])
+        default: return HTTPResponse.error(message: "Not found.", statusCode: 404)
         }
     }
 
@@ -548,7 +519,6 @@ public actor HTTPAPIServer {
             return HTTPResponse.error(message: "VM '\(name)' is already running.", statusCode: 409)
         }
 
-        // Verify the spook binary exists at the configured path.
         guard FileManager.default.isExecutableFile(atPath: spookPath) else {
             logger.error("spook binary not found at \(self.spookPath, privacy: .public)")
             return HTTPResponse.error(
@@ -558,7 +528,6 @@ public actor HTTPAPIServer {
             )
         }
 
-        // Ensure the logs directory exists and open the log file.
         let logsDirectory = SpooktacularPaths.root.appendingPathComponent("logs")
         do {
             try FileManager.default.createDirectory(
@@ -576,7 +545,6 @@ public actor HTTPAPIServer {
         let logFileURL = logsDirectory.appendingPathComponent("\(name).log")
         let logFileHandle: FileHandle
         do {
-            // Create or truncate the log file.
             FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
             logFileHandle = try FileHandle(forWritingTo: logFileURL)
             logFileHandle.seekToEndOfFile()
@@ -806,7 +774,6 @@ enum HTTPRequestParser {
             throw HTTPAPIServerError.malformedRequest
         }
 
-        // Split headers from body at the blank line.
         let parts = string.components(separatedBy: "\r\n\r\n")
         guard let headerSection = parts.first else {
             throw HTTPAPIServerError.malformedRequest
@@ -814,7 +781,6 @@ enum HTTPRequestParser {
 
         var lines = headerSection.components(separatedBy: "\r\n")
 
-        // Parse the request line: "GET /path HTTP/1.1"
         guard let requestLine = lines.first else {
             throw HTTPAPIServerError.malformedRequest
         }
@@ -827,16 +793,8 @@ enum HTTPRequestParser {
 
         let method = String(requestParts[0])
         let rawPath = String(requestParts[1])
+        let path = String(rawPath.prefix(while: { $0 != "?" }))
 
-        // Strip query string if present.
-        let path: String
-        if let queryIndex = rawPath.firstIndex(of: "?") {
-            path = String(rawPath[rawPath.startIndex..<queryIndex])
-        } else {
-            path = rawPath
-        }
-
-        // Parse headers.
         var headers: [String: String] = [:]
         for line in lines {
             guard let colonIndex = line.firstIndex(of: ":") else { continue }
@@ -848,7 +806,6 @@ enum HTTPRequestParser {
             headers[key] = value
         }
 
-        // Extract body if Content-Length is present.
         var body: Data?
         if parts.count > 1 {
             let bodyString = parts.dropFirst().joined(separator: "\r\n\r\n")

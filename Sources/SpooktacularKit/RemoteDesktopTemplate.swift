@@ -37,9 +37,8 @@ public enum RemoteDesktopTemplate {
     ///   a temporary directory.
     /// - Throws: An error if the script cannot be written to disk.
     public static func generate() throws -> URL {
-        let script = scriptContent()
         let url = try ScriptFile.writeToTempDirectory(
-            script: script, fileName: "remote-desktop-setup.sh"
+            script: scriptContent(), fileName: "remote-desktop-setup.sh"
         )
         Log.provision.info("Generated remote desktop script")
         return url

@@ -127,7 +127,6 @@ private func writeAll(fd: Int32, data: Data) -> Bool {
 private func handleConnection(_ clientFD: Int32) {
     defer { close(clientFD) }
 
-    // 1. Read 4-byte big-endian script length.
     guard let lengthData = readExact(fd: clientFD, count: 4) else {
         log.error("Failed to read script length from host")
         return
@@ -141,7 +140,6 @@ private func handleConnection(_ clientFD: Int32) {
         return
     }
 
-    // 2. Read script content.
     guard let scriptData = readExact(fd: clientFD, count: Int(scriptLength)) else {
         log.error("Failed to read script body (\(scriptLength) bytes)")
         return
@@ -154,10 +152,7 @@ private func handleConnection(_ clientFD: Int32) {
 
     log.info("Received script (\(scriptLength) bytes), executing")
 
-    // 3. Write to a temp file and execute with /bin/bash.
     let exitCode = executeScript(script)
-
-    // 4. Send 4-byte big-endian exit code.
     var response = exitCode.bigEndian
     let responseData = Data(bytes: &response, count: 4)
     if !writeAll(fd: clientFD, data: responseData) {
@@ -188,7 +183,6 @@ private func executeScript(_ script: String) -> UInt32 {
 
     defer { try? FileManager.default.removeItem(at: scriptURL) }
 
-    // Make the script executable.
     chmod(scriptURL.path, 0o755)
 
     let process = Process()
@@ -229,18 +223,15 @@ enum SpookAgent {
     private static func runAgent() -> Never {
         log.info("spook-agent starting on vsock port \(agentPort)")
 
-        // 1. Create the vsock socket.
         let fd = socket(AF_VSOCK, SOCK_STREAM, 0)
         guard fd >= 0 else {
             log.error("socket() failed: \(String(cString: strerror(errno)), privacy: .public)")
             exit(1)
         }
 
-        // Allow address reuse so restarts don't fail on TIME_WAIT.
         var optval: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &optval, socklen_t(MemoryLayout<Int32>.size))
 
-        // 2. Bind to VMADDR_CID_ANY on the agent port.
         var addr = sockaddr_vm(
             svm_len: UInt8(MemoryLayout<sockaddr_vm>.size),
             svm_family: UInt8(AF_VSOCK),
@@ -260,7 +251,6 @@ enum SpookAgent {
             exit(1)
         }
 
-        // 3. Listen with a small backlog (one provisioning session at a time).
         guard listen(fd, 4) == 0 else {
             log.error("listen() failed: \(String(cString: strerror(errno)), privacy: .public)")
             close(fd)
@@ -269,7 +259,6 @@ enum SpookAgent {
 
         log.notice("Listening on vsock port \(agentPort)")
 
-        // 4. Accept loop.
         while true {
             var clientAddr = sockaddr_vm(
                 svm_len: 0, svm_family: 0, svm_reserved1: 0, svm_port: 0, svm_cid: 0
@@ -287,7 +276,6 @@ enum SpookAgent {
                 continue
             }
 
-            // H23: Only accept connections from the host (CID 2).
             guard clientAddr.svm_cid == VMADDR_CID_HOST else {
                 log.warning("Rejected connection from non-host CID \(clientAddr.svm_cid)")
                 close(clientFD)
@@ -296,7 +284,6 @@ enum SpookAgent {
 
             log.info("Accepted connection from CID \(clientAddr.svm_cid)")
 
-            // H24: Dispatch to a background queue so the accept loop isn't blocked.
             DispatchQueue.global().async {
                 handleConnection(clientFD)
             }

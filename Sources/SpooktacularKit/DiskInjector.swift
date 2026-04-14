@@ -73,7 +73,6 @@ public enum DiskInjector {
 
         Log.provision.info("Mounting guest disk for injection: \(diskPath, privacy: .public)")
 
-        // 1. Attach the disk image (get device path)
         let attachOutput = try runProcess("/usr/bin/hdiutil", arguments: [
             "attach", diskPath, "-nomount", "-plist",
         ])
@@ -85,15 +84,12 @@ public enum DiskInjector {
         }
 
         defer {
-            // Always unmount and detach
             _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", devicePath, "-force"])
             Log.provision.debug("Detached disk image")
         }
 
-        // 2. Find and mount the APFS data volume
         let volumePath = try mountDataVolume(devicePath: devicePath)
 
-        // 3. Write the user's script
         let scriptDestination = "\(volumePath)\(guestScriptPath)"
         let scriptDirectory = (scriptDestination as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(
@@ -106,7 +102,6 @@ public enum DiskInjector {
             ofItemAtPath: scriptDestination
         )
 
-        // 4. Write the LaunchDaemon plist
         let plistPath = "\(volumePath)/Library/LaunchDaemons/\(daemonLabel).plist"
         let plistDirectory = (plistPath as NSString).deletingLastPathComponent
         try FileManager.default.createDirectory(
@@ -168,10 +163,8 @@ public enum DiskInjector {
     ///
     /// - Returns: A MAC address string in `XX:XX:XX:XX:XX:XX` format.
     public static func generateMACAddress() -> String {
-        let uuid = UUID().uuid
-        // Use the first 6 bytes of a UUID as the MAC octets.
-        var octets: [UInt8] = [uuid.0, uuid.1, uuid.2, uuid.3, uuid.4, uuid.5]
-        // Set the locally administered bit (bit 1) and clear multicast (bit 0).
+        let u = UUID().uuid
+        var octets: [UInt8] = [u.0, u.1, u.2, u.3, u.4, u.5]
         octets[0] = (octets[0] | 0x02) & 0xFE
         return octets.map { String(format: "%02X", $0) }.joined(separator: ":")
     }
@@ -236,17 +229,11 @@ public enum DiskInjector {
             return nil
         }
 
-        // Prefer the GUID partition scheme entry (the whole-disk device).
-        for entity in entities {
-            if let hint = entity["content-hint"] as? String,
-               hint == "GUID_partition_scheme",
-               let devEntry = entity["dev-entry"] as? String
-            {
-                return devEntry
-            }
+        if let guid = entities.first(where: { ($0["content-hint"] as? String) == "GUID_partition_scheme" }),
+           let devEntry = guid["dev-entry"] as? String {
+            return devEntry
         }
 
-        // Fall back to the first entry with a dev-entry.
         return entities.first?["dev-entry"] as? String
     }
 
@@ -277,8 +264,6 @@ public enum DiskInjector {
             )
         }
 
-        // Find the container that references our device, then find its Data volume.
-        // Append "/" to the prefix to prevent /dev/disk4 matching /dev/disk40.
         let devicePrefix = devicePath.hasSuffix("/") ? devicePath : devicePath + "/"
         for container in containers {
             guard let designatedPhysicalStore = container["DesignatedPhysicalStore"] as? String,
@@ -297,13 +282,10 @@ public enum DiskInjector {
                       let deviceIdentifier = volume["DeviceIdentifier"] as? String
                 else { continue }
 
-                // Mount this volume.
                 let mountOutput = try runProcess("/usr/sbin/diskutil", arguments: [
                     "mount", deviceIdentifier,
                 ])
 
-                // Parse the mount point from output like "Volume name on /dev/diskXsY mounted"
-                // or use diskutil info to find the mount point.
                 let infoOutput = try runProcess("/usr/sbin/diskutil", arguments: [
                     "info", "-plist", deviceIdentifier,
                 ])
@@ -321,7 +303,6 @@ public enum DiskInjector {
                     return mountPoint
                 }
 
-                // If plist parsing didn't yield a mount point, try parsing the text output.
                 if let range = mountOutput.range(of: " on ") {
                     let rest = mountOutput[range.upperBound...]
                     let mountPoint = String(rest.prefix(while: { $0 != "\n" }))

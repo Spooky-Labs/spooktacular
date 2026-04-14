@@ -218,18 +218,15 @@ public final class VirtualMachine: NSObject, Sendable {
             }.value
 
             if !stopped {
-                // Still running — escalate to force-stop.
                 Log.vm.warning("Graceful stop timed out for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
                 nonisolated(unsafe) let unsafeVM = vm
                 try await unsafeVM.stop()
-                // Don't call updateState — the delegate's guestDidStop will handle it
                 Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' force-stopped after graceful timeout")
             }
         } else {
             Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             nonisolated(unsafe) let unsafeVM = vm
             try await unsafeVM.stop()
-            // Don't call updateState — the delegate's guestDidStop will handle it
             Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' stopped")
         }
     }
@@ -319,7 +316,6 @@ public final class VirtualMachine: NSObject, Sendable {
 
     private func updateState(_ newState: VirtualMachineState) {
         Log.vm.debug("State transition: \(self.state.rawValue, privacy: .public) → \(newState.rawValue, privacy: .public)")
-        // Only clear lastError at the start of a new lifecycle
         if newState == .starting || newState == .resuming {
             lastError = nil
         }

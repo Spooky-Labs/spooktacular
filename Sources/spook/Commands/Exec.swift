@@ -63,7 +63,6 @@ extension Spook {
             }
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
-            // `key` is already tilde-expanded by the @Option transform.
             let commandString = command.joined(separator: " ")
 
             guard let macAddress = bundle.spec.macAddress else {
@@ -79,7 +78,6 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Build the ssh command with the remote command appended.
             var args = SSHExecutor.sshOptions
             args += ["-i", key, "\(user)@\(ip)", commandString]
 

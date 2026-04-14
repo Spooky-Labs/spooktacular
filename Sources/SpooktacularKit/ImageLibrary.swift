@@ -82,9 +82,8 @@ public final class ImageLibrary: @unchecked Sendable {
     /// Loads the image library from disk.
     public func load() {
         Log.images.info("Loading image library from \(self.directory.path, privacy: .public)")
-        let fileManager = FileManager.default
         do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
             Log.images.error("Failed to create image library directory: \(error.localizedDescription, privacy: .public)")
         }
@@ -104,15 +103,14 @@ public final class ImageLibrary: @unchecked Sendable {
     /// The file is copied (or moved) into the library directory.
     public func addIPSW(at url: URL, name: String) throws {
         Log.images.info("Adding IPSW '\(name, privacy: .public)' from \(url.lastPathComponent, privacy: .public)")
-        let fileManager = FileManager.default
         let destinationURL = directory.appendingPathComponent(url.lastPathComponent)
 
         if url.path != destinationURL.path {
-            try? fileManager.removeItem(at: destinationURL)
-            try fileManager.copyItem(at: url, to: destinationURL)
+            try? FileManager.default.removeItem(at: destinationURL)
+            try FileManager.default.copyItem(at: url, to: destinationURL)
         }
 
-        let size = (try? fileManager.attributesOfItem(atPath: destinationURL.path))?[.size] as? UInt64
+        let size = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path))?[.size] as? UInt64
         images.append(VirtualMachineImage(
             name: name,
             source: .ipsw(path: destinationURL.path),
@@ -124,11 +122,10 @@ public final class ImageLibrary: @unchecked Sendable {
     /// Adds an OCI image reference to the library.
     public func addOCI(reference: String, name: String) throws {
         Log.images.info("Adding OCI image '\(name, privacy: .public)' (\(reference, privacy: .public))")
-        let image = VirtualMachineImage(
+        images.append(VirtualMachineImage(
             name: name,
             source: .oci(reference: reference)
-        )
-        images.append(image)
+        ))
         try save()
     }
 

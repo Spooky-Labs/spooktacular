@@ -236,13 +236,8 @@ public enum SetupAutomation {
     ) -> [BootStep] {
         Log.provision.info("Selecting Setup Assistant sequence for macOS \(macOSVersion, privacy: .public)")
         switch macOSVersion {
-        case 15:
-            Log.provision.debug("Using Sequoia (macOS 15) automation sequence")
-            return sequoiaSequence(username: username, password: password)
-        case 26:
-            // Tahoe shares the same Setup Assistant layout as Sequoia.
-            // Update this case when Tahoe ships with layout changes.
-            Log.provision.debug("Using Tahoe (macOS 26) automation sequence (same as Sequoia)")
+        case 15, 26:
+            Log.provision.debug("Using Sequoia-family automation sequence for macOS \(macOSVersion, privacy: .public)")
             return sequoiaSequence(username: username, password: password)
         default:
             Log.provision.error("No automation sequence available for macOS \(macOSVersion, privacy: .public)")
@@ -264,21 +259,18 @@ public enum SetupAutomation {
         username: String,
         password: String
     ) -> [BootStep] {
-        var steps: [BootStep] = []
-        steps += languageAndCountrySteps()
-        steps += transferDataSteps()
-        steps += skipScreenSteps()
-        steps += accountCreationSteps(username: username, password: password)
-        steps += postAccountSteps()
-        steps += timezoneSteps()
-        steps += finalScreensSteps()
-        steps += enableSSHSteps(password: password)
-        return steps
+        languageAndCountrySteps()
+            + transferDataSteps()
+            + skipScreenSteps()
+            + accountCreationSteps(username: username, password: password)
+            + postAccountSteps()
+            + timezoneSteps()
+            + finalScreensSteps()
+            + enableSSHSteps(password: password)
     }
 
     // MARK: - Sequoia Sequence Segments
 
-    /// Shorthand helpers used by each segment.
     private static let shiftTab = BootAction.shortcut(.tab, modifiers: [.shift])
     private static let tab = BootAction.key(.tab)
     private static let space = BootAction.key(.space)
@@ -340,7 +332,6 @@ public enum SetupAutomation {
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: space),
-            // Account creation takes ~120s; toggle VoiceOver for reliable nav.
             BootStep(delay: 120, action: voiceover),
         ]
     }
@@ -348,23 +339,17 @@ public enum SetupAutomation {
     /// Apple ID, Terms, Location screens.
     private static func postAccountSteps() -> [BootStep] {
         [
-            // Skip Apple ID (Set Up Later)
-            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 10, action: shiftTab),  // Skip Apple ID
             BootStep(delay: 0, action: space),
-            // Confirm Skip Apple ID
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 10, action: tab),        // Confirm Skip
             BootStep(delay: 0, action: space),
-            // Terms and Conditions (Agree)
-            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 10, action: shiftTab),  // Terms (Agree)
             BootStep(delay: 0, action: space),
-            // Confirm Terms
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 10, action: tab),        // Confirm Terms
             BootStep(delay: 0, action: space),
-            // Skip Location Services
-            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 10, action: shiftTab),  // Skip Location
             BootStep(delay: 0, action: space),
-            // Confirm Skip Location
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 10, action: tab),        // Confirm Skip
             BootStep(delay: 0, action: space),
         ]
     }
@@ -385,27 +370,20 @@ public enum SetupAutomation {
     /// Analytics, Screen Time, Siri, Choose Look, Auto Update, Welcome.
     private static func finalScreensSteps() -> [BootStep] {
         [
-            // Skip Analytics
-            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 10, action: shiftTab),  // Analytics
             BootStep(delay: 0, action: space),
-            // Skip Screen Time
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 10, action: tab),        // Screen Time
             BootStep(delay: 0, action: space),
-            // Skip Siri (two-step)
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 10, action: tab),        // Siri (two-step)
             BootStep(delay: 0, action: space),
             BootStep(delay: 0, action: shiftTab),
             BootStep(delay: 0, action: space),
-            // Skip Choose Look
-            BootStep(delay: 10, action: shiftTab),
+            BootStep(delay: 10, action: shiftTab),  // Choose Look
             BootStep(delay: 0, action: space),
-            // Skip Auto Update
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 10, action: tab),        // Auto Update
             BootStep(delay: 0, action: space),
-            // Welcome to Mac (dismiss)
-            BootStep(delay: 10, action: space),
-            // Disable VoiceOver
-            BootStep(delay: 0, action: voiceover),
+            BootStep(delay: 10, action: space),      // Welcome to Mac
+            BootStep(delay: 0, action: voiceover),   // Disable VoiceOver
         ]
     }
 

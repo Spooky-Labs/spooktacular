@@ -56,9 +56,9 @@ public enum GitHubRunnerTemplate {
         labels: [String] = [],
         ephemeral: Bool = false
     ) throws -> URL {
-        let script = scriptContent(repo: repo, token: token, labels: labels, ephemeral: ephemeral)
         let url = try ScriptFile.writeToTempDirectory(
-            script: script, fileName: "github-runner-setup.sh"
+            script: scriptContent(repo: repo, token: token, labels: labels, ephemeral: ephemeral),
+            fileName: "github-runner-setup.sh"
         )
         Log.provision.info("Generated GitHub runner script for \(repo, privacy: .public)")
         return url

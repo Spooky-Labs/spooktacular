@@ -1,5 +1,3 @@
-import Foundation
-
 /// Shared accessibility identifiers for UI testing.
 ///
 /// These identifiers are used by both the SwiftUI views

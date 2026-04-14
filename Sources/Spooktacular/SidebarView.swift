@@ -143,12 +143,11 @@ struct VMRow: View {
                     .lineLimit(1)
 
                 if let bundle = appState.vms[name] {
-                    let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
                     HStack(spacing: 4) {
                         Image(systemName: "cpu").font(.caption2)
                         Text("\(bundle.spec.cpuCount)")
                         Image(systemName: "memorychip").font(.caption2)
-                        Text("\(memoryInGigabytes)G")
+                        Text("\(bundle.spec.memorySizeInGigabytes)G")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)

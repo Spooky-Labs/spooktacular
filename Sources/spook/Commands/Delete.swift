@@ -30,7 +30,6 @@ extension Spook {
         func run() async throws {
             let bundleURL = try requireBundle(for: name)
 
-            // Prevent deleting a running VM unless --force is used.
             if PIDFile.isRunning(bundleURL: bundleURL) {
                 if force {
                     print(Style.info("Stopping VM '\(name)'..."))

@@ -53,9 +53,6 @@ final class AppState {
 
     // MARK: - Paths
 
-    /// Root data directory: `~/.spooktacular/`.
-    var rootDirectory: URL { SpooktacularPaths.root }
-
     /// VM bundles directory: `~/.spooktacular/vms/`.
     var vmsDirectory: URL { SpooktacularPaths.vms }
 

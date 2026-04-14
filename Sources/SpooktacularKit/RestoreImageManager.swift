@@ -111,8 +111,7 @@ public final class RestoreImageManager: Sendable {
         let localURL = cacheDirectory.appendingPathComponent(fileName)
 
         if fileManager.fileExists(atPath: localURL.path) {
-            let attrs = try? fileManager.attributesOfItem(atPath: localURL.path)
-            let size = attrs?[.size] as? UInt64 ?? 0
+            let size = (try? fileManager.attributesOfItem(atPath: localURL.path))?[.size] as? UInt64 ?? 0
             if size > 0 {
                 Log.ipsw.info("Using cached IPSW at \(localURL.lastPathComponent, privacy: .public)")
                 return localURL
@@ -323,7 +322,5 @@ private final class DownloadProgressDelegate: NSObject,
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,
         didFinishDownloadingTo location: URL
-    ) {
-        // Required by protocol; the async `download(from:)` call handles the file.
-    }
+    ) {}
 }

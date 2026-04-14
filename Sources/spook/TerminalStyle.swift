@@ -97,43 +97,10 @@ enum Style {
         styled(text, codes: "32")
     }
 
-    /// Red — stopped, disabled, error.
-    static func red(_ text: String) -> String {
-        styled(text, codes: "31")
-    }
-
     /// Yellow — paused, warning.
     static func yellow(_ text: String) -> String {
         styled(text, codes: "33")
     }
-
-    /// Blue — headers, sections.
-    static func blue(_ text: String) -> String {
-        styled(text, codes: "34")
-    }
-
-    // MARK: - Symbols
-
-    /// ✓ in green.
-    static let checkmark = success("✓")
-
-    /// ✗ in red.
-    static let cross = error("✗")
-
-    /// ⚠ in yellow.
-    static let warn = warning("⚠")
-
-    /// ● in green (running).
-    static let dotRunning = green("●")
-
-    /// ○ (stopped).
-    static let dotStopped = dim("○")
-
-    /// ◐ in yellow (paused).
-    static let dotPaused = yellow("◐")
-
-    /// ◌ in red (error).
-    static let dotError = red("◌")
 
     // MARK: - Formatting Helpers
 
@@ -148,25 +115,6 @@ enum Style {
     static func field(_ label: String, _ value: String, labelWidth: Int = 16) {
         let padded = label.padding(toLength: labelWidth, withPad: " ", startingAt: 0)
         print("  \(dim(padded)) \(value)")
-    }
-
-    /// Formats a progress bar.
-    static func progressBar(
-        fraction: Double,
-        width: Int = 30,
-        label: String = ""
-    ) -> String {
-        let filled = Int(fraction * Double(width))
-        let empty = width - filled
-        let bar = String(repeating: "█", count: filled)
-            + String(repeating: "░", count: empty)
-        let percentage = String(format: "%3.0f%%", fraction * 100)
-
-        if label.isEmpty {
-            return "\(info(bar)) \(percentage)"
-        } else {
-            return "\(label) \(info(bar)) \(percentage)"
-        }
     }
 
     /// Prints a table with headers and rows.

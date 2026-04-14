@@ -63,31 +63,21 @@ extension Spook {
             var runningCount = 0
 
             for (name, bundle) in bundles {
-                let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
-                let diskSizeInGigabytes = bundle.spec.diskSizeInGigabytes
                 let setup = bundle.metadata.setupCompleted
                     ? Style.green("✓ ready") : Style.dim("pending")
-                let network = Style.networkLabel(bundle.spec.networkMode)
                 let audio = bundle.spec.audioEnabled
                     ? Style.dim("♪") : ""
 
-                // Check if VM is currently running via PID file.
                 let isRunning = PIDFile.isRunning(bundleURL: bundle.url)
-                let runState: String
-                if isRunning {
-                    runState = Style.green("● running")
-                    runningCount += 1
-                } else {
-                    runState = Style.dim("○ stopped")
-                }
+                if isRunning { runningCount += 1 }
 
                 rows.append([
                     Style.bold(name),
-                    runState,
+                    isRunning ? Style.green("● running") : Style.dim("○ stopped"),
                     "\(bundle.spec.cpuCount) cores",
-                    "\(memoryInGigabytes) GB",
-                    "\(diskSizeInGigabytes) GB",
-                    network,
+                    "\(bundle.spec.memorySizeInGigabytes) GB",
+                    "\(bundle.spec.diskSizeInGigabytes) GB",
+                    Style.networkLabel(bundle.spec.networkMode),
                     audio,
                     setup,
                 ])

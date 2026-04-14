@@ -76,7 +76,6 @@ extension Spook.Service {
 
             Log.provision.info("Installing LaunchDaemon at \(plistPath, privacy: .public)")
 
-            // Write the plist file.
             do {
                 try plistContent.write(
                     toFile: plistPath,
@@ -89,7 +88,6 @@ extension Spook.Service {
                 throw ExitCode.failure
             }
 
-            // Bootstrap the daemon (macOS 13+ replacement for `launchctl load`).
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
             process.arguments = ["bootstrap", "system", plistPath]
@@ -107,7 +105,7 @@ extension Spook.Service {
                 Style.field("Plist", Style.dim(plistPath))
                 Style.field("Log", Style.dim("/var/log/spooktacular.\(name).log"))
                 Style.field("Error log", Style.dim("/var/log/spooktacular.\(name).error.log"))
-                print("")
+                print()
                 print(Style.dim("The daemon will start '\(name)' automatically at boot."))
                 print("To uninstall: \(Style.bold("sudo spook service uninstall \(name)"))")
             } else {
@@ -154,7 +152,6 @@ extension Spook.Service {
 
             Log.provision.info("Uninstalling LaunchDaemon from \(plistPath, privacy: .public)")
 
-            // Bootout the daemon (macOS 13+ replacement for `launchctl unload`).
             let label = ServicePlist.label(for: name)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
@@ -167,7 +164,6 @@ extension Spook.Service {
                 print(Style.warning("Could not run launchctl bootout: \(error.localizedDescription)"))
             }
 
-            // Remove the plist file.
             do {
                 try FileManager.default.removeItem(atPath: plistPath)
             } catch {
@@ -207,7 +203,6 @@ extension Spook.Service {
             let daemonsDir = "/Library/LaunchDaemons"
             let fm = FileManager.default
 
-            // Find all Spooktacular VM plists.
             let prefix = ServicePlist.labelPrefix
             let allFiles = (try? fm.contentsOfDirectory(atPath: daemonsDir)) ?? []
             let vmPlists = allFiles
@@ -215,41 +210,32 @@ extension Spook.Service {
                 .sorted()
 
             print(Style.bold("Spooktacular VM LaunchDaemons"))
-            print("")
+            print()
 
             if vmPlists.isEmpty {
                 print(Style.dim("No VM daemons installed."))
-                print("")
+                print()
                 print("Install one with: \(Style.bold("sudo spook service install <vm-name>"))")
                 return
             }
 
             for plistFile in vmPlists {
-                // Extract VM name from filename: com.spooktacular.vm.<name>.plist
                 let label = String(plistFile.dropLast(".plist".count))
                 let vmName = String(label.dropFirst("\(prefix).".count))
 
-                // `launchctl print` exits 0 when the service is loaded.
                 let probe = Process()
                 probe.executableURL = URL(fileURLWithPath: "/bin/launchctl")
                 probe.arguments = ["print", "system/\(label)"]
                 probe.standardOutput = FileHandle.nullDevice
                 probe.standardError = FileHandle.nullDevice
 
-                var isRunning = false
-                do {
-                    try probe.run()
+                var isLoaded = false
+                if let _ = try? probe.run() {
                     probe.waitUntilExit()
-                    isRunning = probe.terminationStatus == 0
-                } catch {
-                    // If launchctl fails, treat as not running.
+                    isLoaded = probe.terminationStatus == 0
                 }
 
-                let status = isRunning
-                    ? Style.green("running")
-                    : Style.dim("not running")
-
-                Style.field(vmName, status)
+                Style.field(vmName, isLoaded ? Style.green("running") : Style.dim("not running"))
             }
         }
     }

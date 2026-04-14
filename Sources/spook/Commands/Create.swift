@@ -282,7 +282,6 @@ extension Spook {
                 }
                 print()
 
-                // Automate Setup Assistant unless the user opted out.
                 let macOSMajor = version.majorVersion
                 if !skipSetup && SetupAutomation.isSupported(macOSVersion: macOSMajor) {
                     try await automateSetupAssistant(
@@ -298,8 +297,7 @@ extension Spook {
                     ))
                 }
 
-                // Auto-provision if a template was selected.
-                var provisionScript: URL? = nil
+                var provisionScript: URL?
 
                 if githubRunner {
                     guard let repo = githubRepo, let token = githubToken else {
@@ -339,13 +337,8 @@ extension Spook {
                             )
                         }
 
-                    case .agent:
-                        print(Style.error("✗ Agent provisioning is not yet available (planned for a future release)."))
-                        print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
-                        throw ExitCode.failure
-
-                    case .sharedFolder:
-                        print(Style.error("✗ Shared-folder provisioning is not yet available (planned for a future release)."))
+                    case .agent, .sharedFolder:
+                        print(Style.error("✗ \(provision.label) provisioning is not yet available (planned for a future release)."))
                         print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
                         throw ExitCode.failure
                     }
@@ -392,7 +385,6 @@ extension Spook {
         ) async throws {
             let logger = Log.provision
 
-            // 1. Create and start the VM headless.
             logger.info("Creating VM instance from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
             print(Style.info("Booting VM for provisioning..."))
             let vm = try VirtualMachine(bundle: bundle)
@@ -400,7 +392,6 @@ extension Spook {
             logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' started for provisioning")
             print(Style.success("✓ VM is running."))
 
-            // Use a do/catch so the VM is always stopped, even on failure.
             do {
                 print(Style.info("Resolving VM IP address..."))
                 let ip = try await VMProvisioner.provisionViaSSH(
@@ -425,7 +416,6 @@ extension Spook {
                 print(Style.dim("  spook start \(name) --headless --user-data \(script.path) --provision ssh"))
             }
 
-            // Stop the VM.
             logger.info("Stopping VM '\(bundle.url.lastPathComponent, privacy: .public)' after provisioning")
             print(Style.info("Stopping VM..."))
             try? await vm.stop(graceful: false)
@@ -459,7 +449,6 @@ extension Spook {
             logger.info("Starting Setup Assistant automation for macOS \(macOSVersion, privacy: .public)")
             print(Style.info("Automating Setup Assistant for macOS \(macOSVersion)..."))
 
-            // 1. Boot the VM.
             let vm = try VirtualMachine(bundle: bundle)
             guard let underlyingVM = vm.vzVM else {
                 print(Style.error("✗ Failed to create virtual machine instance for setup."))
@@ -475,7 +464,6 @@ extension Spook {
             print(Style.success("✓ VM booted."))
 
             do {
-                // 2. Run the keyboard automation sequence.
                 let steps = SetupAutomation.sequence(for: macOSVersion)
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
                 print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
@@ -483,7 +471,6 @@ extension Spook {
                 logger.notice("Setup Assistant automation steps completed")
                 print(Style.success("✓ Setup Assistant automation complete."))
 
-                // 3. Wait for SSH to confirm setup finished.
                 logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
                 print(Style.info("Waiting for SSH to confirm setup completed..."))
                 guard let ip = try await IPResolver.resolveIPWithRetry(macAddress: macAddress, timeout: 120) else {
@@ -504,7 +491,6 @@ extension Spook {
                 logger.notice("SSH confirmed on \(ip, privacy: .public)")
                 print(Style.success("✓ SSH available at \(ip). Setup confirmed."))
 
-                // 4. Mark setup as completed in the bundle metadata.
                 var metadata = bundle.metadata
                 metadata.setupCompleted = true
                 try VirtualMachineBundle.writeMetadata(metadata, to: bundle.url)
@@ -517,7 +503,6 @@ extension Spook {
                 print(Style.dim("  The VM was created. Run 'spook start \(name)' to complete setup manually."))
             }
 
-            // 5. Stop the VM.
             logger.info("Stopping VM after Setup Assistant automation")
             print(Style.info("Stopping VM..."))
             try? await vm.stop(graceful: false)

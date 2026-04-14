@@ -99,36 +99,23 @@ public enum Compatibility {
 
         Log.compatibility.info("Checking compatibility: host \(host.majorVersion, privacy: .public).\(host.minorVersion, privacy: .public).\(host.patchVersion, privacy: .public) vs image \(imageVersion.majorVersion, privacy: .public).\(imageVersion.minorVersion, privacy: .public).\(imageVersion.patchVersion, privacy: .public)")
 
-        let result: Result = compare(host, isAtLeast: imageVersion)
-            ? .compatible
-            : .hostTooOld(hostVersion: host, imageVersion: imageVersion)
-
-        if result.isCompatible {
-            Log.compatibility.debug("Compatibility check passed")
-        } else {
+        guard compare(host, isAtLeast: imageVersion) else {
             Log.compatibility.error("Compatibility check failed: host too old")
+            return .hostTooOld(hostVersion: host, imageVersion: imageVersion)
         }
 
-        return result
+        Log.compatibility.debug("Compatibility check passed")
+        return .compatible
     }
 
-    // MARK: - Private
-
-    /// Tuple comparison: `lhs >= rhs` by (major, minor, patch).
     private static func compare(
         _ lhs: OperatingSystemVersion,
         isAtLeast rhs: OperatingSystemVersion
     ) -> Bool {
-        if lhs.majorVersion != rhs.majorVersion {
-            return lhs.majorVersion > rhs.majorVersion
-        }
-        if lhs.minorVersion != rhs.minorVersion {
-            return lhs.minorVersion > rhs.minorVersion
-        }
-        return lhs.patchVersion >= rhs.patchVersion
+        (lhs.majorVersion, lhs.minorVersion, lhs.patchVersion)
+            >= (rhs.majorVersion, rhs.minorVersion, rhs.patchVersion)
     }
 
-    /// Formats a version as "major.minor.patch".
     private static func versionString(
         _ version: OperatingSystemVersion
     ) -> String {
@@ -144,14 +131,16 @@ extension Compatibility.Result: Equatable {
         case (.compatible, .compatible):
             return true
         case (.hostTooOld(let lhsHost, let lhsImage), .hostTooOld(let rhsHost, let rhsImage)):
-            return lhsHost.majorVersion == rhsHost.majorVersion
-                && lhsHost.minorVersion == rhsHost.minorVersion
-                && lhsHost.patchVersion == rhsHost.patchVersion
-                && lhsImage.majorVersion == rhsImage.majorVersion
-                && lhsImage.minorVersion == rhsImage.minorVersion
-                && lhsImage.patchVersion == rhsImage.patchVersion
+            return versionTuple(lhsHost) == versionTuple(rhsHost)
+                && versionTuple(lhsImage) == versionTuple(rhsImage)
         default:
             return false
         }
+    }
+
+    private static func versionTuple(
+        _ v: OperatingSystemVersion
+    ) -> (Int, Int, Int) {
+        (v.majorVersion, v.minorVersion, v.patchVersion)
     }
 }

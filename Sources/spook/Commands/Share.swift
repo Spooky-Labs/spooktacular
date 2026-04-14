@@ -99,7 +99,7 @@ extension Spook.Share {
             Style.field("Path", path)
             Style.field("Tag", shareTag)
             Style.field("Read-only", readOnly ? "yes" : "no")
-            print("")
+            print()
             print(Style.dim("The share will be available on next 'spook start \(name)'."))
             print(Style.dim("In the guest, mount with: mount_virtiofs \(shareTag) /Volumes/\(shareTag)"))
         }

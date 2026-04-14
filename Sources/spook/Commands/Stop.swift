@@ -45,13 +45,11 @@ extension Spook {
 
             guard PIDFile.isProcessAlive(pid) else {
                 print(Style.dim("VM '\(name)' is not running (stale PID file, process \(pid) exited)."))
-                // Clean up the stale PID file.
                 PIDFile.remove(from: bundleURL)
                 return
             }
 
             if force {
-                // SIGTERM with escalation to SIGKILL after grace period.
                 print(Style.info("Terminating VM '\(name)' (PID \(pid))..."))
                 await PIDFile.terminate(bundleURL: bundleURL)
                 print(Style.success("✓ VM '\(name)' stopped."))
@@ -80,7 +78,6 @@ extension Spook {
                 } else {
                     let errorCode = errno
                     print(Style.error("✗ Failed to send signal to PID \(pid): errno \(errorCode)"))
-                    // Clean up stale PID file if the process no longer exists.
                     if errorCode == ESRCH {
                         PIDFile.remove(from: bundleURL)
                         print(Style.dim("Cleaned up stale PID file."))

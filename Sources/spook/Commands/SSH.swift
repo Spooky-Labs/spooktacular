@@ -50,7 +50,6 @@ extension Spook {
             }
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
-            // `key` is already tilde-expanded by the @Option transform.
 
             guard let macAddress = bundle.spec.macAddress else {
                 print(Style.error("✗ VM '\(name)' has no configured MAC address for automatic IP resolution."))
@@ -68,7 +67,6 @@ extension Spook {
 
             print(Style.info("Connecting to \(user)@\(ip)..."))
 
-            // Build the ssh command and exec it, replacing this process.
             var args = SSHExecutor.sshOptions
             args += ["-i", key, "\(user)@\(ip)"]
 

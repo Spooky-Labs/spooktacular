@@ -76,14 +76,12 @@ extension Spook {
 
             try SpooktacularPaths.ensureDirectories()
 
-            // Check if this specific VM is already running.
             if PIDFile.isRunning(bundleURL: bundleURL) {
                 print(Style.error("✗ VM '\(name)' is already running."))
                 throw ExitCode.failure
             }
 
-            // Clean up any stale ephemeral bundles (marked ephemeral
-            // with a dead PID — leftover from a crash or forced stop).
+            // Clean up stale ephemeral bundles from crashed processes.
             let fm = FileManager.default
             if let allBundles = try? fm.contentsOfDirectory(
                 at: SpooktacularPaths.vms,
@@ -103,9 +101,6 @@ extension Spook {
 
             var bundle = try VirtualMachineBundle.load(from: bundleURL)
 
-            // Persist ephemeral flag in metadata before starting so
-            // other processes (or a future start) can detect and clean
-            // up if this process crashes.
             if ephemeral && !bundle.metadata.isEphemeral {
                 var metadata = bundle.metadata
                 metadata.isEphemeral = true
@@ -113,8 +108,6 @@ extension Spook {
                 bundle = try VirtualMachineBundle.load(from: bundleURL)
             }
 
-            // Pre-boot provisioning: modes that write to the guest disk
-            // or shared folder while the VM is stopped.
             if let scriptPath = userData {
                 let scriptURL = URL(fileURLWithPath:
                     NSString(string: scriptPath).expandingTildeInPath
@@ -122,56 +115,30 @@ extension Spook {
 
                 switch provision {
                 case .diskInject:
-                    guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-                        print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
-                        print(Style.dim("  Verify the file path exists and is readable."))
-                        throw ExitCode.failure
-                    }
+                    try requireScript(at: scriptURL, path: scriptPath)
                     print(Style.info("Injecting user-data script into guest disk..."))
-                    do {
+                    try injectOrFail(label: "Disk injection") {
                         try DiskInjector.inject(script: scriptURL, into: bundle)
-                        print(Style.success("✓ Script injected. It will run automatically on boot."))
-                    } catch {
-                        print(Style.error("✗ Disk injection failed: \(error.localizedDescription)"))
-                        if let localizedError = error as? LocalizedError,
-                           let recovery = localizedError.recoverySuggestion {
-                            print(Style.dim("  \(recovery)"))
-                        }
-                        throw ExitCode.failure
                     }
+                    print(Style.success("✓ Script injected. It will run automatically on boot."))
 
                 case .sharedFolder:
-                    guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-                        print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
-                        print(Style.dim("  Verify the file path exists and is readable."))
-                        throw ExitCode.failure
-                    }
+                    try requireScript(at: scriptURL, path: scriptPath)
                     print(Style.info("Setting up shared-folder provisioning..."))
-                    do {
-                        // Place script in shared folder for the watcher daemon.
+                    try injectOrFail(label: "Shared-folder provisioning") {
                         try SharedFolderProvisioner.provision(
                             script: scriptURL,
                             bundle: bundle
                         )
-                        // Inject the watcher daemon into the disk so it works
-                        // on any VM, even without pre-installed watchers.
                         let watcherScript = try ScriptFile.writeToTempDirectory(
                             script: SharedFolderProvisioner.watcherInstallScript(),
                             fileName: "install-watcher.sh"
                         )
                         try DiskInjector.inject(script: watcherScript, into: bundle)
-                        print(Style.success("✓ Script placed in shared folder. Watcher daemon injected."))
-                    } catch {
-                        print(Style.error("✗ Shared-folder provisioning failed: \(error.localizedDescription)"))
-                        if let localizedError = error as? LocalizedError,
-                           let recovery = localizedError.recoverySuggestion {
-                            print(Style.dim("  \(recovery)"))
-                        }
-                        throw ExitCode.failure
                     }
+                    print(Style.success("✓ Script placed in shared folder. Watcher daemon injected."))
 
                 case .ssh, .agent:
-                    // These modes run after boot. Nothing to do pre-boot.
                     break
                 }
             }
@@ -186,9 +153,8 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Write PID file and atomically verify the concurrency limit.
-            // Writing first closes the TOCTOU gap where two processes could
-            // both pass a capacity check before either writes its PID.
+            // Write-then-verify closes the TOCTOU gap where two processes
+            // could both pass a capacity check before either writes its PID.
             do {
                 try PIDFile.writeAndEnsureCapacity(
                     bundleURL: bundleURL,
@@ -202,7 +168,6 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Graceful shutdown on SIGTERM and SIGINT (Ctrl+C).
             let isEphemeral = ephemeral
             for sig in [SIGTERM, SIGINT] {
                 signal(sig, SIG_IGN)
@@ -234,15 +199,13 @@ extension Spook {
 
             print(Style.success("✓ VM '\(name)' is running."))
 
-            // Post-boot provisioning: handle modes that run after the VM starts.
             if let scriptPath = userData {
                 Style.field("User-data", scriptPath)
                 Style.field("Provision", provision.label)
 
                 switch provision {
-                case .diskInject:
-                    // Already handled above (before vm.start). The script
-                    // was injected into the disk and will run via launchd.
+                case .diskInject, .sharedFolder:
+                    // Handled pre-boot above.
                     break
 
                 case .ssh:
@@ -280,7 +243,6 @@ extension Spook {
                         throw ExitCode.failure
                     }
 
-                    // Resolve the VM's IP for SSH fallback if the agent is not installed.
                     var fallbackIP: String?
                     if let macAddress = bundle.spec.macAddress {
                         fallbackIP = try? await IPResolver.resolveIP(macAddress: macAddress)
@@ -305,11 +267,6 @@ extension Spook {
                         throw ExitCode.failure
                     }
 
-                case .sharedFolder:
-                    // Already handled above (before vm.start). The script
-                    // was placed in the shared folder and the watcher daemon
-                    // was injected into the disk. It will run via launchd.
-                    break
                 }
             }
 
@@ -342,9 +299,6 @@ extension Spook {
                 app.activate(ignoringOtherApps: true)
                 print(Style.dim("Press Ctrl+C to stop the VM."))
 
-                // Monitor VM state in the background so the process
-                // exits when the VM stops, even while the AppKit
-                // event loop is running.
                 let isEphemeralCapture = ephemeral
                 Task { @MainActor in
                     for await state in vm.stateStream {
@@ -360,29 +314,42 @@ extension Spook {
                     NSApp.terminate(nil)
                 }
 
-                // Run the AppKit event loop. This blocks until
-                // NSApp.terminate() is called (from the state
-                // monitor above or the SIGTERM handler).
                 app.run()
             } else {
                 print(Style.dim("Running headless. Press Ctrl+C to stop."))
 
-                // Block until the VM stops or the process is interrupted.
-                // Listen to the state stream instead of leaking a continuation.
                 for await state in vm.stateStream {
                     if state == .stopped || state == .error {
                         break
                     }
                 }
 
-                // Clean up PID file when VM stops normally.
                 PIDFile.remove(from: bundleURL)
-
-                // Destroy the bundle if running in ephemeral mode.
                 if ephemeral {
                     try? FileManager.default.removeItem(at: bundleURL)
                     print("Ephemeral VM '\(name)' destroyed.")
                 }
+            }
+        }
+
+        private func requireScript(at url: URL, path: String) throws {
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                print(Style.error("✗ User-data script not found at '\(path)'."))
+                print(Style.dim("  Verify the file path exists and is readable."))
+                throw ExitCode.failure
+            }
+        }
+
+        private func injectOrFail(label: String, _ work: () throws -> Void) throws {
+            do {
+                try work()
+            } catch {
+                print(Style.error("✗ \(label) failed: \(error.localizedDescription)"))
+                if let localizedError = error as? LocalizedError,
+                   let recovery = localizedError.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
+                throw ExitCode.failure
             }
         }
     }

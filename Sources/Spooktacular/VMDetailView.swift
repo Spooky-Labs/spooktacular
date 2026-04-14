@@ -96,13 +96,11 @@ struct VMLaunchView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            // Icon
             Image(systemName: "desktopcomputer")
                 .font(.system(size: 64))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
-            // Name + status
             VStack(spacing: 6) {
                 Text(name)
                     .font(.largeTitle)
@@ -118,13 +116,10 @@ struct VMLaunchView: View {
                 .foregroundStyle(ready ? .green : .orange)
             }
 
-            // Quick spec summary (one line)
-            let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
-            let diskSizeInGigabytes = bundle.spec.diskSizeInGigabytes
             HStack(spacing: 16) {
                 Label("\(bundle.spec.cpuCount) cores", systemImage: "cpu")
-                Label("\(memoryInGigabytes) GB", systemImage: "memorychip")
-                Label("\(diskSizeInGigabytes) GB", systemImage: "internaldrive")
+                Label("\(bundle.spec.memorySizeInGigabytes) GB", systemImage: "memorychip")
+                Label("\(bundle.spec.diskSizeInGigabytes) GB", systemImage: "internaldrive")
                 Label(
                     "\(bundle.spec.displayCount)",
                     systemImage: "display"
@@ -133,7 +128,6 @@ struct VMLaunchView: View {
             .font(.callout)
             .foregroundStyle(.secondary)
 
-            // Start button
             Button {
                 Task { await appState.startVM(name) }
             } label: {
@@ -147,7 +141,6 @@ struct VMLaunchView: View {
             .accessibilityIdentifier(AccessibilityID.startButton)
             .accessibilityHint("Boots the virtual machine")
 
-            // Hint about inspector
             Text("Open the inspector panel for full configuration details.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)

@@ -68,14 +68,12 @@ enum LaunchDaemon {
     static func install() {
         let log = Logger(subsystem: "com.spooktacular.agent", category: "install")
 
-        // Verify the binary exists where the plist expects it.
         guard FileManager.default.fileExists(atPath: agentPath) else {
             log.error("Agent binary not found at \(agentPath, privacy: .public)")
             print("Error: \(agentPath) not found. Copy the binary there first.")
             exit(1)
         }
 
-        // Write the plist file.
         do {
             try plistContent.write(toFile: plistPath, atomically: true, encoding: .utf8)
         } catch {
@@ -86,7 +84,6 @@ enum LaunchDaemon {
 
         print("Wrote \(plistPath)")
 
-        // Bootstrap the daemon (macOS 13+ replacement for `launchctl load`).
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = ["bootstrap", "system", plistPath]

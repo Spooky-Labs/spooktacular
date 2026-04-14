@@ -114,7 +114,6 @@ public enum SnapshotManager {
             throw SnapshotError.alreadyExists(label: label)
         }
 
-        // Verify disk.img exists before creating anything.
         let diskURL = bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
         guard fileManager.fileExists(atPath: diskURL.path) else {
             Log.snapshot.error("Snapshot failed: disk.img not found at \(diskURL.path, privacy: .public)")
@@ -229,25 +228,19 @@ public enum SnapshotManager {
         let tempURL = destination.deletingLastPathComponent()
             .appendingPathComponent(destination.lastPathComponent + ".restoring")
 
-        // Clean up any leftover temp from a previous interrupted restore.
         if fileManager.fileExists(atPath: tempURL.path) {
             try fileManager.removeItem(at: tempURL)
         }
 
-        // Clone the snapshot file to the temp location.
         try fileManager.copyItem(at: source, to: tempURL)
 
         do {
             if fileManager.fileExists(atPath: destination.path) {
-                // Atomic swap — replaceItemAt returns the URL of the
-                // original item moved to a backup location; we discard it.
                 _ = try fileManager.replaceItemAt(destination, withItemAt: tempURL)
             } else {
-                // No existing file to replace — just move the temp into place.
                 try fileManager.moveItem(at: tempURL, to: destination)
             }
         } catch {
-            // Clean up the temp file so it doesn't linger.
             try? fileManager.removeItem(at: tempURL)
             throw error
         }
@@ -272,12 +265,11 @@ public enum SnapshotManager {
             return []
         }
 
-        let contents = try fileManager.contentsOfDirectory(
+        let snapshots = try fileManager.contentsOfDirectory(
             at: savedStatesURL,
             includingPropertiesForKeys: nil
         )
-
-        let snapshots = try contents.compactMap { dir -> SnapshotInfo? in
+        .compactMap { dir -> SnapshotInfo? in
             let infoURL = dir.appendingPathComponent(infoFileName)
             guard fileManager.fileExists(atPath: infoURL.path) else { return nil }
             let data = try Data(contentsOf: infoURL)

@@ -66,7 +66,6 @@ public enum VMProvisioner {
         timeout: TimeInterval = 120,
         pollInterval: TimeInterval = 5
     ) async throws -> String {
-        // 1. Resolve the VM's IP address by polling DHCP/ARP.
         Log.provision.info("Resolving IP for MAC \(macAddress, privacy: .public)")
         guard let ip = try await IPResolver.resolveIPWithRetry(
             macAddress: macAddress,
@@ -78,12 +77,10 @@ public enum VMProvisioner {
         }
         Log.provision.notice("Resolved IP \(ip, privacy: .public) for MAC \(macAddress, privacy: .public)")
 
-        // 2. Wait for SSH to become available.
         Log.provision.info("Waiting for SSH on \(ip, privacy: .public)")
         try await SSHExecutor.waitForSSH(ip: ip)
         Log.provision.notice("SSH available on \(ip, privacy: .public)")
 
-        // 3. Execute the provisioning script.
         Log.provision.info("Executing provisioning script on \(ip, privacy: .public)")
         try await SSHExecutor.execute(
             script: script,

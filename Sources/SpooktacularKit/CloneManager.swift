@@ -69,8 +69,6 @@ public enum CloneManager {
         )
 
         do {
-            // Copy disk, auxiliary storage, and hardware model.
-            // Uses clonefile(2) where APFS is available (COW clone).
             for fileName in filesToCopy {
                 let sourceFile = source.url.appendingPathComponent(fileName)
                 let destinationFile = destination.appendingPathComponent(fileName)
@@ -80,14 +78,10 @@ public enum CloneManager {
                     continue
                 }
 
-                Log.clone.debug("Copying \(fileName, privacy: .public) (COW clonefile where APFS)")
+                Log.clone.debug("Copying \(fileName, privacy: .public)")
                 try fileManager.copyItem(at: sourceFile, to: destinationFile)
             }
 
-            // Generate a fresh machine identifier. Every VM must
-            // have a unique ECID — reusing the source's identifier
-            // causes undefined behavior in the Virtualization
-            // framework.
             Log.clone.debug("Generating new VZMacMachineIdentifier for clone")
             let newIdentifier = VZMacMachineIdentifier()
             try newIdentifier.dataRepresentation.write(
@@ -108,7 +102,6 @@ public enum CloneManager {
                 metadata: metadata
             )
         } catch {
-            // Clean up partial clone on failure.
             Log.clone.error("Clone failed, cleaning up: \(error.localizedDescription, privacy: .public)")
             try? fileManager.removeItem(at: destination)
             throw error

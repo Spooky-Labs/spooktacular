@@ -146,14 +146,12 @@ actor Reconciler {
             return
         }
 
-        // Stop (best-effort).
         if case .success = await callNodeAPI(endpoint: endpoint, method: "POST",
                                              path: "/v1/vms/\(name)/stop", body: nil) {
             logger.info("Stopped '\(name, privacy: .public)' on \(nodeName, privacy: .public)")
             try? await Task.sleep(for: .seconds(2))
         }
 
-        // Delete.
         let result = await callNodeAPI(endpoint: endpoint, method: "DELETE",
                                        path: "/v1/vms/\(name)", body: nil)
         switch result {

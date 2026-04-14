@@ -63,40 +63,25 @@ extension Spook {
             metadata: VirtualMachineMetadata,
             bundle: VirtualMachineBundle
         ) {
-            let memoryInGigabytes = spec.memorySizeInGigabytes
-            let diskSizeInGigabytes = spec.diskSizeInGigabytes
-
-            // Header
             print()
             print("  \(Style.bold(name))")
-            let setupBadge = metadata.setupCompleted
-                ? Style.green("● ready")
-                : Style.yellow("○ setup pending")
-            print("  \(setupBadge)")
+            print("  \(metadata.setupCompleted ? Style.green("● ready") : Style.yellow("○ setup pending"))")
             print()
 
-            // Hardware
             Style.header("  ⬡ Hardware")
             Style.field("CPU", "\(spec.cpuCount) cores")
-            Style.field("Memory", "\(memoryInGigabytes) GB")
-            Style.field("Disk", "\(diskSizeInGigabytes) GB" + Style.dim(" (APFS sparse)"))
+            Style.field("Memory", "\(spec.memorySizeInGigabytes) GB")
+            Style.field("Disk", "\(spec.diskSizeInGigabytes) GB" + Style.dim(" (APFS sparse)"))
 
-            // Display
             Style.header("  ◻ Display")
             Style.field("Monitors", "\(spec.displayCount)")
             Style.field("Auto-resize", spec.autoResizeDisplay
                         ? Style.green("enabled") : Style.dim("disabled"))
 
-            // Network
             Style.header("  ⬡ Network")
             Style.field("Mode", spec.networkMode.serialized)
-            if let mac = spec.macAddress {
-                Style.field("MAC address", Style.dim(mac))
-            } else {
-                Style.field("MAC address", Style.dim("auto"))
-            }
+            Style.field("MAC address", Style.dim(spec.macAddress ?? "auto"))
 
-            // Audio
             Style.header("  ♪ Audio")
             Style.field("Speaker", spec.audioEnabled
                         ? Style.green("enabled") : Style.dim("disabled"))
@@ -105,7 +90,6 @@ extension Spook {
             Style.field("Clipboard", spec.clipboardSharingEnabled
                         ? Style.green("enabled") : Style.dim("disabled"))
 
-            // Shared Folders
             Style.header("  ⤢ Shared Folders")
             if spec.sharedFolders.isEmpty {
                 Style.field("", Style.dim("none"))
@@ -120,7 +104,6 @@ extension Spook {
                 }
             }
 
-            // Identity
             Style.header("  ◈ Identity")
             Style.field("ID", Style.dim(metadata.id.uuidString))
             Style.field("Created", Style.dim(

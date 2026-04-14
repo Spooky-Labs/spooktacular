@@ -93,14 +93,11 @@ public enum SharedFolderProvisioner {
         }
 
         let stagingDir = stagingDirectory(for: bundle)
-
-        // Create the staging directory if needed.
         try fileManager.createDirectory(
             at: stagingDir,
             withIntermediateDirectories: true
         )
 
-        // Copy the script with a known name.
         let destination = stagingDir.appendingPathComponent(scriptFileName)
         if fileManager.fileExists(atPath: destination.path) {
             try fileManager.removeItem(at: destination)
@@ -111,7 +108,6 @@ public enum SharedFolderProvisioner {
             ofItemAtPath: destination.path
         )
 
-        // Write a trigger file that the watcher daemon looks for.
         let trigger = stagingDir.appendingPathComponent(triggerFileName)
         try Data().write(to: trigger)
 

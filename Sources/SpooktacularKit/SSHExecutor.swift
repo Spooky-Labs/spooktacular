@@ -180,9 +180,6 @@ public enum SSHExecutor {
         )
         let connection = NWConnection(to: endpoint, using: .tcp)
 
-        // Track whether the continuation has already been resumed
-        // to avoid double-resume from the timeout and state handler
-        // racing.
         nonisolated(unsafe) var resumed = false
         let lock = NSLock()
 
@@ -206,7 +203,6 @@ public enum SSHExecutor {
             }
             connection.start(queue: .global(qos: .utility))
 
-            // Timeout after 2 seconds.
             DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
                 lock.lock()
                 defer { lock.unlock() }
@@ -248,17 +244,15 @@ public enum SSHExecutor {
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
 
-        // Inherit stdout/stderr so output streams to the terminal.
         process.standardOutput = FileHandle.standardOutput
         process.standardError = FileHandle.standardError
 
-        let status = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int32, Error>) in
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int32, Error>) in
             process.terminationHandler = { p in
                 continuation.resume(returning: p.terminationStatus)
             }
             do { try process.run() } catch { continuation.resume(throwing: error) }
         }
-        return status
     }
 }
 

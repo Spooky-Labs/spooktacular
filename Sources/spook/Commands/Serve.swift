@@ -78,7 +78,6 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Install signal handlers for graceful shutdown.
             let shutdownServer = server
             for sig in [SIGTERM, SIGINT] {
                 signal(sig, SIG_IGN)
@@ -109,8 +108,6 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Block forever — the server runs on NWListener's dispatch queue.
-            // Signal handlers will call exit(0) on shutdown.
             try await Task.sleep(for: .seconds(Double(Int.max)))
         }
     }

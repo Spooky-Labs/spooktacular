@@ -47,14 +47,12 @@ public enum IPResolver {
         let normalizedMAC = macAddress.lowercased()
         Log.network.info("Resolving IP for MAC \(normalizedMAC)")
 
-        // Strategy 1: DHCP lease file (best for NAT VMs)
         Log.network.debug("Trying DHCP leases for MAC \(normalizedMAC)")
         if let ip = try resolveFromLeases(macAddress: normalizedMAC) {
             Log.network.info("Resolved IP \(ip, privacy: .public) from DHCP leases for MAC \(normalizedMAC, privacy: .public)")
             return ip
         }
 
-        // Strategy 2: ARP table (best for bridged VMs)
         Log.network.debug("Trying ARP table for MAC \(normalizedMAC)")
         if let ip = try await resolveFromARP(macAddress: normalizedMAC) {
             Log.network.info("Resolved IP \(ip, privacy: .public) from ARP table for MAC \(normalizedMAC, privacy: .public)")
@@ -145,12 +143,9 @@ public enum IPResolver {
     /// - Returns: The IP address from the last matching lease
     ///   record, or `nil` if not found.
     public static func parseLeases(_ content: String, macAddress: String) -> String? {
-        // Split into records delimited by { ... }
-        let records = content.components(separatedBy: "}")
-
         var lastMatchIP: String?
 
-        for record in records {
+        for record in content.components(separatedBy: "}") {
             var ip: String?
             var mac: String?
 
@@ -159,9 +154,7 @@ public enum IPResolver {
                 if trimmed.hasPrefix("ip_address=") {
                     ip = String(trimmed.dropFirst("ip_address=".count))
                 } else if trimmed.hasPrefix("hw_address=") {
-                    // Format: "hw_address=1,aa:bb:cc:dd:ee:ff"
                     let value = String(trimmed.dropFirst("hw_address=".count))
-                    // Strip the hardware type prefix (e.g., "1,")
                     if let commaIndex = value.firstIndex(of: ",") {
                         mac = String(value[value.index(after: commaIndex)...]).lowercased()
                     } else {
@@ -170,7 +163,7 @@ public enum IPResolver {
                 }
             }
 
-            if let foundMAC = mac, let foundIP = ip, foundMAC == macAddress {
+            if mac == macAddress, let foundIP = ip {
                 lastMatchIP = foundIP
             }
         }
@@ -208,19 +201,13 @@ public enum IPResolver {
     ///   `nil` if not found.
     public static func parseARPOutput(_ output: String, macAddress: String) -> String? {
         for line in output.components(separatedBy: .newlines) {
-            let lowered = line.lowercased()
-            guard lowered.contains(macAddress) else { continue }
-
-            // Extract IP from between parentheses: "? (192.168.64.2) at ..."
-            guard let openParen = line.firstIndex(of: "("),
+            guard line.lowercased().contains(macAddress),
+                  let openParen = line.firstIndex(of: "("),
                   let closeParen = line.firstIndex(of: ")"),
                   openParen < closeParen
-            else {
-                continue
-            }
+            else { continue }
 
-            let ip = String(line[line.index(after: openParen)..<closeParen])
-            return ip
+            return String(line[line.index(after: openParen)..<closeParen])
         }
         return nil
     }

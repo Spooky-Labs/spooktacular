@@ -41,10 +41,9 @@ public enum PIDFile {
     ///   directory (e.g., `~/.spooktacular/vms/my-vm.vm`).
     /// - Throws: An error if the file cannot be written.
     public static func write(to bundleURL: URL) throws {
-        let pidURL = bundleURL.appendingPathComponent(fileName)
         let pid = ProcessInfo.processInfo.processIdentifier
-        let data = Data("\(pid)".utf8)
-        try data.write(to: pidURL, options: .atomic)
+        let pidURL = bundleURL.appendingPathComponent(fileName)
+        try Data("\(pid)".utf8).write(to: pidURL, options: .atomic)
         Log.vm.info("Wrote PID file: \(pid) → \(pidURL.lastPathComponent, privacy: .public)")
     }
 

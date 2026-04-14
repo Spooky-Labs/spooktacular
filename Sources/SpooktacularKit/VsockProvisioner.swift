@@ -113,9 +113,6 @@ public enum VsockProvisioner {
         do {
             let connection = try await socketDevice.connect(toPort: agentPort)
 
-            // VZVirtioSocketConnection provides a raw file descriptor
-            // for bidirectional I/O. We duplicate the fd so each
-            // handle can close independently without affecting the other.
             let fd = connection.fileDescriptor
             let writeFD = dup(fd)
             let readFD = dup(fd)
@@ -133,8 +130,6 @@ public enum VsockProvisioner {
                 "Script sent via vsock (\(frame.count) bytes), waiting for completion"
             )
 
-            // Read the 4-byte exit code response from the agent.
-            // The read blocks, so dispatch it off the main actor.
             let responseData: Data = await withCheckedContinuation { continuation in
                 DispatchQueue.global(qos: .userInitiated).async {
                     let data = readHandle.readData(ofLength: 4)
@@ -146,19 +141,14 @@ public enum VsockProvisioner {
                 Log.provision.error("Guest agent reported exit code \(exitCode)")
                 throw VsockProvisionerError.scriptFailed(exitCode: Int32(exitCode))
             }
-            // If the agent closes without sending an exit code, treat
-            // as success -- older agent versions may not send one.
-
             try? writeHandle.close()
             try? readHandle.close()
 
             Log.provision.notice("Vsock provisioning complete")
 
         } catch let error as VsockProvisionerError {
-            // Re-throw our own errors without fallback.
             throw error
         } catch {
-            // Vsock connection failed — agent likely not installed.
             Log.provision.warning(
                 "Vsock connection failed: \(error.localizedDescription, privacy: .public)"
             )

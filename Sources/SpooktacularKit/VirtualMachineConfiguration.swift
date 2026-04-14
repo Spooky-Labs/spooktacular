@@ -119,13 +119,9 @@ public enum VirtualMachineConfiguration {
         microphone: Bool
     ) -> VZVirtioSoundDeviceConfiguration {
         let audio = VZVirtioSoundDeviceConfiguration()
-        var streams: [VZVirtioSoundDeviceStreamConfiguration] = [
-            VZVirtioSoundDeviceOutputStreamConfiguration()
-        ]
-        if microphone {
-            streams.append(VZVirtioSoundDeviceInputStreamConfiguration())
-        }
-        audio.streams = streams
+        audio.streams = microphone
+            ? [VZVirtioSoundDeviceOutputStreamConfiguration(), VZVirtioSoundDeviceInputStreamConfiguration()]
+            : [VZVirtioSoundDeviceOutputStreamConfiguration()]
         return audio
     }
 
@@ -259,7 +255,9 @@ public enum VirtualMachineConfiguration {
             devices = [device]
 
         case .nat:
-            devices = [makeNATDevice()]
+            let device = VZVirtioNetworkDeviceConfiguration()
+            device.attachment = VZNATNetworkDeviceAttachment()
+            devices = [device]
         }
 
         if let macString = macAddress,
@@ -269,11 +267,5 @@ public enum VirtualMachineConfiguration {
         }
 
         return devices
-    }
-
-    private static func makeNATDevice() -> VZVirtioNetworkDeviceConfiguration {
-        let device = VZVirtioNetworkDeviceConfiguration()
-        device.attachment = VZNATNetworkDeviceAttachment()
-        return device
     }
 }
