@@ -19,7 +19,7 @@ struct SpooktacularApp: App {
                     appState.stopAllRunningVMs()
                 }
         }
-        .windowStyle(.titleBar)
+        .windowStyle(.automatic)
         .defaultSize(width: 900, height: 600)
         .commands {
             CommandGroup(after: .newItem) {

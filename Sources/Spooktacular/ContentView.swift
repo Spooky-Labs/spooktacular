@@ -48,6 +48,7 @@ struct ContentView: View {
         .onAppear {
             appState.loadVMs()
         }
+        .toolbarApplyingGlassContainer()
     }
 
     @ViewBuilder
@@ -75,6 +76,7 @@ struct ContentView: View {
                         } label: {
                             Label("Inspector", systemImage: "sidebar.trailing")
                         }
+                        .glassButton()
                         .help("Toggle inspector panel")
                         .accessibilityIdentifier(AccessibilityID.inspectorToggle)
                         .accessibilityHint("Shows or hides VM details")
@@ -98,7 +100,7 @@ struct ContentView: View {
                 } label: {
                     Text("Create VM")
                 }
-                .buttonStyle(.borderedProminent)
+                .glassButton()
                 .accessibilityIdentifier(AccessibilityID.createVMButton)
             }
         } else {

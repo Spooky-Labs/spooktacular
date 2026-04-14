@@ -87,7 +87,7 @@ struct CreateVMSheet: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Button("Create") { Task { await createVM() } }
-                        .buttonStyle(.borderedProminent)
+                        .glassButton()
                         .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
                         .keyboardShortcut(.defaultAction)
                 }
@@ -104,7 +104,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Name").font(.headline)
+                    Text("Name").font(.headline).glassSectionHeader()
                     TextField("my-vm", text: $name)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier(AccessibilityID.vmNameField)
@@ -122,7 +122,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Hardware").font(.headline)
+                    Text("Hardware").font(.headline).glassSectionHeader()
 
                     HStack {
                         Text("CPU")
@@ -169,7 +169,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Display").font(.headline)
+                    Text("Display").font(.headline).glassSectionHeader()
 
                     Picker("Monitors", selection: $displayCount) {
                         Text("1 Display").tag(1)
@@ -193,7 +193,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Network").font(.headline)
+                    Text("Network").font(.headline).glassSectionHeader()
 
                     Picker("Mode", selection: $networkMode) {
                         Text("NAT (shared)").tag(NetworkMode.nat)
@@ -210,7 +210,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Audio & Sharing").font(.headline)
+                    Text("Audio & Sharing").font(.headline).glassSectionHeader()
 
                     Toggle("Speaker output", isOn: $audioEnabled)
                     Toggle("Microphone input", isOn: $microphoneEnabled)
@@ -230,7 +230,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Shared Folders").font(.headline)
+                    Text("Shared Folders").font(.headline).glassSectionHeader()
 
                     ForEach($sharedFolders) { $folder in
                         HStack {
@@ -272,7 +272,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("User Data Script").font(.headline)
+                    Text("User Data Script").font(.headline).glassSectionHeader()
 
                     HStack {
                         TextField("~/setup.sh", text: $userDataPath)
@@ -343,6 +343,7 @@ struct CreateVMSheet: View {
         VStack(spacing: 6) {
             if isCreating {
                 ProgressView(value: progress)
+                    .tint(.accentColor)
                 Text(statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -355,6 +356,7 @@ struct CreateVMSheet: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 10)
+        .glassCard(cornerRadius: 10)
     }
 
     // MARK: - Actions

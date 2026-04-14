@@ -54,6 +54,7 @@ struct SidebarView: View {
                 } label: {
                     Label("Create VM", systemImage: "plus.square.on.square")
                 }
+                .glassButton()
                 .help("Create a new virtual machine")
                 .accessibilityIdentifier(AccessibilityID.createVMButton)
             }
@@ -161,9 +162,7 @@ struct VMRow: View {
                     .font(.caption2)
                     .fontWeight(.medium)
                     .foregroundStyle(.green)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.green.opacity(0.1), in: Capsule())
+                    .glassStatusBadge()
             }
         }
         .padding(.vertical, 3)

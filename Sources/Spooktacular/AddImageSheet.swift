@@ -38,7 +38,7 @@ struct AddImageSheet: View {
                 // Source type picker
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Source").font(.headline)
+                        Text("Source").font(.headline).glassSectionHeader()
 
                         Picker("Source", selection: $sourceType) {
                             ForEach(SourceType.allCases, id: \.self) { type in
@@ -68,7 +68,7 @@ struct AddImageSheet: View {
                 // Name
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Display Name").font(.headline)
+                        Text("Display Name").font(.headline).glassSectionHeader()
                         TextField("macOS 15.4", text: $name)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -88,7 +88,7 @@ struct AddImageSheet: View {
                 if sourceType == .localFile {
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("IPSW File").font(.headline)
+                            Text("IPSW File").font(.headline).glassSectionHeader()
                             HStack {
                                 TextField("/path/to/file.ipsw", text: $filePath)
                                     .textFieldStyle(.roundedBorder)
@@ -107,7 +107,7 @@ struct AddImageSheet: View {
                 } else {
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("OCI Reference").font(.headline)
+                            Text("OCI Reference").font(.headline).glassSectionHeader()
                             TextField("ghcr.io/org/image:tag", text: $ociReference)
                                 .textFieldStyle(.roundedBorder)
                         }
@@ -137,7 +137,7 @@ struct AddImageSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Add") { addImage() }
-                    .buttonStyle(.borderedProminent)
+                    .glassButton()
                     .disabled(!isValid)
                     .keyboardShortcut(.defaultAction)
             }

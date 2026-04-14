@@ -35,6 +35,7 @@ struct VMDetailView: View {
                 } label: {
                     Label("Stop", systemImage: "stop.fill")
                 }
+                .glassButton()
                 .help("Stop the virtual machine")
                 .accessibilityIdentifier(AccessibilityID.stopButton)
                 .accessibilityHint("Force stops the virtual machine")
@@ -44,6 +45,7 @@ struct VMDetailView: View {
                 } label: {
                     Label("Start", systemImage: "play.fill")
                 }
+                .glassButton()
                 .help("Start the virtual machine")
                 .accessibilityIdentifier(AccessibilityID.startButton)
                 .accessibilityHint("Boots the virtual machine")
@@ -114,6 +116,7 @@ struct VMLaunchView: View {
                 )
                 .font(.subheadline)
                 .foregroundStyle(ready ? .green : .orange)
+                .glassStatusBadge()
             }
 
             HStack(spacing: 16) {
@@ -127,6 +130,9 @@ struct VMLaunchView: View {
             }
             .font(.callout)
             .foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .glassCard(cornerRadius: 12)
 
             Button {
                 Task { await appState.startVM(name) }
@@ -136,7 +142,7 @@ struct VMLaunchView: View {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
             }
-            .modifier(GlassButtonModifier())
+            .glassButton()
             .controlSize(.large)
             .accessibilityIdentifier(AccessibilityID.startButton)
             .accessibilityHint("Boots the virtual machine")
