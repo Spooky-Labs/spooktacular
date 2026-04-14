@@ -4,7 +4,7 @@ import os
 
 // MARK: - Guest Agent Client
 
-/// A host-side client that communicates with `spook-agent` inside a guest VM.
+/// A host-side client that communicates with `spooktacular-agent` inside a guest VM.
 ///
 /// `GuestAgentClient` sends HTTP/1.1 requests over a VirtIO socket (vsock)
 /// connection to the agent running at port 9470. Each method opens a fresh

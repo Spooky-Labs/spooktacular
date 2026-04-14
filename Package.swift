@@ -41,8 +41,8 @@ let package = Package(
             path: "Sources/Spooktacular"
         ),
         .executableTarget(
-            name: "spook-agent",
-            path: "Sources/spook-agent"
+            name: "spooktacular-agent",
+            path: "Sources/spooktacular-agent"
         ),
         .executableTarget(
             name: "spook-controller",

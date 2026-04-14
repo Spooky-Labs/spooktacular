@@ -1,4 +1,4 @@
-/// LaunchDaemon and LaunchAgent plist generation and installation for `spook-agent`.
+/// LaunchDaemon and LaunchAgent plist generation and installation for `spooktacular-agent`.
 ///
 /// Two installation modes are provided:
 ///
@@ -14,19 +14,19 @@
 ///
 /// ```bash
 /// # LaunchAgent (recommended -- clipboard and app control work):
-/// spook-agent --install-agent
+/// spooktacular-agent --install-agent
 ///
 /// # LaunchDaemon (root, no GUI access):
-/// sudo spook-agent --install-daemon
+/// sudo spooktacular-agent --install-daemon
 /// ```
 ///
-/// The binary must already be installed at `/usr/local/bin/spook-agent`
+/// The binary must already be installed at `/usr/local/bin/spooktacular-agent`
 /// before running either command.
 
 import Foundation
 import os
 
-/// Helpers for installing the spook-agent as a LaunchDaemon or LaunchAgent.
+/// Helpers for installing the spooktacular-agent as a LaunchDaemon or LaunchAgent.
 enum LaunchDaemon {
 
     /// The LaunchDaemon label and plist path.
@@ -37,14 +37,14 @@ enum LaunchDaemon {
     private static let agentLabel = "com.spooktacular.agent"
 
     /// The expected install path for the agent binary.
-    private static let agentBinaryPath = "/usr/local/bin/spook-agent"
+    private static let agentBinaryPath = "/usr/local/bin/spooktacular-agent"
 
     // MARK: - LaunchDaemon
 
     /// The LaunchDaemon plist content.
     ///
     /// Runs at boot as root with `KeepAlive`. Logs to
-    /// `/var/log/spook-agent.log`.
+    /// `/var/log/spooktacular-agent.log`.
     private static let daemonPlistContent = """
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
@@ -62,9 +62,9 @@ enum LaunchDaemon {
         <key>KeepAlive</key>
         <true/>
         <key>StandardOutPath</key>
-        <string>/var/log/spook-agent.log</string>
+        <string>/var/log/spooktacular-agent.log</string>
         <key>StandardErrorPath</key>
-        <string>/var/log/spook-agent.log</string>
+        <string>/var/log/spooktacular-agent.log</string>
     </dict>
     </plist>
     """
@@ -105,7 +105,7 @@ enum LaunchDaemon {
         }
 
         if process.terminationStatus == 0 {
-            print("LaunchDaemon loaded. spook-agent will start at boot.")
+            print("LaunchDaemon loaded. spooktacular-agent will start at boot.")
             log.notice("LaunchDaemon installed and loaded")
         } else {
             print("Warning: launchctl exited with status \(process.terminationStatus).")
@@ -119,7 +119,7 @@ enum LaunchDaemon {
     ///
     /// Runs at login in the user's GUI session with `KeepAlive`.
     /// This gives the agent access to the clipboard and window server.
-    /// Logs to `~/Library/Logs/spook-agent.log`.
+    /// Logs to `~/Library/Logs/spooktacular-agent.log`.
     private static func agentPlistContent(logPath: String) -> String {
         """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -166,7 +166,7 @@ enum LaunchDaemon {
         let launchAgentsDir = home.appendingPathComponent("Library/LaunchAgents")
         let logsDir = home.appendingPathComponent("Library/Logs")
         let plistPath = launchAgentsDir.appendingPathComponent("\(agentLabel).plist").path
-        let logPath = logsDir.appendingPathComponent("spook-agent.log").path
+        let logPath = logsDir.appendingPathComponent("spooktacular-agent.log").path
 
         // Ensure directories exist
         let fm = FileManager.default
@@ -207,7 +207,7 @@ enum LaunchDaemon {
         }
 
         if process.terminationStatus == 0 {
-            print("LaunchAgent loaded. spook-agent will start at login.")
+            print("LaunchAgent loaded. spooktacular-agent will start at login.")
             log.notice("LaunchAgent installed and loaded for UID \(uid)")
         } else {
             print("Warning: launchctl exited with status \(process.terminationStatus).")

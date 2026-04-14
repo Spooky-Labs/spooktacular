@@ -1,4 +1,4 @@
-/// Endpoint routing and handler implementations for the spook-agent HTTP API.
+/// Endpoint routing and handler implementations for the spooktacular-agent HTTP API.
 ///
 /// The router dispatches incoming ``AgentHTTPRequest`` values to free-function
 /// handlers based on the HTTP method and path. Each handler follows the

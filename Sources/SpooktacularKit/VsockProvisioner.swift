@@ -34,7 +34,7 @@ public enum VsockProvisioner {
     ///
     /// Port 9470 is chosen to avoid conflicts with well-known
     /// services. The same constant must be used by the guest-side
-    /// `spook-agent` binary.
+    /// `spooktacular-agent` binary.
     public static let agentPort: UInt32 = 9470
 
     // MARK: - Legacy Wire Protocol Helpers
@@ -220,7 +220,7 @@ public enum VsockProvisionerError: Error, LocalizedError, Sendable, Equatable {
 
     /// The guest agent is not responding on the VirtIO socket.
     ///
-    /// This typically means the `spook-agent` binary is not
+    /// This typically means the `spooktacular-agent` binary is not
     /// installed in the guest, or the VM has not finished booting.
     case agentNotResponding
 

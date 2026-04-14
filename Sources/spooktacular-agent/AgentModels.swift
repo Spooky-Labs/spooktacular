@@ -1,4 +1,4 @@
-/// Codable request and response types for the spook-agent HTTP API.
+/// Codable request and response types for the spooktacular-agent HTTP API.
 ///
 /// These models define the JSON wire format for every endpoint the
 /// agent exposes. All types are `Codable` and `Sendable` so they

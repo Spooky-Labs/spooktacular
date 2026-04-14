@@ -107,7 +107,7 @@ Four thin clients, one library. Every client parses input and calls Spooktacular
 | Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularKit/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
 | SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularKit/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
 | Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularKit/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
-| Guest Agent | [`spook-agent/`](Sources/spook-agent/) | 12 HTTP endpoints: clipboard, exec, apps, files, ports, health |
+| Guest Agent | [`spooktacular-agent/`](Sources/spooktacular-agent/) | 12 HTTP endpoints: clipboard, exec, apps, files, ports, health |
 | Agent Client | [`GuestAgentClient.swift`](Sources/SpooktacularKit/GuestAgentClient.swift) | Host-side actor for all guest agent operations |
 | Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularKit/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
 | Ephemeral Runners | [`Start.swift`](Sources/spook/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
@@ -159,7 +159,7 @@ spook serve --port 8484 --host 127.0.0.1
 
 ## Guest Agent
 
-The [guest agent](Sources/spook-agent/) runs inside the VM and provides 12 HTTP endpoints over VirtIO socket — no SSH needed.
+The [guest agent](Sources/spooktacular-agent/) runs inside the VM and provides 12 HTTP endpoints over VirtIO socket — no SSH needed.
 
 ```bash
 # Check agent connectivity
@@ -179,7 +179,7 @@ spook remote apps my-vm
 spook remote ports my-vm
 ```
 
-The host-side [`GuestAgentClient`](Sources/SpooktacularKit/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spook-agent --install-agent` (LaunchAgent for clipboard/app access).
+The host-side [`GuestAgentClient`](Sources/SpooktacularKit/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spooktacular-agent --install-agent` (LaunchAgent for clipboard/app access).
 
 ## Kubernetes
 

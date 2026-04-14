@@ -1,4 +1,4 @@
-/// A minimal, standalone HTTP/1.1 request parser for spook-agent.
+/// A minimal, standalone HTTP/1.1 request parser for spooktacular-agent.
 ///
 /// Parses the request line, headers, query parameters, and body from
 /// raw TCP data. This parser supports the subset of HTTP needed by

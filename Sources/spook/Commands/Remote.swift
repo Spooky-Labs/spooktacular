@@ -7,7 +7,7 @@ extension Spook {
 
     /// Interacts with a running VM's guest agent over VirtIO socket.
     ///
-    /// The `remote` command family communicates with the `spook-agent`
+    /// The `remote` command family communicates with the `spooktacular-agent`
     /// daemon inside a guest VM via the hypervisor's VirtIO socket
     /// (vsock). Unlike SSH-based commands, these require no network
     /// configuration — the vsock channel is available as soon as the
@@ -20,7 +20,7 @@ extension Spook {
             commandName: "remote",
             abstract: "Interact with a running VM's guest agent.",
             discussion: """
-                Requires the Spooktacular guest agent (spook-agent) \
+                Requires the Spooktacular guest agent (spooktacular-agent) \
                 installed in the VM. Unlike SSH-based commands, these \
                 use the VirtIO socket — no network configuration needed.
 
@@ -105,7 +105,7 @@ extension Spook.Remote {
             abstract: "Run a command inside the guest via the agent.",
             discussion: """
                 Runs a shell command inside the guest using the \
-                spook-agent. Output (stdout and stderr) is printed to \
+                spooktacular-agent. Output (stdout and stderr) is printed to \
                 the host terminal.
 
                 Use '--' to separate spook arguments from the guest \
@@ -173,7 +173,7 @@ extension Spook.Remote {
             abstract: "Get or set the guest clipboard.",
             discussion: """
                 Reads or writes the guest VM's clipboard via the \
-                spook-agent. This uses the VirtIO socket, not the \
+                spooktacular-agent. This uses the VirtIO socket, not the \
                 Virtualization framework's clipboard sharing (which \
                 is only available for Linux guests).
 
@@ -244,7 +244,7 @@ extension Spook.Remote {
             abstract: "List, launch, or quit guest applications.",
             discussion: """
                 Manages running applications inside the guest via the \
-                spook-agent. The default action lists all running apps.
+                spooktacular-agent. The default action lists all running apps.
 
                 EXAMPLES:
                   spook remote apps my-vm
@@ -348,7 +348,7 @@ extension Spook.Remote {
         static let configuration = CommandConfiguration(
             abstract: "Check the guest agent's health.",
             discussion: """
-                Connects to the spook-agent inside the VM and checks \
+                Connects to the spooktacular-agent inside the VM and checks \
                 that it is running and responsive. Displays the agent \
                 version and uptime.
 
@@ -405,7 +405,7 @@ extension Spook.Remote {
         static let configuration = CommandConfiguration(
             abstract: "List listening TCP ports in the guest.",
             discussion: """
-                Queries the spook-agent for all TCP ports in LISTEN \
+                Queries the spooktacular-agent for all TCP ports in LISTEN \
                 state inside the guest. Useful for verifying services \
                 are running or finding ports to forward.
 

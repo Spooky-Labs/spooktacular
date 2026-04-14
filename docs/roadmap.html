@@ -253,7 +253,7 @@ Spooktacular
 <h3>Infrastructure</h3>
 <ul>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/ServicePlist.swift">Per-VM LaunchDaemon service</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook-agent">Guest agent (VirtIO socket daemon)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-agent">Guest agent (VirtIO socket daemon)</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/VMDetailView.swift">Auto-resize display (macOS 14+)</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> Metal GPU displays: 1-2 per VM at 1920x1200</li>
 <li><span class="check" aria-hidden="true">&#10003;</span> Audio output + microphone passthrough</li>
@@ -296,13 +296,13 @@ Spooktacular
 <div class="phase">
 <h3>Remote Control via vsock</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">12 HTTP endpoints over VirtIO socket</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Clipboard sync (read/write guest clipboard)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Remote exec (run commands in guest, stream output)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">App control (list/launch running applications)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">File transfer (host-guest file exchange)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Port discovery (find listening ports in guest)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Health monitoring (agent version, uptime)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">12 HTTP endpoints over VirtIO socket</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Clipboard sync (read/write guest clipboard)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Remote exec (run commands in guest, stream output)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">App control (list/launch running applications)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">File transfer (host-guest file exchange)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Port discovery (find listening ports in guest)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Health monitoring (agent version, uptime)</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift">GuestAgentClient actor in SpooktacularKit</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands"><code>spook remote</code> CLI command group (exec, clipboard, apps, health, ports)</a></li>
 </ul>

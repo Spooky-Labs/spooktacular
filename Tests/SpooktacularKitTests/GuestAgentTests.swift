@@ -104,7 +104,7 @@ struct GuestAgentErrorTests {
     @Test("notConnected suggests installing the agent")
     func notConnectedSuggestion() {
         let error = GuestAgentError.notConnected
-        #expect(error.recoverySuggestion!.contains("spook-agent"))
+        #expect(error.recoverySuggestion!.contains("spooktacular-agent"))
     }
 
     @Test("invalidResponse suggests updating the agent")

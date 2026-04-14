@@ -1,6 +1,6 @@
 /// The Spooktacular guest agent.
 ///
-/// `spook-agent` is a daemon that runs inside a macOS guest VM and
+/// `spooktacular-agent` is a daemon that runs inside a macOS guest VM and
 /// exposes a rich HTTP API over a VirtIO socket (vsock). The host
 /// communicates with the agent using standard HTTP/1.1 requests on
 /// vsock port 9470.
@@ -19,19 +19,19 @@
 ///
 /// ## Installation
 ///
-/// Copy the binary to `/usr/local/bin/spook-agent` inside the guest
+/// Copy the binary to `/usr/local/bin/spooktacular-agent` inside the guest
 /// and install the companion LaunchAgent plist so macOS starts it at
 /// login:
 ///
 /// ```bash
-/// sudo cp spook-agent /usr/local/bin/spook-agent
-/// spook-agent --install-agent
+/// sudo cp spooktacular-agent /usr/local/bin/spooktacular-agent
+/// spooktacular-agent --install-agent
 /// ```
 ///
 /// For the legacy LaunchDaemon install (root, no GUI access):
 ///
 /// ```bash
-/// sudo spook-agent --install-daemon
+/// sudo spooktacular-agent --install-daemon
 /// ```
 ///
 /// ## Protocol Compatibility
@@ -70,7 +70,7 @@ enum SpookAgent {
             return
         }
 
-        log.notice("spook-agent starting on vsock port \(agentPort)")
+        log.notice("spooktacular-agent starting on vsock port \(agentPort)")
         AgentHTTPServer.listen(port: agentPort)
     }
 }

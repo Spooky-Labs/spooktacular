@@ -1,4 +1,4 @@
-/// VirtIO socket (vsock) HTTP server for the spook-agent.
+/// VirtIO socket (vsock) HTTP server for the spooktacular-agent.
 ///
 /// ``AgentHTTPServer`` listens on a vsock port, accepts TCP-like
 /// connections from the host, reads a complete HTTP/1.1 request,
