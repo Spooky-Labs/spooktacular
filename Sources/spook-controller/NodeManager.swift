@@ -1,8 +1,8 @@
 /// Discovers and tracks Mac nodes running `spook serve`.
 ///
 /// Queries the Kubernetes API for nodes labeled `spooktacular.app/role=mac-host`,
-/// extracts InternalIP addresses, and provides HTTP endpoint URLs for the
-/// Spooktacular API on each node (port 8484 by default).
+/// extracts InternalIP addresses, and provides HTTPS endpoint URLs for the
+/// Spooktacular API on each node (port 8484 by default, TLS required).
 
 import Foundation
 #if canImport(FoundationNetworking)
