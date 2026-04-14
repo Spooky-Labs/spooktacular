@@ -29,7 +29,16 @@ jobs:
           build-mode: manual
 
       - name: Build for CodeQL
-        run: swift build 2>&1
+        run: |
+          # Use xcodebuild instead of swift build — CodeQL's DYLD tracer
+          # conflicts with SwiftPM's plugin system, causing hangs.
+          # xcodebuild can build SwiftPM packages directly.
+          xcodebuild build \
+            -scheme SpooktacularKit \
+            -destination 'platform=macOS' \
+            -derivedDataPath .build/xcode \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tail -20
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
