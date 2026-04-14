@@ -67,8 +67,15 @@ struct SpookController {
             return
         }
 
-        let nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector, tlsProvider: tlsProvider)
-        let reconciler = Reconciler(client: client, nodeManager: nodeManager, tlsProvider: tlsProvider)
+        let nodeManager: NodeManager
+        let reconciler: Reconciler
+        if let tls = tlsProvider {
+            nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector, tlsProvider: tls)
+            reconciler = Reconciler(client: client, nodeManager: nodeManager, tlsProvider: tls)
+        } else {
+            nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector, insecure: true)
+            reconciler = Reconciler(client: client, nodeManager: nodeManager, insecure: true)
+        }
         let poolManager = RunnerPoolManager()
         let poolReconciler = RunnerPoolReconciler(
             client: client,

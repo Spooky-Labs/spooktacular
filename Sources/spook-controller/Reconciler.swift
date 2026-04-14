@@ -33,23 +33,21 @@ actor Reconciler {
     /// Annotation that operators can set to force finalizer removal after retries are exhausted.
     private static let forceCleanupAnnotation = "spooktacular.app/force-cleanup"
 
-    /// Creates a reconciler.
-    ///
-    /// - Parameters:
-    ///   - client: Kubernetes API client.
-    ///   - nodeManager: Node discovery and communication manager.
-    ///   - tlsProvider: TLS identity for mutual TLS with Mac nodes.
-    ///     Required in production — pass `nil` only in development with
-    ///     `SPOOK_INSECURE_CONTROLLER=1`.
-    init(
-        client: KubernetesClient,
-        nodeManager: NodeManager,
-        tlsProvider: (any TLSIdentityProvider)? = nil
-    ) {
+    /// Creates a production reconciler with mandatory mTLS.
+    init(client: KubernetesClient, nodeManager: NodeManager, tlsProvider: any TLSIdentityProvider) {
         self.client = client
         self.nodeManager = nodeManager
-        self.session = tlsProvider?.configuredSession()
-            ?? URLSession(configuration: .ephemeral)
+        self.session = tlsProvider.configuredSession()
+    }
+
+    /// Creates a development-only reconciler without TLS.
+    ///
+    /// - Important: Do not use in production.
+    init(client: KubernetesClient, nodeManager: NodeManager, insecure: Bool) {
+        precondition(insecure, "Use init(client:nodeManager:tlsProvider:) for production")
+        self.client = client
+        self.nodeManager = nodeManager
+        self.session = URLSession(configuration: .ephemeral)
     }
 
     // MARK: - Main Loop

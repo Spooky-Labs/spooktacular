@@ -43,17 +43,38 @@ actor NodeManager {
     ///     and pin the node's CA. Pass `nil` only in development with
     ///     `SPOOK_INSECURE_CONTROLLER=1`. Bearer token authentication is
     ///     retained as a secondary auth layer (defense in depth).
+    /// Creates a production node manager with mandatory mTLS.
+    ///
+    /// - Parameters:
+    ///   - apiPort: Port where `spook serve` listens on each node.
+    ///   - labelSelector: Kubernetes label selector for Mac host nodes.
+    ///   - tlsProvider: TLS identity provider for mutual TLS. Required.
     init(
         apiPort: UInt16 = 8484,
-        scheme: String = ProcessInfo.processInfo.environment["NODE_API_SCHEME"] ?? "https",
         labelSelector: String = "spooktacular.app/role=mac-host",
-        tlsProvider: (any TLSIdentityProvider)? = nil
+        tlsProvider: any TLSIdentityProvider
     ) {
+        self.apiPort = apiPort
+        self.scheme = "https"
+        self.labelSelector = labelSelector
+        self.healthSession = tlsProvider.configuredSession()
+    }
+
+    /// Creates a development-only node manager without TLS.
+    ///
+    /// - Important: Do not use in production. This initializer exists
+    ///   only for local development and testing.
+    init(
+        apiPort: UInt16 = 8484,
+        scheme: String = "https",
+        labelSelector: String = "spooktacular.app/role=mac-host",
+        insecure: Bool
+    ) {
+        precondition(insecure, "Use init(apiPort:labelSelector:tlsProvider:) for production")
         self.apiPort = apiPort
         self.scheme = scheme
         self.labelSelector = labelSelector
-        self.healthSession = tlsProvider?.configuredSession()
-            ?? URLSession(configuration: .ephemeral)
+        self.healthSession = URLSession(configuration: .ephemeral)
     }
 
     // MARK: - Discovery
