@@ -46,7 +46,11 @@ struct SpookController {
         let nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector)
         let reconciler = Reconciler(client: client, nodeManager: nodeManager)
         let poolManager = RunnerPoolManager()
-        let poolReconciler = RunnerPoolReconciler(client: client, manager: poolManager)
+        let poolReconciler = RunnerPoolReconciler(
+            client: client,
+            manager: poolManager,
+            nodeManager: nodeManager
+        )
         let shutdownSignal = ShutdownSignal()
         let leaderElection = LeaderElection(client: client, leaseName: "spook-controller")
 

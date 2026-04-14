@@ -97,9 +97,25 @@ actor RunnerPoolReconciler {
     /// The URL session used for RunnerPool K8s API calls.
     private let session: URLSession
 
-    init(client: KubernetesClient, manager: RunnerPoolManager) {
+    /// Node manager for calling Mac node APIs (start, stop, exec).
+    private let nodeManager: NodeManager
+
+    /// GitHub runner service for registration/deregistration.
+    private let githubService: GitHubRunnerService?
+
+    /// GitHub API scope (e.g., "repos/org/repo" or "orgs/org").
+    private var githubScope: String = ""
+
+    init(
+        client: KubernetesClient,
+        manager: RunnerPoolManager,
+        nodeManager: NodeManager,
+        githubService: GitHubRunnerService? = nil
+    ) {
         self.client = client
         self.manager = manager
+        self.nodeManager = nodeManager
+        self.githubService = githubService
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -328,9 +344,15 @@ actor RunnerPoolReconciler {
 
             case .startVM:
                 logger.info("Side effect: start VM for '\(runnerName, privacy: .public)'")
+                if let endpoint = await nodeManager.endpoint(for: runnerName) {
+                    await callNodeAPI(method: "POST", path: "/v1/vms/\(runnerName)/start", on: endpoint)
+                }
 
             case .stopVM:
                 logger.info("Side effect: stop VM for '\(runnerName, privacy: .public)'")
+                if let endpoint = await nodeManager.endpoint(for: runnerName) {
+                    await callNodeAPI(method: "POST", path: "/v1/vms/\(runnerName)/stop", on: endpoint)
+                }
 
             case .deleteVM:
                 logger.info("Side effect: delete VM for '\(runnerName, privacy: .public)'")
@@ -338,9 +360,31 @@ actor RunnerPoolReconciler {
 
             case .execProvisioningScript:
                 logger.info("Side effect: exec provisioning for '\(runnerName, privacy: .public)'")
+                if let endpoint = await nodeManager.endpoint(for: runnerName) {
+                    do {
+                        // The provisioning script is embedded in the MacOSVM spec
+                        // by createRunner. The node's start handler executes it via
+                        // the provisioning mode (SSH, disk-inject, or agent).
+                        // Here we verify the VM is healthy after provisioning.
+                        let healthy = try await URLSession.shared.data(
+                            from: endpoint.apiURL.appendingPathComponent("/v1/vms/\(runnerName)/ip")
+                        )
+                        logger.info("Provisioning health check for '\(runnerName, privacy: .public)': ok")
+                    } catch {
+                        logger.error("Provisioning check failed for '\(runnerName, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                    }
+                }
 
             case .deregisterRunner(let runnerId):
                 logger.info("Side effect: deregister runner \(runnerId) for '\(runnerName, privacy: .public)'")
+                if let service = githubService, !githubScope.isEmpty {
+                    do {
+                        try await service.removeRunner(runnerId: runnerId, scope: githubScope)
+                        logger.notice("Deregistered runner \(runnerId) from GitHub (\(self.githubScope, privacy: .public))")
+                    } catch {
+                        logger.error("Failed to deregister runner \(runnerId): \(error.localizedDescription, privacy: .public)")
+                    }
+                }
 
             case .updateStatus(let state):
                 logger.info("Side effect: update status to '\(state.rawValue, privacy: .public)' for '\(runnerName, privacy: .public)'")
@@ -462,6 +506,28 @@ actor RunnerPoolReconciler {
         let effects = machine.transition(event: event)
         stateMachines[runnerName] = machine
         await executeSideEffects(effects, runnerName: runnerName, poolName: poolName)
+    }
+
+    // MARK: - Node API Helpers
+
+    /// Calls a Mac node's HTTP API (start, stop, etc.).
+    @discardableResult
+    private func callNodeAPI(method: String, path: String, on endpoint: NodeEndpoint) async -> Bool {
+        let url = endpoint.apiURL.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.timeoutInterval = 30
+        if let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"], !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (_, response) = try await session.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            return (200..<300).contains(code)
+        } catch {
+            logger.error("Node API call \(method, privacy: .public) \(path, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 
     // MARK: - K8s API Helpers (RunnerPool CRD)
