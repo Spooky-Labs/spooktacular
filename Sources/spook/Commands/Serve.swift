@@ -76,6 +76,12 @@ extension Spook {
         @Flag(help: "Run without TLS or a required API token. Not recommended for production.")
         var insecure: Bool = false
 
+        @Flag(
+            name: .customLong("watch-certs"),
+            help: "Watch TLS certificate and key files for changes and reload automatically. Defaults to true when TLS is enabled."
+        )
+        var watchCerts: Bool = false
+
         func run() async throws {
             try SpooktacularPaths.ensureDirectories()
 
@@ -167,6 +173,25 @@ extension Spook {
             } catch {
                 print(Style.error("Server failed to start: \(error.localizedDescription)"))
                 throw ExitCode.failure
+            }
+
+            // Enable TLS certificate file watching when TLS is active
+            // and --watch-certs is set (or implied by TLS being enabled).
+            let shouldWatch = watchCerts || (tlsCert != nil && tlsKey != nil)
+            if shouldWatch, let certPath = tlsCert, let keyPath = tlsKey {
+                do {
+                    try await server.watchCertificates(
+                        certPath: certPath,
+                        keyPath: keyPath,
+                        loadIdentity: { cert, key in
+                            try Self.loadTLSIdentity(certPath: cert, keyPath: key)
+                        }
+                    )
+                    Style.field("Certificate watching", "enabled")
+                } catch {
+                    print(Style.error("Failed to watch TLS certificates: \(error.localizedDescription)"))
+                    throw ExitCode.failure
+                }
             }
 
             try await Task.sleep(for: .seconds(Double(Int.max)))

@@ -37,6 +37,11 @@ public actor MetricsCollector {
     /// The shared singleton instance.
     public static let shared = MetricsCollector()
 
+    // MARK: - Signpost Provider
+
+    /// The signpost provider used to emit lifecycle tracing intervals.
+    private let signpost: any SignpostProvider
+
     // MARK: - Gauges (current values)
 
     /// The number of VMs currently running.
@@ -79,6 +84,31 @@ public actor MetricsCollector {
     /// Recorded durations for SSH-ready checks, in seconds.
     private var sshReadyLatencySeconds: [Double] = []
 
+    // MARK: - Runner Lifecycle Summaries
+
+    /// Recorded durations from boot to runner registration, in seconds.
+    private var runnerRegistrationLatencySeconds: [Double] = []
+
+    /// Recorded durations from runner ready to first job started, in seconds.
+    private var timeToFirstJobSeconds: [Double] = []
+
+    /// Recorded durations for scrub/recycle operations, in seconds.
+    private var scrubLatencySeconds: [Double] = []
+
+    /// Total number of cleanup failures observed.
+    private var cleanupFailuresTotal: Int = 0
+
+    // MARK: - Initializer
+
+    /// Creates a metrics collector with the given signpost provider.
+    ///
+    /// - Parameter signpost: The provider used to emit lifecycle tracing
+    ///   intervals. Defaults to ``SilentSignpostProvider`` which discards
+    ///   all signpost data.
+    public init(signpost: any SignpostProvider = SilentSignpostProvider()) {
+        self.signpost = signpost
+    }
+
     // MARK: - Recording Events
 
     /// Records a completed VM clone operation.
@@ -87,6 +117,8 @@ public actor MetricsCollector {
     public func recordClone(durationSeconds: Double) {
         clonesTotal += 1
         cloneLatencySeconds.append(durationSeconds)
+        let id = signpost.beginInterval("clone")
+        signpost.endInterval("clone", id: id)
     }
 
     /// Records a completed VM start operation.
@@ -96,6 +128,8 @@ public actor MetricsCollector {
     public func recordStart(durationSeconds: Double) {
         startsTotal += 1
         bootLatencySeconds.append(durationSeconds)
+        let id = signpost.beginInterval("boot")
+        signpost.endInterval("boot", id: id)
     }
 
     /// Records a completed VM stop operation.
@@ -150,6 +184,51 @@ public actor MetricsCollector {
     ///   SSH becoming available, in seconds.
     public func recordSSHReady(durationSeconds: Double) {
         sshReadyLatencySeconds.append(durationSeconds)
+        let id = signpost.beginInterval("ssh-ready")
+        signpost.endInterval("ssh-ready", id: id)
+    }
+
+    // MARK: - Runner Lifecycle Events
+
+    /// Records the duration from VM boot to the runner registering with
+    /// the orchestrator (e.g., GitHub Actions).
+    ///
+    /// - Parameter durationSeconds: Wall-clock duration from boot
+    ///   completion to runner registration, in seconds.
+    public func recordRunnerRegistered(durationSeconds: Double) {
+        runnerRegistrationLatencySeconds.append(durationSeconds)
+        let id = signpost.beginInterval("runner-registered")
+        signpost.endInterval("runner-registered", id: id)
+    }
+
+    /// Records the duration from the runner becoming ready to the first
+    /// job being picked up.
+    ///
+    /// - Parameter durationSeconds: Wall-clock duration from runner
+    ///   ready to the first job starting, in seconds.
+    public func recordTimeToFirstJob(durationSeconds: Double) {
+        timeToFirstJobSeconds.append(durationSeconds)
+        let id = signpost.beginInterval("time-to-first-job")
+        signpost.endInterval("time-to-first-job", id: id)
+    }
+
+    /// Records the duration of a scrub (recycle) operation on a VM.
+    ///
+    /// - Parameter durationSeconds: Wall-clock duration of the scrub,
+    ///   in seconds.
+    public func recordScrubComplete(durationSeconds: Double) {
+        scrubLatencySeconds.append(durationSeconds)
+        let id = signpost.beginInterval("scrub")
+        signpost.endInterval("scrub", id: id)
+    }
+
+    /// Records a cleanup failure event.
+    ///
+    /// Increments the cleanup failure counter and emits a point-in-time
+    /// signpost event for tracing.
+    public func recordCleanupFailure() {
+        cleanupFailuresTotal += 1
+        signpost.event("cleanup-failure")
     }
 
     // MARK: - Prometheus Text Format
@@ -242,6 +321,36 @@ public actor MetricsCollector {
             help: "Duration from VM start to SSH ready in seconds",
             values: sshReadyLatencySeconds
         )
+
+        // --- Runner Lifecycle Summaries ---
+
+        appendSummary(
+            to: &lines,
+            name: "spooktacular_runner_registration_duration_seconds",
+            help: "Duration from boot to runner registration in seconds",
+            values: runnerRegistrationLatencySeconds
+        )
+
+        appendSummary(
+            to: &lines,
+            name: "spooktacular_time_to_first_job_seconds",
+            help: "Duration from runner ready to first job started in seconds",
+            values: timeToFirstJobSeconds
+        )
+
+        appendSummary(
+            to: &lines,
+            name: "spooktacular_scrub_duration_seconds",
+            help: "Duration of scrub/recycle operations in seconds",
+            values: scrubLatencySeconds
+        )
+
+        // --- Runner Lifecycle Counters ---
+
+        lines.append("# HELP spooktacular_cleanup_failures_total Total number of cleanup failures")
+        lines.append("# TYPE spooktacular_cleanup_failures_total counter")
+        lines.append("spooktacular_cleanup_failures_total \(cleanupFailuresTotal)")
+        lines.append("")
 
         return lines.joined(separator: "\n")
     }

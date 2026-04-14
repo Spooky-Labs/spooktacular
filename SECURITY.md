@@ -4,9 +4,11 @@
 
 | Version | Supported |
 |---------|-----------|
-| latest  | Yes       |
+| N (current) | Yes   |
+| N-1         | Yes   |
+| < N-1       | No    |
 
-We support the latest release only. Please update to the latest version before reporting a vulnerability.
+We support the current release and the immediately prior release (N and N-1). Older versions do not receive security patches. Please update to a supported version before reporting a vulnerability.
 
 ## Security Model
 
@@ -17,7 +19,10 @@ Spooktacular is a **single-tenant, single-host** macOS VM manager designed for t
 - **Host ↔ Guest isolation**: VMs run in Apple's Virtualization.framework sandbox. The guest agent authenticates via bearer tokens over vsock (not over the network).
 - **Host CID gating**: The guest agent verifies the vsock connection originates from the host (CID 2), rejecting peer-to-peer connections.
 - **API authentication**: The HTTP API requires a bearer token (`SPOOK_API_TOKEN`) when not in `--insecure` mode. TLS is supported via `--tls-cert`/`--tls-key`.
-- **Scope-based agent authorization**: The guest agent supports two token tiers — full-access (read + mutation) and read-only (health, list, inspect). Read-only tokens cannot execute commands, write files, or control applications.
+- **Three-tier guest agent authorization**: The guest agent supports three token tiers — read-only (health, list, inspect), runner (job lifecycle operations), and break-glass (full mutation including exec, file writes, and app control). Read-only tokens cannot execute commands, write files, or control applications. The runner tier is scoped to CI lifecycle operations only.
+- **Mutual TLS (mTLS)**: When configured, the controller-to-node channel uses mutual TLS — both the controller and the Mac node present certificates, preventing unauthorized API access even if a bearer token is compromised. This is optional; server-side TLS with bearer tokens remains the default.
+- **Keychain-based secret storage**: API tokens, runner registration tokens, and TLS private keys are stored in the macOS Keychain rather than plaintext configuration files. This leverages the Secure Enclave on Apple Silicon for key protection. *(In development on `feat/runner-lifecycle-engine`.)*
+- **TLS certificate hot reload**: TLS certificates can be rotated without restarting the server. The server watches the certificate files and reloads them on change, enabling zero-downtime cert rotation. *(In development on `feat/runner-lifecycle-engine`.)*
 - **Audit logging**: Every guest agent request is logged at `os.Logger` `.notice` level with method, path, status code, and ISO-8601 timestamp. Logs are queryable via Console.app or `log show`.
 - **VM name validation**: Regex-validated to prevent path traversal.
 - **Capacity enforcement**: 2-VM limit with flock-serialized PID file writes to prevent TOCTOU races.
@@ -28,12 +33,11 @@ Spooktacular is a **single-tenant, single-host** macOS VM manager designed for t
 
 These are **known limitations**, not bugs:
 
-- **No mTLS**: The HTTP API uses server-side TLS only. There is no client certificate verification. The API relies on bearer tokens for authentication.
-- **No per-user identity**: Authentication is token-based, not user-based. A single shared token authenticates all requests. There is no RBAC beyond the two-tier agent scope system.
+- **mTLS is opt-in**: Mutual TLS for controller-to-node traffic is supported but not enabled by default. Without mTLS, the API relies on server-side TLS plus bearer tokens.
+- **No per-user identity**: Authentication is token-based, not user-based. A single shared token authenticates all requests. There is no RBAC beyond the three-tier agent scope system.
 - **No distributed locking**: Capacity enforcement uses `flock(2)`, which is per-host only. In a multi-controller deployment, each controller must target distinct hosts.
 - **No tamper-resistant audit**: Audit logs use `os.Logger`, which is the standard macOS logging facility. Logs are not cryptographically signed or forwarded to a SIEM. Operators should configure log forwarding separately.
-- **No cert rotation**: TLS certificates are loaded at startup. Rotation requires a server restart.
-- **Blast radius of a compromised token**: A full-access API token grants control over all VMs on that host. A full-access agent token grants shell execution, file writes, and app control inside that guest. Use read-only tokens where mutation is not needed.
+- **Blast radius of a compromised token**: A break-glass API token grants control over all VMs on that host. A break-glass agent token grants shell execution, file writes, and app control inside that guest. Use read-only or runner-scoped tokens where full mutation is not needed.
 
 ### Who should use Spooktacular
 
@@ -46,6 +50,16 @@ These are **known limitations**, not bugs:
 - Multi-tenant environments where untrusted users share the same host
 - Environments requiring SOC 2 Type II compliance for the VM management layer
 - Deployments requiring per-user RBAC, client certificate auth, or federated identity
+
+## Deployment Models
+
+Spooktacular supports three deployment topologies, each with different security considerations:
+
+- **Single-host standalone**: A single Mac runs `spook serve` (or the GUI app) and manages its own VMs. Authentication is via bearer token. This is the simplest model and suitable for small teams or individual developers. No network coordination is needed.
+
+- **Multi-host with controller**: A Kubernetes controller (running on Linux) manages multiple Mac nodes over HTTPS. Each Mac node runs `spook serve`. TLS is required by default; mTLS is recommended for production. The controller uses a dedicated ServiceAccount with least-privilege RBAC. Runner tokens are stored in Kubernetes Secrets.
+
+- **EC2 Mac fleet**: Mac instances run on AWS EC2 dedicated hosts (e.g., `mac2-m2pro.metal`). Each host runs `spook serve` as a LaunchDaemon. In enterprise mode, hosts integrate with EC2 Host Resource Groups (HRG) for placement, implement drain procedures for 24-hour minimum allocation compliance, and can use IMDS for instance identity verification. Keychain-based secret storage is recommended over environment variables in this model.
 
 ## Reporting a Vulnerability
 

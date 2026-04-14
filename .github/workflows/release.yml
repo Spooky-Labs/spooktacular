@@ -10,6 +10,8 @@ jobs:
     runs-on: macos-26
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
@@ -49,11 +51,17 @@ jobs:
       - name: Create notarized zip
         run: ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
 
-      # 7. Package .pkg for App Store
+      # 7. Attest build provenance
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: Spooktacular.app.zip
+
+      # 8. Package .pkg for App Store
       - name: Package .pkg
         run: bundle exec fastlane package
 
-      # 8. GitHub Release with notarized zip
+      # 9. GitHub Release with notarized zip
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -63,7 +71,7 @@ jobs:
             --generate-notes \
             Spooktacular.app.zip
 
-      # 9. Submit to App Store
+      # 10. Submit to App Store
       - name: Submit to App Store
         continue-on-error: true
         run: |

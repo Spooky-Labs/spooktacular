@@ -10,6 +10,8 @@
 #   - Via SSM Run Command: aws ssm send-command --document-name "AWS-RunShellScript" \
 #       --parameters commands="curl -fsSL .../bootstrap.sh | bash"
 #   - Manually: ssh ec2-user@<ip> 'bash -s' < bootstrap.sh
+#   - Drain mode: bootstrap.sh --drain   (stop accepting new VMs)
+#   - Undrain:    bootstrap.sh --undrain  (resume accepting VMs)
 #
 # This script is idempotent -- safe to run multiple times.
 #
@@ -26,9 +28,11 @@ SPOOK_PORT="${SPOOK_PORT:-8484}"
 SPOOK_HOST="${SPOOK_HOST:-0.0.0.0}"
 CERT_DIR="/etc/spooktacular/tls"
 CONFIG_DIR="/etc/spooktacular"
+DRAIN_MARKER="${CONFIG_DIR}/drain"
 LOG_FILE="/var/log/spooktacular-bootstrap.log"
 PLIST_PATH="/Library/LaunchDaemons/app.spooktacular.serve.plist"
-TOKEN_FILE="${CONFIG_DIR}/api-token"
+KEYCHAIN_SERVICE="com.spooktacular"
+KEYCHAIN_ACCOUNT="api-token"
 GITHUB_RELEASES="https://github.com/Spooky-Labs/spooktacular/releases"
 
 # ------------------------------------------------------------------------------
@@ -51,11 +55,97 @@ die() {
 }
 
 # ------------------------------------------------------------------------------
+# Drain / Undrain Mode
+# ------------------------------------------------------------------------------
+#
+# --drain  : Write a drain marker so spook serve stops accepting new VMs.
+#            Existing VMs are allowed to finish. When all VMs stop, the host
+#            reports "drained" to the controller.
+# --undrain: Remove the drain marker so the host resumes accepting new VMs.
+
+handle_drain() {
+    sudo mkdir -p "${CONFIG_DIR}"
+    if [[ -f "${DRAIN_MARKER}" ]]; then
+        log "Host is already in drain mode."
+    else
+        sudo touch "${DRAIN_MARKER}"
+        log "Host marked for drain. spook serve will stop accepting new VMs."
+        log "Existing VMs will be allowed to finish."
+    fi
+    exit 0
+}
+
+handle_undrain() {
+    if [[ -f "${DRAIN_MARKER}" ]]; then
+        sudo rm -f "${DRAIN_MARKER}"
+        log "Drain marker removed. Host is now accepting new VMs."
+    else
+        log "Host is not in drain mode. Nothing to do."
+    fi
+    exit 0
+}
+
+# Parse flags
+for arg in "$@"; do
+    case "${arg}" in
+        --drain)   handle_drain   ;;
+        --undrain) handle_undrain ;;
+        --help|-h)
+            echo "Usage: bootstrap.sh [--drain | --undrain]"
+            echo "  (no flags)  Bootstrap the host for Spooktacular"
+            echo "  --drain     Stop accepting new VMs (graceful drain)"
+            echo "  --undrain   Resume accepting new VMs"
+            exit 0
+            ;;
+        *)
+            die "Unknown flag: ${arg}. Use --help for usage."
+            ;;
+    esac
+done
+
+# ------------------------------------------------------------------------------
+# IMDSv2 -- Instance Identity
+# ------------------------------------------------------------------------------
+#
+# Query the EC2 Instance Metadata Service (v2, token-based) for the instance
+# identity document. The instance ID is used later as a seed for API token
+# generation so tokens are deterministically tied to the instance.
+
+imds_fetch() {
+    # Acquire a session token (TTL 6 hours)
+    local imds_token
+    imds_token="$(curl -sf -X PUT \
+        "http://169.254.169.254/latest/api/token" \
+        -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" \
+        --connect-timeout 2 || true)"
+
+    if [[ -z "${imds_token}" ]]; then
+        log "WARNING: Could not reach IMDS. Running outside EC2 or IMDS disabled."
+        INSTANCE_ID="local-$(hostname -s)"
+        INSTANCE_TYPE="unknown"
+        return
+    fi
+
+    INSTANCE_ID="$(curl -sf \
+        -H "X-aws-ec2-metadata-token: ${imds_token}" \
+        http://169.254.169.254/latest/meta-data/instance-id \
+        --connect-timeout 2 || echo "unknown")"
+
+    INSTANCE_TYPE="$(curl -sf \
+        -H "X-aws-ec2-metadata-token: ${imds_token}" \
+        http://169.254.169.254/latest/meta-data/instance-type \
+        --connect-timeout 2 || echo "unknown")"
+}
+
+imds_fetch
+
+# ------------------------------------------------------------------------------
 # Preconditions
 # ------------------------------------------------------------------------------
 
 log "=== Spooktacular EC2 Mac Bootstrap ==="
 log "Version: ${SPOOKTACULAR_VERSION}"
+log "Instance: ${INSTANCE_ID} (${INSTANCE_TYPE})"
 
 # Verify we are on macOS
 [[ "$(uname)" == "Darwin" ]] || die "This script must run on macOS."
@@ -63,12 +153,45 @@ log "Version: ${SPOOKTACULAR_VERSION}"
 # Verify Apple Silicon (arm64) -- required for Virtualization.framework
 [[ "$(uname -m)" == "arm64" ]] || die "Apple Silicon (arm64) required. This host is $(uname -m)."
 
-# Verify macOS 14+ (Sonoma or later)
-MACOS_MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
-[[ "${MACOS_MAJOR}" -ge 14 ]] || die "macOS 14+ required. Found: $(sw_vers -productVersion)"
+# Verify macOS 14+ (Sonoma or later) -- preflight check
+MACOS_VERSION="$(sw_vers -productVersion)"
+MACOS_MAJOR="$(echo "${MACOS_VERSION}" | cut -d. -f1)"
+if [[ "${MACOS_MAJOR}" -lt 14 ]]; then
+    die "macOS 14 (Sonoma) or later required for Virtualization.framework. Found: ${MACOS_VERSION}. Please use a macOS 14+ AMI (amzn-ec2-macos-14* or amzn-ec2-macos-15*)."
+fi
 
 log "Host: $(system_profiler SPHardwareDataType 2>/dev/null | grep 'Model Name' | awk -F': ' '{print $2}' || echo 'unknown')"
-log "macOS: $(sw_vers -productVersion) ($(sw_vers -buildVersion))"
+log "macOS: ${MACOS_VERSION} ($(sw_vers -buildVersion))"
+
+# Log supported macOS versions for this host family
+log_supported_macos_versions() {
+    case "${INSTANCE_TYPE}" in
+        mac1.metal)
+            log "Host family: mac1 (Intel x86_64). Supports macOS 10.15+."
+            log "WARNING: mac1.metal is Intel-based and does NOT support Virtualization.framework VMs."
+            ;;
+        mac2.metal)
+            log "Host family: mac2 (Apple M1). Supports macOS 12 (Monterey) and later."
+            ;;
+        mac2-m1ultra.metal)
+            log "Host family: mac2-m1ultra (Apple M1 Ultra). Supports macOS 12 (Monterey) and later."
+            ;;
+        mac2-m2.metal)
+            log "Host family: mac2-m2 (Apple M2). Supports macOS 13 (Ventura) and later."
+            ;;
+        mac2-m2pro.metal)
+            log "Host family: mac2-m2pro (Apple M2 Pro). Supports macOS 13 (Ventura) and later."
+            ;;
+        unknown)
+            log "Instance type unknown (not running on EC2). Skipping host family check."
+            ;;
+        *)
+            log "Instance type: ${INSTANCE_TYPE}. Check AWS docs for supported macOS versions."
+            ;;
+    esac
+}
+
+log_supported_macos_versions
 
 # ------------------------------------------------------------------------------
 # Step 1: Install Spooktacular
@@ -175,15 +298,38 @@ log "Step 4/6: Configuring API authentication..."
 
 sudo mkdir -p "${CONFIG_DIR}"
 
-if [[ -f "${TOKEN_FILE}" ]]; then
-    log "API token already exists at ${TOKEN_FILE}. Skipping generation."
+# Store the API token in the macOS Keychain instead of a plaintext file.
+# Rationale: tokens in files risk exposure via world-readable permissions,
+# ps output (when passed as CLI arguments), LaunchDaemon plist contents,
+# and shell history. The Keychain is encrypted at rest and access-controlled
+# by the OS. The spook daemon reads the token from Keychain at startup.
+if security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${KEYCHAIN_ACCOUNT}" >/dev/null 2>&1; then
+    log "API token already exists in Keychain (service=${KEYCHAIN_SERVICE}). Skipping generation."
 else
-    # Generate a cryptographically random 32-byte hex token
-    API_TOKEN="$(openssl rand -hex 32)"
-    echo "${API_TOKEN}" | sudo tee "${TOKEN_FILE}" >/dev/null
-    sudo chmod 600 "${TOKEN_FILE}"
-    log "API token generated and stored at ${TOKEN_FILE}."
-    log "Retrieve it with: sudo cat ${TOKEN_FILE}"
+    # Generate a 32-byte hex token seeded with the instance identity.
+    # By mixing the instance ID into the seed, the token is deterministically
+    # tied to this EC2 instance. If the same bootstrap runs again on the same
+    # instance (idempotent re-run), the Keychain check above prevents
+    # regeneration. On a *new* instance, a new unique token is produced.
+    SEED_MATERIAL="${INSTANCE_ID}-$(date +%s)-$(openssl rand -hex 16)"
+    API_TOKEN="$(echo -n "${SEED_MATERIAL}" | openssl dgst -sha256 -hex | awk '{print $NF}')"
+
+    # -U updates if exists, -a is account, -s is service, -w is password
+    security add-generic-password \
+        -a "${KEYCHAIN_ACCOUNT}" \
+        -s "${KEYCHAIN_SERVICE}" \
+        -w "${API_TOKEN}" \
+        -U \
+        || die "Failed to store API token in Keychain."
+
+    # Remove any legacy plaintext token file from previous bootstrap runs
+    if [[ -f "${CONFIG_DIR}/api-token" ]]; then
+        sudo rm -f "${CONFIG_DIR}/api-token"
+        log "Removed legacy plaintext token file."
+    fi
+
+    log "API token generated and stored in Keychain (service=${KEYCHAIN_SERVICE}, account=${KEYCHAIN_ACCOUNT})."
+    log "Retrieve it with: security find-generic-password -s '${KEYCHAIN_SERVICE}' -a '${KEYCHAIN_ACCOUNT}' -w"
 fi
 
 # ------------------------------------------------------------------------------
@@ -193,9 +339,12 @@ fi
 log "Step 5/6: Installing LaunchDaemon..."
 
 SPOOK_BIN="$(command -v spook)"
-API_TOKEN_VALUE="$(sudo cat "${TOKEN_FILE}")"
 
-# Create the LaunchDaemon plist
+# Create the LaunchDaemon plist.
+# NOTE: The API token is NOT passed as a ProgramArguments entry. Passing
+# secrets via plist arguments exposes them in `ps` output and in the plist
+# file itself. Instead, `spook serve` reads the token from the macOS
+# Keychain at startup using service="com.spooktacular", account="api-token".
 sudo tee "${PLIST_PATH}" >/dev/null <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -216,8 +365,6 @@ sudo tee "${PLIST_PATH}" >/dev/null <<PLIST
         <string>${CERT_DIR}/cert.pem</string>
         <string>--tls-key</string>
         <string>${CERT_DIR}/key.pem</string>
-        <string>--api-token</string>
-        <string>${API_TOKEN_VALUE}</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -283,7 +430,7 @@ log "  Spooktacular ready -- 2 VM slots available"
 log "=============================================="
 log ""
 log "  API endpoint:  https://${INSTANCE_IP}:${SPOOK_PORT}"
-log "  API token:     sudo cat ${TOKEN_FILE}"
+log "  API token:     security find-generic-password -s '${KEYCHAIN_SERVICE}' -a '${KEYCHAIN_ACCOUNT}' -w"
 log "  Base VM:       spook list"
 log "  Clone a VM:    spook clone base runner-01"
 log "  Start a VM:    spook start runner-01 --headless"

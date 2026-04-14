@@ -62,6 +62,18 @@ parameters:
     default: "0.0.0.0"
     description: "Bind address for the Spooktacular HTTP API server."
 
+  Action:
+    type: String
+    default: "install"
+    description: |
+      Action to perform. "install" runs the full bootstrap. "drain" marks the
+      host for graceful drain (no new VMs accepted). "undrain" removes the
+      drain marker so the host resumes accepting VMs.
+    allowedValues:
+      - "install"
+      - "drain"
+      - "undrain"
+
 mainSteps:
   # --------------------------------------------------------------------------
   # Step 1: Validate the host
@@ -69,6 +81,10 @@ mainSteps:
   - action: aws:runShellScript
     name: ValidateHost
     description: "Verify this is an Apple Silicon Mac running macOS 14+."
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "install"
     inputs:
       runCommand:
         - |
@@ -105,6 +121,10 @@ mainSteps:
   - action: aws:runShellScript
     name: InstallSpooktacular
     description: "Install Spooktacular via Homebrew or GitHub releases."
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "install"
     inputs:
       runCommand:
         - |
@@ -151,6 +171,10 @@ mainSteps:
   - action: aws:runShellScript
     name: ConfigureTLS
     description: "Generate self-signed TLS certificate if none exists."
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "install"
     inputs:
       runCommand:
         - |
@@ -187,6 +211,10 @@ mainSteps:
   - action: aws:runShellScript
     name: GenerateAPIToken
     description: "Generate a random API bearer token for authentication."
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "install"
     inputs:
       runCommand:
         - |
@@ -214,6 +242,10 @@ mainSteps:
   - action: aws:runShellScript
     name: CreateBaseVM
     description: "Create a base macOS VM from the latest restore image."
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "install"
     inputs:
       runCommand:
         - |
@@ -245,6 +277,10 @@ mainSteps:
   - action: aws:runShellScript
     name: InstallLaunchDaemon
     description: "Install spook serve as a LaunchDaemon with TLS."
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "install"
     inputs:
       runCommand:
         - |
@@ -317,6 +353,10 @@ mainSteps:
   - action: aws:runShellScript
     name: Validate
     description: "Run spook doctor to validate the installation."
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "install"
     inputs:
       runCommand:
         - |
@@ -329,3 +369,69 @@ mainSteps:
           echo ""
           echo "Spooktacular ready -- 2 VM slots available."
           echo "API endpoint: https://$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/local-ipv4 || echo 'localhost'):{{ APIPort }}"
+
+  # --------------------------------------------------------------------------
+  # Step 8: Drain Host
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: DrainHost
+    description: |
+      Mark the host for graceful drain. spook serve checks for the drain
+      marker file and stops accepting new VMs. Existing VMs are allowed
+      to finish. When all VMs are stopped, the host reports "drained".
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "drain"
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          DRAIN_MARKER="/etc/spooktacular/drain"
+
+          echo "=== Draining Host ==="
+          sudo mkdir -p /etc/spooktacular
+          sudo touch "${DRAIN_MARKER}"
+          echo "Host marked for drain at ${DRAIN_MARKER}."
+          echo "spook serve will stop accepting new VMs."
+          echo "Existing VMs will be allowed to finish."
+
+          # Log current VM count
+          if command -v spook &>/dev/null; then
+              VM_COUNT="$(spook list 2>/dev/null | grep -c 'running' || echo '0')"
+              echo "Currently running VMs: ${VM_COUNT}"
+              if [[ "${VM_COUNT}" -eq 0 ]]; then
+                  echo "No running VMs. Host is fully drained."
+              else
+                  echo "Waiting for ${VM_COUNT} VM(s) to finish before host is fully drained."
+              fi
+          fi
+
+  # --------------------------------------------------------------------------
+  # Step 9: Undrain Host
+  # --------------------------------------------------------------------------
+  - action: aws:runShellScript
+    name: UndrainHost
+    description: |
+      Remove the drain marker so the host resumes accepting new VMs.
+    precondition:
+      StringEquals:
+        - "{{ Action }}"
+        - "undrain"
+    inputs:
+      runCommand:
+        - |
+          #!/bin/bash
+          set -euo pipefail
+
+          DRAIN_MARKER="/etc/spooktacular/drain"
+
+          echo "=== Undraining Host ==="
+          if [[ -f "${DRAIN_MARKER}" ]]; then
+              sudo rm -f "${DRAIN_MARKER}"
+              echo "Drain marker removed. Host is now accepting new VMs."
+          else
+              echo "Host is not in drain mode. Nothing to do."
+          fi

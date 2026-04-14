@@ -12,7 +12,7 @@
 /// | `GET` | `/health` | ``handleHealth()`` |
 /// | `GET` | `/api/v1/clipboard` | ``handleGetClipboard()`` |
 /// | `POST` | `/api/v1/clipboard` | ``handleSetClipboard(_:)`` |
-/// | `POST` | `/api/v1/exec` | ``handleExec(_:)`` |
+/// | `POST` | `/api/v1/exec` | ``handleExec(_:)`` (admin only) |
 /// | `GET` | `/api/v1/apps` | ``handleListApps()`` |
 /// | `POST` | `/api/v1/apps/launch` | ``handleLaunchApp(_:)`` |
 /// | `POST` | `/api/v1/apps/quit` | ``handleQuitApp(_:)`` |
@@ -52,19 +52,32 @@ private let jsonDecoder = JSONDecoder()
 
 /// The authorization scope required by an endpoint.
 ///
-/// Used to classify endpoints for future RBAC support. Currently any
-/// valid token grants both scopes.
-private enum EndpointScope {
+/// Three-tier model:
+/// - ``readonly``: GET endpoints that inspect state without mutating it.
+/// - ``runner``: Mutation endpoints except exec (launch/quit apps, set clipboard, upload files).
+/// - ``admin``: Break-glass scope that includes exec and everything else.
+private enum EndpointScope: String {
     /// Read-only endpoints that inspect state without mutating it.
-    case basic
-    /// Mutation endpoints that change state (exec, write clipboard, launch/quit apps, upload files).
-    case elevated
+    case readonly
+    /// Runner-level mutation endpoints (apps, clipboard, files) — excludes exec.
+    case runner
+    /// Admin (break-glass) endpoints — everything including exec.
+    case admin
 }
 
 /// Returns the ``EndpointScope`` for the given method/path pair,
 /// or `nil` if the route is unknown.
 private func endpointScope(method: String, path: String) -> EndpointScope? {
     switch (method, path) {
+    // Admin — break-glass scope (exec)
+    case ("POST", "/api/v1/exec"):
+        return .admin
+    // Runner — mutation except exec
+    case ("POST", "/api/v1/clipboard"),
+         ("POST", "/api/v1/apps/launch"),
+         ("POST", "/api/v1/apps/quit"),
+         ("POST", "/api/v1/files"):
+        return .runner
     // Read-only — basic scope
     case ("GET", "/health"),
          ("GET", "/api/v1/clipboard"),
@@ -73,14 +86,7 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
          ("GET", "/api/v1/fs"),
          ("GET", "/api/v1/files"),
          ("GET", "/api/v1/ports"):
-        return .basic
-    // Mutation — elevated scope
-    case ("POST", "/api/v1/exec"),
-         ("POST", "/api/v1/clipboard"),
-         ("POST", "/api/v1/apps/launch"),
-         ("POST", "/api/v1/apps/quit"),
-         ("POST", "/api/v1/files"):
-        return .elevated
+        return .readonly
     default:
         return nil
     }
@@ -88,56 +94,101 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
 
 // MARK: - Router
 
+/// The authorization tier determined from the presented Bearer token.
+///
+/// Used to enforce scope-based access control and to annotate audit log entries.
+private enum AuthTier: String {
+    /// Admin (break-glass) — all endpoints including exec.
+    case admin
+    /// Runner — mutation endpoints except exec.
+    case runner
+    /// Read-only — GET endpoints only.
+    case readonly
+    /// Legacy mode — no tokens configured, all endpoints allowed.
+    case legacy
+}
+
 /// Routes an ``AgentHTTPRequest`` to the appropriate handler.
 ///
-/// When a non-nil `token` is supplied the router enforces Bearer-token
-/// authentication with scope-based authorization:
+/// When any token is configured the router enforces Bearer-token
+/// authentication with three-tier scope-based authorization:
 ///
-/// - **Full-access token**: Grants access to all endpoints (read + mutation).
+/// - **Admin token**: Grants access to all endpoints including exec (break-glass).
+/// - **Runner token**: Grants access to read-only and mutation endpoints,
+///   but NOT exec. Exec returns 403 Forbidden.
 /// - **Read-only token**: Grants access to read-only endpoints only.
-///   Mutation endpoints (exec, write clipboard, launch/quit apps, upload files)
-///   return 403 Forbidden.
+///   Mutation and exec endpoints return 403 Forbidden.
 ///
-/// If neither token is configured the agent runs in legacy mode
+/// If no token is configured the agent runs in legacy mode
 /// (no auth, warning already logged at startup).
 ///
 /// After dispatching every request the router emits an audit-level log
 /// entry via `os.Logger` at `.notice` so it appears in Console.app.
+/// The log includes the resolved authorization tier.
 ///
 /// - Parameters:
 ///   - request: The parsed HTTP request.
-///   - token: The full-access Bearer token, or `nil` for legacy mode.
+///   - adminToken: The admin (break-glass) Bearer token, or `nil` for legacy mode.
+///   - runnerToken: The runner Bearer token, or `nil` if not configured.
 ///   - readonlyToken: The read-only Bearer token, or `nil` if not configured.
 /// - Returns: A complete HTTP/1.1 response as raw bytes.
-func routeRequest(_ request: AgentHTTPRequest, token: String? = nil, readonlyToken: String? = nil) -> Data {
+func routeRequest(
+    _ request: AgentHTTPRequest,
+    adminToken: String? = nil,
+    runnerToken: String? = nil,
+    readonlyToken: String? = nil
+) -> Data {
 
     // --- Auth gate ---
-    let hasAnyToken = token != nil || readonlyToken != nil
+    let hasAnyToken = adminToken != nil || runnerToken != nil || readonlyToken != nil
+    let authTier: AuthTier
+
     if hasAnyToken {
         let authHeader = request.headers["authorization"] ?? ""
 
         // Determine which token was presented
-        let isFullAccess = token != nil && authHeader == "Bearer \(token!)"
+        let isAdmin = adminToken != nil && authHeader == "Bearer \(adminToken!)"
+        let isRunner = runnerToken != nil && authHeader == "Bearer \(runnerToken!)"
         let isReadOnly = readonlyToken != nil && authHeader == "Bearer \(readonlyToken!)"
 
-        guard isFullAccess || isReadOnly else {
+        if isAdmin {
+            authTier = .admin
+        } else if isRunner {
+            authTier = .runner
+        } else if isReadOnly {
+            authTier = .readonly
+        } else {
             let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-            emitAuditLog(method: request.method, path: request.path, statusCode: 401)
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
             return response
         }
 
-        // Enforce scope: read-only tokens cannot access mutation endpoints
-        if isReadOnly {
-            let scope = endpointScope(method: request.method, path: request.path)
-            if scope == .elevated {
+        // Enforce scope restrictions
+        let scope = endpointScope(method: request.method, path: request.path)
+        switch authTier {
+        case .readonly:
+            if scope == .runner || scope == .admin {
                 let response = errorResponse(
                     message: "Forbidden. Read-only token cannot access mutation endpoints.",
                     statusCode: 403
                 )
-                emitAuditLog(method: request.method, path: request.path, statusCode: 403)
+                emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: authTier)
                 return response
             }
+        case .runner:
+            if scope == .admin {
+                let response = errorResponse(
+                    message: "Forbidden. Runner token cannot access admin endpoints.",
+                    statusCode: 403
+                )
+                emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: authTier)
+                return response
+            }
+        case .admin, .legacy:
+            break // Admin and legacy allow everything
         }
+    } else {
+        authTier = .legacy
     }
 
     // --- Dispatch ---
@@ -186,22 +237,25 @@ func routeRequest(_ request: AgentHTTPRequest, token: String? = nil, readonlyTok
         statusCode = 404
     }
 
-    emitAuditLog(method: request.method, path: request.path, statusCode: statusCode)
+    emitAuditLog(method: request.method, path: request.path, statusCode: statusCode, tier: authTier)
     return response
 }
 
 /// Emits an audit log entry at `.notice` level.
 ///
-/// The message includes an ISO-8601 timestamp so the audit trail is
-/// self-contained even when log timestamps are stripped.
+/// The message includes the resolved authorization tier and an ISO-8601
+/// timestamp so the audit trail is self-contained even when log
+/// timestamps are stripped.
 ///
 /// - Parameters:
 ///   - method: The HTTP method (e.g., `"GET"`).
 ///   - path: The request path (e.g., `"/api/v1/exec"`).
 ///   - statusCode: The HTTP status code of the response.
-private func emitAuditLog(method: String, path: String, statusCode: Int) {
+///   - tier: The authorization tier that handled this request, or `nil` for unauthenticated.
+private func emitAuditLog(method: String, path: String, statusCode: Int, tier: AuthTier?) {
     let timestamp = ISO8601DateFormatter().string(from: Date())
-    auditLog.notice("AUDIT: \(method, privacy: .public) \(path, privacy: .public) → \(statusCode) [\(timestamp, privacy: .public)]")
+    let tierLabel = tier?.rawValue ?? "none"
+    auditLog.notice("AUDIT: \(method, privacy: .public) \(path, privacy: .public) → \(statusCode) [\(tierLabel, privacy: .public)] [\(timestamp, privacy: .public)]")
 }
 
 // MARK: - Response Builders

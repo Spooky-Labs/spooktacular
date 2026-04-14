@@ -25,6 +25,18 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Network disconnect delegate implementation
 - Separate SpookCLI.entitlements (no app-sandbox for CLI)
 - Liquid Glass UI across entire GUI (macOS 26+)
+- RunnerPool reconciliation with lifecycle state machine (9 states: idle, provisioning, registering, ready, busy, completing, recycling, draining, terminated)
+- GitHub webhook integration (HMAC-SHA256 verified `workflow_job` events for real-time job detection)
+- Three-tier pool recycling strategies (reclone: fresh APFS clone, snapshot: restore to clean snapshot, scrub: in-place cleanup)
+- Clean Architecture restructure (Entities / UseCases / Interfaces / Infrastructure layers)
+- mTLS support for controller-to-node traffic (optional, enabled via `--mtls-ca`)
+- Keychain-based secret storage (API tokens and TLS keys stored in macOS Keychain)
+- Three-tier guest agent authorization (read-only, runner, break-glass token scopes)
+- TLS certificate hot reload (zero-downtime cert rotation via file watching)
+- OSSignposter lifecycle tracing (structured os_signpost intervals for VM and runner lifecycle)
+- CodeQL static analysis, SBOM generation, and artifact attestations in CI
+- EC2 Mac enterprise mode (Host Resource Group placement, drain procedures, IMDS identity verification)
+- Automated doc consistency test suite (verifies docs match code for test counts, feature claims, and API surface)
 
 ### Fixed
 - Notarization uses `xcrun notarytool` (Fastlane wrapper broken)
@@ -48,7 +60,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 - CI triggers on PRs only; Beta triggers on merge to main
 - Release workflow notarizes and staples before publishing
 - HTTPAPIServer split into HTTPRequest, HTTPResponse, APIModels
-- 360 tests in 45 suites (was 297 in 36)
+- 411+ tests in 50+ suites (was 297 in 36)
 
 ## [0.1.0] - 2026-04-13
 

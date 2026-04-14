@@ -102,22 +102,22 @@ Four thin clients, one library. Every client parses input and calls Spooktacular
 
 | Feature | Source | Description |
 |---|---|---|
-| VM Creation | [`RestoreImageManager.swift`](Sources/SpooktacularKit/RestoreImageManager.swift) | Auto-download latest compatible macOS IPSW, install |
-| APFS Cloning | [`CloneManager.swift`](Sources/SpooktacularKit/CloneManager.swift) | Copy-on-write clone with new MachineIdentifier |
-| VM Lifecycle | [`VirtualMachine.swift`](Sources/SpooktacularKit/VirtualMachine.swift) | Start, stop, pause, resume, save/restore state |
-| Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularKit/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
-| SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularKit/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
-| Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularKit/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
+| VM Creation | [`RestoreImageManager.swift`](Sources/SpooktacularKit/Infrastructure/RestoreImageManager.swift) | Auto-download latest compatible macOS IPSW, install |
+| APFS Cloning | [`CloneManager.swift`](Sources/SpooktacularKit/Infrastructure/CloneManager.swift) | Copy-on-write clone with new MachineIdentifier |
+| VM Lifecycle | [`VirtualMachine.swift`](Sources/SpooktacularKit/Infrastructure/VirtualMachine.swift) | Start, stop, pause, resume, save/restore state |
+| Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularKit/Infrastructure/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
+| SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularKit/Infrastructure/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
+| Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularKit/Infrastructure/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
 | Guest Agent | [`spooktacular-agent/`](Sources/spooktacular-agent/) | 12 HTTP endpoints: clipboard, exec, apps, files, ports, health |
-| Agent Client | [`GuestAgentClient.swift`](Sources/SpooktacularKit/GuestAgentClient.swift) | Host-side actor for all guest agent operations |
-| Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularKit/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
+| Agent Client | [`GuestAgentClient.swift`](Sources/SpooktacularKit/Infrastructure/GuestAgentClient.swift) | Host-side actor for all guest agent operations |
+| Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularKit/UseCases/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
 | Ephemeral Runners | [`Start.swift`](Sources/spook/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
-| Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularKit/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
-| Capacity Check | [`CapacityCheck.swift`](Sources/SpooktacularKit/CapacityCheck.swift) | Enforces 2-VM kernel limit with actionable errors |
-| HTTP API | [`HTTPAPIServer.swift`](Sources/SpooktacularKit/HTTPAPIServer.swift) | 9 REST endpoints, TLS support, bearer token auth |
+| Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularKit/Infrastructure/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
+| Capacity Check | [`CapacityCheck.swift`](Sources/SpooktacularKit/UseCases/CapacityCheck.swift) | Enforces 2-VM kernel limit with actionable errors |
+| HTTP API | [`HTTPAPIServer.swift`](Sources/SpooktacularKit/Infrastructure/HTTPAPIServer.swift) | 9 REST endpoints, TLS support, bearer token auth |
 | Kubernetes | [`Sources/spook-controller/`](Sources/spook-controller/) | MacOSVM CRD, Swift controller, Helm chart |
-| Service | [`ServicePlist.swift`](Sources/SpooktacularKit/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
-| Networking | [`VirtualMachineConfiguration.swift`](Sources/SpooktacularKit/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
+| Service | [`ServicePlist.swift`](Sources/SpooktacularKit/UseCases/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
+| Networking | [`VirtualMachineConfiguration.swift`](Sources/SpooktacularKit/Infrastructure/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
 | Accessibility | GUI sources | Full VoiceOver: labels, hints, identifiers, announcements |
 
 ## CLI Reference
@@ -180,7 +180,7 @@ spook remote apps my-vm
 spook remote ports my-vm
 ```
 
-The host-side [`GuestAgentClient`](Sources/SpooktacularKit/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spooktacular-agent --install-agent` (LaunchAgent for clipboard/app access).
+The host-side [`GuestAgentClient`](Sources/SpooktacularKit/Infrastructure/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spooktacular-agent --install-agent` (LaunchAgent for clipboard/app access).
 
 ## Runner Pools (Kubernetes)
 
