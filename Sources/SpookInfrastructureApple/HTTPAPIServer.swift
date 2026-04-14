@@ -104,9 +104,10 @@ public actor HTTPAPIServer {
     /// (development mode).
     private let apiToken: String?
 
-    /// Whether the server is running in insecure mode (no TLS, no
-    /// required API token). When `true`, the server accepts plain HTTP
-    /// connections and does not enforce token authentication.
+    /// Whether the server is running in insecure development mode.
+    /// When `true`, TLS and API token requirements are bypassed.
+    /// **Not suitable for production.** Use `--insecure` flag only
+    /// for local development and testing.
     public let insecureMode: Bool
 
     /// Logger for HTTP API events.
@@ -139,8 +140,8 @@ public actor HTTPAPIServer {
     ///     spawning VM processes. Defaults to `/usr/local/bin/spook`.
     ///   - tlsOptions: Optional TLS configuration for the NWListener.
     ///     When provided, the server accepts HTTPS connections using
-    ///     the supplied certificate and key. When `nil`, the server
-    ///     uses plain HTTP.
+    ///     the supplied certificate and key. Required in production.
+    ///     When `nil`, requires `insecureMode: true` or startup fails.
     ///   - insecureMode: When `true`, disables the requirement for an
     ///     API token when TLS is not configured. The server logs a
     ///     prominent warning when running in insecure mode.
