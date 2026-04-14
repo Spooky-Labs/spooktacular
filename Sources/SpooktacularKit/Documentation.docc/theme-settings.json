@@ -1,0 +1,78 @@
+{
+  "theme": {
+    "color": {
+      "documentation-intro-fill": {
+        "dark": "#0f0a1a",
+        "light": "#f5f0ff"
+      },
+      "fill": {
+        "dark": "#07050f",
+        "light": "#ffffff"
+      },
+      "fill-secondary": {
+        "dark": "#1a1035",
+        "light": "#f0eaff"
+      },
+      "fill-tertiary": {
+        "dark": "#251648",
+        "light": "#e8deff"
+      },
+      "nav-solid-background": {
+        "dark": "#0f0a1a",
+        "light": "#ffffff"
+      },
+      "nav-dark-solid-background": "#0f0a1a",
+      "standard-purple": "hsl(263, 90%, 55%)",
+      "figure-blue": {
+        "dark": "#a78bfa",
+        "light": "#7c3aed"
+      },
+      "tutorials-teal": {
+        "dark": "#a78bfa",
+        "light": "#7c3aed"
+      },
+      "documentation-intro-accent": {
+        "dark": "#a78bfa",
+        "light": "#7c3aed"
+      },
+      "documentation-intro-eyebrow": {
+        "dark": "#c4b5fd",
+        "light": "#5b21b6"
+      },
+      "documentation-intro-figure": {
+        "dark": "#a78bfa",
+        "light": "#7c3aed"
+      },
+      "documentation-intro-title": {
+        "dark": "#f0eaff",
+        "light": "#1a1035"
+      }
+    },
+    "typography": {
+      "html-font": "-apple-system, BlinkMacSystemFont, 'Inter', 'SF Pro Display', system-ui, sans-serif",
+      "html-font-mono": "'SF Mono', 'Fira Code', ui-monospace, monospace"
+    },
+    "aside": {
+      "border-radius": "8px",
+      "border-style": "solid",
+      "border-width": "1px"
+    },
+    "border-radius": "8px",
+    "button": {
+      "border-radius": "8px"
+    },
+    "code": {
+      "border-radius": "8px"
+    }
+  },
+  "features": {
+    "docs": {
+      "quickNavigation": {
+        "enable": true
+      },
+      "onThisPageNavigator": {
+        "enable": true
+      }
+    }
+  }
+}

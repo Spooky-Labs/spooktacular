@@ -62,6 +62,18 @@ fi
 # Copy entitlements
 cp "$ENTITLEMENTS" "$CONTENTS/Entitlements.plist"
 
+# Embed provisioning profile if available (required for TestFlight)
+# Match stores profiles in ~/Library/Developer/Xcode/UserData/Provisioning Profiles/
+PROFILE_DIR="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+if [ -d "$PROFILE_DIR" ]; then
+    # Find the most recent .provisionprofile
+    PROFILE=$(ls -t "$PROFILE_DIR"/*.provisionprofile 2>/dev/null | head -1)
+    if [ -n "$PROFILE" ]; then
+        echo "Embedding provisioning profile: $(basename "$PROFILE")"
+        cp "$PROFILE" "$CONTENTS/embedded.provisionprofile"
+    fi
+fi
+
 # 4. Code sign
 # Use the signing identity from CODESIGN_IDENTITY env var if set
 # (match sets this via MATCH_CODESIGN_IDENTITY), otherwise ad-hoc.
