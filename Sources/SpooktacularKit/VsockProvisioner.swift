@@ -111,6 +111,24 @@ public enum VsockProvisioner {
 
         do {
             let client = GuestAgentClient(socketDevice: socketDevice)
+
+            // Verify the agent is alive before executing the script.
+            // If health fails, fall through to SSH fallback immediately
+            // instead of waiting for exec to timeout.
+            do {
+                let healthResponse = try await client.health()
+                Log.provision.info("Guest agent healthy (version: \(healthResponse.version, privacy: .public))")
+            } catch {
+                Log.provision.warning(
+                    "Guest agent health check failed: \(error.localizedDescription, privacy: .public) — skipping to SSH fallback"
+                )
+                try await sshFallback(
+                    fallbackIP: fallbackIP, script: script,
+                    sshUser: sshUser, sshKey: sshKey
+                )
+                return
+            }
+
             let result = try await client.exec(scriptContent)
 
             if result.exitCode != 0 {

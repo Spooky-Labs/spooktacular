@@ -69,6 +69,15 @@ public enum CloneManager {
         )
 
         do {
+            // Check if the source volume supports APFS cloning.
+            // FileManager.copyItem uses clonefile(2) automatically on
+            // APFS, but we log a warning when the volume doesn't
+            // support it so callers know they're getting a full copy.
+            let values = try source.url.resourceValues(forKeys: [.volumeSupportsFileCloningKey])
+            if values.volumeSupportsFileCloning != true {
+                Log.clone.warning("Volume does not support APFS cloning — falling back to full copy")
+            }
+
             for fileName in filesToCopy {
                 let sourceFile = source.url.appendingPathComponent(fileName)
                 let destinationFile = destination.appendingPathComponent(fileName)

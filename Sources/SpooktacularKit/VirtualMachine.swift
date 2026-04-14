@@ -18,6 +18,33 @@ public struct VirtualMachineInvalidatedError: Error, Sendable, LocalizedError {
     }
 }
 
+/// An error thrown when a lifecycle transition is invalid for
+/// the VM's current state.
+///
+/// For example, calling `start()` on a VM that is already running,
+/// or `pause()` on one that is stopped.
+public enum VirtualMachineLifecycleError: Error, Sendable, LocalizedError {
+
+    /// The requested state transition is not valid.
+    ///
+    /// - Parameters:
+    ///   - from: The VM's current state.
+    ///   - to: The requested target state.
+    ///   - reason: A human-readable explanation.
+    case invalidTransition(
+        from: VirtualMachineState,
+        to: VirtualMachineState,
+        reason: String
+    )
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidTransition(let from, let to, let reason):
+            "Cannot transition from \(from.rawValue) to \(to.rawValue): \(reason)"
+        }
+    }
+}
+
 /// The lifecycle state of a virtual machine.
 ///
 /// Maps to `VZVirtualMachine.State` but is a ``Sendable`` value
@@ -173,6 +200,12 @@ public final class VirtualMachine: NSObject, Sendable {
     /// - Throws: An error if the VM cannot be started.
     public func start() async throws {
         guard let virtualMachine = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard virtualMachine.canStart else {
+            throw VirtualMachineLifecycleError.invalidTransition(
+                from: state, to: .starting,
+                reason: "VM cannot start in its current state"
+            )
+        }
         Log.vm.info("Starting VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.starting)
         nonisolated(unsafe) let unsafeVM = virtualMachine
@@ -203,6 +236,12 @@ public final class VirtualMachine: NSObject, Sendable {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
 
         if graceful {
+            guard vm.canRequestStop else {
+                throw VirtualMachineLifecycleError.invalidTransition(
+                    from: state, to: .stopped,
+                    reason: "VM cannot request a graceful stop in its current state"
+                )
+            }
             Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             try vm.requestStop()
 
@@ -224,6 +263,12 @@ public final class VirtualMachine: NSObject, Sendable {
                 Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' force-stopped after graceful timeout")
             }
         } else {
+            guard vm.canStop else {
+                throw VirtualMachineLifecycleError.invalidTransition(
+                    from: state, to: .stopped,
+                    reason: "VM cannot be force-stopped in its current state"
+                )
+            }
             Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             nonisolated(unsafe) let unsafeVM = vm
             try await unsafeVM.stop()
@@ -237,6 +282,12 @@ public final class VirtualMachine: NSObject, Sendable {
     /// state are preserved. Resume with ``resume()``.
     public func pause() async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard vm.canPause else {
+            throw VirtualMachineLifecycleError.invalidTransition(
+                from: state, to: .pausing,
+                reason: "VM cannot pause in its current state"
+            )
+        }
         Log.vm.info("Pausing VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.pausing)
         nonisolated(unsafe) let unsafeVM = vm
@@ -255,6 +306,12 @@ public final class VirtualMachine: NSObject, Sendable {
     /// Resumes a paused virtual machine.
     public func resume() async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard vm.canResume else {
+            throw VirtualMachineLifecycleError.invalidTransition(
+                from: state, to: .resuming,
+                reason: "VM cannot resume in its current state"
+            )
+        }
         Log.vm.info("Resuming VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.resuming)
         nonisolated(unsafe) let unsafeVM = vm
@@ -290,6 +347,12 @@ public final class VirtualMachine: NSObject, Sendable {
     /// > disk image after saving invalidates the state file.
     public func saveState(to url: URL) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard vm.canPause else {
+            throw VirtualMachineLifecycleError.invalidTransition(
+                from: state, to: .paused,
+                reason: "VM must be in a pausable state to save (save requires pausing first)"
+            )
+        }
         Log.vm.info("Saving VM state to \(url.lastPathComponent, privacy: .public)")
         nonisolated(unsafe) let unsafeVM = vm
         try await unsafeVM.saveMachineStateTo(url: url)
@@ -306,6 +369,12 @@ public final class VirtualMachine: NSObject, Sendable {
     ///   incompatible with the current disk image.
     public func restoreState(from url: URL) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            Log.vm.error("State file not found: \(url.lastPathComponent, privacy: .public)")
+            throw CocoaError(.fileNoSuchFile, userInfo: [
+                NSFilePathErrorKey: url.path,
+            ])
+        }
         Log.vm.info("Restoring VM state from \(url.lastPathComponent, privacy: .public)")
         nonisolated(unsafe) let unsafeVM = vm
         try await unsafeVM.restoreMachineStateFrom(url: url)
