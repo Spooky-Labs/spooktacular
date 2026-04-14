@@ -80,6 +80,21 @@ struct CapacityCheckTests {
         #expect(CapacityCheck.runningCount(in: dir) == 0)
     }
 
+    @Test("Stale PID files are removed during runningVMs scan")
+    func stalePIDFilesRemoved() throws {
+        let dir = makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        try createBundle(named: "vm1", in: dir, withPID: 99999999)
+        let pidURL = dir.appendingPathComponent("vm1.vm")
+            .appendingPathComponent(PIDFile.fileName)
+
+        #expect(FileManager.default.fileExists(atPath: pidURL.path))
+        _ = CapacityCheck.runningVMs(in: dir)
+        #expect(!FileManager.default.fileExists(atPath: pidURL.path))
+    }
+
     @Test("Counts bundle with the current process's PID as running")
     func currentProcessPID() throws {
         let dir = makeTempDir()

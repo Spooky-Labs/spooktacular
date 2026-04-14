@@ -46,6 +46,8 @@ public enum ServicePlist {
     /// - Returns: A UTF-8 XML string suitable for writing to disk.
     public static func generate(executablePath: String, vmName: String) -> String {
         let daemonLabel = label(for: vmName)
+        let safePath = xmlEscape(executablePath)
+        let safeName = xmlEscape(vmName)
         return """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
@@ -56,9 +58,9 @@ public enum ServicePlist {
             <string>\(daemonLabel)</string>
             <key>ProgramArguments</key>
             <array>
-                <string>\(executablePath)</string>
+                <string>\(safePath)</string>
                 <string>start</string>
-                <string>\(vmName)</string>
+                <string>\(safeName)</string>
                 <string>--headless</string>
             </array>
             <key>RunAtLoad</key>
@@ -66,11 +68,26 @@ public enum ServicePlist {
             <key>KeepAlive</key>
             <false/>
             <key>StandardOutPath</key>
-            <string>/var/log/spooktacular.\(vmName).log</string>
+            <string>/var/log/spooktacular.\(safeName).log</string>
             <key>StandardErrorPath</key>
-            <string>/var/log/spooktacular.\(vmName).error.log</string>
+            <string>/var/log/spooktacular.\(safeName).error.log</string>
         </dict>
         </plist>
         """
+    }
+
+    // MARK: - Private
+
+    /// Escapes the five XML special characters for safe embedding in plist XML.
+    ///
+    /// - Parameter string: The raw string to escape.
+    /// - Returns: The string with `&`, `<`, `>`, `"`, and `'` replaced by XML entities.
+    private static func xmlEscape(_ string: String) -> String {
+        string
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
     }
 }

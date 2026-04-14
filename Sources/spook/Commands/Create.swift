@@ -340,12 +340,14 @@ extension Spook {
                         }
 
                     case .agent:
-                        print(Style.warning("⚠ Agent provisioning requires the Spooktacular guest agent (planned for a future release)."))
+                        print(Style.error("✗ Agent provisioning is not yet available (planned for a future release)."))
                         print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
+                        throw ExitCode.failure
 
                     case .sharedFolder:
-                        print(Style.warning("⚠ Shared-folder provisioning requires the watcher daemon (planned for a future release)."))
+                        print(Style.error("✗ Shared-folder provisioning is not yet available (planned for a future release)."))
                         print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
+                        throw ExitCode.failure
                     }
                 }
                 if ephemeral {
@@ -409,14 +411,8 @@ extension Spook {
                     timeout: 120
                 )
 
-                if let ip {
-                    Style.field("IP", ip)
-                    print(Style.success("✓ Provisioning complete."))
-                } else {
-                    print(Style.error("✗ Could not resolve VM IP address."))
-                    print(Style.dim("  The VM was created successfully but provisioning was skipped."))
-                    print(Style.dim("  Run 'spook start \(name) --headless --user-data \(script.path) --provision ssh' to provision manually."))
-                }
+                Style.field("IP", ip)
+                print(Style.success("✓ Provisioning complete."))
 
             } catch {
                 logger.error("Provisioning failed: \(error.localizedDescription, privacy: .public)")
@@ -490,15 +486,23 @@ extension Spook {
                 // 3. Wait for SSH to confirm setup finished.
                 logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
                 print(Style.info("Waiting for SSH to confirm setup completed..."))
-                if let ip = try await IPResolver.resolveIPWithRetry(macAddress: macAddress, timeout: 120) {
-                    logger.info("Resolved IP \(ip, privacy: .public), waiting for SSH")
-                    try await SSHExecutor.waitForSSH(ip: ip)
-                    logger.notice("SSH confirmed on \(ip, privacy: .public)")
-                    print(Style.success("✓ SSH available at \(ip). Setup confirmed."))
-                } else {
-                    logger.warning("Could not resolve IP — setup may still have succeeded")
-                    print(Style.warning("Could not resolve VM IP to verify SSH. Setup may still have completed."))
+                guard let ip = try await IPResolver.resolveIPWithRetry(macAddress: macAddress, timeout: 120) else {
+                    logger.error("Could not resolve IP — SSH unreachable, setup cannot be verified")
+                    throw NSError(
+                        domain: "com.spooktacular",
+                        code: 1,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "Could not resolve VM IP address within timeout.",
+                            NSLocalizedRecoverySuggestionErrorKey:
+                                "The VM is not usable for template provisioning without SSH. "
+                                + "Run 'spook start \(name)' to complete setup manually."
+                        ]
+                    )
                 }
+                logger.info("Resolved IP \(ip, privacy: .public), waiting for SSH")
+                try await SSHExecutor.waitForSSH(ip: ip)
+                logger.notice("SSH confirmed on \(ip, privacy: .public)")
+                print(Style.success("✓ SSH available at \(ip). Setup confirmed."))
 
                 // 4. Mark setup as completed in the bundle metadata.
                 var metadata = bundle.metadata

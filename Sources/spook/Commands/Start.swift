@@ -74,17 +74,7 @@ extension Spook {
         func run() async throws {
             let bundleURL = try requireBundle(for: name)
 
-            // Enforce the 2-VM concurrency limit before proceeding.
             try SpooktacularPaths.ensureDirectories()
-            do {
-                try CapacityCheck.ensureCapacity(in: SpooktacularPaths.vms)
-            } catch let error as CapacityError {
-                print(Style.error("✗ \(error.localizedDescription)"))
-                if let recovery = error.recoverySuggestion {
-                    print(Style.dim("  \(recovery)"))
-                }
-                throw ExitCode.failure
-            }
 
             // Check if this specific VM is already running.
             if PIDFile.isRunning(bundleURL: bundleURL) {
@@ -92,7 +82,35 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            let bundle = try VirtualMachineBundle.load(from: bundleURL)
+            // Clean up any stale ephemeral bundles (marked ephemeral
+            // with a dead PID — leftover from a crash or forced stop).
+            let fm = FileManager.default
+            if let allBundles = try? fm.contentsOfDirectory(
+                at: SpooktacularPaths.vms,
+                includingPropertiesForKeys: nil
+            ).filter({ $0.pathExtension == "vm" }) {
+                for otherBundle in allBundles {
+                    guard otherBundle != bundleURL else { continue }
+                    if let loaded = try? VirtualMachineBundle.load(from: otherBundle),
+                       loaded.metadata.isEphemeral,
+                       !PIDFile.isRunning(bundleURL: otherBundle) {
+                        try? fm.removeItem(at: otherBundle)
+                        print(Style.dim("Cleaned up stale ephemeral VM '\(otherBundle.deletingPathExtension().lastPathComponent)'."))
+                    }
+                }
+            }
+
+            var bundle = try VirtualMachineBundle.load(from: bundleURL)
+
+            // Persist ephemeral flag in metadata before starting so
+            // other processes (or a future start) can detect and clean
+            // up if this process crashes.
+            if ephemeral && !bundle.metadata.isEphemeral {
+                var metadata = bundle.metadata
+                metadata.isEphemeral = true
+                try VirtualMachineBundle.writeMetadata(metadata, to: bundleURL)
+                bundle = try VirtualMachineBundle.load(from: bundleURL)
+            }
 
             // Pre-boot provisioning: modes that write to the guest disk
             // or shared folder while the VM is stopped.
@@ -167,8 +185,21 @@ extension Spook {
                 throw ExitCode.failure
             }
 
-            // Write PID file so other commands can find this process.
-            try PIDFile.write(to: bundleURL)
+            // Write PID file and atomically verify the concurrency limit.
+            // Writing first closes the TOCTOU gap where two processes could
+            // both pass a capacity check before either writes its PID.
+            do {
+                try PIDFile.writeAndEnsureCapacity(
+                    bundleURL: bundleURL,
+                    vmDirectory: SpooktacularPaths.vms
+                )
+            } catch let error as CapacityError {
+                print(Style.error("✗ \(error.localizedDescription)"))
+                if let recovery = error.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
+                throw ExitCode.failure
+            }
 
             // Graceful shutdown on SIGTERM and SIGINT (Ctrl+C).
             let isEphemeral = ephemeral
@@ -225,19 +256,14 @@ extension Spook {
 
                     if let macAddress = bundle.spec.macAddress {
                         print(Style.info("Provisioning via SSH..."))
-                        let ip = try await VMProvisioner.provisionViaSSH(
+                        try await VMProvisioner.provisionViaSSH(
                             macAddress: macAddress,
                             script: scriptURL,
                             user: sshUser,
                             key: sshKey,
                             timeout: 120
                         )
-                        if ip != nil {
-                            print(Style.success("✓ User-data script completed."))
-                        } else {
-                            print(Style.warning("Could not resolve VM IP. Skipping user-data execution."))
-                            print(Style.dim("Ensure the VM has booted and obtained a network address."))
-                        }
+                        print(Style.success("✓ User-data script completed."))
                     } else {
                         print(Style.warning("No MAC address configured. Cannot resolve IP for SSH provisioning."))
                         print(Style.dim("Set a MAC address with 'spook set \(name) --mac-address <addr>' for automatic IP resolution."))

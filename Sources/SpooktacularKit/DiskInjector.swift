@@ -84,14 +84,14 @@ public enum DiskInjector {
             )
         }
 
-        // 2. Find and mount the APFS data volume
-        let volumePath = try mountDataVolume(devicePath: devicePath)
-
         defer {
             // Always unmount and detach
             _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", devicePath, "-force"])
             Log.provision.debug("Detached disk image")
         }
+
+        // 2. Find and mount the APFS data volume
+        let volumePath = try mountDataVolume(devicePath: devicePath)
 
         // 3. Write the user's script
         let scriptDestination = "\(volumePath)\(guestScriptPath)"

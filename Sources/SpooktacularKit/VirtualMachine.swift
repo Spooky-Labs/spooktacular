@@ -80,6 +80,14 @@ public final class VirtualMachine: NSObject, Sendable {
     /// The current state of the virtual machine.
     public private(set) var state: VirtualMachineState = .stopped
 
+    /// The last error that caused the VM to stop, if any.
+    ///
+    /// Set when the ``VZVirtualMachineDelegate`` reports an error
+    /// or when a lifecycle method (`start`, `pause`, `resume`) throws.
+    /// Reset to `nil` on the next successful state transition away
+    /// from ``VirtualMachineState/error``.
+    public private(set) var lastError: Error?
+
     /// An asynchronous stream of state changes.
     ///
     /// Subscribe to this stream to observe VM lifecycle events.
@@ -87,6 +95,10 @@ public final class VirtualMachine: NSObject, Sendable {
     /// between states (starting, running, paused, stopped, error).
     public let stateStream: AsyncStream<VirtualMachineState>
     private let stateContinuation: AsyncStream<VirtualMachineState>.Continuation
+
+    /// The maximum time (in seconds) to wait for a graceful stop
+    /// before escalating to a force-stop.
+    private static let gracefulStopTimeout: Int = 30
 
     // MARK: - Initialization
 
@@ -114,7 +126,7 @@ public final class VirtualMachine: NSObject, Sendable {
 
         Log.vm.info("Initializing VM from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
+        try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
         try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
         try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
         try config.validate()
@@ -156,7 +168,14 @@ public final class VirtualMachine: NSObject, Sendable {
         Log.vm.info("Starting VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.starting)
         nonisolated(unsafe) let unsafeVM = virtualMachine
-        try await unsafeVM.start()
+        do {
+            try await unsafeVM.start()
+        } catch {
+            Log.vm.error("Failed to start VM '\(self.bundle.url.lastPathComponent, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            lastError = error
+            updateState(.error)
+            throw error
+        }
         Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' is running")
         updateState(.running)
     }
@@ -178,6 +197,23 @@ public final class VirtualMachine: NSObject, Sendable {
         if graceful {
             Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             try vm.requestStop()
+
+            // Poll state for up to `gracefulStopTimeout` seconds.
+            // macOS guests typically ignore requestStop(), so we
+            // escalate to a force-stop if the VM is still running.
+            let deadline = Self.gracefulStopTimeout
+            for tick in 0..<deadline {
+                if state == .stopped { return }
+                try await Task.sleep(for: .seconds(1))
+                Log.vm.debug("Waiting for graceful stop… \(tick + 1, privacy: .public)/\(deadline, privacy: .public)s")
+            }
+
+            // Still running — escalate to force-stop.
+            Log.vm.warning("Graceful stop timed out after \(deadline, privacy: .public)s for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
+            nonisolated(unsafe) let unsafeVM = vm
+            try await unsafeVM.stop()
+            updateState(.stopped)
+            Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' force-stopped after graceful timeout")
         } else {
             Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             nonisolated(unsafe) let unsafeVM = vm
@@ -196,7 +232,14 @@ public final class VirtualMachine: NSObject, Sendable {
         Log.vm.info("Pausing VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.pausing)
         nonisolated(unsafe) let unsafeVM = vm
-        try await unsafeVM.pause()
+        do {
+            try await unsafeVM.pause()
+        } catch {
+            Log.vm.error("Failed to pause VM '\(self.bundle.url.lastPathComponent, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            lastError = error
+            updateState(.error)
+            throw error
+        }
         updateState(.paused)
         Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' paused")
     }
@@ -207,7 +250,14 @@ public final class VirtualMachine: NSObject, Sendable {
         Log.vm.info("Resuming VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
         updateState(.resuming)
         nonisolated(unsafe) let unsafeVM = vm
-        try await unsafeVM.resume()
+        do {
+            try await unsafeVM.resume()
+        } catch {
+            Log.vm.error("Failed to resume VM '\(self.bundle.url.lastPathComponent, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            lastError = error
+            updateState(.error)
+            throw error
+        }
         updateState(.running)
         Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' resumed")
     }
@@ -258,6 +308,9 @@ public final class VirtualMachine: NSObject, Sendable {
 
     private func updateState(_ newState: VirtualMachineState) {
         Log.vm.debug("State transition: \(self.state.rawValue, privacy: .public) → \(newState.rawValue, privacy: .public)")
+        if newState != .error {
+            lastError = nil
+        }
         state = newState
         stateContinuation.yield(newState)
     }
@@ -280,9 +333,25 @@ extension VirtualMachine: VZVirtualMachineDelegate {
         _ virtualMachine: VZVirtualMachine,
         didStopWithError error: Error
     ) {
-        Log.vm.error("VM stopped with error: \(error.localizedDescription, privacy: .public)")
+        let nsError = error as NSError
+        Log.vm.error(
+            "VM stopped with error — domain: \(nsError.domain, privacy: .public), code: \(nsError.code, privacy: .public), description: \(nsError.localizedDescription, privacy: .public)"
+        )
         Task { @MainActor [weak self] in
+            self?.lastError = error
             self?.updateState(.error)
         }
+    }
+
+    /// Called when a network attachment is unexpectedly disconnected.
+    nonisolated public func virtualMachine(
+        _ virtualMachine: VZVirtualMachine,
+        networkDevice: VZNetworkDevice,
+        attachmentWasDisconnectedWithError error: Error
+    ) {
+        let nsError = error as NSError
+        Log.vm.warning(
+            "Network attachment disconnected — domain: \(nsError.domain, privacy: .public), code: \(nsError.code, privacy: .public), description: \(nsError.localizedDescription, privacy: .public)"
+        )
     }
 }

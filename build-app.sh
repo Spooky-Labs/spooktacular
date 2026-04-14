@@ -51,8 +51,12 @@ cp "$BINARY_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$BINARY_DIR/$CLI_NAME" "$MACOS_DIR/$CLI_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME"
 
-# Copy Info.plist
+# Copy Info.plist and inject version from git
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS/Info.plist"
+VERSION="${MARKETING_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo '1.0.0')}"
+BUILD="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo '1')}"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$CONTENTS/Info.plist"
 
 # Copy icon
 if [ -f "$ICNS" ]; then
@@ -74,10 +78,11 @@ fi
 # (match sets this via MATCH_CODESIGN_IDENTITY), otherwise ad-hoc.
 SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
 echo "Code signing with identity: $SIGN_IDENTITY"
-codesign --force --sign "$SIGN_IDENTITY" \
-    --entitlements "$ENTITLEMENTS" \
-    --deep \
-    "$BUNDLE_DIR"
+# Sign inner binaries first, then the main executable, then the bundle.
+# Never use --deep — it masks signing order bugs.
+codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$MACOS_DIR/$CLI_NAME"
+codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$MACOS_DIR/$APP_NAME"
+codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$BUNDLE_DIR"
 
 echo ""
 echo "✓ App bundle created: $BUNDLE_DIR"

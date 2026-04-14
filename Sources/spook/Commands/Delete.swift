@@ -35,6 +35,15 @@ extension Spook {
                 if force {
                     print(Style.info("Stopping VM '\(name)'..."))
                     await PIDFile.terminate(bundleURL: bundleURL)
+
+                    // Verify the process actually died before deleting.
+                    if let pid = PIDFile.read(from: bundleURL),
+                       PIDFile.isProcessAlive(pid) {
+                        print(Style.error("✗ Process \(pid) is still alive after termination attempt."))
+                        print(Style.dim("  Cannot safely delete the VM while its process is running."))
+                        throw ExitCode.failure
+                    }
+
                     print(Style.success("✓ VM '\(name)' stopped."))
                 } else {
                     print(Style.error("Cannot delete '\(name)': VM is currently running."))

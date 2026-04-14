@@ -171,6 +171,21 @@ final class AppState {
         }
     }
 
+    // MARK: - Shutdown
+
+    /// Stops all running VMs. Called synchronously on application termination.
+    func stopAllRunningVMs() {
+        for (name, vm) in runningVMs {
+            do {
+                try vm.vzVM?.requestStop()
+                Log.vm.info("Requested stop for VM '\(name, privacy: .public)' on quit")
+            } catch {
+                Log.vm.error("Failed to stop VM '\(name, privacy: .public)' on quit: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        runningVMs.removeAll()
+    }
+
     // MARK: - Private
 
     /// Surfaces an error to the user through the centralized alert.

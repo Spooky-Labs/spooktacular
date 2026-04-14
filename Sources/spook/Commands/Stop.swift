@@ -60,7 +60,22 @@ extension Spook {
                 let result = kill(pid, SIGTERM)
 
                 if result == 0 {
-                    print(Style.success("✓ Signal sent. VM '\(name)' is stopping."))
+                    // Poll briefly to confirm the process exited.
+                    var stopped = false
+                    for _ in 0..<10 {
+                        try? await Task.sleep(for: .milliseconds(500))
+                        if !PIDFile.isProcessAlive(pid) {
+                            stopped = true
+                            break
+                        }
+                    }
+                    if stopped {
+                        PIDFile.remove(from: bundleURL)
+                        print(Style.success("✓ VM '\(name)' stopped."))
+                    } else {
+                        print(Style.warning("VM '\(name)' has not exited yet (PID \(pid) still alive)."))
+                        print(Style.dim("  Use 'spook stop \(name) --force' to send SIGKILL."))
+                    }
                 } else {
                     let errorCode = errno
                     print(Style.error("✗ Failed to send signal to PID \(pid): errno \(errorCode)"))

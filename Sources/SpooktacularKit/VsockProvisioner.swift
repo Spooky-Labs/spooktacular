@@ -134,7 +134,13 @@ public enum VsockProvisioner {
             )
 
             // Read the 4-byte exit code response from the agent.
-            let responseData = readHandle.readData(ofLength: 4)
+            // The read blocks, so dispatch it off the main actor.
+            let responseData: Data = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let data = readHandle.readData(ofLength: 4)
+                    continuation.resume(returning: data)
+                }
+            }
 
             if let exitCode = decodeExitCode(from: responseData), exitCode != 0 {
                 Log.provision.error("Guest agent reported exit code \(exitCode)")

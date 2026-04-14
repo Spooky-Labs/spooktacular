@@ -54,10 +54,9 @@ public enum VMProvisioner {
     ///   - pollInterval: Seconds between IP resolution retries.
     ///     Defaults to 5.
     /// - Throws: ``SSHError`` if SSH is unreachable or the script
-    ///   fails; returns without error if IP resolution times out
-    ///   (caller decides how to handle that case).
-    /// - Returns: The resolved IP address, or `nil` if IP
-    ///   resolution timed out (SSH provisioning was skipped).
+    ///   fails. ``VMProvisionerError/ipResolutionTimedOut(macAddress:timeout:)``
+    ///   if no IP address is found within the timeout.
+    /// - Returns: The resolved IP address.
     @discardableResult
     public static func provisionViaSSH(
         macAddress: String,
@@ -66,7 +65,7 @@ public enum VMProvisioner {
         key: String? = nil,
         timeout: TimeInterval = 120,
         pollInterval: TimeInterval = 5
-    ) async throws -> String? {
+    ) async throws -> String {
         // 1. Resolve the VM's IP address by polling DHCP/ARP.
         Log.provision.info("Resolving IP for MAC \(macAddress, privacy: .public)")
         guard let ip = try await IPResolver.resolveIPWithRetry(
@@ -75,7 +74,7 @@ public enum VMProvisioner {
             pollInterval: pollInterval
         ) else {
             Log.provision.error("Failed to resolve IP for MAC \(macAddress, privacy: .public) within \(Int(timeout))s")
-            return nil
+            throw VMProvisionerError.ipResolutionTimedOut(macAddress: macAddress, timeout: timeout)
         }
         Log.provision.notice("Resolved IP \(ip, privacy: .public) for MAC \(macAddress, privacy: .public)")
 
@@ -95,5 +94,33 @@ public enum VMProvisioner {
         Log.provision.notice("Provisioning script completed on \(ip, privacy: .public)")
 
         return ip
+    }
+}
+
+// MARK: - Errors
+
+/// An error that occurs during VM provisioning operations.
+public enum VMProvisionerError: Error, LocalizedError, Sendable, Equatable {
+
+    /// IP address resolution timed out for the given MAC address.
+    ///
+    /// - Parameters:
+    ///   - macAddress: The MAC address that was being resolved.
+    ///   - timeout: The timeout duration in seconds.
+    case ipResolutionTimedOut(macAddress: String, timeout: TimeInterval)
+
+    public var errorDescription: String? {
+        switch self {
+        case .ipResolutionTimedOut(let macAddress, let timeout):
+            "Could not resolve an IP address for MAC \(macAddress) within \(Int(timeout)) seconds."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .ipResolutionTimedOut:
+            "Ensure the VM has booted and obtained a network address. "
+            + "Check that the VM's network configuration uses NAT or bridged mode."
+        }
     }
 }

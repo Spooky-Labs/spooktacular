@@ -15,6 +15,9 @@ struct SpooktacularApp: App {
                     AddImageSheet()
                         .environment(appState)
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    appState.stopAllRunningVMs()
+                }
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 900, height: 600)

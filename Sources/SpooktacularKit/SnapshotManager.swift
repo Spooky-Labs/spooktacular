@@ -5,9 +5,10 @@ import os
 ///
 /// `SnapshotManager` provides save, restore, list, and delete
 /// operations for VM snapshots. Each snapshot is a full copy of
-/// the VM's disk image (`disk.img`) and auxiliary storage
-/// (`auxiliary.bin`), stored in a named subdirectory under the
-/// bundle's `SavedStates/` directory.
+/// the VM's disk image (`disk.img`), auxiliary storage
+/// (`auxiliary.bin`), and machine identifier (`machine-identifier.bin`),
+/// stored in a named subdirectory under the bundle's `SavedStates/`
+/// directory.
 ///
 /// ## How Snapshots Work
 ///
@@ -35,15 +36,18 @@ import os
 /// my-vm.vm/
 /// ├── disk.img
 /// ├── auxiliary.bin
+/// ├── machine-identifier.bin
 /// ├── ...
 /// └── SavedStates/
 ///     ├── clean-install/
 ///     │   ├── disk.img
 ///     │   ├── auxiliary.bin
+///     │   ├── machine-identifier.bin
 ///     │   └── snapshot-info.json
 ///     └── before-xcode/
 ///         ├── disk.img
 ///         ├── auxiliary.bin
+///         ├── machine-identifier.bin
 ///         └── snapshot-info.json
 /// ```
 ///
@@ -79,15 +83,16 @@ public enum SnapshotManager {
     private static let snapshotFiles = [
         VirtualMachineBundle.diskImageFileName,
         VirtualMachineBundle.auxiliaryStorageFileName,
+        VirtualMachineBundle.machineIdentifierFileName,
     ]
 
     // MARK: - Save
 
     /// Saves a disk-level snapshot of the VM bundle.
     ///
-    /// Copies `disk.img` and `auxiliary.bin` from the bundle into
-    /// a new `SavedStates/<label>/` directory, along with a
-    /// `snapshot-info.json` metadata file.
+    /// Copies `disk.img`, `auxiliary.bin`, and `machine-identifier.bin`
+    /// from the bundle into a new `SavedStates/<label>/` directory,
+    /// along with a `snapshot-info.json` metadata file.
     ///
     /// - Parameters:
     ///   - bundle: The VM bundle to snapshot. The VM must be stopped.
@@ -164,12 +169,16 @@ public enum SnapshotManager {
 
     /// Restores a VM bundle from a previously saved snapshot.
     ///
-    /// Removes the bundle's current `disk.img` and `auxiliary.bin`,
-    /// then clones the copies from the snapshot directory.
-    /// On APFS, `FileManager.copyItem` maps to `clonefile(2)`,
-    /// producing a copy-on-write clone that completes in constant
-    /// time regardless of image size. This makes restore suitable
-    /// for ephemeral CI runners that reset between every job.
+    /// Each file is restored atomically: the snapshot copy is first
+    /// cloned to a `.restoring` temporary file, then swapped into
+    /// place with `FileManager.replaceItemAt(_:withItemAt:)`. If the
+    /// destination does not yet exist, the temporary file is moved
+    /// instead (atomic on APFS). This prevents data loss if the
+    /// process is interrupted mid-restore.
+    ///
+    /// On APFS, both `copyItem` and `replaceItemAt` leverage
+    /// `clonefile(2)` for copy-on-write semantics, keeping restore
+    /// near-instantaneous regardless of image size.
     ///
     /// - Parameters:
     ///   - bundle: The VM bundle to restore. The VM must be stopped.
@@ -196,16 +205,52 @@ public enum SnapshotManager {
                 continue
             }
 
-            // Remove the current file, then clone from snapshot.
-            // On APFS, copyItem triggers clonefile(2) for COW semantics.
-            if fileManager.fileExists(atPath: bundleFile.path) {
-                try fileManager.removeItem(at: bundleFile)
-            }
-
-            try fileManager.copyItem(at: snapshotFile, to: bundleFile)
+            try restoreFileAtomically(
+                from: snapshotFile, to: bundleFile, fileManager: fileManager
+            )
         }
 
         Log.snapshot.notice("Restored snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public)")
+    }
+
+    /// Restores a single file atomically from a snapshot source.
+    ///
+    /// 1. Copies `source` to a `.restoring` temp alongside `destination`.
+    /// 2. If `destination` exists, uses `replaceItemAt` for an atomic swap.
+    /// 3. If `destination` does not exist, moves the temp file into place
+    ///    (`moveItem` is atomic on APFS).
+    ///
+    /// The temp file is cleaned up on failure so it does not accumulate.
+    private static func restoreFileAtomically(
+        from source: URL,
+        to destination: URL,
+        fileManager: FileManager
+    ) throws {
+        let tempURL = destination.deletingLastPathComponent()
+            .appendingPathComponent(destination.lastPathComponent + ".restoring")
+
+        // Clean up any leftover temp from a previous interrupted restore.
+        if fileManager.fileExists(atPath: tempURL.path) {
+            try fileManager.removeItem(at: tempURL)
+        }
+
+        // Clone the snapshot file to the temp location.
+        try fileManager.copyItem(at: source, to: tempURL)
+
+        do {
+            if fileManager.fileExists(atPath: destination.path) {
+                // Atomic swap — replaceItemAt returns the URL of the
+                // original item moved to a backup location; we discard it.
+                _ = try fileManager.replaceItemAt(destination, withItemAt: tempURL)
+            } else {
+                // No existing file to replace — just move the temp into place.
+                try fileManager.moveItem(at: tempURL, to: destination)
+            }
+        } catch {
+            // Clean up the temp file so it doesn't linger.
+            try? fileManager.removeItem(at: tempURL)
+            throw error
+        }
     }
 
     // MARK: - List

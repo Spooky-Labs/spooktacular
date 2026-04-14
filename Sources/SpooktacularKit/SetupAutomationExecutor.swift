@@ -118,7 +118,7 @@ public enum SetupAutomationExecutor {
                 try await Task.sleep(for: .seconds(step.delay))
             }
 
-            try performAction(step.action, on: vmView, stepIndex: index, totalSteps: steps.count)
+            try await performAction(step.action, on: vmView, stepIndex: index, totalSteps: steps.count)
         }
 
         Log.provision.notice("Setup Assistant automation completed (\(steps.count) steps)")
@@ -174,7 +174,7 @@ public enum SetupAutomationExecutor {
         on view: VZVirtualMachineView,
         stepIndex: Int,
         totalSteps: Int
-    ) throws {
+    ) async throws {
         switch action {
         case .text(let string):
             Log.provision.debug(
@@ -199,7 +199,7 @@ public enum SetupAutomationExecutor {
             Log.provision.debug(
                 "Step \(stepIndex + 1)/\(totalSteps): extra wait \(duration, privacy: .public)s"
             )
-            // The wait is handled inline; nothing to send.
+            try await Task.sleep(for: .seconds(duration))
         }
     }
 

@@ -26,7 +26,7 @@ actor NodeManager {
     private var nodes: [String: NodeEndpoint] = [:]
     private let apiPort: UInt16
     private let labelSelector: String
-    private let session = URLSession(configuration: .ephemeral)
+    private let healthSession = URLSession(configuration: .ephemeral)
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "node-mgr")
 
     init(apiPort: UInt16 = 8484, labelSelector: String = "spooktacular.app/role=mac-host") {
@@ -36,27 +36,13 @@ actor NodeManager {
 
     // MARK: - Discovery
 
-    /// Refreshes the node list from the Kubernetes API.
+    /// Refreshes the node list from the Kubernetes API via the shared client.
     func refreshNodes(using client: KubernetesClient) async {
-        let baseURL = client.baseURL
-        let encodedSelector = labelSelector.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? labelSelector
-        let url = baseURL.appendingPathComponent("/api/v1/nodes")
-            .appending(queryItems: [URLQueryItem(name: "labelSelector", value: encodedSelector)])
-
         do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "GET"
-            let tokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-            if let tokenData = FileManager.default.contents(atPath: tokenPath),
-               let token = String(data: tokenData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-
-            let (data, _) = try await session.data(for: request)
-            let nodeList = try JSONDecoder().decode(K8sNodeList.self, from: data)
+            let k8sNodes = try await client.listNodes(labelSelector: labelSelector)
 
             var discovered: [String: NodeEndpoint] = [:]
-            for node in nodeList.items {
+            for node in k8sNodes {
                 let name = node.metadata.name
                 guard let ip = node.status?.addresses?.first(where: { $0.type == "InternalIP" })?.address,
                       let apiURL = URL(string: "http://\(ip):\(apiPort)")
@@ -85,7 +71,7 @@ actor NodeManager {
             var request = URLRequest(url: healthURL)
             request.timeoutInterval = 5
             do {
-                let (_, response) = try await session.data(for: request)
+                let (_, response) = try await healthSession.data(for: request)
                 endpoint.healthy = ((response as? HTTPURLResponse)?.statusCode).map { (200..<300).contains($0) } ?? false
             } catch {
                 endpoint.healthy = false
@@ -97,11 +83,3 @@ actor NodeManager {
         }
     }
 }
-
-// MARK: - Kubernetes Node Types
-
-private struct K8sNodeList: Decodable { let items: [K8sNode] }
-private struct K8sNode: Decodable { let metadata: K8sNodeMeta; let status: K8sNodeStatus? }
-private struct K8sNodeMeta: Decodable { let name: String }
-private struct K8sNodeStatus: Decodable { let addresses: [K8sNodeAddress]? }
-private struct K8sNodeAddress: Decodable { let type: String; let address: String }

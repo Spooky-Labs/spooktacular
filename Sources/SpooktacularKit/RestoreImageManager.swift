@@ -87,8 +87,10 @@ public final class RestoreImageManager: Sendable {
 
     /// Downloads the IPSW file for a restore image.
     ///
-    /// If the file is already cached (by URL filename), the cached
-    /// path is returned without re-downloading.
+    /// If the file is already cached (by URL filename) **and** has a
+    /// nonzero size, the cached path is returned without
+    /// re-downloading. A zero-byte or missing cached file is deleted
+    /// and re-downloaded to guard against corrupt cache entries.
     ///
     /// - Parameters:
     ///   - restoreImage: The restore image to download.
@@ -109,8 +111,14 @@ public final class RestoreImageManager: Sendable {
         let localURL = cacheDirectory.appendingPathComponent(fileName)
 
         if fileManager.fileExists(atPath: localURL.path) {
-            Log.ipsw.info("Using cached IPSW at \(localURL.lastPathComponent, privacy: .public)")
-            return localURL
+            let attrs = try? fileManager.attributesOfItem(atPath: localURL.path)
+            let size = attrs?[.size] as? UInt64 ?? 0
+            if size > 0 {
+                Log.ipsw.info("Using cached IPSW at \(localURL.lastPathComponent, privacy: .public)")
+                return localURL
+            }
+            Log.ipsw.warning("Cached IPSW is zero bytes, deleting and re-downloading: \(localURL.lastPathComponent, privacy: .public)")
+            try? fileManager.removeItem(at: localURL)
         }
 
         Log.ipsw.info("Downloading IPSW from \(restoreImage.url.lastPathComponent, privacy: .public)")
@@ -189,6 +197,12 @@ public final class RestoreImageManager: Sendable {
     /// macOS operating system to the bundle's disk image. The
     /// process takes 10–20 minutes depending on hardware.
     ///
+    /// - Important: Callers **must** call ``fetchLatestSupported()``
+    ///   before invoking this method. `fetchLatestSupported` verifies
+    ///   that the host macOS version is compatible with the IPSW.
+    ///   Skipping that check may result in an opaque Virtualization
+    ///   framework error during installation.
+    ///
     /// - Parameters:
     ///   - bundle: The target VM bundle (must have platform
     ///     artifacts and an empty disk image).
@@ -203,7 +217,7 @@ public final class RestoreImageManager: Sendable {
     ) async throws {
         Log.ipsw.info("Starting macOS installation into '\(bundle.url.lastPathComponent, privacy: .public)' from \(ipswURL.lastPathComponent, privacy: .public)")
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
+        try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
         try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
         try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
         try config.validate()

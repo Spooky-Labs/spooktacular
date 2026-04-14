@@ -86,17 +86,17 @@ enum LaunchDaemon {
 
         print("Wrote \(plistPath)")
 
-        // Load the daemon.
+        // Bootstrap the daemon (macOS 13+ replacement for `launchctl load`).
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        process.arguments = ["load", plistPath]
+        process.arguments = ["bootstrap", "system", plistPath]
 
         do {
             try process.run()
             process.waitUntilExit()
         } catch {
             log.error("launchctl failed: \(error.localizedDescription, privacy: .public)")
-            print("Error: launchctl load failed.")
+            print("Error: launchctl bootstrap failed.")
             exit(1)
         }
 
@@ -105,7 +105,7 @@ enum LaunchDaemon {
             log.notice("LaunchDaemon installed and loaded")
         } else {
             print("Warning: launchctl exited with status \(process.terminationStatus).")
-            print("The plist was written but may not be loaded. Try: sudo launchctl load \(plistPath)")
+            print("The plist was written but may not be loaded. Try: sudo launchctl bootstrap system \(plistPath)")
         }
     }
 }

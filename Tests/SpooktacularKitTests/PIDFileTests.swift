@@ -117,6 +117,67 @@ struct PIDFileTests {
         #expect(!PIDFile.isRunning(bundleURL: bundleURL))
     }
 
+    @Test("isRunning removes stale PID file from disk")
+    func isRunningRemovesStalePID() throws {
+        let bundleURL = makeTempBundle()
+        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+
+        let pidURL = bundleURL.appendingPathComponent(PIDFile.fileName)
+        try Data("99999999".utf8).write(to: pidURL)
+        #expect(FileManager.default.fileExists(atPath: pidURL.path))
+
+        _ = PIDFile.isRunning(bundleURL: bundleURL)
+
+        #expect(!FileManager.default.fileExists(atPath: pidURL.path))
+    }
+
+    // MARK: - writeAndEnsureCapacity
+
+    @Test("writeAndEnsureCapacity succeeds when under limit")
+    func writeAndEnsureCapacitySucceeds() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let bundleURL = root.appendingPathComponent("test.vm")
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: root)
+
+        // PID file should exist.
+        let pid = PIDFile.read(from: bundleURL)
+        #expect(pid == ProcessInfo.processInfo.processIdentifier)
+    }
+
+    @Test("writeAndEnsureCapacity removes PID and throws when over limit")
+    func writeAndEnsureCapacityOverLimit() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let myPID = ProcessInfo.processInfo.processIdentifier
+
+        // Create 2 existing "running" VMs (at the limit).
+        for name in ["vm1", "vm2"] {
+            let url = root.appendingPathComponent("\(name).vm")
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try Data("\(myPID)".utf8).write(
+                to: url.appendingPathComponent(PIDFile.fileName)
+            )
+        }
+
+        // The third VM should fail.
+        let bundleURL = root.appendingPathComponent("vm3.vm")
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+
+        #expect(throws: CapacityError.self) {
+            try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: root)
+        }
+
+        // PID file should have been cleaned up.
+        #expect(PIDFile.read(from: bundleURL) == nil)
+    }
+
     // MARK: - File Name
 
     @Test("PID file name is 'pid'")

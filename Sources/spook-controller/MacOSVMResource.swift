@@ -32,6 +32,7 @@ struct ObjectMeta: Codable, Sendable {
     let uid: String?
     let resourceVersion: String?
     let deletionTimestamp: String?
+    var finalizers: [String]?
 }
 
 // MARK: - MacOSVMSpec

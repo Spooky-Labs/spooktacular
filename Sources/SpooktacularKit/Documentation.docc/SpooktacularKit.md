@@ -46,7 +46,7 @@ let clone = try CloneManager.clone(source: bundle, to: cloneURL)
 
 // Build a Virtualization framework configuration.
 let config = VZVirtualMachineConfiguration()
-VirtualMachineConfiguration.applySpec(spec, to: config)
+try VirtualMachineConfiguration.applySpec(spec, to: config)
 ```
 
 ## Topics

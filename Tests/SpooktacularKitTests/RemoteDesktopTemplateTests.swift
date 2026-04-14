@@ -39,7 +39,7 @@ struct RemoteDesktopTemplateTests {
     @Test("Script enables Remote Login (SSH)")
     func enablesSSH() {
         let script = RemoteDesktopTemplate.scriptContent()
-        #expect(script.contains("systemsetup -setremotelogin on"))
+        #expect(script.contains("launchctl load -w /System/Library/LaunchDaemons/ssh.plist"))
     }
 
     @Test("Script prints VNC confirmation message")

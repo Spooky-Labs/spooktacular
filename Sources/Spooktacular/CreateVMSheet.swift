@@ -443,6 +443,7 @@ struct CreateVMSheet: View {
 
             appState.loadVMs()
             appState.selectedVM = name
+            isCreating = false
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

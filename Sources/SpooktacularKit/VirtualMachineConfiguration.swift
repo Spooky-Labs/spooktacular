@@ -2,6 +2,23 @@ import Foundation
 import os
 @preconcurrency import Virtualization
 
+/// Errors that can occur when configuring network devices.
+public enum NetworkConfigurationError: Error, Sendable, Equatable, LocalizedError {
+    /// The requested bridge interface was not found on the host.
+    case bridgeInterfaceNotFound(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .bridgeInterfaceNotFound(let name):
+            "Bridge interface '\(name)' not found."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        "Check the interface name with 'networksetup -listallhardwareports'. Use 'nat' or 'isolated' if bridged is not needed."
+    }
+}
+
 /// Builds `VZVirtualMachineConfiguration` objects from a ``VirtualMachineSpecification``.
 ///
 /// `VirtualMachineConfiguration` translates the product-level specification
@@ -22,7 +39,7 @@ import os
 /// let config = VZVirtualMachineConfiguration()
 ///
 /// // Apply spec-derived settings.
-/// VirtualMachineConfiguration.applySpec(spec, to: config)
+/// try VirtualMachineConfiguration.applySpec(spec, to: config)
 ///
 /// // Apply platform and storage from bundle artifacts.
 /// config.platform = platform
@@ -48,10 +65,12 @@ public enum VirtualMachineConfiguration {
     /// - Parameters:
     ///   - spec: The hardware specification.
     ///   - configuration: The mutable configuration to populate.
+    /// - Throws: ``NetworkConfigurationError/bridgeInterfaceNotFound(_:)``
+    ///   if bridged networking is requested but the interface does not exist.
     public static func applySpec(
         _ spec: VirtualMachineSpecification,
         to configuration: VZVirtualMachineConfiguration
-    ) {
+    ) throws {
         Log.config.info("Applying spec: \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM, \(spec.displayCount) display(s)")
 
         configuration.cpuCount = spec.cpuCount
@@ -60,7 +79,7 @@ public enum VirtualMachineConfiguration {
         configuration.graphicsDevices = [makeGraphics(displayCount: spec.displayCount)]
         configuration.keyboards = [VZMacKeyboardConfiguration()]
         configuration.pointingDevices = [VZMacTrackpadConfiguration()]
-        configuration.networkDevices = makeNetworkDevices(
+        configuration.networkDevices = try makeNetworkDevices(
             for: spec.networkMode, macAddress: spec.macAddress
         )
         configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
@@ -221,7 +240,7 @@ public enum VirtualMachineConfiguration {
     private static func makeNetworkDevices(
         for mode: NetworkMode,
         macAddress: String? = nil
-    ) -> [VZNetworkDeviceConfiguration] {
+    ) throws -> [VZNetworkDeviceConfiguration] {
         let devices: [VZVirtioNetworkDeviceConfiguration]
 
         switch mode {
@@ -229,16 +248,15 @@ public enum VirtualMachineConfiguration {
             devices = []
 
         case .bridged(let interface):
-            let target = VZBridgedNetworkInterface.networkInterfaces
-                .first { $0.identifier == interface }
-            if let target {
-                let device = VZVirtioNetworkDeviceConfiguration()
-                device.attachment = VZBridgedNetworkDeviceAttachment(interface: target)
-                devices = [device]
-            } else {
-                Log.config.warning("Bridge interface '\(interface, privacy: .public)' not found, falling back to NAT")
-                devices = [makeNATDevice()]
+            let available = VZBridgedNetworkInterface.networkInterfaces
+            guard let target = available.first(where: { $0.identifier == interface }) else {
+                let names = available.map(\.identifier).joined(separator: ", ")
+                Log.config.error("Bridge interface '\(interface, privacy: .public)' not found. Available: \(names, privacy: .public)")
+                throw NetworkConfigurationError.bridgeInterfaceNotFound(interface)
             }
+            let device = VZVirtioNetworkDeviceConfiguration()
+            device.attachment = VZBridgedNetworkDeviceAttachment(interface: target)
+            devices = [device]
 
         case .nat:
             devices = [makeNATDevice()]

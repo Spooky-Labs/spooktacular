@@ -11,9 +11,10 @@ import os
 /// listing, creating, starting, stopping, and deleting VMs, as well as
 /// resolving VM IP addresses and performing health checks.
 ///
-/// The server binds to localhost by default and does **not** provide TLS
-/// or authentication. Use a reverse proxy (e.g., Caddy, nginx) for
-/// production deployments that require encryption or access control.
+/// The server binds to localhost by default and does **not** provide TLS.
+/// Set the `SPOOK_API_TOKEN` environment variable to require Bearer-token
+/// authentication on all endpoints except `/health`. Use a reverse proxy
+/// (e.g., Caddy, nginx) for production deployments that require encryption.
 ///
 /// ## Endpoints
 ///
@@ -78,6 +79,14 @@ public actor HTTPAPIServer {
     /// detached VM processes (e.g., `spook start --headless`).
     private let spookPath: String
 
+    /// Optional Bearer token for API authentication.
+    ///
+    /// When set (via the `SPOOK_API_TOKEN` environment variable), every
+    /// request except `GET /health` must include an `Authorization:
+    /// Bearer <token>` header. When `nil`, all requests are allowed
+    /// (development mode).
+    private let apiToken: String?
+
     /// Logger for HTTP API events.
     private let logger = Log.httpAPI
 
@@ -114,6 +123,9 @@ public actor HTTPAPIServer {
         self.listener = try NWListener(using: parameters)
         self.vmDirectory = vmDirectory
         self.spookPath = spookPath
+
+        let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"]
+        self.apiToken = (token?.isEmpty == false) ? token : nil
     }
 
     // MARK: - Lifecycle
@@ -270,24 +282,39 @@ public actor HTTPAPIServer {
 
     // MARK: - Routing
 
+    /// Regex for valid VM names: alphanumeric start, then up to 62 more
+    /// alphanumeric, dot, underscore, or hyphen characters.
+    private nonisolated(unsafe) static let vmNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/
+
     /// Routes an HTTP request to the appropriate handler based on method and path.
     ///
     /// Path matching uses simple prefix/component matching:
-    /// - `/health` -- health check
+    /// - `/health` -- health check (unauthenticated)
     /// - `/v1/vms` -- list or create VMs
     /// - `/v1/vms/:name` -- get or delete a specific VM
     /// - `/v1/vms/:name/clone` -- clone a base VM
     /// - `/v1/vms/:name/start` -- start a VM
     /// - `/v1/vms/:name/stop` -- stop a VM
     /// - `/v1/vms/:name/ip` -- resolve VM IP
+    ///
+    /// When `SPOOK_API_TOKEN` is configured, all routes except `/health`
+    /// require a matching `Authorization: Bearer <token>` header.
     private func routeRequest(_ request: HTTPRequest) async -> HTTPResponse {
         let components = request.path
             .split(separator: "/")
             .map(String.init)
 
-        // GET /health
+        // GET /health — always unauthenticated.
         if request.method == "GET" && request.path == "/health" {
             return handleHealth()
+        }
+
+        // Authenticate if a token is configured.
+        if let token = apiToken {
+            let header = request.headers["authorization"] ?? ""
+            guard header == "Bearer \(token)" else {
+                return HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
+            }
         }
 
         // /v1/vms routes
@@ -296,6 +323,14 @@ public actor HTTPAPIServer {
               components[1] == "vms"
         else {
             return HTTPResponse.error(message: "Not found.", statusCode: 404)
+        }
+
+        // Path traversal protection: validate VM name if present.
+        if components.count >= 3 {
+            let vmName = components[2]
+            guard vmName.wholeMatch(of: Self.vmNamePattern) != nil else {
+                return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400)
+            }
         }
 
         switch (request.method, components.count) {
@@ -945,6 +980,7 @@ struct HTTPResponse: Sendable {
         case 200: "OK"
         case 201: "Created"
         case 400: "Bad Request"
+        case 401: "Unauthorized"
         case 404: "Not Found"
         case 409: "Conflict"
         case 422: "Unprocessable Entity"

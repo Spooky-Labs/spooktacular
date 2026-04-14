@@ -134,7 +134,9 @@ public enum PIDFile {
     ///
     /// Reads the PID file and verifies the recorded process is
     /// still alive. Returns `false` if there is no PID file or
-    /// the recorded process has exited.
+    /// the recorded process has exited. When the recorded process
+    /// is dead, the stale PID file is proactively removed so it
+    /// does not interfere with future capacity checks.
     ///
     /// - Parameter bundleURL: The file URL of the `.vm` bundle
     ///   directory.
@@ -144,8 +146,36 @@ public enum PIDFile {
         guard let pid = read(from: bundleURL) else { return false }
         let alive = isProcessAlive(pid)
         if !alive {
-            Log.vm.debug("Stale PID \(pid) in \(bundleURL.lastPathComponent, privacy: .public) — process no longer running")
+            Log.vm.debug("Stale PID \(pid) in \(bundleURL.lastPathComponent, privacy: .public) — removing stale PID file")
+            remove(from: bundleURL)
         }
         return alive
+    }
+
+    // MARK: - Atomic Capacity Reservation
+
+    /// Writes the PID file and then verifies the VM concurrency
+    /// limit has not been exceeded.
+    ///
+    /// This method closes the TOCTOU (time-of-check-to-time-of-use)
+    /// gap that exists when capacity is checked *before* writing the
+    /// PID file. By writing first, this process's VM is visible to
+    /// any concurrent starter that also calls this method. If the
+    /// resulting count exceeds the limit the PID file is removed
+    /// and a ``CapacityError/limitReached(running:)`` error is thrown.
+    ///
+    /// - Parameters:
+    ///   - bundleURL: The file URL of the `.vm` bundle directory.
+    ///   - vmDirectory: The parent directory containing all `.vm`
+    ///     bundles (typically `~/.spooktacular/vms/`).
+    /// - Throws: ``CapacityError/limitReached(running:)`` if the
+    ///   host is already at the concurrent VM limit.
+    public static func writeAndEnsureCapacity(bundleURL: URL, vmDirectory: URL) throws {
+        try write(to: bundleURL)
+        let running = CapacityCheck.runningVMs(in: vmDirectory)
+        if running.count > CapacityCheck.maxConcurrentVMs {
+            remove(from: bundleURL)
+            throw CapacityError.limitReached(running: running)
+        }
     }
 }

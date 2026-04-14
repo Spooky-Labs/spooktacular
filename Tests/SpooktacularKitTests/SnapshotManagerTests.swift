@@ -7,22 +7,26 @@ struct SnapshotManagerTests {
 
     // MARK: - Helpers
 
-    /// Creates a temporary VM bundle with a fake disk.img and auxiliary.bin.
+    /// Creates a temporary VM bundle with a fake disk.img, auxiliary.bin, and machine-identifier.bin.
     private func makeTempBundle(
         diskContent: String = "fake-disk-image-data",
-        auxContent: String = "fake-auxiliary-data"
+        auxContent: String = "fake-auxiliary-data",
+        machineIdContent: String = "fake-machine-id"
     ) throws -> (VirtualMachineBundle, URL) {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let bundleURL = tempDir.appendingPathComponent("test.vm")
         let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
-        // Write fake disk.img and auxiliary.bin.
+        // Write fake disk.img, auxiliary.bin, and machine-identifier.bin.
         try Data(diskContent.utf8).write(
             to: bundleURL.appendingPathComponent("disk.img")
         )
         try Data(auxContent.utf8).write(
             to: bundleURL.appendingPathComponent("auxiliary.bin")
+        )
+        try Data(machineIdContent.utf8).write(
+            to: bundleURL.appendingPathComponent("machine-identifier.bin")
         )
 
         return (bundle, tempDir)
@@ -57,6 +61,9 @@ struct SnapshotManagerTests {
             ))
             #expect(FileManager.default.fileExists(
                 atPath: snapshotDir.appendingPathComponent("auxiliary.bin").path
+            ))
+            #expect(FileManager.default.fileExists(
+                atPath: snapshotDir.appendingPathComponent("machine-identifier.bin").path
             ))
             #expect(FileManager.default.fileExists(
                 atPath: snapshotDir.appendingPathComponent("snapshot-info.json").path
@@ -98,6 +105,27 @@ struct SnapshotManagerTests {
             let info = try VirtualMachineBundle.decoder.decode(SnapshotInfo.self, from: data)
             #expect(info.label == "labeled")
             #expect(info.sizeInBytes > 0)
+        }
+
+        @Test("Copies machine-identifier.bin into the snapshot")
+        func saveCopiesMachineIdentifier() throws {
+            let (bundle, tempDir) = try makeTempBundle()
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            try SnapshotManager.save(bundle: bundle, label: "mid-check")
+
+            let snapshotMID = bundle.url
+                .appendingPathComponent("SavedStates")
+                .appendingPathComponent("mid-check")
+                .appendingPathComponent("machine-identifier.bin")
+
+            #expect(FileManager.default.fileExists(atPath: snapshotMID.path))
+
+            let originalData = try Data(contentsOf:
+                bundle.url.appendingPathComponent("machine-identifier.bin")
+            )
+            let snapshotData = try Data(contentsOf: snapshotMID)
+            #expect(originalData == snapshotData)
         }
 
         @Test("Fails when a snapshot with the same label already exists")
@@ -191,6 +219,44 @@ struct SnapshotManagerTests {
                 bundle.url.appendingPathComponent("auxiliary.bin")
             )
             #expect(String(data: restoredData, encoding: .utf8) == "fake-auxiliary-data")
+        }
+
+        @Test("Restores machine-identifier.bin from the snapshot")
+        func restoresMachineIdentifier() throws {
+            let (bundle, tempDir) = try makeTempBundle()
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            try SnapshotManager.save(bundle: bundle, label: "snap")
+
+            // Modify machine-identifier.bin.
+            try Data("modified-machine-id".utf8).write(
+                to: bundle.url.appendingPathComponent("machine-identifier.bin")
+            )
+
+            try SnapshotManager.restore(bundle: bundle, label: "snap")
+
+            let restoredData = try Data(contentsOf:
+                bundle.url.appendingPathComponent("machine-identifier.bin")
+            )
+            #expect(String(data: restoredData, encoding: .utf8) == "fake-machine-id")
+        }
+
+        @Test("Restore does not leave .restoring temp files behind")
+        func restoreCleansTempFiles() throws {
+            let (bundle, tempDir) = try makeTempBundle()
+            defer { try? FileManager.default.removeItem(at: tempDir) }
+
+            try SnapshotManager.save(bundle: bundle, label: "snap")
+            try SnapshotManager.restore(bundle: bundle, label: "snap")
+
+            // Verify no .restoring files remain.
+            let bundleContents = try FileManager.default.contentsOfDirectory(
+                at: bundle.url, includingPropertiesForKeys: nil
+            )
+            let restoringFiles = bundleContents.filter {
+                $0.lastPathComponent.hasSuffix(".restoring")
+            }
+            #expect(restoringFiles.isEmpty, "No .restoring temp files should remain after restore")
         }
 
         @Test("Fails on nonexistent snapshot label")

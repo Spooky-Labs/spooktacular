@@ -7,29 +7,29 @@ import Foundation
 struct VirtualMachineConfigurationTests {
 
     @Test("Sets CPU count from spec")
-    func cpuCount() {
+    func cpuCount() throws {
         let spec = VirtualMachineSpecification(cpuCount: 8)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.cpuCount == 8)
     }
 
     @Test("Enforces minimum CPU count")
-    func minimumCPU() {
+    func minimumCPU() throws {
         let spec = VirtualMachineSpecification(cpuCount: 2)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.cpuCount == 4)
     }
 
     @Test("Sets memory size from spec")
-    func memorySize() {
+    func memorySize() throws {
         let memory: UInt64 = 16 * 1024 * 1024 * 1024
         let spec = VirtualMachineSpecification(memorySizeInBytes: memory)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.memorySize == memory)
     }
@@ -38,7 +38,7 @@ struct VirtualMachineConfigurationTests {
     func singleDisplay() throws {
         let spec = VirtualMachineSpecification(displayCount: 1)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.graphicsDevices.count == 1)
         let macGraphics = try #require(
@@ -51,7 +51,7 @@ struct VirtualMachineConfigurationTests {
     func dualDisplay() throws {
         let spec = VirtualMachineSpecification(displayCount: 2)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let macGraphics = try #require(
             config.graphicsDevices.first as? VZMacGraphicsDeviceConfiguration
@@ -63,7 +63,7 @@ struct VirtualMachineConfigurationTests {
     func natNetwork() throws {
         let spec = VirtualMachineSpecification(networkMode: .nat)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.networkDevices.count == 1)
         let virtioNet = try #require(
@@ -73,45 +73,38 @@ struct VirtualMachineConfigurationTests {
     }
 
     @Test("Configures isolated networking (no devices)")
-    func isolatedNetwork() {
+    func isolatedNetwork() throws {
         let spec = VirtualMachineSpecification(networkMode: .isolated)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.networkDevices.isEmpty)
     }
 
-    @Test("Bridged mode falls back to NAT when interface is not found")
-    func bridgedFallback() throws {
+    @Test("Bridged mode throws when interface is not found")
+    func bridgedThrows() throws {
         let spec = VirtualMachineSpecification(networkMode: .bridged(interface: "nonexistent99"))
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
 
-        // Should have one device (NAT fallback), not crash.
-        #expect(config.networkDevices.count == 1)
-        let virtioNet = try #require(
-            config.networkDevices.first as? VZVirtioNetworkDeviceConfiguration
-        )
-        #expect(
-            virtioNet.attachment is VZNATNetworkDeviceAttachment,
-            "Bridged with missing interface should fall back to NAT"
-        )
+        #expect(throws: NetworkConfigurationError.bridgeInterfaceNotFound("nonexistent99")) {
+            try VirtualMachineConfiguration.applySpec(spec, to: config)
+        }
     }
 
     @Test("Sets macOS boot loader")
-    func bootLoader() {
+    func bootLoader() throws {
         let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.bootLoader is VZMacOSBootLoader)
     }
 
     @Test("Adds keyboard and trackpad")
-    func inputDevices() {
+    func inputDevices() throws {
         let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.keyboards.count == 1)
         #expect(config.keyboards.first is VZMacKeyboardConfiguration)
@@ -120,10 +113,10 @@ struct VirtualMachineConfigurationTests {
     }
 
     @Test("Always includes a VirtIO socket device")
-    func socketDevice() {
+    func socketDevice() throws {
         let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let hasSocket = config.socketDevices.contains {
             $0 is VZVirtioSocketDeviceConfiguration
@@ -132,19 +125,19 @@ struct VirtualMachineConfigurationTests {
     }
 
     @Test("Always includes an entropy device")
-    func entropyDevice() {
+    func entropyDevice() throws {
         let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(!config.entropyDevices.isEmpty)
     }
 
     @Test("Always includes a memory balloon device")
-    func memoryBalloon() {
+    func memoryBalloon() throws {
         let spec = VirtualMachineSpecification()
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(
             !config.memoryBalloonDevices.isEmpty,
@@ -158,7 +151,7 @@ struct VirtualMachineConfigurationTests {
             SharedFolder(hostPath: "/tmp", tag: "single"),
         ])
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let device = try #require(
             config.directorySharingDevices.first as? VZVirtioFileSystemDeviceConfiguration
@@ -170,7 +163,7 @@ struct VirtualMachineConfigurationTests {
     func audioOutput() throws {
         let spec = VirtualMachineSpecification(audioEnabled: true)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.audioDevices.count == 1)
         let sound = try #require(
@@ -184,7 +177,7 @@ struct VirtualMachineConfigurationTests {
     func microphoneInput() throws {
         let spec = VirtualMachineSpecification(audioEnabled: true, microphoneEnabled: true)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let sound = try #require(
             config.audioDevices.first as? VZVirtioSoundDeviceConfiguration
@@ -194,10 +187,10 @@ struct VirtualMachineConfigurationTests {
     }
 
     @Test("No audio devices when audioEnabled is false")
-    func noAudio() {
+    func noAudio() throws {
         let spec = VirtualMachineSpecification(audioEnabled: false)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         #expect(config.audioDevices.isEmpty)
     }
@@ -209,7 +202,7 @@ struct VirtualMachineConfigurationTests {
             SharedFolder(hostPath: "/var", tag: "second", readOnly: true),
         ])
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         // Each folder gets its own VZVirtioFileSystemDeviceConfiguration
         // with a unique tag so the guest can mount them individually.
@@ -228,7 +221,7 @@ struct VirtualMachineConfigurationTests {
             SharedFolder(hostPath: "/tmp", tag: "ignored"),
         ])
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let device = try #require(
             config.directorySharingDevices.first as? VZVirtioFileSystemDeviceConfiguration
@@ -244,7 +237,7 @@ struct VirtualMachineConfigurationTests {
         let macString = "AA:BB:CC:DD:EE:FF"
         let spec = VirtualMachineSpecification(macAddress: macString)
         let config = VZVirtualMachineConfiguration()
-        VirtualMachineConfiguration.applySpec(spec, to: config)
+        try VirtualMachineConfiguration.applySpec(spec, to: config)
 
         let virtioNet = try #require(
             config.networkDevices.first as? VZVirtioNetworkDeviceConfiguration

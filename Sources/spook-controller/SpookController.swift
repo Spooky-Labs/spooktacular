@@ -45,9 +45,14 @@ struct SpookController {
         let nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector)
         let reconciler = Reconciler(client: client, nodeManager: nodeManager)
         let shutdownSignal = ShutdownSignal()
+        let leaderElection = LeaderElection(client: client, leaseName: "spook-controller")
 
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await reconciler.run() }
+            group.addTask {
+                await leaderElection.run {
+                    await reconciler.run()
+                }
+            }
             group.addTask {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(healthInterval))
@@ -64,6 +69,63 @@ struct SpookController {
         }
 
         logger.notice("spook-controller stopped")
+    }
+}
+
+// MARK: - Leader Election
+
+/// Lease-based leader election. Acquires a coordination Lease, renews every
+/// 10 seconds, and runs the provided work closure only while this instance
+/// holds the lease. If renewal fails, cancels work and re-competes.
+actor LeaderElection {
+
+    private let client: KubernetesClient
+    private let leaseName: String
+    private let identity: String
+    private let renewInterval: Duration = .seconds(10)
+    private let leaseDuration = 15
+    private let logger = Logger(subsystem: "com.spooktacular.controller", category: "leader")
+
+    init(client: KubernetesClient, leaseName: String) {
+        self.client = client
+        self.leaseName = leaseName
+        self.identity = ProcessInfo.processInfo.environment["HOSTNAME"]
+            ?? UUID().uuidString.prefix(8).lowercased()
+    }
+
+    /// Competes for the lease, then runs `work`. Retries on loss.
+    func run(work: @escaping @Sendable () async -> Void) async {
+        while !Task.isCancelled {
+            guard await acquire() else {
+                logger.info("Lease not acquired, retrying in \(self.leaseDuration)s")
+                try? await Task.sleep(for: .seconds(leaseDuration))
+                continue
+            }
+
+            logger.notice("Acquired lease '\(self.leaseName, privacy: .public)' as \(self.identity, privacy: .public)")
+            await withTaskGroup(of: Bool.self) { group in
+                group.addTask { await work(); return true }
+                group.addTask { await self.renewLoop(); return false }
+                // When renewLoop exits (lease lost), cancel the work task.
+                if let finished = await group.next(), !finished {
+                    group.cancelAll()
+                    logger.warning("Lost lease, stopping reconciler")
+                }
+            }
+        }
+    }
+
+    private func acquire() async -> Bool {
+        (try? await client.upsertLease(
+            name: leaseName, holderIdentity: String(identity), durationSeconds: leaseDuration)) ?? false
+    }
+
+    private func renewLoop() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: renewInterval)
+            guard await acquire() else { return }
+            logger.debug("Renewed lease '\(self.leaseName, privacy: .public)'")
+        }
     }
 }
 

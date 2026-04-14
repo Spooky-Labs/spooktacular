@@ -68,29 +68,37 @@ actor KubernetesClient {
 
     // MARK: - Watch
 
-    /// Opens a streaming watch, returning an async stream of watch events.
+    /// Opens a streaming watch, yielding events line-by-line as they arrive.
+    ///
+    /// Uses `URLSession.bytes(for:)` so events stream in real time instead of
+    /// buffering the entire response. A 410 Gone finishes the stream cleanly;
+    /// the reconciler loop will re-list and restart the watch.
     func watchVMs(resourceVersion: String) -> AsyncThrowingStream<WatchEvent, Error> {
         let url = crdURL(query: "watch=true&resourceVersion=\(resourceVersion)&allowWatchBookmarks=true")
-        var req = URLRequest(url: url)
-        req.httpMethod = "GET"
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.timeoutInterval = 0
 
         return AsyncThrowingStream { continuation in
-            let task = session.dataTask(with: req) { data, _, error in
-                if let error { continuation.finish(throwing: error); return }
-                guard let data, !data.isEmpty else { continuation.finish(); return }
-                for line in data.split(separator: UInt8(ascii: "\n")) {
-                    do {
-                        continuation.yield(try JSONDecoder().decode(WatchEvent.self, from: Data(line)))
-                    } catch {
-                        continuation.finish(throwing: error); return
-                    }
+            let task = Task { [session, token] in
+                var req = URLRequest(url: url)
+                req.httpMethod = "GET"
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                req.timeoutInterval = 0
+
+                let (bytes, response) = try await session.bytes(for: req)
+
+                if let http = response as? HTTPURLResponse, http.statusCode == 410 {
+                    continuation.finish()
+                    return
+                }
+
+                for try await line in bytes.lines {
+                    guard !line.isEmpty else { continue }
+                    guard let data = line.data(using: .utf8) else { continue }
+                    let event = try JSONDecoder().decode(WatchEvent.self, from: data)
+                    continuation.yield(event)
                 }
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
-            task.resume()
         }
     }
 
@@ -122,16 +130,61 @@ actor KubernetesClient {
         logger.debug("Updated status '\(name, privacy: .public)': \(status.phase.rawValue, privacy: .public)")
     }
 
-    // MARK: - Helpers
+    // MARK: - Nodes
 
-    private func crdURL(name: String? = nil, subresource: String? = nil, query: String? = nil) -> URL {
-        var path = "/apis/spooktacular.app/v1alpha1/namespaces/\(namespace)/macosvms"
-        if let name { path += "/\(name)" }
-        if let subresource { path += "/\(subresource)" }
-        if let query { path += "?\(query)" }
-        return baseURL.appendingPathComponent(path)
+    /// Lists nodes matching a label selector.
+    func listNodes(labelSelector: String) async throws -> [K8sNode] {
+        let encoded = labelSelector.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? labelSelector
+        let url = baseURL.appendingPathComponent("/api/v1/nodes?labelSelector=\(encoded)")
+        let data = try await request(url: url, method: "GET")
+        return try JSONDecoder().decode(K8sNodeList.self, from: data).items
     }
 
+    // MARK: - Patch
+
+    /// Sends a merge-patch to the named MacOSVM resource.
+    func mergePatch(name: String, body: Data) async throws {
+        let url = crdURL(name: name)
+        try await request(url: url, method: "PATCH", body: body, contentType: "application/merge-patch+json")
+    }
+
+    // MARK: - Lease
+
+    /// Attempts to acquire or renew a coordination Lease. Returns `true` on success.
+    func upsertLease(name: String, holderIdentity: String, durationSeconds: Int) async throws -> Bool {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let leaseBody: [String: Any] = [
+            "apiVersion": "coordination.k8s.io/v1",
+            "kind": "Lease",
+            "metadata": ["name": name, "namespace": namespace],
+            "spec": [
+                "holderIdentity": holderIdentity,
+                "leaseDurationSeconds": durationSeconds,
+                "acquireTime": now,
+                "renewTime": now,
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: leaseBody)
+        let url = baseURL.appendingPathComponent(
+            "/apis/coordination.k8s.io/v1/namespaces/\(namespace)/leases/\(name)")
+
+        // Try PUT (update). On 404, fall back to POST (create).
+        do {
+            try await request(url: url, method: "PUT", body: data, contentType: "application/json")
+            return true
+        } catch {
+            let createURL = baseURL.appendingPathComponent(
+                "/apis/coordination.k8s.io/v1/namespaces/\(namespace)/leases")
+            do {
+                try await request(url: createURL, method: "POST", body: data, contentType: "application/json")
+                return true
+            } catch {
+                return false
+            }
+        }
+    }
+
+    @discardableResult
     private func request(url: URL, method: String, body: Data? = nil, contentType: String? = nil) async throws -> Data {
         var req = URLRequest(url: url)
         req.httpMethod = method
@@ -148,6 +201,16 @@ actor KubernetesClient {
         return data
     }
 
+    // MARK: - Helpers
+
+    private func crdURL(name: String? = nil, subresource: String? = nil, query: String? = nil) -> URL {
+        var path = "/apis/spooktacular.app/v1alpha1/namespaces/\(namespace)/macosvms"
+        if let name { path += "/\(name)" }
+        if let subresource { path += "/\(subresource)" }
+        if let query { path += "?\(query)" }
+        return baseURL.appendingPathComponent(path)
+    }
+
     private static func readFile(_ path: String) throws -> String {
         guard let data = FileManager.default.contents(atPath: path),
               let string = String(data: data, encoding: .utf8)
@@ -156,12 +219,32 @@ actor KubernetesClient {
     }
 }
 
+// MARK: - Kubernetes Node Types
+
+struct K8sNodeList: Decodable { let items: [K8sNode] }
+struct K8sNode: Decodable { let metadata: K8sNodeMeta; let status: K8sNodeStatus? }
+struct K8sNodeMeta: Decodable { let name: String }
+struct K8sNodeStatus: Decodable { let addresses: [K8sNodeAddress]? }
+struct K8sNodeAddress: Decodable { let type: String; let address: String }
+
 // MARK: - TLS Delegate
 
 /// Trusts the cluster CA for in-pod TLS verification.
+///
+/// Loads the service-account CA certificate at init, sets it as the sole
+/// trust anchor, and only accepts the server if `SecTrustEvaluateWithError`
+/// passes. Falls back to default handling when the CA file is missing.
 private final class ClusterTLSDelegate: NSObject, URLSessionDelegate, Sendable {
-    private let caPath: String
-    init(caPath: String) { self.caPath = caPath }
+
+    private let caCertificates: [SecCertificate]
+
+    init(caPath: String) {
+        if let data = FileManager.default.contents(atPath: caPath) {
+            caCertificates = Self.loadCertificates(from: data)
+        } else {
+            caCertificates = []
+        }
+    }
 
     func urlSession(
         _ session: URLSession,
@@ -171,6 +254,38 @@ private final class ClusterTLSDelegate: NSObject, URLSessionDelegate, Sendable {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust
         else { completionHandler(.performDefaultHandling, nil); return }
-        completionHandler(.useCredential, URLCredential(trust: trust))
+
+        guard !caCertificates.isEmpty else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+
+        SecTrustSetAnchorCertificates(trust, caCertificates as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+
+        var error: CFError?
+        if SecTrustEvaluateWithError(trust, &error) {
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
+    }
+
+    /// Parses PEM data into an array of `SecCertificate`.
+    private static func loadCertificates(from data: Data) -> [SecCertificate] {
+        guard let pem = String(data: data, encoding: .utf8) else { return [] }
+        var certs: [SecCertificate] = []
+        let blocks = pem.components(separatedBy: "-----BEGIN CERTIFICATE-----")
+        for block in blocks {
+            guard let endRange = block.range(of: "-----END CERTIFICATE-----") else { continue }
+            let base64 = block[block.startIndex..<endRange.lowerBound]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\n", with: "")
+            guard let der = Data(base64Encoded: base64),
+                  let cert = SecCertificateCreateWithData(nil, der as CFData)
+            else { continue }
+            certs.append(cert)
+        }
+        return certs
     }
 }

@@ -29,6 +29,7 @@
 /// The port number and wire format must match
 /// `VsockProvisioner.agentPort` (9470) on the host side.
 
+import Dispatch
 import Foundation
 import os
 
@@ -39,6 +40,9 @@ private let AF_VSOCK: Int32 = 40
 
 /// Accept connections from any CID (the host, or any peer).
 private let VMADDR_CID_ANY: UInt32 = 0xFFFF_FFFF
+
+/// The CID that always identifies the host.
+private let VMADDR_CID_HOST: UInt32 = 2
 
 /// The vsock port the agent listens on, matching ``VsockProvisioner/agentPort``.
 private let agentPort: UInt32 = 9470
@@ -283,8 +287,19 @@ enum SpookAgent {
                 continue
             }
 
+            // H23: Only accept connections from the host (CID 2).
+            guard clientAddr.svm_cid == VMADDR_CID_HOST else {
+                log.warning("Rejected connection from non-host CID \(clientAddr.svm_cid)")
+                close(clientFD)
+                continue
+            }
+
             log.info("Accepted connection from CID \(clientAddr.svm_cid)")
-            handleConnection(clientFD)
+
+            // H24: Dispatch to a background queue so the accept loop isn't blocked.
+            DispatchQueue.global().async {
+                handleConnection(clientFD)
+            }
         }
     }
 }

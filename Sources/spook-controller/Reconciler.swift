@@ -81,9 +81,11 @@ actor Reconciler {
         }
     }
 
+    private static let finalizerName = "spooktacular.app/cleanup"
+
     // MARK: - Event Handlers
 
-    /// ADDED: clone the base image then start the VM.
+    /// ADDED: clone the base image then start the VM, and attach a finalizer.
     private func handleAdded(_ vm: MacOSVM) async {
         let name = vm.metadata.name
         let nodeName = vm.spec.nodeName
@@ -116,6 +118,7 @@ actor Reconciler {
             await setStatus(name: name, phase: .running, nodeName: nodeName)
             logger.notice("VM '\(name, privacy: .public)' running on \(nodeName, privacy: .public)")
             await resolveIP(name: name, endpoint: endpoint, nodeName: nodeName)
+            await addFinalizer(name: name, existing: vm.metadata.finalizers)
         case .failure(let msg):
             await setStatus(name: name, phase: .failed, nodeName: nodeName, message: "Start failed: \(msg)")
         }
@@ -132,13 +135,14 @@ actor Reconciler {
         }
     }
 
-    /// DELETED: stop then remove the VM from the node.
+    /// DELETED: stop then remove the VM from the node, then remove the finalizer.
     private func handleDeleted(_ vm: MacOSVM) async {
         let name = vm.metadata.name
         let nodeName = vm.spec.nodeName
 
         guard let endpoint = await nodeManager.endpoint(for: nodeName) else {
             logger.warning("Cannot delete '\(name, privacy: .public)': node '\(nodeName, privacy: .public)' not found")
+            await removeFinalizer(name: name, existing: vm.metadata.finalizers)
             return
         }
 
@@ -156,6 +160,36 @@ actor Reconciler {
         case .success: logger.notice("Deleted '\(name, privacy: .public)' from \(nodeName, privacy: .public)")
         case .conflict: logger.warning("VM '\(name, privacy: .public)' still running, may need retry")
         case .failure(let msg): logger.error("Delete failed for '\(name, privacy: .public)': \(msg, privacy: .public)")
+        }
+
+        await removeFinalizer(name: name, existing: vm.metadata.finalizers)
+    }
+
+    // MARK: - Finalizers
+
+    /// Patches the cleanup finalizer onto the resource if not already present.
+    private func addFinalizer(name: String, existing: [String]?) async {
+        let current = existing ?? []
+        guard !current.contains(Self.finalizerName) else { return }
+        let updated = current + [Self.finalizerName]
+        await patchFinalizers(name: name, finalizers: updated)
+    }
+
+    /// Removes the cleanup finalizer so Kubernetes can complete deletion.
+    private func removeFinalizer(name: String, existing: [String]?) async {
+        guard let current = existing, current.contains(Self.finalizerName) else { return }
+        let updated = current.filter { $0 != Self.finalizerName }
+        await patchFinalizers(name: name, finalizers: updated)
+    }
+
+    private func patchFinalizers(name: String, finalizers: [String]) async {
+        do {
+            let patch: [String: Any] = ["metadata": ["finalizers": finalizers]]
+            let data = try JSONSerialization.data(withJSONObject: patch)
+            try await client.mergePatch(name: name, body: data)
+            logger.debug("Patched finalizers on '\(name, privacy: .public)': \(finalizers, privacy: .public)")
+        } catch {
+            logger.error("Failed to patch finalizers on '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
         }
     }
 

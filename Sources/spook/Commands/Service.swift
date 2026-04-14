@@ -89,16 +89,16 @@ extension Spook.Service {
                 throw ExitCode.failure
             }
 
-            // Load the daemon.
+            // Bootstrap the daemon (macOS 13+ replacement for `launchctl load`).
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            process.arguments = ["load", plistPath]
+            process.arguments = ["bootstrap", "system", plistPath]
 
             do {
                 try process.run()
                 process.waitUntilExit()
             } catch {
-                print(Style.error("✗ Failed to run launchctl load."))
+                print(Style.error("✗ Failed to run launchctl bootstrap."))
                 throw ExitCode.failure
             }
 
@@ -111,7 +111,7 @@ extension Spook.Service {
                 print(Style.dim("The daemon will start '\(name)' automatically at boot."))
                 print("To uninstall: \(Style.bold("sudo spook service uninstall \(name)"))")
             } else {
-                print(Style.error("✗ launchctl load failed (exit \(process.terminationStatus))."))
+                print(Style.error("✗ launchctl bootstrap failed (exit \(process.terminationStatus))."))
                 print(Style.dim("  The plist was written but could not be loaded."))
                 throw ExitCode.failure
             }
@@ -154,16 +154,17 @@ extension Spook.Service {
 
             Log.provision.info("Uninstalling LaunchDaemon from \(plistPath, privacy: .public)")
 
-            // Unload the daemon.
+            // Bootout the daemon (macOS 13+ replacement for `launchctl unload`).
+            let label = ServicePlist.label(for: name)
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            process.arguments = ["unload", plistPath]
+            process.arguments = ["bootout", "system/\(label)"]
 
             do {
                 try process.run()
                 process.waitUntilExit()
             } catch {
-                print(Style.warning("Could not run launchctl unload: \(error.localizedDescription)"))
+                print(Style.warning("Could not run launchctl bootout: \(error.localizedDescription)"))
             }
 
             // Remove the plist file.
@@ -213,24 +214,6 @@ extension Spook.Service {
                 .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".plist") }
                 .sorted()
 
-            // Get launchctl list output to check running state.
-            var launchctlOutput = ""
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            process.arguments = ["list"]
-
-            let pipe = Pipe()
-            process.standardOutput = pipe
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                launchctlOutput = String(data: data, encoding: .utf8) ?? ""
-            } catch {
-                // If launchctl fails, we report all as not running.
-            }
-
             print(Style.bold("Spooktacular VM LaunchDaemons"))
             print("")
 
@@ -246,7 +229,22 @@ extension Spook.Service {
                 let label = String(plistFile.dropLast(".plist".count))
                 let vmName = String(label.dropFirst("\(prefix).".count))
 
-                let isRunning = launchctlOutput.contains(label)
+                // `launchctl print` exits 0 when the service is loaded.
+                let probe = Process()
+                probe.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+                probe.arguments = ["print", "system/\(label)"]
+                probe.standardOutput = FileHandle.nullDevice
+                probe.standardError = FileHandle.nullDevice
+
+                var isRunning = false
+                do {
+                    try probe.run()
+                    probe.waitUntilExit()
+                    isRunning = probe.terminationStatus == 0
+                } catch {
+                    // If launchctl fails, treat as not running.
+                }
+
                 let status = isRunning
                     ? Style.green("running")
                     : Style.dim("not running")
