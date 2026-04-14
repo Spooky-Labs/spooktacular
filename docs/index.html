@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spooktacular — Enterprise macOS Virtualization for Apple Silicon</title>
-<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Run 2 VMs per Mac, clone in 48ms. CI/CD runners, code signing, remote desktop, AI agents. MIT licensed, $0 forever.">
-<meta name="keywords" content="macOS virtualization, Apple Silicon VM, CI/CD runners, GitHub Actions, code signing, iOS build, remote desktop, open source, mac mini">
-<meta property="og:title" content="Spooktacular — Enterprise macOS Virtualization">
-<meta property="og:description" content="Run 2 macOS VMs per Mac. APFS cloning, SSH provisioning, snapshots, HTTP API. Open source, MIT licensed, $0 forever.">
+<title>Spooktacular — Double Your Mac Capacity. Same Hardware.</title>
+<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Guest agent with clipboard sync, remote exec, app control. 328 tests, 15+ CLI commands. MIT licensed, $0 forever.">
+<meta name="keywords" content="macOS virtualization, Apple Silicon VM, CI/CD runners, GitHub Actions, guest agent, clipboard sync, remote exec, AI agents, open source">
+<meta property="og:title" content="Spooktacular — Double Your Mac Capacity">
+<meta property="og:description" content="Run 2 macOS VMs per Mac. Guest agent for clipboard, exec, apps. APFS cloning, HTTP API, Kubernetes operator. MIT licensed, $0 forever.">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://spooktacular.app/">
 <style>
@@ -81,10 +81,6 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 .cmt { color: #5b4f7a; font-style: italic; }
 .file { color: #60a5fa; }
 
-.typing-line { display: inline-block; overflow: hidden; white-space: nowrap; border-right: 2px solid var(--accent); animation: typing 2.5s steps(44) 0.5s forwards, blink 0.75s step-end infinite; width: 0; }
-@keyframes typing { from { width: 0; } to { width: 100%; } }
-@keyframes blink { 50% { border-color: transparent; } }
-
 .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 3.5rem auto; max-width: 800px; }
 .stat-item { text-align: center; padding: 1.75rem 1rem; background: var(--surface); }
 .stat-item .num { font-size: 2.25rem; font-weight: 800; letter-spacing: -0.02em; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
@@ -95,19 +91,30 @@ section { padding: 5rem 0; }
 section h2 { font-size: 2.25rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
 section .subtitle { color: var(--dim); font-size: 1.1rem; margin-bottom: 2.5rem; max-width: 600px; }
 
+.section-label { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.8rem; font-weight: 600; color: var(--accent); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
 .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
 .feature-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; transition: transform 0.2s, border-color 0.3s; display: flex; flex-direction: column; }
 .feature-card:hover { border-color: rgba(167,139,250,0.35); transform: translateY(-3px); }
 .feature-card .icon { font-size: 1.5rem; margin-bottom: 0.75rem; display: block; }
 .feature-card .tag { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; margin-bottom: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; width: fit-content; }
+.tag-new { background: rgba(167,139,250,0.15); color: var(--accent); }
 .tag-shipped { background: rgba(34,197,94,0.12); color: var(--green); }
-.tag-planned { background: rgba(96,165,250,0.12); color: #60a5fa; }
 .feature-card h3 { font-size: 1.05rem; margin-bottom: 0.5rem; font-weight: 600; }
 .feature-card p { color: var(--dim); font-size: 0.875rem; line-height: 1.6; flex: 1; }
 .feature-card .source-link { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.78rem; color: var(--accent); margin-top: 0.75rem; font-weight: 500; opacity: 0.7; transition: opacity 0.2s; }
 .feature-card .source-link:hover { opacity: 1; text-decoration: none; }
 @media (max-width: 900px) { .features-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px) { .features-grid { grid-template-columns: 1fr; } }
+
+.use-cases { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin: 2rem 0; }
+.use-case-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.75rem; text-align: center; transition: transform 0.2s, border-color 0.3s; }
+.use-case-card:hover { border-color: rgba(167,139,250,0.35); transform: translateY(-3px); }
+.use-case-card .uc-icon { font-size: 2rem; margin-bottom: 0.75rem; }
+.use-case-card h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+.use-case-card p { color: var(--dim); font-size: 0.85rem; line-height: 1.5; }
+@media (max-width: 900px) { .use-cases { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px) { .use-cases { grid-template-columns: 1fr; } }
 
 .comparison { overflow-x: auto; margin: 2rem 0; border-radius: 12px; border: 1px solid var(--border); }
 table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
@@ -122,27 +129,10 @@ td.partial { color: var(--yellow); }
 tr:hover { background: rgba(15,10,26,0.5); }
 .highlight-col { background: rgba(167,139,250,0.04); }
 
-.roi-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 3rem; margin: 2rem 0; }
-.roi-section h3 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-.roi-section .sub { color: var(--dim); margin-bottom: 2rem; font-size: 1rem; }
-.roi-table { width: 100%; border-collapse: collapse; }
-.roi-table th { text-align: left; padding: 0.75rem 0; border-bottom: 2px solid var(--border); color: var(--dim); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; background: transparent; }
-.roi-table td { padding: 0.75rem 0; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
-.roi-table td.save { color: var(--green); font-weight: 700; font-size: 1.05rem; }
-.roi-note { color: var(--dim); font-size: 0.8rem; margin-top: 1.25rem; line-height: 1.6; }
-.roi-calc { margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border); }
-.roi-calc label { display: block; color: var(--dim); font-size: 0.85rem; margin-bottom: 0.5rem; font-weight: 500; }
-.roi-calc .slider-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
-.roi-calc input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; -webkit-appearance: none; background: rgba(139,108,224,0.2); border-radius: 2px; outline: none; }
-.roi-calc input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); cursor: pointer; }
-.roi-calc .slider-value { min-width: 3.5rem; text-align: right; font-weight: 700; font-size: 1.1rem; color: var(--accent); font-variant-numeric: tabular-nums; }
-.roi-result { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
-.roi-result-item { text-align: center; padding: 1.25rem 0.75rem; background: var(--surface2); }
-.roi-result-item .result-label { font-size: 0.75rem; color: var(--dim); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-.roi-result-item .result-value { font-size: 1.5rem; font-weight: 800; margin-top: 0.25rem; font-variant-numeric: tabular-nums; }
-.roi-result-item .result-value.green { color: var(--green); }
-.roi-result-item .result-value.accent { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-@media (max-width: 600px) { .roi-result { grid-template-columns: 1fr; } }
+.capacity-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 3rem; margin: 2rem 0; }
+.capacity-section h3 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem; }
+.capacity-section .sub { color: var(--dim); margin-bottom: 1.5rem; font-size: 1rem; }
+.capacity-note { color: var(--dim); font-size: 0.82rem; margin-top: 1rem; line-height: 1.6; }
 
 .bottom-cta { text-align: center; padding: 5rem 0 6rem; }
 .bottom-cta h2 { font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.75rem; }
@@ -157,9 +147,6 @@ footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
 footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
 footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
 footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-col .tagline { color: var(--dim); font-size: 0.85rem; margin-top: 0.25rem; }
-footer .foot-col .footer-logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1rem; color: var(--fg); margin-bottom: 0.25rem; }
-footer .foot-col .footer-logo svg { width: 24px; height: 24px; }
 footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
 footer .foot-bottom p { margin: 0; }
 @media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
@@ -180,7 +167,7 @@ nav, section, .container, .hero, footer, main, .stats-bar, .bottom-cta { positio
 <nav role="navigation" aria-label="Main navigation">
 <div class="inner">
 <a href="index.html" class="logo" aria-label="Spooktacular home">
-<svg viewBox="0 0 128 128" width="28" height="28" aria-hidden="true" style="image-rendering: pixelated;"><rect x="0" y="0" width="128" height="40" fill="#07050f"/><rect x="0" y="40" width="128" height="30" fill="#0f0a1a"/><rect x="0" y="70" width="128" height="25" fill="#1a1035"/><rect x="0" y="95" width="128" height="33" fill="#251648"/><g opacity="0.15"><rect x="38" y="80" width="52" height="15" fill="#fbbf24"/><rect x="44" y="75" width="40" height="5" fill="#fbbf24"/></g><rect x="50" y="88" width="4" height="3" fill="#5b21b6"/><rect x="53" y="87" width="4" height="3" fill="#5b21b6"/><rect x="56" y="86" width="4" height="3" fill="#4c1d95"/><rect x="62" y="84" width="4" height="3" fill="#3b1280"/><rect x="68" y="86" width="4" height="3" fill="#5b21b6"/><rect x="71" y="87" width="4" height="3" fill="#5b21b6"/><rect x="74" y="88" width="4" height="3" fill="#5b21b6"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="59" y="62" width="10" height="4" fill="#f59e0b"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="62" y="60" width="4" height="6" fill="#fbbf24"/><rect x="61" y="66" width="6" height="6" fill="#fbbf24"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="22" y="43" width="1" height="1" fill="#e8deff"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="28" y="43" width="1" height="1" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="25" y="47" width="2" height="1" fill="#e8deff"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="24" y="50" width="6" height="10" fill="#e8deff"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="21" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="29" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="14" y="46" width="3" height="3" fill="#c4b5fd"/><rect x="12" y="42" width="3" height="4" fill="#d4c2f0"/><rect x="10" y="38" width="3" height="4" fill="#c4b5fd"/><rect x="9" y="35" width="3" height="3" fill="#a78bfa"/><rect x="36" y="50" width="4" height="3" fill="#a78bfa"/><rect x="39" y="49" width="4" height="3" fill="#c4b5fd"/><rect x="42" y="48" width="3" height="3" fill="#a78bfa"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="98" y="43" width="1" height="1" fill="#e8deff"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="104" y="43" width="1" height="1" fill="#e8deff"/><rect x="100" y="47" width="4" height="2" fill="#7c3aed"/><rect x="92" y="49" width="18" height="12" fill="#b99de0"/><rect x="98" y="50" width="6" height="10" fill="#d0bff5"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="95" y="63" width="4" height="4" fill="#a78bfa"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="103" y="63" width="4" height="4" fill="#a78bfa"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="82" y="48" width="3" height="3" fill="#8b6ce0"/><rect x="85" y="49" width="4" height="3" fill="#a78bfa"/><rect x="110" y="46" width="3" height="3" fill="#a78bfa"/><rect x="112" y="42" width="3" height="4" fill="#b99de0"/><rect x="114" y="38" width="3" height="4" fill="#a78bfa"/><rect x="115" y="35" width="3" height="3" fill="#8b6ce0"/><rect x="8" y="5" width="2" height="2" fill="#c4b5fd"/><rect x="38" y="3" width="2" height="2" fill="#8b6ce0"/><rect x="64" y="4" width="2" height="2" fill="#c4b5fd"/><rect x="92" y="6" width="2" height="2" fill="#8b6ce0"/><rect x="118" y="9" width="2" height="2" fill="#c4b5fd"/></svg>
+<svg viewBox="0 0 128 128" width="28" height="28" aria-hidden="true" style="image-rendering: pixelated;"><rect x="8" y="5" width="2" height="2" fill="#c4b5fd"/><rect x="38" y="3" width="2" height="2" fill="#8b6ce0"/><rect x="64" y="4" width="2" height="2" fill="#c4b5fd"/><rect x="92" y="6" width="2" height="2" fill="#8b6ce0"/><rect x="118" y="9" width="2" height="2" fill="#c4b5fd"/><g opacity="0.15"><rect x="38" y="80" width="52" height="15" fill="#fbbf24"/><rect x="44" y="75" width="40" height="5" fill="#fbbf24"/></g><rect x="50" y="88" width="4" height="3" fill="#5b21b6"/><rect x="53" y="87" width="4" height="3" fill="#5b21b6"/><rect x="56" y="86" width="4" height="3" fill="#4c1d95"/><rect x="62" y="84" width="4" height="3" fill="#3b1280"/><rect x="68" y="86" width="4" height="3" fill="#5b21b6"/><rect x="71" y="87" width="4" height="3" fill="#5b21b6"/><rect x="74" y="88" width="4" height="3" fill="#5b21b6"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="59" y="62" width="10" height="4" fill="#f59e0b"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="62" y="60" width="4" height="6" fill="#fbbf24"/><rect x="61" y="66" width="6" height="6" fill="#fbbf24"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="22" y="43" width="1" height="1" fill="#e8deff"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="28" y="43" width="1" height="1" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="25" y="47" width="2" height="1" fill="#e8deff"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="24" y="50" width="6" height="10" fill="#e8deff"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="21" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="29" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="14" y="46" width="3" height="3" fill="#c4b5fd"/><rect x="12" y="42" width="3" height="4" fill="#d4c2f0"/><rect x="10" y="38" width="3" height="4" fill="#c4b5fd"/><rect x="9" y="35" width="3" height="3" fill="#a78bfa"/><rect x="36" y="50" width="4" height="3" fill="#a78bfa"/><rect x="39" y="49" width="4" height="3" fill="#c4b5fd"/><rect x="42" y="48" width="3" height="3" fill="#a78bfa"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="98" y="43" width="1" height="1" fill="#e8deff"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="104" y="43" width="1" height="1" fill="#e8deff"/><rect x="100" y="47" width="4" height="2" fill="#7c3aed"/><rect x="92" y="49" width="18" height="12" fill="#b99de0"/><rect x="98" y="50" width="6" height="10" fill="#d0bff5"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="95" y="63" width="4" height="4" fill="#a78bfa"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="103" y="63" width="4" height="4" fill="#a78bfa"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="82" y="48" width="3" height="3" fill="#8b6ce0"/><rect x="85" y="49" width="4" height="3" fill="#a78bfa"/><rect x="110" y="46" width="3" height="3" fill="#a78bfa"/><rect x="112" y="42" width="3" height="4" fill="#b99de0"/><rect x="114" y="38" width="3" height="4" fill="#a78bfa"/><rect x="115" y="35" width="3" height="3" fill="#8b6ce0"/></svg>
 Spooktacular
 </a>
 <input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
@@ -198,167 +185,232 @@ Spooktacular
 </nav>
 
 <main id="main">
+
+<!-- Hero -->
 <section class="hero" aria-labelledby="hero-heading">
 <div class="container">
-<div class="badge" aria-label="Status"><span class="dot" aria-hidden="true"></span> Open Source &middot; MIT Licensed &middot; Apple Silicon Native</div>
-<div class="hero-ghost" aria-hidden="true">
-<svg viewBox="0 0 128 128" width="120" height="120" style="image-rendering: pixelated;"><g opacity="0.15"><rect x="38" y="80" width="52" height="15" fill="#fbbf24"/><rect x="44" y="75" width="40" height="5" fill="#fbbf24"/><rect x="50" y="70" width="28" height="5" fill="#fbbf24"/></g><rect x="50" y="88" width="4" height="3" fill="#5b21b6"/><rect x="53" y="87" width="4" height="3" fill="#5b21b6"/><rect x="56" y="86" width="4" height="3" fill="#4c1d95"/><rect x="59" y="85" width="4" height="3" fill="#4c1d95"/><rect x="62" y="84" width="4" height="3" fill="#3b1280"/><rect x="65" y="85" width="4" height="3" fill="#4c1d95"/><rect x="68" y="86" width="4" height="3" fill="#5b21b6"/><rect x="71" y="87" width="4" height="3" fill="#5b21b6"/><rect x="74" y="88" width="4" height="3" fill="#5b21b6"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="59" y="62" width="10" height="4" fill="#f59e0b"/><rect x="58" y="66" width="12" height="4" fill="#f59e0b"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="62" y="60" width="4" height="6" fill="#fbbf24"/><rect x="61" y="66" width="6" height="6" fill="#fbbf24"/><rect x="60" y="72" width="8" height="4" fill="#f59e0b"/><rect x="56" y="60" width="3" height="6" fill="#f59e0b"/><rect x="55" y="66" width="3" height="6" fill="#ef4444"/><rect x="69" y="58" width="3" height="6" fill="#f59e0b"/><rect x="70" y="64" width="3" height="6" fill="#ef4444"/><rect x="63" y="50" width="2" height="4" fill="#fbbf24" opacity="0.7"/><rect x="58" y="46" width="2" height="2" fill="#fbbf24" opacity="0.8"/><rect x="68" y="42" width="2" height="2" fill="#f59e0b" opacity="0.6"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="22" y="43" width="1" height="1" fill="#e8deff"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="28" y="43" width="1" height="1" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="25" y="47" width="2" height="1" fill="#e8deff"/><rect x="18" y="49" width="2" height="12" fill="#a78bfa"/><rect x="20" y="49" width="14" height="12" fill="#d4c2f0"/><rect x="34" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="24" y="50" width="6" height="10" fill="#e8deff"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="21" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="29" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="14" y="46" width="3" height="3" fill="#c4b5fd"/><rect x="12" y="42" width="3" height="4" fill="#d4c2f0"/><rect x="10" y="38" width="3" height="4" fill="#c4b5fd"/><rect x="9" y="35" width="3" height="3" fill="#a78bfa"/><rect x="36" y="50" width="4" height="3" fill="#a78bfa"/><rect x="39" y="49" width="4" height="3" fill="#c4b5fd"/><rect x="42" y="48" width="3" height="3" fill="#a78bfa"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="98" y="43" width="1" height="1" fill="#e8deff"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="104" y="43" width="1" height="1" fill="#e8deff"/><rect x="100" y="47" width="4" height="2" fill="#7c3aed"/><rect x="92" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/><rect x="108" y="49" width="2" height="12" fill="#7c3aed"/><rect x="98" y="50" width="6" height="10" fill="#d0bff5"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="95" y="63" width="4" height="4" fill="#a78bfa"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="103" y="63" width="4" height="4" fill="#a78bfa"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="82" y="48" width="3" height="3" fill="#8b6ce0"/><rect x="85" y="49" width="4" height="3" fill="#a78bfa"/><rect x="110" y="46" width="3" height="3" fill="#a78bfa"/><rect x="112" y="42" width="3" height="4" fill="#b99de0"/><rect x="114" y="38" width="3" height="4" fill="#a78bfa"/><rect x="115" y="35" width="3" height="3" fill="#8b6ce0"/><rect x="8" y="5" width="2" height="2" fill="#c4b5fd"/><rect x="38" y="3" width="2" height="2" fill="#8b6ce0"/><rect x="64" y="4" width="2" height="2" fill="#c4b5fd"/><rect x="92" y="6" width="2" height="2" fill="#8b6ce0"/><rect x="118" y="9" width="2" height="2" fill="#c4b5fd"/></svg>
+<div class="badge"><span class="dot"></span> Open source &middot; MIT licensed</div>
+
+<!-- Transparent SVG icon: ghosts + fire + stars only -->
+<div class="hero-ghost" role="img" aria-label="Two pixel-art ghosts by a campfire under stars">
+<svg viewBox="0 0 128 96" width="128" height="96" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" image-rendering="pixelated">
+<!-- Stars -->
+<rect x="8" y="5" width="2" height="2" fill="#c4b5fd"/>
+<rect x="24" y="10" width="1" height="1" fill="#8b6ce0"/>
+<rect x="38" y="3" width="2" height="2" fill="#8b6ce0"/>
+<rect x="52" y="8" width="1" height="1" fill="#5b21b6"/>
+<rect x="64" y="4" width="2" height="2" fill="#c4b5fd"/>
+<rect x="78" y="12" width="1" height="1" fill="#8b6ce0"/>
+<rect x="92" y="6" width="2" height="2" fill="#8b6ce0"/>
+<rect x="106" y="3" width="1" height="1" fill="#5b21b6"/>
+<rect x="118" y="9" width="2" height="2" fill="#c4b5fd"/>
+<!-- Fire glow -->
+<g opacity="0.15">
+<rect x="38" y="80" width="52" height="15" fill="#fbbf24"/>
+<rect x="44" y="75" width="40" height="5" fill="#fbbf24"/>
+<rect x="50" y="70" width="28" height="5" fill="#fbbf24"/>
+</g>
+<!-- Logs -->
+<rect x="50" y="88" width="4" height="3" fill="#5b21b6"/><rect x="53" y="87" width="4" height="3" fill="#5b21b6"/><rect x="56" y="86" width="4" height="3" fill="#4c1d95"/><rect x="59" y="85" width="4" height="3" fill="#4c1d95"/><rect x="62" y="84" width="4" height="3" fill="#3b1280"/><rect x="65" y="85" width="4" height="3" fill="#4c1d95"/><rect x="68" y="86" width="4" height="3" fill="#5b21b6"/><rect x="71" y="87" width="4" height="3" fill="#5b21b6"/><rect x="74" y="88" width="4" height="3" fill="#5b21b6"/><rect x="58" y="87" width="12" height="2" fill="#3b1280"/>
+<!-- Fire -->
+<rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="59" y="62" width="10" height="4" fill="#f59e0b"/><rect x="58" y="66" width="12" height="4" fill="#f59e0b"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="62" y="60" width="4" height="6" fill="#fbbf24"/><rect x="61" y="66" width="6" height="6" fill="#fbbf24"/><rect x="60" y="72" width="8" height="4" fill="#f59e0b"/><rect x="56" y="60" width="3" height="6" fill="#f59e0b"/><rect x="55" y="66" width="3" height="6" fill="#ef4444"/><rect x="54" y="72" width="3" height="4" fill="#dc2626"/><rect x="69" y="58" width="3" height="6" fill="#f59e0b"/><rect x="70" y="64" width="3" height="6" fill="#ef4444"/><rect x="71" y="70" width="3" height="4" fill="#dc2626"/><rect x="63" y="50" width="2" height="4" fill="#fbbf24" opacity="0.7"/><rect x="62" y="48" width="2" height="3" fill="#f59e0b" opacity="0.5"/>
+<!-- Sparks -->
+<rect x="58" y="46" width="2" height="2" fill="#fbbf24" opacity="0.8"/><rect x="68" y="42" width="2" height="2" fill="#f59e0b" opacity="0.6"/><rect x="55" y="38" width="1" height="1" fill="#fbbf24" opacity="0.5"/><rect x="72" y="36" width="1" height="1" fill="#f59e0b" opacity="0.4"/>
+<!-- Ghost 1 (left) -->
+<rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="19" y="38" width="2" height="2" fill="#a78bfa"/><rect x="31" y="38" width="2" height="2" fill="#a78bfa"/><rect x="17" y="40" width="2" height="2" fill="#a78bfa"/><rect x="19" y="40" width="14" height="2" fill="#e8deff"/><rect x="33" y="40" width="2" height="2" fill="#a78bfa"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="3" height="4" fill="#e8deff"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="22" y="43" width="1" height="1" fill="#e8deff"/><rect x="24" y="42" width="4" height="4" fill="#e8deff"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="28" y="43" width="1" height="1" fill="#e8deff"/><rect x="30" y="42" width="3" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="17" y="46" width="2" height="3" fill="#a78bfa"/><rect x="19" y="46" width="2" height="3" fill="#d4c2f0"/><rect x="21" y="46" width="2" height="2" fill="#cc88ff" opacity="0.4"/><rect x="23" y="46" width="6" height="3" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="25" y="47" width="2" height="1" fill="#e8deff"/><rect x="29" y="46" width="2" height="2" fill="#cc88ff" opacity="0.4"/><rect x="31" y="46" width="2" height="3" fill="#d4c2f0"/><rect x="33" y="46" width="2" height="3" fill="#a78bfa"/><rect x="18" y="49" width="2" height="12" fill="#a78bfa"/><rect x="20" y="49" width="14" height="12" fill="#d4c2f0"/><rect x="34" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="20" y="49" width="2" height="12" fill="#c4b5fd"/><rect x="32" y="49" width="2" height="12" fill="#a78bfa"/><rect x="24" y="50" width="6" height="10" fill="#e8deff"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="21" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="29" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/>
+<!-- Ghost 1 arms -->
+<rect x="14" y="46" width="3" height="3" fill="#c4b5fd"/><rect x="12" y="42" width="3" height="4" fill="#d4c2f0"/><rect x="10" y="38" width="3" height="4" fill="#c4b5fd"/><rect x="9" y="35" width="3" height="3" fill="#a78bfa"/><rect x="8" y="34" width="2" height="2" fill="#c4b5fd"/><rect x="11" y="34" width="2" height="2" fill="#c4b5fd"/><rect x="36" y="50" width="4" height="3" fill="#a78bfa"/><rect x="39" y="49" width="4" height="3" fill="#c4b5fd"/><rect x="42" y="48" width="3" height="3" fill="#a78bfa"/>
+<!-- Ghost 2 (right) -->
+<rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="95" y="38" width="2" height="2" fill="#8b6ce0"/><rect x="107" y="38" width="2" height="2" fill="#8b6ce0"/><rect x="93" y="40" width="2" height="2" fill="#8b6ce0"/><rect x="95" y="40" width="14" height="2" fill="#d0bff5"/><rect x="109" y="40" width="2" height="2" fill="#8b6ce0"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="3" height="4" fill="#d0bff5"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="98" y="43" width="1" height="1" fill="#e8deff"/><rect x="100" y="42" width="4" height="4" fill="#d0bff5"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="104" y="43" width="1" height="1" fill="#e8deff"/><rect x="106" y="42" width="3" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="93" y="46" width="2" height="3" fill="#8b6ce0"/><rect x="95" y="46" width="2" height="3" fill="#b99de0"/><rect x="97" y="46" width="2" height="2" fill="#cc88ff" opacity="0.4"/><rect x="99" y="46" width="6" height="3" fill="#d0bff5"/><rect x="100" y="47" width="4" height="2" fill="#7c3aed"/><rect x="101" y="47" width="2" height="1" fill="#d0bff5"/><rect x="105" y="46" width="2" height="2" fill="#cc88ff" opacity="0.4"/><rect x="107" y="46" width="2" height="3" fill="#b99de0"/><rect x="109" y="46" width="2" height="3" fill="#8b6ce0"/><rect x="92" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/><rect x="108" y="49" width="2" height="12" fill="#7c3aed"/><rect x="94" y="49" width="2" height="12" fill="#a78bfa"/><rect x="106" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="98" y="50" width="6" height="10" fill="#d0bff5"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="95" y="63" width="4" height="4" fill="#a78bfa"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="103" y="63" width="4" height="4" fill="#a78bfa"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/>
+<!-- Ghost 2 arms -->
+<rect x="82" y="48" width="3" height="3" fill="#8b6ce0"/><rect x="85" y="49" width="4" height="3" fill="#a78bfa"/><rect x="89" y="50" width="3" height="3" fill="#8b6ce0"/><rect x="110" y="46" width="3" height="3" fill="#a78bfa"/><rect x="112" y="42" width="3" height="4" fill="#b99de0"/><rect x="114" y="38" width="3" height="4" fill="#a78bfa"/><rect x="115" y="35" width="3" height="3" fill="#8b6ce0"/><rect x="115" y="34" width="2" height="2" fill="#a78bfa"/><rect x="118" y="34" width="2" height="2" fill="#a78bfa"/>
+</svg>
 </div>
-<h1 id="hero-heading">Double your Mac capacity.<br><span class="gradient">Same hardware.</span></h1>
-<p class="lead">Run 2 macOS VMs on every Apple Silicon Mac &mdash; the maximum <a href="https://www.apple.com/legal/sla/" style="color: var(--accent)">Apple's EULA</a> allows. Each VM gets Metal GPU access, <a href="https://developer.apple.com/documentation/apple-silicon/porting-your-macos-apps-to-apple-silicon" style="color: var(--accent)">unified memory</a>, and full macOS — perfect for CI/CD, code signing, AI agents, and remote desktops.</p>
+
+<h1 id="hero-heading">Double your Mac capacity. <span class="gradient">Same hardware.</span></h1>
+<p class="lead">Run 2 macOS VMs per Mac with APFS cloning, a rich guest agent for clipboard sync and remote exec, and a full HTTP API. Open source, $0 forever.</p>
 <div class="cta">
 <a href="get-started.html" class="btn-primary">Get Started</a>
 <a href="download.html" class="btn-secondary">Download</a>
 </div>
-<div class="terminal" role="figure" aria-label="Terminal session showing Spooktacular commands">
-<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">Terminal &mdash; From zero to 2 runners in 4 commands</span></div>
+</div>
+
+<!-- Terminal demo -->
+<div class="container">
+<div class="terminal" role="figure" aria-label="Terminal showing spook remote exec command">
+<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">spook remote</span></div>
 <div class="terminal-body">
-<div><span class="cmt"># Create a base VM from the latest macOS</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook create base --from-ipsw latest --cpu 4 --memory 8</span></div>
-<div><span class="ok">&#10003; Downloading macOS 15.4 (24E248)...</span></div>
-<div><span class="ok">&#10003; VM 'base' created and setup complete</span></div>
+<div><span class="cmt"># Run a command inside the guest VM -- no SSH needed</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook remote exec my-vm -- "sw_vers --productVersion"</span></div>
+<div><span class="ok">15.4</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Clone in milliseconds — APFS copy-on-write</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook clone base runner-01</span></div>
-<div><span class="ok">&#10003; Clone 'runner-01' created in 48ms</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook clone base runner-02</span></div>
-<div><span class="ok">&#10003; Clone 'runner-02' created in 48ms</span></div>
+<div><span class="cmt"># Sync the guest clipboard to your host</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook remote clipboard get my-vm</span></div>
+<div><span class="ok">Hello from inside the VM</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Start ephemeral runners — auto-destroy after each job</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --ephemeral \</span></div>
-<div><span class="cmd">    --provision ssh --template github-runner \</span></div>
-<div><span class="cmd">    --var repo=org/app --var token=$TOKEN</span></div>
-<div><span class="ok">&#10003; runner-01 started, SSH provisioning complete</span></div>
-<div><span class="ok">&#10003; GitHub Actions runner registered: org/app</span></div>
+<div><span class="cmt"># Check what apps are running in the guest</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook remote apps my-vm</span></div>
+<div><span class="file">com.apple.finder</span>  <span class="dim">Finder</span>  <span class="ok">running</span></div>
+<div><span class="file">com.apple.Safari</span>  <span class="dim">Safari</span>  <span class="ok">running</span></div>
 </div>
 </div>
 </div>
 </section>
 
+<!-- Stats -->
 <div class="container">
-<div class="stats-bar" role="list" aria-label="Key metrics">
-<div class="stat-item" role="listitem"><div class="num">318</div><div class="label">Tests passing</div></div>
-<div class="stat-item" role="listitem"><div class="num">50%</div><div class="label">Cost reduction</div></div>
-<div class="stat-item" role="listitem"><div class="num">14</div><div class="label">CLI commands</div></div>
-<div class="stat-item" role="listitem"><div class="num">$0</div><div class="label">License cost</div></div>
+<div class="stats-bar" role="figure" aria-label="Project statistics">
+<div class="stat-item"><div class="num">328</div><div class="label">Tests in 43 suites</div></div>
+<div class="stat-item"><div class="num">15+</div><div class="label">CLI commands</div></div>
+<div class="stat-item"><div class="num">~15K</div><div class="label">Lines of Swift</div></div>
+<div class="stat-item"><div class="num">$0</div><div class="label">Forever</div></div>
 </div>
 </div>
 
-<section aria-labelledby="why-heading">
+<!-- Use Cases -->
+<section>
 <div class="container">
-<h2 id="why-heading">Everything that needs a Mac, doubled</h2>
-<p class="subtitle">macOS can only be virtualized on Apple hardware. Spooktacular gives you 2 VMs per Mac — the maximum Apple allows.</p>
+<h2>Built for real workflows</h2>
+<p class="subtitle">Four primary use cases, each with dedicated templates and CLI commands.</p>
+<div class="use-cases">
+<div class="use-case-card">
+<div class="uc-icon" aria-hidden="true">&#9881;</div>
+<h3>CI/CD Runners</h3>
+<p>Ephemeral GitHub Actions runners. Clone from a base image, run one job, destroy. 2x capacity per Mac.</p>
+</div>
+<div class="use-case-card">
+<div class="uc-icon" aria-hidden="true">&#129302;</div>
+<h3>AI Agents</h3>
+<p>Give computer-using agents a full macOS desktop. Guest agent provides clipboard, exec, and app control over VirtIO.</p>
+</div>
+<div class="use-case-card">
+<div class="uc-icon" aria-hidden="true">&#128424;</div>
+<h3>Remote Desktop</h3>
+<p>Personal macOS desktops for developers. Metal GPU, auto-resize display, audio, shared folders.</p>
+</div>
+<div class="use-case-card">
+<div class="uc-icon" aria-hidden="true">&#128295;</div>
+<h3>DevOps</h3>
+<p>HTTP API with Bearer auth. Kubernetes operator for declarative VM management. Templates and snapshots.</p>
+</div>
+</div>
+</div>
+</section>
+
+<!-- Guest Agent (NEW) -->
+<section id="guest-agent">
+<div class="container">
+<div class="section-label">New</div>
+<h2>Rich Guest Agent</h2>
+<p class="subtitle">12 HTTP API endpoints running inside the guest VM over VirtIO socket. No SSH, no network configuration, no open ports.</p>
 <div class="features-grid">
-<div class="feature-card"><span class="icon" aria-hidden="true">&#9881;</span><div class="tag tag-shipped">CI/CD</div><h3>iOS &amp; macOS Builds</h3><p>Run GitHub Actions, Jenkins, or BuildKite runners. Build, test, and sign iOS/macOS apps. Ephemeral runners auto-destroy after each job — always a clean environment.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GitHubRunnerTemplate.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#129504;</span><div class="tag tag-shipped">AI</div><h3>Computer-Using Agents</h3><p>Give AI agents isolated macOS environments with access to <a href="https://developer.apple.com/documentation/apple-silicon/porting-your-macos-apps-to-apple-silicon" style="color: var(--accent);">Metal GPU, unified memory</a>, and macOS-only apps — iMessage, Final Cut Pro, Xcode, Safari. Each agent gets its own VM.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128274;</span><div class="tag tag-shipped">Security</div><h3>Code Signing &amp; Notarization</h3><p>iOS and macOS apps must be signed on a Mac. Run signing infrastructure in isolated VMs with <code>--network isolated</code> for air-gapped security. Snapshots let you roll back instantly.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SnapshotManager.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128424;</span><div class="tag tag-shipped">Remote</div><h3>Remote macOS Desktops</h3><p>Provision remote desktops with Screen Sharing enabled. Metal GPU acceleration with up to 2 displays at 1920&times;1200. Auto-resize on macOS 14+.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/RemoteDesktopTemplate.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#9096;</span><div class="tag tag-shipped">K8s</div><h3>Kubernetes-Native</h3><p><code>kubectl apply -f vm.yaml</code> — MacOSVM custom resource, Swift controller, Helm chart. Manage Mac VMs like pods across your fleet.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#9889;</span><div class="tag tag-shipped">Speed</div><h3>48ms Clones</h3><p>APFS copy-on-write via <a href="https://developer.apple.com/documentation/foundation/filemanager" style="color: var(--accent);">clonefile(2)</a>. Each clone starts as a zero-byte delta, sharing disk blocks with the source. No image registry, no download.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CloneManager.swift" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card">
+<span class="icon" aria-hidden="true">&#128203;</span>
+<div class="tag tag-new">New</div>
+<h3>Clipboard Sync</h3>
+<p>Get and set the guest clipboard from the host. Works over VirtIO -- no SSH, no VNC, no screen scraping required.</p>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
+</div>
+<div class="feature-card">
+<span class="icon" aria-hidden="true">&#9654;</span>
+<div class="tag tag-new">New</div>
+<h3>Remote Exec</h3>
+<p>Run commands inside the guest and stream output back. Full GUI session access via LaunchAgent. No SSH keys to manage.</p>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook/Commands/Remote.swift" class="source-link" target="_blank">View source &rarr;</a>
+</div>
+<div class="feature-card">
+<span class="icon" aria-hidden="true">&#128187;</span>
+<div class="tag tag-new">New</div>
+<h3>App Control</h3>
+<p>List, launch, and quit macOS apps by bundle ID. Perfect for AI agents that need to interact with GUI applications.</p>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/HTTPAPIServer.swift" class="source-link" target="_blank">View source &rarr;</a>
+</div>
+<div class="feature-card">
+<span class="icon" aria-hidden="true">&#128268;</span>
+<div class="tag tag-new">New</div>
+<h3>Port Discovery</h3>
+<p>List all listening TCP ports inside the guest with process names. Know exactly what services are running without guessing.</p>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
+</div>
+<div class="feature-card">
+<span class="icon" aria-hidden="true">&#128193;</span>
+<div class="tag tag-new">New</div>
+<h3>File Transfer</h3>
+<p>Push files to the guest and pull files from the guest. Transfer build artifacts, configs, and data without shared folders.</p>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
+</div>
+<div class="feature-card">
+<span class="icon" aria-hidden="true">&#128154;</span>
+<div class="tag tag-new">New</div>
+<h3>Health Monitoring</h3>
+<p>Connection status with uptime tracking. Know instantly if the guest agent is responsive and how long it has been running.</p>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
+</div>
 </div>
 </div>
 </section>
 
-<section aria-labelledby="compare-heading">
+<!-- Quick Comparison -->
+<section>
 <div class="container">
-<h2 id="compare-heading">How it compares</h2>
-<p class="subtitle">An honest comparison. We show what we don't have yet too.</p>
+<h2>How we compare</h2>
+<p class="subtitle">Feature parity with commercial tools. MIT licensed, $0 forever.</p>
 <div class="comparison" role="region" aria-label="Feature comparison table" tabindex="0">
 <table>
-<thead><tr><th scope="col"></th><th scope="col" class="hl highlight-col">Spooktacular</th><th scope="col">Tart</th><th scope="col">Anka</th><th scope="col">Orka</th></tr></thead>
+<thead>
+<tr>
+<th scope="col">Feature</th>
+<th scope="col" class="hl highlight-col">Spooktacular</th>
+<th scope="col">GhostVM</th>
+<th scope="col">Tart</th>
+<th scope="col">Anka</th>
+</tr>
+</thead>
 <tbody>
-<tr><td>License</td><td class="highlight-col"><strong>MIT (free forever)</strong></td><td>Fair Source</td><td>Proprietary</td><td>Proprietary</td></tr>
-<tr><td>Pricing</td><td class="highlight-col"><strong>$0</strong></td><td>$0 &ndash; $36K/yr</td><td>Contact sales</td><td>$499+/mo</td></tr>
-<tr><td>GUI app</td><td class="highlight-col yes">&#10003; SwiftUI + Liquid Glass</td><td class="no">&#10005;</td><td class="yes">&#10003;</td><td class="yes">&#10003; Web UI</td></tr>
-<tr><td>CLI commands</td><td class="highlight-col yes">&#10003; 14 commands (23 with subs)</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="partial">Limited</td></tr>
-<tr><td>HTTP API</td><td class="highlight-col yes">&#10003; 9 REST endpoints</td><td class="no">&#10005;</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
-<tr><td>Disk snapshots</td><td class="highlight-col yes">&#10003; Save/restore/list/delete</td><td class="no">&#10005;</td><td class="yes">&#10003;</td><td class="partial">Limited</td></tr>
-<tr><td>Kubernetes-native</td><td class="highlight-col yes">&#10003; CRD + Controller</td><td class="partial">Orchard (basic)</td><td class="no">&#10005;</td><td class="yes">&#10003;</td></tr>
-<tr><td>OCI registries</td><td class="highlight-col no">&#10005; Planned</td><td class="yes">&#10003;</td><td class="no">Proprietary</td><td class="partial">Docker</td></tr>
-<tr><td>Self-hosted</td><td class="highlight-col yes">&#10003; Anywhere</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td><td class="no">MacStadium only</td></tr>
-<tr><td>Ephemeral runners</td><td class="highlight-col yes">&#10003; --ephemeral flag</td><td class="partial">Manual</td><td class="yes">&#10003;</td><td class="yes">&#10003;</td></tr>
-<tr><td>Fleet autoscaling</td><td class="highlight-col no">&#10005; Planned</td><td class="no">&#10005;</td><td class="partial">Manual</td><td class="yes">&#10003;</td></tr>
+<tr><td>License</td><td class="highlight-col"><strong>MIT (free)</strong></td><td>Proprietary</td><td>Fair Source</td><td>Proprietary</td></tr>
+<tr><td>Guest agent (clipboard, exec, apps)</td><td class="yes highlight-col">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="partial">Partial</td></tr>
+<tr><td>APFS clone</td><td class="yes highlight-col">Yes (48ms)</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+<tr><td>HTTP API</td><td class="yes highlight-col">Yes + Bearer auth</td><td class="partial">Basic</td><td class="no">No</td><td class="yes">Yes</td></tr>
+<tr><td>Kubernetes operator</td><td class="yes highlight-col">Yes</td><td class="no">No</td><td class="partial">Orchard</td><td class="yes">Yes</td></tr>
+<tr><td>Templates</td><td class="yes highlight-col">4 built-in</td><td class="no">No</td><td class="no">No</td><td class="partial">Paid</td></tr>
+<tr><td>Setup Assistant automation</td><td class="yes highlight-col">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
+<tr><td>SwiftUI GUI</td><td class="yes highlight-col">Liquid Glass</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
+<tr><td>Price</td><td class="yes highlight-col">$0</td><td class="no">$$$</td><td class="partial">$0-$36K</td><td class="no">Contact sales</td></tr>
 </tbody>
 </table>
 </div>
-<p style="text-align: center; margin-top: 1rem;"><a href="compare.html" style="font-weight: 600;">See the full comparison with pricing breakdown &rarr;</a></p>
+<p style="text-align: center; margin-top: 1rem;"><a href="compare.html">See full comparison &rarr;</a></p>
 </div>
 </section>
 
-<section aria-labelledby="roi-heading">
+<!-- Capacity -->
+<section>
 <div class="container">
-<div class="roi-section">
-<h3 id="roi-heading">Why only 2 VMs?</h3>
-<p class="sub">Apple's macOS EULA <a href="https://www.apple.com/legal/sla/" style="color: var(--accent);">(Section 2B(iii))</a> permits up to <strong>two additional copies or instances</strong> of macOS in virtual environments on each Apple-branded computer. This is also enforced at the kernel level on Apple Silicon. Spooktacular maximizes what Apple allows.</p>
-<table class="roi-table" aria-label="Capacity comparison">
-<thead><tr><th scope="col">Mac fleet</th><th scope="col">Bare metal</th><th scope="col">With Spooktacular</th><th scope="col">Capacity gain</th></tr></thead>
-<tbody>
-<tr><td>5 Macs</td><td>5 workloads</td><td><strong>10 workloads</strong></td><td class="save">+100%</td></tr>
-<tr><td>10 Macs</td><td>10 workloads</td><td><strong>20 workloads</strong></td><td class="save">+100%</td></tr>
-<tr><td>20 Macs</td><td>20 workloads</td><td><strong>40 workloads</strong></td><td class="save">+100%</td></tr>
-<tr><td>50 Macs</td><td>50 workloads</td><td><strong>100 workloads</strong></td><td class="save">+100%</td></tr>
-</tbody>
-</table>
-<p class="roi-note">Per Apple's macOS Sequoia SLA Section 2B(iii): <em>"install, use and run up to two (2) additional copies or instances of the Apple Software... within virtual operating system environments on each Apple-branded computer."</em> Permitted for software development, testing, macOS Server, and personal use. Spooktacular enforces this limit in <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CapacityCheck.swift" style="color: var(--accent);">CapacityCheck.swift</a>.</p>
-<div class="roi-calc">
-<label for="host-slider">How many Macs do you manage?</label>
-<div class="slider-row"><input type="range" id="host-slider" min="1" max="100" value="10" aria-label="Number of Macs"><span class="slider-value" id="host-count" aria-live="polite">10</span></div>
-<div class="roi-result" aria-live="polite" aria-label="Calculated savings">
-<div class="roi-result-item"><div class="result-label">Current annual cost</div><div class="result-value accent" id="current-cost">$94,608</div></div>
-<div class="roi-result-item"><div class="result-label">With Spooktacular</div><div class="result-value accent" id="new-cost">$47,304</div></div>
-<div class="roi-result-item"><div class="result-label">Annual savings</div><div class="result-value green" id="savings">$47,304</div></div>
+<div class="capacity-section">
+<h3>Apple allows 2 VMs per Mac</h3>
+<p class="sub">The macOS Software License Agreement permits running up to two additional copies of macOS in virtual machines on each Apple-branded computer running Apple Silicon.</p>
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; text-align: center;">
+<div><div style="font-size: 2rem; font-weight: 800; color: var(--accent);">1x</div><div style="color: var(--dim); font-size: 0.85rem;">Host Mac</div></div>
+<div><div style="font-size: 2rem; font-weight: 800; color: var(--green);">+2x</div><div style="color: var(--dim); font-size: 0.85rem;">macOS VMs</div></div>
+<div><div style="font-size: 2rem; font-weight: 800; color: var(--accent);">3x</div><div style="color: var(--dim); font-size: 0.85rem;">Total capacity</div></div>
 </div>
-</div>
+<p class="capacity-note">Spooktacular enforces this limit via <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CapacityCheck.swift" target="_blank">CapacityCheck.swift</a>. Apple's EULA Section 2B(iii) explicitly permits virtualization on Apple Silicon. No additional licenses required.</p>
 </div>
 </div>
 </section>
 
-<section aria-labelledby="getstarted-heading">
+<!-- Bottom CTA -->
+<section class="bottom-cta">
 <div class="container">
-<h2 id="getstarted-heading">Create your first VM</h2>
-<p class="subtitle">Install, create, clone, run. No configuration required.</p>
-<div class="terminal" style="max-width: 100%;" role="figure" aria-label="Getting started terminal commands">
-<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">Terminal &mdash; zero to running in 60 seconds</span></div>
-<div class="terminal-body">
-<div><span class="cmt"># Install</span></div>
-<div><span class="dim">$</span> <span class="cmd">brew install --cask spooktacular</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># Create your first VM from the latest macOS IPSW</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook create dev --from-ipsw latest</span></div>
-<div><span class="ok">&#10003; VM 'dev' created (download + install + setup automated)</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># Clone for CI (48ms, APFS copy-on-write)</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook clone dev runner-01</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook clone dev runner-02</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># Start runners for your pipeline</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --provision ssh \</span></div>
-<div><span class="cmd">    --template github-runner --var repo=org/app</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook start runner-02 --headless --ephemeral \</span></div>
-<div><span class="cmd">    --provision disk-inject --template github-runner</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># Check status via the HTTP API</span></div>
-<div><span class="dim">$</span> <span class="cmd">curl http://localhost:8080/vms | jq</span></div>
-<div><span class="file">[{"name":"runner-01","state":"running"},{"name":"runner-02","state":"running"}]</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># Snapshot before a risky update</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook snapshot save runner-01 pre-xcode16</span></div>
-<div><span class="ok">&#10003; Snapshot 'pre-xcode16' saved</span></div>
-</div>
-</div>
-</div>
-</section>
-
-<div class="bottom-cta">
-<div class="container">
-<h2>Ready to run your CI pipeline?</h2>
-<p>No account, no license key, no sales call. Your VMs, yours to keep. MIT licensed, open source, free forever.</p>
+<h2>Ready to double your Mac capacity?</h2>
+<p>328 tests. 15+ CLI commands. $0. Install and create your first VM in under 20 minutes.</p>
 <div class="buttons">
 <a href="get-started.html" class="btn-primary">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
+<a href="download.html" class="btn-secondary">Download</a>
 </div>
 </div>
-</div>
+</section>
+
 </main>
 
 <footer role="contentinfo">
@@ -398,31 +450,5 @@ Spooktacular
 </div>
 </div>
 </footer>
-
-<script>
-(function() {
-  var slider = document.getElementById('host-slider');
-  var hostCount = document.getElementById('host-count');
-  var currentCost = document.getElementById('current-cost');
-  var newCost = document.getElementById('new-cost');
-  var savings = document.getElementById('savings');
-  var rate = 1.08;
-  var hoursPerYear = 8760;
-  function fmt(n) { return '$' + Math.round(n).toLocaleString('en-US'); }
-  function update() {
-    var hosts = parseInt(slider.value);
-    hostCount.textContent = hosts;
-    var annual = hosts * rate * hoursPerYear;
-    var needed = Math.ceil(hosts / 2);
-    var annualNew = needed * rate * hoursPerYear;
-    var saved = annual - annualNew;
-    currentCost.textContent = fmt(annual);
-    newCost.textContent = fmt(annualNew);
-    savings.textContent = fmt(saved);
-  }
-  slider.addEventListener('input', update);
-  update();
-})();
-</script>
 </body>
 </html>
