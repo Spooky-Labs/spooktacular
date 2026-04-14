@@ -1,110 +1,106 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.2.0)'
+        required: true
+        type: string
 
 jobs:
-  build:
-    name: Build & Sign
+  release:
+    name: Test → Build → Notarize → Release
     runs-on: macos-26
+    permissions:
+      contents: write
+    env:
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
     steps:
       - uses: actions/checkout@v5
 
+      # 1. Run all tests first — fail fast before any signing
+      - name: Run tests
+        run: swift test --parallel
+
+      # 2. Install Fastlane and sync code signing
       - name: Install Fastlane
         run: gem install fastlane
 
       - name: Sync code signing via match
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
         run: fastlane signing
         working-directory: fastlane
 
-      - name: Run tests
-        run: swift test --parallel
-
+      # 3. Build the signed .app bundle
       - name: Build signed .app bundle
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-        run: fastlane build
+        run: |
+          MARKETING_VERSION="${{ inputs.version }}" \
+          BUILD_NUMBER="${{ github.run_number }}" \
+          fastlane build
         working-directory: fastlane
 
-      - name: Package .pkg for App Store
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      # 4. Notarize with xcrun notarytool (not Fastlane — their wrapper is broken)
+      - name: Write API key to disk
+        run: |
+          echo "$APPLE_API_KEY_P8" | base64 --decode > /tmp/AuthKey.p8
+
+      - name: Notarize .app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
+          xcrun notarytool submit Spooktacular.app.zip \
+            --key /tmp/AuthKey.p8 \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --wait
+
+      - name: Staple notarization ticket
+        run: xcrun stapler staple Spooktacular.app
+
+      # 5. Re-zip after stapling (the stapled ticket is now inside the .app)
+      - name: Create final zip
+        run: |
+          rm -f Spooktacular.app.zip
+          ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
+
+      # 6. Package .pkg for TestFlight/App Store
+      - name: Package .pkg
         run: fastlane package
         working-directory: fastlane
 
-      - name: Create Homebrew zip
-        run: ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
+      # 7. Create git tag (CI creates it, not a human)
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: release-artifacts
-          path: |
-            Spooktacular.app.zip
-            Spooktacular.pkg
-          retention-days: 30
-
-  github-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v5
-        with:
-          name: release-artifacts
-
-      - name: Create Release
+      # 8. Create GitHub Release with the notarized zip
+      - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG_NAME" \
-            --title "Spooktacular $TAG_NAME" \
+          gh release create "v${{ inputs.version }}" \
+            --title "Spooktacular v${{ inputs.version }}" \
             --generate-notes \
             Spooktacular.app.zip
 
-  testflight:
-    name: Upload to TestFlight
-    runs-on: macos-26
-    needs: build
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v5
-        with:
-          name: release-artifacts
-
-      - name: Install Fastlane
-        run: gem install fastlane
-
+      # 9. Upload to TestFlight
       - name: Upload to TestFlight
-        env:
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
-        run: fastlane beta
+        continue-on-error: true
+        run: |
+          fastlane run upload_to_testflight \
+            api_key_path:"" \
+            pkg:"Spooktacular.pkg" \
+            app_platform:"osx" \
+            skip_waiting_for_build_processing:true
         working-directory: fastlane
+
+      # 10. Cleanup
+      - name: Cleanup API key
+        if: always()
+        run: rm -f /tmp/AuthKey.p8
