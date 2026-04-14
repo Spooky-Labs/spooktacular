@@ -210,8 +210,10 @@ brew install --cask spooktacular
 # Create a base VM
 spook create base --from-ipsw latest
 
-# Start the HTTP API (bind to all interfaces for cluster access)
-spook serve --host 0.0.0.0 --port 8484
+# Start the HTTPS API (bind to all interfaces for cluster access)
+spook serve --host 0.0.0.0 --port 8484 \
+  --tls-cert /etc/spooktacular/tls/cert.pem \
+  --tls-key /etc/spooktacular/tls/key.pem
 
 # Or install as a service for persistence
 sudo spook service install base  # for the base VM
@@ -239,7 +241,7 @@ kubectl logs -n spooktacular-system deployment/spooktacular-operator
 Verify `spook serve` is running and the port is reachable:
 
 ```bash
-curl http://10.0.1.50:8484/health
+curl -k https://10.0.1.50:8484/health
 ```
 
 ### Provisioning failed

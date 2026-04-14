@@ -657,7 +657,7 @@ spook service status
 |----------|---------|-------------|
 | `NO_COLOR` | - | When set (to any value), disables colored output |
 | `SPOOK_API_TOKEN` | - | Bearer token for the control API |
-| `SPOOK_API_URL` | `http://127.0.0.1:9470` | Control API base URL |
+| `SPOOK_API_URL` | `https://127.0.0.1:8484` | Control API base URL |
 | `SPOOK_HOME` | `~/.spooktacular` | Data directory path |
 
 ```bash
@@ -665,7 +665,7 @@ spook service status
 NO_COLOR=1 spook list
 
 # Use a remote Spooktacular host
-SPOOK_API_URL=http://10.0.1.50:9470 \
+SPOOK_API_URL=https://10.0.1.50:8484 \
 SPOOK_API_TOKEN=my-secret-token \
 spook list
 ```
