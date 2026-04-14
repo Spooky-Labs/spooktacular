@@ -55,8 +55,8 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 .hero .badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 1.25rem; font-size: 0.8rem; color: var(--dim); margin-bottom: 2rem; }
 .hero .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-.hero-ghost { width: 120px; height: 120px; margin: 0 auto 2rem; animation: ghostFloat 4s ease-in-out infinite; }
-@keyframes ghostFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+.hero-ghost { width: 128px; height: 128px; margin: 0 auto 2rem; animation: ghostFloat 4s ease-in-out infinite; border-radius: 28px; overflow: hidden; box-shadow: 0 8px 32px rgba(124,58,237,0.3), 0 0 0 1px rgba(167,139,250,0.15); }
+@keyframes ghostFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 .hero h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1.05; max-width: 800px; margin: 0 auto; }
 .hero h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 .hero .lead { font-size: 1.25rem; color: var(--dim); margin-top: 1.25rem; max-width: 640px; margin-left: auto; margin-right: auto; line-height: 1.6; }
@@ -191,7 +191,8 @@ Spooktacular
 <a href="roadmap.html">Roadmap</a>
 <a href="api/documentation/spooktacularkit/">Docs</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
+<a href="get-started.html">Get Started</a>
+<a href="download.html" class="cta-btn">Download</a>
 </div>
 </div>
 </nav>
@@ -203,27 +204,27 @@ Spooktacular
 <div class="hero-ghost" aria-hidden="true">
 <svg viewBox="0 0 128 128" width="120" height="120" style="image-rendering: pixelated;"><rect x="0" y="0" width="128" height="40" fill="#07050f"/><rect x="0" y="40" width="128" height="30" fill="#0f0a1a"/><rect x="0" y="70" width="128" height="25" fill="#1a1035"/><rect x="0" y="95" width="128" height="33" fill="#251648"/><g opacity="0.15"><rect x="38" y="80" width="52" height="15" fill="#fbbf24"/><rect x="44" y="75" width="40" height="5" fill="#fbbf24"/><rect x="50" y="70" width="28" height="5" fill="#fbbf24"/></g><rect x="50" y="88" width="4" height="3" fill="#5b21b6"/><rect x="53" y="87" width="4" height="3" fill="#5b21b6"/><rect x="56" y="86" width="4" height="3" fill="#4c1d95"/><rect x="59" y="85" width="4" height="3" fill="#4c1d95"/><rect x="62" y="84" width="4" height="3" fill="#3b1280"/><rect x="65" y="85" width="4" height="3" fill="#4c1d95"/><rect x="68" y="86" width="4" height="3" fill="#5b21b6"/><rect x="71" y="87" width="4" height="3" fill="#5b21b6"/><rect x="74" y="88" width="4" height="3" fill="#5b21b6"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="59" y="62" width="10" height="4" fill="#f59e0b"/><rect x="58" y="66" width="12" height="4" fill="#f59e0b"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="62" y="60" width="4" height="6" fill="#fbbf24"/><rect x="61" y="66" width="6" height="6" fill="#fbbf24"/><rect x="60" y="72" width="8" height="4" fill="#f59e0b"/><rect x="56" y="60" width="3" height="6" fill="#f59e0b"/><rect x="55" y="66" width="3" height="6" fill="#ef4444"/><rect x="69" y="58" width="3" height="6" fill="#f59e0b"/><rect x="70" y="64" width="3" height="6" fill="#ef4444"/><rect x="63" y="50" width="2" height="4" fill="#fbbf24" opacity="0.7"/><rect x="58" y="46" width="2" height="2" fill="#fbbf24" opacity="0.8"/><rect x="68" y="42" width="2" height="2" fill="#f59e0b" opacity="0.6"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="22" y="43" width="1" height="1" fill="#e8deff"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="28" y="43" width="1" height="1" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="25" y="47" width="2" height="1" fill="#e8deff"/><rect x="18" y="49" width="2" height="12" fill="#a78bfa"/><rect x="20" y="49" width="14" height="12" fill="#d4c2f0"/><rect x="34" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="24" y="50" width="6" height="10" fill="#e8deff"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="21" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="29" y="63" width="4" height="4" fill="#c4b5fd"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="14" y="46" width="3" height="3" fill="#c4b5fd"/><rect x="12" y="42" width="3" height="4" fill="#d4c2f0"/><rect x="10" y="38" width="3" height="4" fill="#c4b5fd"/><rect x="9" y="35" width="3" height="3" fill="#a78bfa"/><rect x="36" y="50" width="4" height="3" fill="#a78bfa"/><rect x="39" y="49" width="4" height="3" fill="#c4b5fd"/><rect x="42" y="48" width="3" height="3" fill="#a78bfa"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="98" y="43" width="1" height="1" fill="#e8deff"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="104" y="43" width="1" height="1" fill="#e8deff"/><rect x="100" y="47" width="4" height="2" fill="#7c3aed"/><rect x="92" y="49" width="2" height="12" fill="#8b6ce0"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/><rect x="108" y="49" width="2" height="12" fill="#7c3aed"/><rect x="98" y="50" width="6" height="10" fill="#d0bff5"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="95" y="63" width="4" height="4" fill="#a78bfa"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="103" y="63" width="4" height="4" fill="#a78bfa"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="82" y="48" width="3" height="3" fill="#8b6ce0"/><rect x="85" y="49" width="4" height="3" fill="#a78bfa"/><rect x="110" y="46" width="3" height="3" fill="#a78bfa"/><rect x="112" y="42" width="3" height="4" fill="#b99de0"/><rect x="114" y="38" width="3" height="4" fill="#a78bfa"/><rect x="115" y="35" width="3" height="3" fill="#8b6ce0"/><rect x="8" y="5" width="2" height="2" fill="#c4b5fd"/><rect x="38" y="3" width="2" height="2" fill="#8b6ce0"/><rect x="64" y="4" width="2" height="2" fill="#c4b5fd"/><rect x="92" y="6" width="2" height="2" fill="#8b6ce0"/><rect x="118" y="9" width="2" height="2" fill="#c4b5fd"/></svg>
 </div>
-<h1 id="hero-heading">Haunt your CI pipeline<br>with <span class="gradient">2x capacity.</span></h1>
-<p class="lead">Summon 2 macOS VMs on every Apple Silicon Mac. Conjure a clone in 48ms. Vanish your EC2 Mac bill by half. No soul required &mdash; MIT licensed, $0 forever.</p>
+<h1 id="hero-heading">Double your Mac CI capacity.<br><span class="gradient">Zero additional cost.</span></h1>
+<p class="lead">Run 2 macOS VMs on every Apple Silicon Mac. Clone in 48ms. Cut your EC2 Mac bill in half. Open source, MIT licensed, $0 forever.</p>
 <div class="cta">
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="btn-primary">Summon Your First VM</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" class="btn-secondary">View on GitHub</a>
+<a href="get-started.html" class="btn-primary">Get Started</a>
+<a href="download.html" class="btn-secondary">Download</a>
 </div>
 <div class="terminal" role="figure" aria-label="Terminal session showing Spooktacular commands">
 <div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">Terminal &mdash; From zero to 2 runners in 4 commands</span></div>
 <div class="terminal-body">
-<div><span class="cmt"># Summon a VM from the latest macOS restore image</span></div>
+<div><span class="cmt"># Create a base VM from the latest macOS</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook create base --from-ipsw latest --cpu 4 --memory 8</span></div>
 <div><span class="ok">&#10003; Downloading macOS 15.4 (24E248)...</span></div>
-<div><span class="ok">&#10003; VM 'base' summoned and setup complete</span></div>
+<div><span class="ok">&#10003; VM 'base' created and setup complete</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Conjure instant clones via APFS copy-on-write</span></div>
+<div><span class="cmt"># Clone in milliseconds — APFS copy-on-write</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook clone base runner-01</span></div>
-<div><span class="ok">&#10003; Clone 'runner-01' conjured in 48ms</span></div>
+<div><span class="ok">&#10003; Clone 'runner-01' created in 48ms</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook clone base runner-02</span></div>
-<div><span class="ok">&#10003; Clone 'runner-02' conjured in 48ms</span></div>
+<div><span class="ok">&#10003; Clone 'runner-02' created in 48ms</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Launch ephemeral runners that vanish after each job</span></div>
+<div><span class="cmt"># Start ephemeral runners — auto-destroy after each job</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --ephemeral \</span></div>
 <div><span class="cmd">    --provision ssh --template github-runner \</span></div>
 <div><span class="cmd">    --var repo=org/app --var token=$TOKEN</span></div>

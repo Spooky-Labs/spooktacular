@@ -3,10 +3,10 @@
 
   # Spooktacular
 
-  **Double your Mac CI capacity. Vanish infrastructure costs.**
+  **Double your Mac CI capacity. Zero additional cost.**
 
   Enterprise macOS virtualization for Apple Silicon. Run 2 VMs per Mac,<br>
-  cut EC2 costs 50%, conjure clones in 48ms. MIT licensed, $0 forever.
+  clone in 48ms, cut EC2 costs 50%. Open source, MIT licensed, $0 forever.
 
   [![CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml/badge.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
@@ -52,23 +52,23 @@ runner-02   running   8   16G   192.168.64.4
 </table>
 </div>
 
-## Summon Your First VM
+## Quick Start
 
 ```bash
 # Install (or download from https://spooktacular.app/download.html)
 brew install --cask spooktacular
 
-# Summon a base VM from the latest macOS
+# Create a base VM from the latest macOS
 spook create base --from-ipsw latest
 
-# Conjure a clone — 48ms, APFS copy-on-write
+# Clone it — 48ms, APFS copy-on-write
 spook clone base runner-01
 
-# Haunt your CI pipeline
+# Start as a GitHub Actions runner
 spook start runner-01 --headless --github-runner \
   --github-repo your-org/repo --github-token ghp_xxx
 
-# Double your capacity — ephemeral runners auto-destroy after one job
+# Double your capacity — ephemeral runners auto-destroy after each job
 spook clone base runner-02
 spook start runner-02 --ephemeral --headless --github-runner \
   --github-repo your-org/repo --github-token ghp_xxx
@@ -122,8 +122,8 @@ Four thin clients, one library. Every client parses input and calls Spooktacular
 
 | Command | Description |
 |---|---|
-| `spook create` | Summon a VM from an IPSW restore image |
-| `spook clone` | Conjure a clone (APFS copy-on-write) |
+| `spook create` | Create a VM from an IPSW restore image |
+| `spook clone` | Clone a VM (APFS copy-on-write, ~48ms) |
 | `spook start` | Start a VM (headless or windowed) |
 | `spook stop` | Stop a running VM |
 | `spook delete` | Delete a VM bundle |
