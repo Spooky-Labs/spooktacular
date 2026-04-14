@@ -9,8 +9,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  beta:
-    name: Test → Build → TestFlight
+  testflight:
+    name: Build & Upload to TestFlight
     runs-on: macos-26
     env:
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -21,33 +21,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0  # needed for git describe
+          fetch-depth: 0
 
       - name: Install Fastlane
         run: gem install fastlane
 
-      # 1. Tests
-      - name: Run tests
-        run: swift test --parallel
-
-      # 2. Sign
-      - name: Sync code signing via match
+      - name: Sync code signing
         run: fastlane signing
         working-directory: fastlane
 
-      # 3. Build with auto-versioning from git
-      - name: Build signed .app bundle
+      - name: Build signed .app
         run: |
-          BUILD_NUMBER="${{ github.run_number }}" \
-          fastlane build
+          BUILD_NUMBER="${{ github.run_number }}" fastlane build
         working-directory: fastlane
 
-      # 4. Package .pkg for TestFlight
       - name: Package .pkg
         run: fastlane package
         working-directory: fastlane
 
-      # 5. Upload to TestFlight
       - name: Upload to TestFlight
         run: |
           fastlane run upload_to_testflight \

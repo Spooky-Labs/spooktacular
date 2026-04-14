@@ -1,18 +1,16 @@
 name: CI
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
     branches: [main]
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.head_ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: Unit Tests (Swift Testing)
+    name: Unit Tests
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
@@ -23,7 +21,7 @@ jobs:
           grep "Test run with" test-output.txt
 
   build:
-    name: Build App Bundle
+    name: Build
     runs-on: macos-26
     needs: test
     steps:
@@ -42,47 +40,4 @@ jobs:
           test -f Spooktacular.app/Contents/Info.plist
           test -f Spooktacular.app/Contents/MacOS/Spooktacular
           test -f Spooktacular.app/Contents/MacOS/spook
-          echo "✓ App bundle structure verified"
-
-      - name: Upload .app artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: Spooktacular.app
-          path: Spooktacular.app
-          retention-days: 14
-
-  screenshots:
-    name: App Store Screenshots
-    runs-on: macos-26
-    needs: build
-    # Only on main branch and PRs — screenshots are a release artifact,
-    # not a gating CI check. Failures here do not block merges.
-    if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Build .app bundle
-        run: |
-          chmod +x build-app.sh
-          ./build-app.sh release
-
-      - name: Capture screenshots
-        run: |
-          chmod +x scripts/capture-screenshots.sh
-          ./scripts/capture-screenshots.sh || echo "Screenshot capture requires interactive session — skipping automated capture"
-
-      - name: Process screenshots for App Store
-        run: |
-          chmod +x scripts/process-screenshots.sh
-          ./scripts/process-screenshots.sh || echo "No raw screenshots to process"
-
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: screenshots
-          path: fastlane/screenshots/
-          retention-days: 14
-
-  # DocC generation + deployment is handled by docs.yml on push to main.
+          echo "✓ App bundle verified"
