@@ -81,6 +81,31 @@ public enum BootAction: Sendable, Equatable {
     /// Use this for long pauses within a step sequence, such as
     /// waiting for account creation to complete.
     case wait(TimeInterval)
+
+    /// Wait until specific text appears on the VM screen before proceeding.
+    ///
+    /// When a ``ScreenReader`` is available, this action polls the
+    /// screen using OCR until the specified text is found. If no
+    /// screen reader is provided, falls back to a fixed delay equal
+    /// to the timeout duration.
+    ///
+    /// - Parameters:
+    ///   - text: The text to wait for (case-insensitive substring match).
+    ///   - timeout: Maximum seconds to wait. Defaults to 120.
+    case waitForText(String, timeout: TimeInterval = 120)
+
+    /// Click on text visible on the VM screen.
+    ///
+    /// When a ``ScreenReader`` is available, this action waits for
+    /// the specified text to appear, computes the center of its
+    /// bounding box, and sends a mouse click at that location using
+    /// the ``KeyboardDriver/clickAt(x:y:)`` method. If no screen
+    /// reader is provided, the action is skipped with a warning.
+    ///
+    /// - Parameters:
+    ///   - text: The text to find and click (case-insensitive).
+    ///   - timeout: Maximum seconds to wait for the text. Defaults to 60.
+    case clickText(String, timeout: TimeInterval = 60)
 }
 
 /// Virtual key codes for Setup Assistant navigation.

@@ -41,4 +41,18 @@ public protocol KeyboardDriver: Sendable {
     /// - Throws: ``SetupAutomationExecutorError/unmappableCharacter(_:)``
     ///   if a character cannot be converted to a key code.
     @MainActor func sendText(_ text: String) async throws
+
+    /// Sends a mouse click at normalized coordinates.
+    ///
+    /// Coordinates are in the range 0--1, where (0, 0) is the
+    /// top-left corner and (1, 1) is the bottom-right corner of
+    /// the VM display.
+    ///
+    /// Implementations should synthesize a mouse-down/mouse-up pair
+    /// at the corresponding pixel position within the VM view.
+    ///
+    /// - Parameters:
+    ///   - x: Horizontal position (0 = left, 1 = right).
+    ///   - y: Vertical position (0 = top, 1 = bottom).
+    @MainActor func clickAt(x: Double, y: Double) async throws
 }

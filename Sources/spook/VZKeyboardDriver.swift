@@ -42,7 +42,13 @@ import SpooktacularKit
 public final class VZKeyboardDriver: KeyboardDriver, @unchecked Sendable {
 
     private let window: NSWindow
-    private let vmView: VZVirtualMachineView
+
+    /// The VM view used for keyboard and mouse event delivery.
+    ///
+    /// Exposed as `internal` so that ``VZScreenReader`` can capture
+    /// the view's display for OCR. The view is owned by this driver
+    /// and lives inside the offscreen window.
+    let vmView: VZVirtualMachineView
 
     /// Creates a keyboard driver connected to the given virtual machine.
     ///
@@ -113,6 +119,15 @@ public final class VZKeyboardDriver: KeyboardDriver, @unchecked Sendable {
         }
     }
 
+    public func clickAt(x: Double, y: Double) async throws {
+        let viewBounds = vmView.bounds
+        let point = NSPoint(
+            x: viewBounds.origin.x + viewBounds.width * x,
+            y: viewBounds.origin.y + viewBounds.height * (1.0 - y)
+        )
+        sendMouseClick(at: point, to: vmView)
+    }
+
     // MARK: - NSEvent Synthesis
 
     /// Sends a key-down/key-up pair to the view.
@@ -157,6 +172,45 @@ public final class VZKeyboardDriver: KeyboardDriver, @unchecked Sendable {
             keyCode: keyCode
         ) {
             view.keyUp(with: keyUp)
+        }
+    }
+
+    /// Sends a mouse-down/mouse-up pair to the view at the given point.
+    ///
+    /// The point is in the view's coordinate system (origin at
+    /// bottom-left, as is standard for NSView). Uses
+    /// `NSEvent.mouseEvent(with:)` and delivers via the view's
+    /// `mouseDown(_:)` and `mouseUp(_:)` methods.
+    private func sendMouseClick(at point: NSPoint, to view: VZVirtualMachineView) {
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let windowNumber = view.window?.windowNumber ?? 0
+
+        if let mouseDown = NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: point,
+            modifierFlags: [],
+            timestamp: timestamp,
+            windowNumber: windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1.0
+        ) {
+            view.mouseDown(with: mouseDown)
+        }
+
+        if let mouseUp = NSEvent.mouseEvent(
+            with: .leftMouseUp,
+            location: point,
+            modifierFlags: [],
+            timestamp: timestamp + 0.01,
+            windowNumber: windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0.0
+        ) {
+            view.mouseUp(with: mouseUp)
         }
     }
 }

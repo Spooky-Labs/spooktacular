@@ -460,10 +460,15 @@ extension Spook {
 
             do {
                 let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
+                let screenReader = VZScreenReader(vmView: driver.vmView)
                 let steps = SetupAutomation.sequence(for: macOSVersion)
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
                 print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
-                try await SetupAutomationExecutor.run(steps: steps, using: driver)
+                try await SetupAutomationExecutor.run(
+                    steps: steps,
+                    using: driver,
+                    screenReader: screenReader
+                )
                 logger.notice("Setup Assistant automation steps completed")
                 print(Style.success("✓ Setup Assistant automation complete."))
 
