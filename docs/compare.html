@@ -412,6 +412,30 @@ Spooktacular
 <td class="no">&#10005;</td>
 </tr>
 <tr>
+<td>Runner pool orchestration</td>
+<td class="highlight-col yes">&#10003; 9-state lifecycle FSM</td>
+<td class="no">&#10005;</td>
+<td class="yes">&#10003;</td>
+<td class="yes">&#10003;</td>
+<td class="no">&#10005;</td>
+</tr>
+<tr>
+<td>mTLS (controller ↔ node)</td>
+<td class="highlight-col yes">&#10003; Optional, mutual cert auth</td>
+<td class="no">&#10005;</td>
+<td class="partial">Server TLS only</td>
+<td class="yes">&#10003;</td>
+<td class="no">&#10005;</td>
+</tr>
+<tr>
+<td>Cert rotation without restart</td>
+<td class="highlight-col yes">&#10003; File-watch hot reload</td>
+<td class="no">&#10005;</td>
+<td class="no">&#10005;</td>
+<td class="partial">Limited</td>
+<td class="no">&#10005;</td>
+</tr>
+<tr>
 <td>Fleet autoscaling</td>
 <td class="highlight-col no">&#10005; <a href="roadmap.html">Planned</a></td>
 <td class="no">&#10005;</td>
@@ -439,11 +463,19 @@ Spooktacular
 <tr class="cat-row"><td colspan="6">Quality</td></tr>
 <tr>
 <td>Test suite</td>
-<td class="highlight-col yes">&#10003; 360 tests / 45 suites</td>
+<td class="highlight-col yes">&#10003; 411+ tests / 50+ suites</td>
 <td class="partial">Some</td>
 <td class="no">Unknown</td>
 <td class="no">Unknown</td>
 <td class="no">Unknown</td>
+</tr>
+<tr>
+<td>Supply chain (SBOM, attestations)</td>
+<td class="highlight-col yes">&#10003; SBOM + artifact attestations</td>
+<td class="no">&#10005;</td>
+<td class="no">Unknown</td>
+<td class="partial">Limited</td>
+<td class="no">&#10005;</td>
 </tr>
 <tr>
 <td>Accessibility (WCAG)</td>
@@ -468,7 +500,7 @@ Spooktacular
 <li><strong>OCI registries:</strong> Tart ships OCI push/pull today. We have it planned but not yet implemented.</li>
 <li><strong>Fleet autoscaling:</strong> Orka autoscales. Anka has manual pool management. We have no fleet management yet.</li>
 <li><strong>Multi-CI templates:</strong> Anka and Orka support BuildKite, CircleCI, and Jenkins natively. We only have GitHub Actions today.</li>
-<li><strong>Pool auto-replacement:</strong> Anka replaces failed VMs automatically. We don't have pool management yet.</li>
+<li><strong>Pool auto-replacement:</strong> Anka replaces failed VMs automatically. Spooktacular's RunnerPool reconciler now handles this via its lifecycle state machine, but it is still in development on the <code>feat/runner-lifecycle-engine</code> branch.</li>
 <li><strong>Enterprise support:</strong> Anka and Orka offer paid support contracts. We are community-supported only.</li>
 </ul>
 <p style="color: var(--dim); font-size: 0.85rem; margin-top: 0.75rem; font-style: italic;">Note: GhostVM previously had an edge on clipboard/exec/apps via its guest agent. Spooktacular now ships the same capabilities with 12 HTTP endpoints over vsock, plus file transfer, port discovery, and health monitoring that GhostVM does not offer.</p>

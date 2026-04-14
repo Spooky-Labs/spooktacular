@@ -174,6 +174,114 @@ curl -k https://localhost:8484/health
 spook list
 ```
 
+## Enterprise Features
+
+### macOS Version Preflight
+
+The bootstrap script validates the host environment before any provisioning:
+
+1. **macOS 14+ (Sonoma)** -- required for Virtualization.framework features
+   used by Spooktacular. The script calls `sw_vers -productVersion` and fails
+   immediately with a clear message if the version is below 14.
+
+2. **Apple Silicon (arm64)** -- Intel Macs are not supported.
+
+3. **Host family detection** -- On EC2, the script queries IMDS for the
+   instance type and logs which macOS versions are supported on that host
+   family (e.g., mac2.metal supports macOS 12+, mac2-m2.metal supports 13+).
+
+### Instance Identity-Based Tokens
+
+API tokens are seeded with the EC2 instance identity instead of being purely
+random. The bootstrap script queries IMDSv2 for the instance ID and uses it
+as part of the token derivation:
+
+```
+IMDS session token (PUT /latest/api/token)
+  -> instance-id (GET /latest/meta-data/instance-id)
+  -> SHA-256(instance-id + timestamp + random) = API token
+```
+
+This ties each token to a specific EC2 instance, making token provenance
+auditable. Tokens are still stored in the macOS Keychain (encrypted at rest).
+
+### Host Resource Groups
+
+Host Resource Groups (via AWS License Manager) enable automatic Dedicated
+Host allocation and release. Instead of manually managing hosts, AWS
+allocates them when instances need to launch and releases them when idle.
+
+To use Host Resource Groups with Terraform:
+
+```hcl
+# In terraform.tfvars
+host_resource_group_arn = "arn:aws:resource-groups:us-east-1:123456789012:group/my-mac-hrg"
+```
+
+Setup steps:
+
+1. Create a License Configuration in AWS License Manager:
+   ```bash
+   aws license-manager create-license-configuration \
+     --name "macOS-EULA" \
+     --license-counting-type "Core" \
+     --license-count 999
+   ```
+
+2. Create a Host Resource Group referencing the license configuration.
+
+3. Pass the HRG ARN to the Terraform module via `host_resource_group_arn`.
+
+The `hrg.tf` file in the Terraform module handles tagging the Dedicated Host
+for group association. When the variable is `null` (default), no HRG
+resources are created.
+
+### Host Drain / Undrain
+
+Drain mode allows graceful host decommissioning without interrupting running
+VMs. When a host is drained:
+
+- A marker file is written to `/etc/spooktacular/drain`
+- `spook serve` checks for this file and stops accepting new VMs
+- Existing VMs are allowed to finish their work
+- When all VMs stop, the host reports "drained" to the controller
+
+#### Via bootstrap.sh
+
+```bash
+# Drain a host (stop accepting new VMs)
+ssh ec2-user@<ip> 'sudo bash /path/to/bootstrap.sh --drain'
+
+# Undrain a host (resume accepting VMs)
+ssh ec2-user@<ip> 'sudo bash /path/to/bootstrap.sh --undrain'
+```
+
+#### Via SSM (fleet-wide)
+
+```bash
+# Drain a specific host
+aws ssm send-command \
+  --document-name "SpooktacularInstall" \
+  --targets "Key=instanceids,Values=i-0123456789abcdef0" \
+  --parameters 'Action=drain'
+
+# Undrain a specific host
+aws ssm send-command \
+  --document-name "SpooktacularInstall" \
+  --targets "Key=instanceids,Values=i-0123456789abcdef0" \
+  --parameters 'Action=undrain'
+
+# Drain all hosts with a specific tag
+aws ssm send-command \
+  --document-name "SpooktacularInstall" \
+  --targets "Key=tag:Role,Values=spooktacular-host" \
+  --parameters 'Action=drain'
+```
+
+The SSM document's `Action` parameter accepts `install` (default), `drain`,
+or `undrain`. When set to `drain` or `undrain`, only the relevant step runs
+-- the full install pipeline is skipped.
+
 ## Cost Optimization
 
 - **24-hour minimum.** Dedicated Hosts have a 24-hour minimum allocation.
@@ -181,14 +289,9 @@ spook list
   work to maximize utilization within each allocation window.
 
 - **Host Resource Groups.** Use AWS License Manager Host Resource Groups for
-  automatic Dedicated Host management. AWS will allocate and release hosts
-  based on demand, which helps avoid paying for idle hosts:
-  ```bash
-  aws license-manager create-license-configuration \
-    --name "macOS-EULA" \
-    --license-counting-type "Core" \
-    --license-count 999
-  ```
+  automatic Dedicated Host management (see [Enterprise Features](#enterprise-features)
+  above). AWS will allocate and release hosts based on demand, which helps
+  avoid paying for idle hosts.
 
 - **Savings Plans.** For steady-state workloads, Dedicated Host Savings Plans
   can reduce costs by up to 44% compared to On-Demand pricing.
@@ -208,11 +311,26 @@ aws ssm create-document \
   --content file://deploy/ec2-mac/ssm/install-spooktacular.yaml \
   --document-format YAML
 
-# Run across all Mac instances
+# Install across all Mac instances
 aws ssm send-command \
   --document-name "SpooktacularInstall" \
   --targets "Key=tag:Role,Values=spooktacular-host"
+
+# Drain a host (graceful decommission)
+aws ssm send-command \
+  --document-name "SpooktacularInstall" \
+  --targets "Key=instanceids,Values=i-0123456789abcdef0" \
+  --parameters 'Action=drain'
+
+# Undrain a host (resume accepting VMs)
+aws ssm send-command \
+  --document-name "SpooktacularInstall" \
+  --targets "Key=instanceids,Values=i-0123456789abcdef0" \
+  --parameters 'Action=undrain'
 ```
+
+The `Action` parameter accepts `install` (default), `drain`, or `undrain`.
+See [Host Drain / Undrain](#host-drain--undrain) for details.
 
 ## Related Documentation
 

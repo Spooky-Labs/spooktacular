@@ -9,8 +9,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Unit Tests
+  test-and-build:
+    name: Test & Build
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v5
@@ -19,13 +19,6 @@ jobs:
         run: |
           swift test --parallel 2>&1 | tee test-output.txt
           grep "Test run with" test-output.txt
-
-  build:
-    name: Build
-    runs-on: macos-26
-    needs: test
-    steps:
-      - uses: actions/checkout@v5
 
       - name: Build release binary
         run: swift build -c release

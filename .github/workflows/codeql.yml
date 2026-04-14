@@ -1,0 +1,21 @@
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  analyze:
+    name: CodeQL Analysis
+    runs-on: macos-26
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: swift
+      - run: swift build
+      - uses: github/codeql-action/analyze@v3

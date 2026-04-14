@@ -212,6 +212,13 @@ Runner pools are the recommended way to manage CI/CD runners. A `RunnerPool`
 declaratively specifies a pool of runner VMs, the CI system they connect to,
 and how they are recycled between jobs.
 
+The RunnerPool reconciler implements a full lifecycle state machine with 9
+states: `idle`, `provisioning`, `registering`, `ready`, `busy`, `completing`,
+`recycling`, `draining`, and `terminated`. Each runner VM transitions through
+these states automatically. The reconciler watches the actual state of each VM
+and drives it toward the desired state declared in the `RunnerPool` spec,
+handling failures, timeouts, and scale events at each transition.
+
 ```bash
 # Install the RunnerPool CRD
 kubectl apply -f deploy/kubernetes/crds/runnerpool-crd.yaml
@@ -236,6 +243,74 @@ Three CI integrations:
 - **GitHub Actions** — Ephemeral runners with auto-registration and `--ephemeral` flag.
 - **CircleCI** — Machine Runner 3.0 bound to a resource class.
 - **Jenkins** — SSH-based agents following CloudBees best practices.
+
+## Webhook Integration
+
+The controller can receive GitHub webhooks for real-time job detection instead
+of relying solely on polling. This reduces runner startup latency from the
+reconcile interval (default 30s) to near-instant.
+
+### Setup
+
+1. **Create a webhook secret** in your cluster:
+
+   ```bash
+   kubectl create secret generic github-webhook-secret \
+     --namespace spooktacular-system \
+     --from-literal=secret=your-webhook-secret-here
+   ```
+
+2. **Enable the webhook receiver** in Helm values:
+
+   ```yaml
+   webhook:
+     enabled: true
+     secretRef:
+       name: github-webhook-secret
+       key: secret
+     port: 8080
+   ```
+
+3. **Configure the webhook in GitHub** (repo or org settings):
+   - Payload URL: `https://<controller-ingress>/webhook`
+   - Content type: `application/json`
+   - Secret: the same value from step 1
+   - Events: select **Workflow jobs** only
+
+The controller verifies every incoming webhook using HMAC-SHA256 and processes
+only `workflow_job` events with action `queued`. Other event types are
+acknowledged but ignored.
+
+## Drain Mode
+
+Before removing a Mac node from the cluster (e.g., for maintenance or to meet
+EC2's 24-hour minimum allocation window), you should drain it to avoid
+interrupting running jobs.
+
+### Draining a node
+
+```bash
+# Mark the node as unschedulable (no new VMs will be placed on it)
+kubectl label macnode mac-mini-01 spooktacular.app/drain=true
+
+# Wait for running VMs to complete their current jobs
+kubectl get mvm --field-selector spec.nodeName=mac-mini-01 -w
+```
+
+The controller will:
+
+1. Stop scheduling new VMs to the drained node.
+2. Allow in-progress jobs to complete (up to the configured drain timeout).
+3. Transition idle runners on the node to the `draining` state.
+4. Once all VMs are stopped, the node can be safely removed.
+
+### Resuming a node
+
+```bash
+kubectl label macnode mac-mini-01 spooktacular.app/drain-
+```
+
+Removing the drain label makes the node schedulable again.
 
 ## Examples
 

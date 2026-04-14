@@ -50,16 +50,22 @@ enum AgentHTTPServer {
         var svm_cid: UInt32
     }
 
-    /// The full-access authentication token, or `nil` for legacy mode.
+    /// The admin (break-glass) authentication token, or `nil` for legacy mode.
     ///
     /// Set exactly once before the accept loop begins and never mutated
     /// afterward, so concurrent reads from connection-handler queues are safe.
-    nonisolated(unsafe) private static var authToken: String?
+    nonisolated(unsafe) private static var adminToken: String?
+
+    /// The runner authentication token, or `nil` if not configured.
+    ///
+    /// When a request presents this token, mutation endpoints (except exec)
+    /// are permitted. Exec returns 403 Forbidden.
+    nonisolated(unsafe) private static var runnerToken: String?
 
     /// The read-only authentication token, or `nil` if not configured.
     ///
     /// When a request presents this token, only read-only (basic scope)
-    /// endpoints are permitted. Mutation endpoints return 403 Forbidden.
+    /// endpoints are permitted. Mutation and admin endpoints return 403 Forbidden.
     nonisolated(unsafe) private static var readonlyToken: String?
 
     /// Starts the vsock HTTP server and blocks forever.
@@ -70,11 +76,18 @@ enum AgentHTTPServer {
     ///
     /// - Parameters:
     ///   - port: The vsock port to listen on (default: 9470).
-    ///   - token: The full-access authentication token, or `nil` for legacy mode.
+    ///   - adminToken: The admin (break-glass) token, or `nil` for legacy mode.
+    ///   - runnerToken: The runner token, or `nil` if not configured.
     ///   - readonlyToken: The read-only token, or `nil` if not configured.
     /// - Returns: Never returns; loops until the process is terminated.
-    static func listen(port: UInt32 = 9470, token: String? = nil, readonlyToken: String? = nil) -> Never {
-        self.authToken = token
+    static func listen(
+        port: UInt32 = 9470,
+        adminToken: String? = nil,
+        runnerToken: String? = nil,
+        readonlyToken: String? = nil
+    ) -> Never {
+        self.adminToken = adminToken
+        self.runnerToken = runnerToken
         self.readonlyToken = readonlyToken
         log.info("Starting HTTP server on vsock port \(port)")
 
@@ -169,7 +182,7 @@ enum AgentHTTPServer {
 
         log.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
 
-        let response = routeRequest(request, token: authToken, readonlyToken: readonlyToken)
+        let response = routeRequest(request, adminToken: adminToken, runnerToken: runnerToken, readonlyToken: readonlyToken)
         writeAll(fd: fd, data: response)
     }
 

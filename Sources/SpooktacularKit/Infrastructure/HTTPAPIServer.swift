@@ -74,7 +74,16 @@ public actor HTTPAPIServer {
     // MARK: - Properties
 
     /// The NWListener that accepts incoming TCP connections.
-    private let listener: NWListener
+    ///
+    /// This is mutable to support TLS certificate hot reload, which
+    /// requires replacing the listener with new TLS parameters.
+    private var listener: NWListener
+
+    /// The host address the server is bound to.
+    private let host: String
+
+    /// The TCP port the server is listening on.
+    private let port: NWEndpoint.Port
 
     /// The directory containing `.vm` bundle directories.
     private let vmDirectory: URL
@@ -104,6 +113,13 @@ public actor HTTPAPIServer {
 
     /// Active connections tracked for clean shutdown.
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
+
+    /// Dispatch source monitoring the TLS certificate file for changes.
+    ///
+    /// Retained here to keep the file-system event source alive for the
+    /// lifetime of the server (or until ``stopWatchingCertificates()``
+    /// is called).
+    private var certFileWatcher: (any DispatchSourceFileSystemObject)?
 
     // MARK: - Initialization
 
@@ -152,6 +168,8 @@ public actor HTTPAPIServer {
         )
 
         self.listener = try NWListener(using: parameters)
+        self.host = host
+        self.port = nwPort
         self.vmDirectory = vmDirectory
         self.spookPath = spookPath
         self.insecureMode = insecureMode
@@ -244,6 +262,164 @@ public actor HTTPAPIServer {
         activeConnections.removeAll()
 
         listener.cancel()
+    }
+
+    // MARK: - TLS Certificate Hot Reload
+
+    /// Reloads TLS certificates from the given identity.
+    ///
+    /// Creates a new `NWProtocolTLS.Options`, updates the listener's
+    /// parameters, and restarts the listener on the same port.
+    /// Existing connections are drained gracefully.
+    ///
+    /// - Parameter identity: The new `SecIdentity` containing the
+    ///   rotated certificate and private key.
+    /// - Throws: An error if the new listener fails to start.
+    public func reloadTLS(identity: SecIdentity) async throws {
+        logger.notice("Reloading TLS certificates")
+
+        let newOptions = NWProtocolTLS.Options()
+        sec_protocol_options_set_local_identity(
+            newOptions.securityProtocolOptions,
+            sec_identity_create(identity)!
+        )
+
+        let parameters = NWParameters(tls: newOptions)
+        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
+            host: NWEndpoint.Host(host),
+            port: port
+        )
+
+        // Drain existing connections gracefully.
+        for connection in activeConnections.values {
+            connection.cancel()
+        }
+        activeConnections.removeAll()
+
+        // Stop the current listener.
+        listener.cancel()
+
+        // Create and start a new listener with the updated TLS parameters.
+        let newListener = try NWListener(using: parameters)
+        self.listener = newListener
+
+        newListener.newConnectionHandler = { [weak self] connection in
+            guard let self else { return }
+            Task {
+                await self.handleNewConnection(connection)
+            }
+        }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            nonisolated(unsafe) var didResume = false
+            newListener.stateUpdateHandler = { [logger] state in
+                switch state {
+                case .ready:
+                    logger.notice("TLS-reloaded listener is ready")
+                    if !didResume {
+                        didResume = true
+                        continuation.resume()
+                    }
+                case .failed(let error):
+                    logger.error("TLS-reloaded listener failed: \(error.localizedDescription, privacy: .public)")
+                    if !didResume {
+                        didResume = true
+                        continuation.resume(throwing: error)
+                    }
+                case .cancelled:
+                    logger.notice("TLS-reloaded listener cancelled")
+                    if !didResume {
+                        didResume = true
+                        continuation.resume(throwing: HTTPAPIServerError.cancelled)
+                    }
+                default:
+                    break
+                }
+            }
+
+            newListener.start(queue: .global(qos: .userInitiated))
+        }
+
+        logger.notice("TLS certificates reloaded successfully")
+    }
+
+    /// Starts monitoring a TLS certificate file for changes.
+    ///
+    /// Uses `DispatchSource.makeFileSystemObjectSource` to watch the
+    /// certificate file for writes and renames. When a change is
+    /// detected, ``loadIdentity`` is called to re-read the PEM files
+    /// and ``reloadTLS(identity:)`` performs the hot swap.
+    ///
+    /// - Parameters:
+    ///   - certPath: Path to the PEM-encoded certificate file to watch.
+    ///   - keyPath: Path to the PEM-encoded private key file.
+    ///   - loadIdentity: A closure that reads the cert and key files
+    ///     and returns a `SecIdentity`. This is injected from the CLI
+    ///     layer so the server does not own PEM parsing.
+    /// - Throws: ``HTTPAPIServerError/certificateFileNotFound(_:)`` if
+    ///   the certificate file cannot be opened for monitoring.
+    public func watchCertificates(
+        certPath: String,
+        keyPath: String,
+        loadIdentity: @escaping @Sendable (String, String) throws -> SecIdentity
+    ) throws {
+        let fd = open(certPath, O_EVTONLY)
+        guard fd >= 0 else {
+            throw HTTPAPIServerError.certificateFileNotFound(certPath)
+        }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fd,
+            eventMask: [.write, .rename, .delete],
+            queue: .global(qos: .utility)
+        )
+
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            Task {
+                await self.handleCertificateFileChange(
+                    certPath: certPath,
+                    keyPath: keyPath,
+                    loadIdentity: loadIdentity
+                )
+            }
+        }
+
+        source.setCancelHandler {
+            close(fd)
+        }
+
+        // If we were already watching, cancel the old source.
+        certFileWatcher?.cancel()
+        certFileWatcher = source
+        source.resume()
+
+        logger.notice("Watching TLS certificate file for changes: \(certPath, privacy: .public)")
+    }
+
+    /// Stops monitoring the TLS certificate file.
+    public func stopWatchingCertificates() {
+        certFileWatcher?.cancel()
+        certFileWatcher = nil
+    }
+
+    /// Handles a detected change in the certificate file.
+    ///
+    /// Re-reads the PEM files, constructs a new identity, and performs
+    /// the TLS hot reload. On failure the server continues running
+    /// with the previous certificates and logs the error.
+    private func handleCertificateFileChange(
+        certPath: String,
+        keyPath: String,
+        loadIdentity: @escaping @Sendable (String, String) throws -> SecIdentity
+    ) async {
+        do {
+            let identity = try loadIdentity(certPath, keyPath)
+            try await reloadTLS(identity: identity)
+            logger.notice("TLS certificates rotated successfully")
+        } catch {
+            logger.error("TLS certificate rotation failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Connection Handling
@@ -809,6 +985,9 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
     /// unauthenticated access to VM management endpoints.
     case missingAPIToken
 
+    /// The TLS certificate file could not be opened for monitoring.
+    case certificateFileNotFound(String)
+
     public var errorDescription: String? {
         switch self {
         case .malformedRequest:
@@ -821,6 +1000,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Invalid port number: \(port)."
         case .missingAPIToken:
             "No API token configured."
+        case .certificateFileNotFound(let path):
+            "TLS certificate file not found at '\(path)'."
         }
     }
 
@@ -836,6 +1017,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Use a port number between 1 and 65535."
         case .missingAPIToken:
             "Set the SPOOK_API_TOKEN environment variable, provide TLS certificates with --tls-cert and --tls-key, or use --insecure to bypass (not recommended for production)."
+        case .certificateFileNotFound:
+            "Ensure the certificate file path is correct and the file exists."
         }
     }
 }

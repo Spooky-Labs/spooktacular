@@ -9,6 +9,7 @@ import Foundation
 import FoundationNetworking
 #endif
 import os
+import SpooktacularKit
 
 // MARK: - NodeEndpoint
 
@@ -27,7 +28,7 @@ actor NodeManager {
     private let apiPort: UInt16
     private let scheme: String
     private let labelSelector: String
-    private let healthSession = URLSession(configuration: .ephemeral)
+    private let healthSession: URLSession
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "node-mgr")
 
     /// Creates a node manager.
@@ -35,16 +36,25 @@ actor NodeManager {
     /// - Parameters:
     ///   - apiPort: Port where `spook serve` listens on each node.
     ///   - scheme: URL scheme for node API calls. Defaults to the value of
-    ///     the `NODE_API_SCHEME` environment variable, falling back to `"http"`.
+    ///     the `NODE_API_SCHEME` environment variable, falling back to `"https"`.
     ///   - labelSelector: Kubernetes label selector for Mac host nodes.
+    ///   - tlsProvider: Optional ``TLSIdentityProvider`` for mutual TLS.
+    ///     When supplied, the manager uses a session configured with a
+    ///     client certificate and pinned CA trust. When `nil`, an
+    ///     ephemeral session is used (suitable for development / tests).
+    ///     Bearer token authentication is retained as a secondary auth
+    ///     layer regardless of this setting (defense in depth).
     init(
         apiPort: UInt16 = 8484,
-        scheme: String = ProcessInfo.processInfo.environment["NODE_API_SCHEME"] ?? "http",
-        labelSelector: String = "spooktacular.app/role=mac-host"
+        scheme: String = ProcessInfo.processInfo.environment["NODE_API_SCHEME"] ?? "https",
+        labelSelector: String = "spooktacular.app/role=mac-host",
+        tlsProvider: (any TLSIdentityProvider)? = nil
     ) {
         self.apiPort = apiPort
         self.scheme = scheme
         self.labelSelector = labelSelector
+        self.healthSession = tlsProvider?.configuredSession()
+            ?? URLSession(configuration: .ephemeral)
     }
 
     // MARK: - Discovery
