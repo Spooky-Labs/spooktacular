@@ -240,7 +240,7 @@ Spooktacular
 <div class="phase">
 <h3>Interfaces</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands">14 CLI commands (23 including subcommands)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands">15+ CLI commands (25+ including subcommands)</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/HTTPAPIServer.swift">HTTP REST API: 9 endpoints, Network.framework</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">SwiftUI GUI: NavigationSplitView, inspector, create sheet</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">Menu bar extra</a></li>
@@ -260,9 +260,9 @@ Spooktacular
 <li><span class="check" aria-hidden="true">&#10003;</span> VirtIO shared folders</li>
 </ul>
 <div class="shipped-stats">
-<span class="shipped-stat"><strong>297</strong> tests</span>
-<span class="shipped-stat"><strong>36</strong> test suites</span>
-<span class="shipped-stat"><strong>14</strong> CLI commands</span>
+<span class="shipped-stat"><strong>328</strong> tests</span>
+<span class="shipped-stat"><strong>43</strong> test suites</span>
+<span class="shipped-stat"><strong>15+</strong> CLI commands</span>
 <span class="shipped-stat"><strong>9</strong> API endpoints</span>
 </div>
 </div>
@@ -282,6 +282,29 @@ Spooktacular
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook-controller">Swift controller</a> &mdash; watches CRDs, reconciles via HTTP API</li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes/helm">Helm chart</a> &mdash; RBAC, ConfigMap, Deployment</li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes/examples">Examples</a> &mdash; GitHub runner, remote desktop, ephemeral pool</li>
+</ul>
+</div>
+</div>
+
+<!-- Shipped: Guest Agent -->
+<div class="milestone shipped" role="listitem">
+<div class="dot-marker" aria-hidden="true"></div>
+<div class="header">
+<h2>Guest Agent</h2>
+<span class="status status-shipped">Shipped</span>
+</div>
+<div class="phase">
+<h3>Remote Control via vsock</h3>
+<ul>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">12 HTTP endpoints over VirtIO socket</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Clipboard sync (read/write guest clipboard)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Remote exec (run commands in guest, stream output)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">App control (list/launch running applications)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">File transfer (host-guest file exchange)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Port discovery (find listening ports in guest)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook-agent/AgentRouter.swift">Health monitoring (agent version, uptime)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift">GuestAgentClient actor in SpooktacularKit</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands"><code>spook remote</code> CLI command group (exec, clipboard, apps, health, ports)</a></li>
 </ul>
 </div>
 </div>
