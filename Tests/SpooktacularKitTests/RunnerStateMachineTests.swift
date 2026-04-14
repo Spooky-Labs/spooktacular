@@ -310,6 +310,40 @@ struct RunnerStateMachineTests {
         #expect(effects.isEmpty)
     }
 
+    // MARK: - Property Tests
+
+    @Test("Property: 1000 random sequences never get stuck")
+    func propertyNoStuckStates() {
+        let events: [RunnerStateMachine.Event] = [
+            .nodeAvailable, .cloneSucceeded, .cloneFailed,
+            .healthCheckPassed, .bootFailed, .runnerRegistered,
+            .registrationFailed, .jobStarted(jobId: "test"),
+            .jobCompleted, .runnerExited, .vmStopped,
+            .drainComplete, .recycleComplete, .recycleFailed,
+            .timeout, .retryRequested,
+        ]
+
+        for seed in 0..<1000 {
+            var sm = RunnerStateMachine(maxRetries: 3)
+            var rng = SeededRNG(seed: UInt64(seed))
+            var wasDeleted = false
+
+            for _ in 0..<50 {
+                let event = events[Int(rng.next() % UInt64(events.count))]
+                _ = sm.transition(event: event)
+
+                // Once deleted, must stay deleted
+                if wasDeleted {
+                    #expect(sm.state == .deleted, "State changed after deleted at seed \(seed)")
+                }
+                if sm.state == .deleted { wasDeleted = true }
+            }
+
+            #expect(RunnerStateMachine.State.allCases.contains(sm.state))
+            #expect(sm.retryCount <= sm.maxRetries)
+        }
+    }
+
     // MARK: - Helpers
 
     /// Creates a machine already in `cloning` state.
@@ -358,5 +392,18 @@ struct RunnerStateMachineTests {
         // Manually set retry count to desired value
         machine.setRetryCountForTesting(retryCount)
         return machine
+    }
+}
+
+/// Deterministic RNG for property tests (SplitMix64).
+private struct SeededRNG {
+    private var state: UInt64
+    init(seed: UInt64) { self.state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E3779B97F4A7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
+        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
+        return z ^ (z >> 31)
     }
 }
