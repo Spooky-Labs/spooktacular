@@ -77,7 +77,7 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 .dim { color: var(--dim); } .cmd { color: var(--accent); } .ok { color: var(--green); } .cmt { color: #5b4f7a; font-style: italic; } .file { color: #60a5fa; }
 footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
 footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 2rem; }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
 footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
 footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
 footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
@@ -114,7 +114,8 @@ Spooktacular
 <a href="roadmap.html">Roadmap</a>
 <a href="api/documentation/spooktacularkit/">Docs</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" class="cta-btn">Get Started</a>
+<a href="get-started.html">Get Started</a>
+<a href="download.html" class="cta-btn">Download</a>
 </div>
 </div>
 </nav>
@@ -139,16 +140,16 @@ Spooktacular
 <div class="use-case" id="cicd">
 <div class="section-label">&#9881; Primary Use Case</div>
 <h2>CI/CD Runners</h2>
-<p class="sub">The core scenario: replace bare-metal runners with cloned VMs. Haunt your CI pipeline with 2x capacity on the same hardware, with ephemeral runners that vanish after each job.</p>
+<p class="sub">The core scenario: replace bare-metal runners with cloned VMs. Get 2x capacity on the same hardware, with ephemeral runners that reset after each job.</p>
 <div class="terminal" role="figure" aria-label="CI/CD setup example">
 <div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">github-actions-setup.sh</span></div>
 <div class="terminal-body">
-<div><span class="cmt"># Summon a base image once, conjure clones for every runner</span></div>
+<div><span class="cmt"># Create a base image once, clone it for every runner</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook create base --from-ipsw latest --cpu 4 --memory 8</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook clone base runner-01</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook clone base runner-02</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Ephemeral runners vanish when the job completes</span></div>
+<div><span class="cmt"># Ephemeral runners reset when the job completes</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --ephemeral \</span></div>
 <div><span class="cmd">    --provision ssh --template github-runner \</span></div>
 <div><span class="cmd">    --var repo=org/app --var token=$GH_TOKEN</span></div>
@@ -157,7 +158,7 @@ Spooktacular
 </div>
 <div class="feat-grid">
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128268;</span><div class="tag tag-shipped">Shipped</div><h3>GitHub Actions Runner Template</h3><p>Built-in template generates a complete runner registration script. Pass repo and token as variables. Supports labels and ephemeral mode.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GitHubRunnerTemplate.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#9889;</span><div class="tag tag-shipped">Shipped</div><h3>Conjure Clones in 48ms</h3><p>FileManager.copyItem triggers APFS clonefile(2). Zero-byte delta clones in ~48ms. No disk copy, no image registry required.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CloneManager.swift" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#9889;</span><div class="tag tag-shipped">Shipped</div><h3>Clone in 48ms</h3><p>FileManager.copyItem triggers APFS clonefile(2). Zero-byte delta clones in ~48ms. No disk copy, no image registry required.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CloneManager.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128640;</span><div class="tag tag-shipped">Shipped</div><h3>Ephemeral Runners</h3><p>The --ephemeral flag on start automatically destroys the VM when it stops. Perfect for single-use CI runners that guarantee a clean environment.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook/Commands/Start.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128274;</span><div class="tag tag-shipped">Shipped</div><h3>SSH Provisioning</h3><p>Wait-for-SSH with configurable timeout, then execute scripts with streaming output. Works with any user-data script format.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SSHExecutor.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128190;</span><div class="tag tag-shipped">Shipped</div><h3>Disk-Inject Provisioning</h3><p>Zero-network provisioning. Injects a LaunchDaemon and script directly into the VM disk image before boot. No SSH, no network required.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/DiskInjector.swift" class="source-link" target="_blank">View source &rarr;</a></div>
@@ -171,10 +172,10 @@ Spooktacular
 <div class="use-case" id="desktop">
 <div class="section-label">&#128424; Use Case</div>
 <h2>Remote Desktop</h2>
-<p class="sub">Give every developer a personal macOS desktop in a VM. Built-in template conjures Screen Sharing, and the auto-resize display tracks your window size.</p>
+<p class="sub">Give every developer a personal macOS desktop in a VM. Built-in template enables Screen Sharing, and the auto-resize display tracks your window size.</p>
 <div class="feat-grid">
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128424;</span><div class="tag tag-shipped">Shipped</div><h3>Remote Desktop Template</h3><p>Built-in template generates a script that enables Screen Sharing (VNC) on the guest. One command to summon a remote desktop VM.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/RemoteDesktopTemplate.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#127912;</span><div class="tag tag-shipped">Shipped</div><h3>Spectral Performance (Metal GPU)</h3><p>1-2 Metal GPU-accelerated displays per VM at 1920x1200 resolution. Hardware-accelerated rendering for a responsive desktop experience.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#128424;</span><div class="tag tag-shipped">Shipped</div><h3>Remote Desktop Template</h3><p>Built-in template generates a script that enables Screen Sharing (VNC) on the guest. One command to create a remote desktop VM.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/RemoteDesktopTemplate.swift" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#127912;</span><div class="tag tag-shipped">Shipped</div><h3>Metal GPU Acceleration</h3><p>1-2 Metal GPU-accelerated displays per VM at 1920x1200 resolution. Hardware-accelerated rendering for a responsive desktop experience.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128302;</span><div class="tag tag-shipped">Shipped</div><h3>Auto-Resize Display</h3><p>Display resolution automatically adjusts when you resize the VM window. Requires macOS 14+ on the host.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/VMDetailView.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128266;</span><div class="tag tag-shipped">Shipped</div><h3>Audio Output + Microphone</h3><p>Full audio passthrough including microphone input. Video calls and audio playback work inside the VM.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128193;</span><div class="tag tag-shipped">Shipped</div><h3>VirtIO Shared Folders</h3><p>Mount host directories inside the VM. Share project files, build artifacts, datasets between host and guest without network.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
@@ -186,9 +187,9 @@ Spooktacular
 <div class="use-case" id="ml">
 <div class="section-label">&#129504; Use Case</div>
 <h2>ML Workloads</h2>
-<p class="sub">Run ML training and inference workloads in isolated VMs with spectral Metal GPU performance, shared folders for datasets, and network isolation.</p>
+<p class="sub">Run ML training and inference workloads in isolated VMs with Metal GPU performance, shared folders for datasets, and network isolation.</p>
 <div class="feat-grid">
-<div class="feature-card"><span class="icon" aria-hidden="true">&#127912;</span><div class="tag tag-shipped">Shipped</div><h3>Spectral Performance (Metal GPU)</h3><p>Up to 2 Metal GPU-accelerated displays per VM at 1920x1200. GPU compute is available to guest workloads through the virtualization layer.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#127912;</span><div class="tag tag-shipped">Shipped</div><h3>Metal GPU Acceleration</h3><p>Up to 2 Metal GPU-accelerated displays per VM at 1920x1200. GPU compute is available to guest workloads through the virtualization layer.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128193;</span><div class="tag tag-shipped">Shipped</div><h3>Shared Folders for Datasets</h3><p>Mount host directories in the VM via VirtIO. Load training data from the host filesystem without copying into the VM image.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SharedFolderProvisioner.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128683;</span><div class="tag tag-shipped">Shipped</div><h3>Isolated Networking</h3><p>Air-gapped VMs with zero network access. Run untrusted models or experiments in complete network isolation.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#129302;</span><div class="tag tag-shipped">Shipped</div><h3>OpenClaw AI Template</h3><p>Built-in template for OpenClaw AI workloads. Generates a provisioning script tailored for ML environments.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/OpenClawTemplate.swift" class="source-link" target="_blank">View source &rarr;</a></div>
@@ -223,7 +224,7 @@ Spooktacular
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128207;</span><div class="tag tag-shipped">Shipped</div><h3>2-VM Capacity Enforcement</h3><p>Apple limits 2 concurrent macOS VMs per host. Spooktacular enforces this at the API level to prevent capacity errors.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CapacityCheck.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#127760;</span><div class="tag tag-shipped">Shipped</div><h3>IP Resolution</h3><p>Resolve VM IP addresses via DHCP leases with ARP fallback. Enables dynamic SSH connections without hardcoded addresses.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/IPResolver.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128230;</span><div class="tag tag-shipped">Shipped</div><h3>IPSW Restore Image Manager</h3><p>Auto-download the latest compatible macOS restore image. No manual IPSW hunting. Manages a local image library.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/RestoreImageManager.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128640;</span><div class="tag tag-shipped">Shipped</div><h3>Unattended Setup Assistant</h3><p>Keyboard driver automates macOS Setup Assistant on 15+. Summon a VM, install the OS, complete setup, and provision in one command.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SetupAutomationExecutor.swift" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#128640;</span><div class="tag tag-shipped">Shipped</div><h3>Unattended Setup Assistant</h3><p>Keyboard driver automates macOS Setup Assistant on 15+. Create a VM, install the OS, complete setup, and provision in one command.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SetupAutomationExecutor.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128268;</span><div class="tag tag-shipped">Shipped</div><h3>VirtIO Socket Provisioning</h3><p>Host-side VirtIO socket provisioner. Communicates with the guest agent over vsock for zero-network provisioning.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VsockProvisioner.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#129302;</span><div class="tag tag-shipped">Shipped</div><h3>Guest Agent</h3><p>VirtIO socket daemon that runs inside the guest VM. Receives provisioning commands from the host over vsock.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook-agent" class="source-link" target="_blank">View source &rarr;</a></div>
 </div>
@@ -243,7 +244,7 @@ Spooktacular
 <div><span class="cmt"># List all VMs</span></div>
 <div><span class="dim">$</span> <span class="cmd">curl http://localhost:8080/vms</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Summon a VM via the API</span></div>
+<div><span class="cmt"># Create a VM via the API</span></div>
 <div><span class="dim">$</span> <span class="cmd">curl -X POST http://localhost:8080/vms/runner-01/start</span></div>
 <div>&nbsp;</div>
 <div><span class="cmt"># Kubernetes: kubectl apply -f vm.yaml</span></div>
@@ -258,7 +259,7 @@ Spooktacular
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128421;</span><div class="tag tag-shipped">Shipped</div><h3>SwiftUI GUI</h3><p>Native macOS app with NavigationSplitView, inspector panel, and VM creation sheet. Liquid Glass support on macOS 26+.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#9776;</span><div class="tag tag-shipped">Shipped</div><h3>Menu Bar Extra</h3><p>Persistent menu bar icon for quick VM status checks and actions without opening the full app.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128218;</span><div class="tag tag-shipped">Shipped</div><h3>Full DocC API Reference</h3><p>Complete API documentation generated from source. Browse types, methods, and articles in the hosted DocC archive.</p><a href="api/documentation/spooktacularkit/" class="source-link">View API Docs &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#9096;</span><div class="tag tag-shipped">Shipped</div><h3>Kubernetes Operator</h3><p><code>kubectl apply -f vm.yaml</code> summons macOS VMs. MacOSVM CRD with full spec/status, Helm chart, Swift controller that reconciles via the HTTP API on Mac nodes.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes" class="source-link">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#9096;</span><div class="tag tag-shipped">Shipped</div><h3>Kubernetes Operator</h3><p><code>kubectl apply -f vm.yaml</code> creates macOS VMs. MacOSVM CRD with full spec/status, Helm chart, Swift controller that reconciles via the HTTP API on Mac nodes.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes" class="source-link">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128230;</span><div class="tag tag-planned">Planned</div><h3>OCI Registry Push/Pull</h3><p>Push and pull VM images to/from OCI-compliant container registries. On the roadmap, not yet shipped.</p><a href="roadmap.html" class="source-link">View Roadmap &rarr;</a></div>
 </div>
 </div>
@@ -269,7 +270,7 @@ Spooktacular
 <h2 style="font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.75rem;">318 tests across 36 suites</h2>
 <p style="color: var(--dim); font-size: 1.1rem; margin-bottom: 2rem; max-width: 500px; margin-left: auto; margin-right: auto;">Every feature is tested. Every claim is backed by code. Audit the source yourself.</p>
 <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" style="padding: 0.85rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; transition: opacity 0.2s;">Summon Your First VM</a>
+<a href="get-started.html" style="padding: 0.85rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; transition: opacity 0.2s;">Get Started</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" style="padding: 0.85rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; background: var(--surface); border: 1px solid var(--border); color: var(--fg); transition: all 0.2s;">View on GitHub</a>
 </div>
 </div>
@@ -280,16 +281,36 @@ Spooktacular
 <div class="foot-inner">
 <div class="foot-grid">
 <div class="foot-col">
-<div class="footer-logo"><svg viewBox="0 0 128 128" width="24" height="24" aria-hidden="true" style="image-rendering: pixelated;"><rect x="0" y="0" width="128" height="95" fill="#07050f"/><rect x="0" y="95" width="128" height="33" fill="#251648"/><rect x="61" y="54" width="6" height="4" fill="#fbbf24"/><rect x="60" y="58" width="8" height="4" fill="#fbbf24"/><rect x="57" y="70" width="14" height="4" fill="#ff6b35"/><rect x="56" y="74" width="16" height="4" fill="#ef4444"/><rect x="55" y="78" width="18" height="4" fill="#dc2626"/><rect x="54" y="82" width="20" height="4" fill="#b91c1c"/><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="6" fill="#e8deff"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="17" y="61" width="4" height="3" fill="#a78bfa"/><rect x="25" y="61" width="4" height="3" fill="#a78bfa"/><rect x="33" y="61" width="3" height="3" fill="#8b6ce0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="6" fill="#d0bff5"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="92" y="49" width="18" height="12" fill="#b99de0"/><rect x="92" y="61" width="3" height="3" fill="#7c3aed"/><rect x="99" y="61" width="4" height="3" fill="#8b6ce0"/><rect x="107" y="61" width="4" height="3" fill="#8b6ce0"/></svg> Spooktacular</div>
-<span class="tagline">Enterprise macOS Virtualization</span>
+<h4>Product</h4>
+<a href="features.html">Features</a>
+<a href="compare.html">Compare</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
+<a href="download.html">Downloads</a>
 </div>
-<div class="foot-col"><h4>Product</h4><a href="features.html">Features</a><a href="compare.html">Compare</a><a href="roadmap.html">Roadmap</a><a href="versioning.html">Versioning</a></div>
-<div class="foot-col"><h4>Resources</h4><a href="api/documentation/spooktacularkit/">API Reference</a><a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a><a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Issues</a><a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a></div>
-<div class="foot-col"><h4>Legal</h4><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a></div>
+<div class="foot-col">
+<h4>Resources</h4>
+<a href="api/documentation/spooktacularkit/">API Reference</a>
+<a href="get-started.html">Get Started</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
+</div>
+<div class="foot-col">
+<h4>Legal</h4>
+<a href="privacy.html">Privacy Policy</a>
+<a href="terms.html">Terms of Use</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
+</div>
+<div class="foot-col">
+<h4>Community</h4>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
+</div>
 </div>
 <div class="foot-bottom">
+<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 <p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-<p>&copy; 2026 Spooky Labs</p>
 </div>
 </div>
 </footer>

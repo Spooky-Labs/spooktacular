@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Get Started — Spooktacular</title>
-<meta name="description" content="Step-by-step guide to getting started with Spooktacular. Summon your first VM, conjure clones, and haunt your CI pipeline in minutes.">
+<meta name="description" content="Step-by-step guide to getting started with Spooktacular. Create your first VM, clone it, and run your CI pipeline in minutes.">
 <style>
 :root { --bg: #09090b; --surface: #18181b; --surface2: #1f1f23; --border: #27272a; --border-hover: #3f3f46; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -150,7 +150,7 @@ Spooktacular
 <a href="features.html">Features</a>
 <a href="compare.html">Compare</a>
 <a href="roadmap.html">Roadmap</a>
-<a href="api/documentation/spooktacularkit/" target="_blank">Docs</a>
+<a href="api/documentation/spooktacularkit/">Docs</a>
 <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
 <a href="get-started.html" class="active">Get Started</a>
 <a href="download.html" class="cta-btn">Download</a>
@@ -161,14 +161,14 @@ Spooktacular
 <main id="main">
 <div class="page-header">
 <h1>Getting <span class="gradient">Started</span></h1>
-<p>From first download to a fully haunted CI pipeline in six spectral steps. No prior seance experience required.</p>
+<p>From first download to a running CI pipeline in six steps. No prior experience required.</p>
 </div>
 
 <div class="jump-nav container" aria-label="Jump to step">
 <a href="#step-1">1. Download</a>
-<a href="#step-2">2. Summon</a>
-<a href="#step-3">3. Conjure</a>
-<a href="#step-4">4. Haunt</a>
+<a href="#step-2">2. Create</a>
+<a href="#step-3">3. Clone</a>
+<a href="#step-4">4. Run CI</a>
 <a href="#step-5">5. Double</a>
 <a href="#step-6">6. Service</a>
 </div>
@@ -179,7 +179,7 @@ Spooktacular
 <section class="step-section" id="step-1" aria-labelledby="step1-heading">
 <div class="step-label">Step 1</div>
 <h2 id="step1-heading">Download &amp; Install</h2>
-<p class="sub">Materialize Spooktacular onto your Mac. Takes about 30 seconds.</p>
+<p class="sub">Install Spooktacular on your Mac. Takes about 30 seconds.</p>
 
 <a href="https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip" class="guide-download">
   Download Spooktacular v1.0.0
@@ -194,11 +194,11 @@ Spooktacular
 </div>
 </section>
 
-<!-- Step 2: Summon Your First VM -->
+<!-- Step 2: Create Your First VM -->
 <section class="step-section" id="step-2" aria-labelledby="step2-heading">
 <div class="step-label">Step 2</div>
-<h2 id="step2-heading">Summon Your First VM</h2>
-<p class="sub">Conjure a fresh macOS virtual machine from the spectral ether. One command pulls the latest IPSW and installs it automatically.</p>
+<h2 id="step2-heading">Create Your First VM</h2>
+<p class="sub">Create a fresh macOS virtual machine with one command. It pulls the latest IPSW and installs it automatically.</p>
 
 <div class="code-example">
 <div class="code-header">
@@ -210,22 +210,22 @@ Spooktacular
 <span class="ok">&#10003;</span> Downloading macOS 15.4 Sequoia (13.2 GB)...
 <span class="ok">&#10003;</span> Installing macOS into virtual machine...
 <span class="ok">&#10003;</span> Automating Setup Assistant...
-<span class="ok">&#10003;</span> VM "my-first-vm" summoned successfully
+<span class="ok">&#10003;</span> VM "my-first-vm" created successfully
 
 <span class="cmt"># Total time: ~15-20 minutes (mostly IPSW download)</span></pre>
 </div>
 
 <div class="explain">
 <h4>What just happened?</h4>
-<p>Spooktacular downloaded the latest macOS restore image (IPSW) from Apple, installed it into a Virtualization.framework VM, and ran through Setup Assistant automatically. Your spectral machine is ready to use -- no manual configuration required.</p>
+<p>Spooktacular downloaded the latest macOS restore image (IPSW) from Apple, installed it into a Virtualization.framework VM, and ran through Setup Assistant automatically. Your VM is ready to use -- no manual configuration required.</p>
 </div>
 </section>
 
-<!-- Step 3: Conjure a Clone -->
+<!-- Step 3: Clone a VM -->
 <section class="step-section" id="step-3" aria-labelledby="step3-heading">
 <div class="step-label">Step 3</div>
-<h2 id="step3-heading">Conjure a Clone</h2>
-<p class="sub">Create a perfect doppelganger of your base VM. APFS copy-on-write makes this nearly instant.</p>
+<h2 id="step3-heading">Clone a VM</h2>
+<p class="sub">Create an identical copy of your base VM. APFS copy-on-write makes this nearly instant.</p>
 
 <div class="code-example">
 <div class="code-header">
@@ -245,10 +245,10 @@ Spooktacular
 </div>
 </section>
 
-<!-- Step 4: Haunt Your CI Pipeline -->
+<!-- Step 4: Run Your CI Pipeline -->
 <section class="step-section" id="step-4" aria-labelledby="step4-heading">
 <div class="step-label">Step 4</div>
-<h2 id="step4-heading">Haunt Your CI Pipeline</h2>
+<h2 id="step4-heading">Run Your CI Pipeline</h2>
 <p class="sub">Turn your clone into a GitHub Actions runner with a single command. It registers, connects, and starts polling for jobs.</p>
 
 <div class="code-example">
@@ -268,14 +268,14 @@ Spooktacular
 
 <div class="explain">
 <h4>What's happening inside?</h4>
-<p>Spooktacular boots the VM without a display, installs the GitHub Actions runner agent via SSH provisioning, registers it with your repository using the provided token, and starts polling for workflow jobs. Your spectral runner is now haunting your CI pipeline -- jobs will be picked up automatically.</p>
+<p>Spooktacular boots the VM without a display, installs the GitHub Actions runner agent via SSH provisioning, registers it with your repository using the provided token, and starts polling for workflow jobs. Your runner is now connected to your CI pipeline -- jobs will be picked up automatically.</p>
 </div>
 </section>
 
 <!-- Step 5: Double Your Capacity -->
 <section class="step-section" id="step-5" aria-labelledby="step5-heading">
 <div class="step-label">Step 5</div>
-<h2 id="step5-heading">Double Your Spectral Capacity</h2>
+<h2 id="step5-heading">Double Your Capacity</h2>
 <p class="sub">Apple Silicon supports 2 VMs per Mac. Clone another runner and run both simultaneously. Ephemeral mode auto-destroys after each job for a clean slate.</p>
 
 <div class="code-example">
@@ -297,14 +297,14 @@ Spooktacular
 
 <div class="explain">
 <h4>Why ephemeral?</h4>
-<p>Ephemeral runners auto-destroy after completing a single job. This guarantees a pristine environment for every CI run -- no leftover state, no cache poisoning, no haunted artifacts from previous builds. Spooktacular re-clones from your base image before the next job.</p>
+<p>Ephemeral runners auto-destroy after completing a single job. This guarantees a pristine environment for every CI run -- no leftover state, no cache poisoning, no stale artifacts from previous builds. Spooktacular re-clones from your base image before the next job.</p>
 </div>
 </section>
 
 <!-- Step 6: Run as a Service -->
 <section class="step-section" id="step-6" aria-labelledby="step6-heading">
 <div class="step-label">Step 6</div>
-<h2 id="step6-heading">Run as a Spectral Service</h2>
+<h2 id="step6-heading">Run as a Service</h2>
 <p class="sub">Make your runner survive reboots and run headless in the background. Install it as a system service and forget about it.</p>
 
 <div class="code-example">
@@ -316,7 +316,7 @@ Spooktacular
 
 <span class="ok">&#10003;</span> Created launchd service: com.spooky-labs.spooktacular.runner-01
 <span class="ok">&#10003;</span> Service enabled (starts on boot)
-<span class="ok">&#10003;</span> Runner-01 is now a permanent ghost
+<span class="ok">&#10003;</span> Runner-01 is now a persistent service
 
 <span class="cmt"># Manage the service</span>
 <span class="dim">$</span> <span class="cmd">spook service status runner-01</span>    <span class="cmt"># check status</span>
@@ -326,7 +326,7 @@ Spooktacular
 
 <div class="explain">
 <h4>What does this do?</h4>
-<p>This installs a launchd plist that starts your runner automatically when the Mac boots. The VM runs headless in the background -- no display, no logged-in user required. Your spectral runner persists through power cycles, macOS updates, and even exorcism attempts.</p>
+<p>This installs a launchd plist that starts your runner automatically when the Mac boots. The VM runs headless in the background -- no display, no logged-in user required. Your runner persists through power cycles and macOS updates.</p>
 </div>
 </section>
 
@@ -378,8 +378,8 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
 <p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
 </div>
 </div>
 </footer>
