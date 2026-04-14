@@ -43,8 +43,25 @@ struct SpookController {
         let namespace = env["WATCH_NAMESPACE"] ?? client.namespace
         logger.notice("Watching ns=\(namespace, privacy: .public), selector=\(labelSelector, privacy: .public)")
 
-        let nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector)
-        let reconciler = Reconciler(client: client, nodeManager: nodeManager)
+        // Load TLS identity for mTLS with Mac nodes (required in production).
+        let tlsProvider: KeychainTLSProvider?
+        if let certPath = env["TLS_CERT_PATH"],
+           let keyPath = env["TLS_KEY_PATH"],
+           let caPath = env["TLS_CA_PATH"] {
+            do {
+                tlsProvider = try KeychainTLSProvider(certPath: certPath, keyPath: keyPath, caPath: caPath)
+                logger.notice("mTLS enabled: controller will present client certificate to nodes")
+            } catch {
+                logger.fault("Failed to load TLS identity: \(error.localizedDescription, privacy: .public)")
+                return
+            }
+        } else {
+            tlsProvider = nil
+            logger.warning("No TLS identity configured (TLS_CERT_PATH, TLS_KEY_PATH, TLS_CA_PATH). Running without mTLS — not suitable for production.")
+        }
+
+        let nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector, tlsProvider: tlsProvider)
+        let reconciler = Reconciler(client: client, nodeManager: nodeManager, tlsProvider: tlsProvider)
         let poolManager = RunnerPoolManager()
         let poolReconciler = RunnerPoolReconciler(
             client: client,

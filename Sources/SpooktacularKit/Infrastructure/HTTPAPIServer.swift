@@ -7,17 +7,19 @@ import os
 
 /// A lightweight HTTP API server for managing virtual machines programmatically.
 ///
-/// `HTTPAPIServer` provides a RESTful JSON API over plain HTTP, built on
-/// Apple's `Network.framework` (`NWListener`). It exposes endpoints for
+/// `HTTPAPIServer` provides a RESTful JSON API built on Apple's
+/// `Network.framework` (`NWListener`). It exposes endpoints for
 /// listing, creating, starting, stopping, and deleting VMs, as well as
 /// resolving VM IP addresses and performing health checks.
 ///
-/// The server binds to localhost by default. TLS can be enabled by
-/// providing `NWProtocolTLS.Options` at initialization; otherwise the
-/// server uses plain HTTP. Set the `SPOOK_API_TOKEN` environment
-/// variable to require Bearer-token authentication on all endpoints
-/// except `/health`. When TLS is enabled and the server is not
-/// running in insecure mode, an API token is required.
+/// **TLS is required in production.** Provide `NWProtocolTLS.Options`
+/// at initialization. The `--insecure` flag is available for local
+/// development only — production startup without TLS or an API token
+/// will fail with ``HTTPAPIServerError/missingAPIToken``.
+///
+/// Set the `SPOOK_API_TOKEN` environment variable to require
+/// Bearer-token authentication on all endpoints except `/health`
+/// and `/metrics`.
 ///
 /// ## Endpoints
 ///

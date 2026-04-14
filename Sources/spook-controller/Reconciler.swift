@@ -12,6 +12,7 @@ import Foundation
 import FoundationNetworking
 #endif
 import os
+import SpooktacularKit
 
 // MARK: - Reconciler
 
@@ -19,7 +20,7 @@ actor Reconciler {
 
     private let client: KubernetesClient
     private let nodeManager: NodeManager
-    private let session = URLSession(configuration: .ephemeral)
+    private let session: URLSession
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "reconciler")
     private var inFlight: Set<String> = []
 
@@ -32,9 +33,23 @@ actor Reconciler {
     /// Annotation that operators can set to force finalizer removal after retries are exhausted.
     private static let forceCleanupAnnotation = "spooktacular.app/force-cleanup"
 
-    init(client: KubernetesClient, nodeManager: NodeManager) {
+    /// Creates a reconciler.
+    ///
+    /// - Parameters:
+    ///   - client: Kubernetes API client.
+    ///   - nodeManager: Node discovery and communication manager.
+    ///   - tlsProvider: TLS identity for mutual TLS with Mac nodes.
+    ///     Required in production. When `nil`, falls back to an ephemeral
+    ///     session (development only).
+    init(
+        client: KubernetesClient,
+        nodeManager: NodeManager,
+        tlsProvider: (any TLSIdentityProvider)? = nil
+    ) {
         self.client = client
         self.nodeManager = nodeManager
+        self.session = tlsProvider?.configuredSession()
+            ?? URLSession(configuration: .ephemeral)
     }
 
     // MARK: - Main Loop

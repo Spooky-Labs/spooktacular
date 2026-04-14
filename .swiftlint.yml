@@ -1,0 +1,56 @@
+# SwiftLint configuration for Spooktacular
+# Security-focused rules + code quality
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - deploy
+
+# Security rules
+opt_in_rules:
+  - force_unwrapping
+  - force_cast
+  - force_try
+  - implicitly_unwrapped_optional
+  - discouraged_optional_boolean
+  - discouraged_optional_collection
+  - overridden_super_call
+  - prohibited_super_call
+  - raw_value_for_camel_cased_codable_enum
+  - redundant_nil_coalescing
+  - unowned_variable_capture
+  - unused_capture_list
+  - unused_declaration
+  - unused_import
+  - yoda_condition
+
+disabled_rules:
+  - line_length        # DocC comments can be long
+  - function_body_length  # Some handlers are legitimately long
+  - type_body_length   # Actor types with many methods
+  - file_length        # Infrastructure files wrap frameworks
+
+# Custom rule: flag raw shell execution patterns
+custom_rules:
+  raw_shell_execution:
+    name: "Raw Shell Execution"
+    regex: 'Process\(\)|executableURL.*bin/bash|bin/sh'
+    message: "Raw shell execution detected. Use ProcessRunner or guest agent exec endpoint."
+    severity: warning
+    included: "Sources/SpooktacularKit/(Entities|UseCases|Interfaces)/"
+
+  plaintext_secret:
+    name: "Plaintext Secret"
+    regex: 'password.*=.*"[^"]+"|(api|auth).*token.*=.*"[^"]+"'
+    message: "Possible plaintext secret. Use SecretStore or Keychain."
+    severity: error
+
+  force_http:
+    name: "Force HTTP"
+    regex: '"http://[^"]+'
+    message: "Plain HTTP URL detected. Use HTTPS."
+    severity: warning
+    excluded: "Tests/"
