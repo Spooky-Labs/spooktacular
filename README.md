@@ -12,7 +12,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 14+](https://img.shields.io/badge/macOS-14+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-318_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-328_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Download](https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Get Started](#-summon-your-first-vm)
 
@@ -82,9 +82,9 @@ spook start runner-02 --ephemeral --headless --github-runner \
 │     The library. All business logic here.        │
 │                                                  │
 │  VirtualMachine · CloneManager · SSHExecutor     │
-│  VMProvisioner · HTTPAPIServer · IPResolver      │
+│  GuestAgentClient · HTTPAPIServer · IPResolver   │
 │  SnapshotManager · CapacityCheck · PIDFile       │
-│  SetupAutomationExecutor · DiskInjector          │
+│  VMProvisioner · DiskInjector · ProcessRunner    │
 └─────┬──────────┬──────────┬──────────┬───────────┘
       │          │          │          │
  ┌────▼──┐  ┌───▼───┐  ┌──▼────┐  ┌──▼────────┐
@@ -107,7 +107,8 @@ Four thin clients, one library. Every client parses input and calls Spooktacular
 | Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularKit/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
 | SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularKit/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
 | Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularKit/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
-| VirtIO Socket | [`VsockProvisioner.swift`](Sources/SpooktacularKit/VsockProvisioner.swift) | Host-side vsock + [`spook-agent`](Sources/spook-agent/) guest daemon |
+| Guest Agent | [`spook-agent/`](Sources/spook-agent/) | 12 HTTP endpoints: clipboard, exec, apps, files, ports, health |
+| Agent Client | [`GuestAgentClient.swift`](Sources/SpooktacularKit/GuestAgentClient.swift) | Host-side actor for all guest agent operations |
 | Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularKit/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
 | Ephemeral Runners | [`Start.swift`](Sources/spook/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
 | Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularKit/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
@@ -137,6 +138,7 @@ Four thin clients, one library. Every client parses input and calls Spooktacular
 | `spook service` | Install/uninstall per-VM LaunchDaemons |
 | `spook share` | Manage VirtIO shared folders |
 | `spook serve` | Start the HTTP API server |
+| `spook remote` | Interact with the guest agent (exec, clipboard, apps, ports, health) |
 
 ## HTTP API
 
@@ -154,6 +156,30 @@ spook serve --port 8484 --host 127.0.0.1
 | `POST` | `/v1/vms/:name/stop` | Stop a VM |
 | `DELETE` | `/v1/vms/:name` | Delete a VM |
 | `GET` | `/v1/vms/:name/ip` | Resolve VM IP |
+
+## Guest Agent
+
+The [guest agent](Sources/spook-agent/) runs inside the VM and provides 12 HTTP endpoints over VirtIO socket — no SSH needed.
+
+```bash
+# Check agent connectivity
+spook remote health my-vm
+
+# Run a command in the guest
+spook remote exec my-vm -- "sw_vers"
+
+# Clipboard sync
+spook remote clipboard get my-vm
+spook remote clipboard set my-vm "hello from host"
+
+# List running apps
+spook remote apps my-vm
+
+# List listening ports
+spook remote ports my-vm
+```
+
+The host-side [`GuestAgentClient`](Sources/SpooktacularKit/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spook-agent --install-agent` (LaunchAgent for clipboard/app access).
 
 ## Kubernetes
 
