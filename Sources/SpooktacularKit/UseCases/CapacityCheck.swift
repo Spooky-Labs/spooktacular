@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Enforces the Apple Silicon concurrent VM limit.
 ///
@@ -37,17 +36,23 @@ public enum CapacityCheck {
     /// Scans all `.vm` bundle directories for PID files and checks
     /// whether the recorded process is alive.
     ///
-    /// - Parameter directory: The directory containing `.vm` bundles
-    ///   (typically `~/.spooktacular/vms/`).
+    /// - Parameters:
+    ///   - directory: The directory containing `.vm` bundles
+    ///     (typically `~/.spooktacular/vms/`).
+    ///   - log: Logger for diagnostic messages. Defaults to a
+    ///     silent provider.
     /// - Returns: An array of VM names (without the `.vm` extension),
     ///   sorted alphabetically.
-    public static func runningVMs(in directory: URL) -> [String] {
+    public static func runningVMs(
+        in directory: URL,
+        log: any LogProvider = SilentLogProvider()
+    ) -> [String] {
         let fileManager = FileManager.default
         guard let contents = try? fileManager.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: nil
         ) else {
-            Log.capacity.debug("No VM directory found at \(directory.path, privacy: .public)")
+            log.debug("No VM directory found at \(directory.path)")
             return []
         }
 
@@ -57,17 +62,23 @@ public enum CapacityCheck {
             .map { $0.deletingPathExtension().lastPathComponent }
             .sorted()
 
-        Log.capacity.debug("Running VM count: \(names.count) (limit \(maxConcurrentVMs))")
+        log.debug("Running VM count: \(names.count) (limit \(maxConcurrentVMs))")
         return names
     }
 
     /// Counts the number of VMs with an active (running) process
     /// in the given directory.
     ///
-    /// - Parameter directory: The directory containing `.vm` bundles.
+    /// - Parameters:
+    ///   - directory: The directory containing `.vm` bundles.
+    ///   - log: Logger for diagnostic messages. Defaults to a
+    ///     silent provider.
     /// - Returns: The number of bundles with a live process.
-    public static func runningCount(in directory: URL) -> Int {
-        runningVMs(in: directory).count
+    public static func runningCount(
+        in directory: URL,
+        log: any LogProvider = SilentLogProvider()
+    ) -> Int {
+        runningVMs(in: directory, log: log).count
     }
 
     /// Throws if the concurrent VM limit has been reached.
@@ -75,17 +86,23 @@ public enum CapacityCheck {
     /// Call this before starting a new VM to ensure the host
     /// can accommodate it.
     ///
-    /// - Parameter directory: The directory containing `.vm` bundles.
+    /// - Parameters:
+    ///   - directory: The directory containing `.vm` bundles.
+    ///   - log: Logger for diagnostic messages. Defaults to a
+    ///     silent provider.
     /// - Throws: ``CapacityError/limitReached(running:)`` if
     ///   ``maxConcurrentVMs`` or more VMs are already running.
-    public static func ensureCapacity(in directory: URL) throws {
-        Log.capacity.info("Checking VM capacity in \(directory.lastPathComponent, privacy: .public)")
-        let running = runningVMs(in: directory)
+    public static func ensureCapacity(
+        in directory: URL,
+        log: any LogProvider = SilentLogProvider()
+    ) throws {
+        log.info("Checking VM capacity in \(directory.lastPathComponent)")
+        let running = runningVMs(in: directory, log: log)
         guard running.count < maxConcurrentVMs else {
-            Log.capacity.error("Capacity check failed: \(running.count) VMs running (limit \(maxConcurrentVMs))")
+            log.error("Capacity check failed: \(running.count) VMs running (limit \(maxConcurrentVMs))")
             throw CapacityError.limitReached(running: running)
         }
-        Log.capacity.debug("Capacity OK: \(running.count)/\(maxConcurrentVMs) slots used")
+        log.debug("Capacity OK: \(running.count)/\(maxConcurrentVMs) slots used")
     }
 }
 

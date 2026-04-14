@@ -15,6 +15,7 @@
 
 import Foundation
 import os
+import SpooktacularKit
 
 // MARK: - Entry Point
 
@@ -44,6 +45,8 @@ struct SpookController {
 
         let nodeManager = NodeManager(apiPort: apiPort, labelSelector: labelSelector)
         let reconciler = Reconciler(client: client, nodeManager: nodeManager)
+        let poolManager = RunnerPoolManager()
+        let poolReconciler = RunnerPoolReconciler(client: client, manager: poolManager)
         let shutdownSignal = ShutdownSignal()
         let leaderElection = LeaderElection(client: client, leaseName: "spook-controller")
 
@@ -58,6 +61,9 @@ struct SpookController {
                     try? await Task.sleep(for: .seconds(healthInterval))
                     await nodeManager.checkHealth()
                 }
+            }
+            group.addTask {
+                await poolReconciler.run()
             }
             group.addTask {
                 await shutdownSignal.wait()

@@ -64,9 +64,6 @@ if [ -f "$ICNS" ]; then
     cp "$ICNS" "$RESOURCES/AppIcon.icns"
 fi
 
-# Copy entitlements
-cp "$ENTITLEMENTS" "$CONTENTS/Entitlements.plist"
-
 # Embed provisioning profile if PROVISIONING_PROFILE path is set
 # (Fastlane sets this after match runs)
 if [ -n "${PROVISIONING_PROFILE:-}" ] && [ -f "$PROVISIONING_PROFILE" ]; then
@@ -78,6 +75,14 @@ fi
 # Use the signing identity from CODESIGN_IDENTITY env var if set
 # (match sets this via MATCH_CODESIGN_IDENTITY), otherwise ad-hoc.
 SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+
+# Copy entitlements into bundle only with a real signing identity.
+# Loose .plist files inside the bundle cause "code object is not signed"
+# errors with ad-hoc signing because codesign treats them as unsigned
+# subcomponents.
+if [ "$SIGN_IDENTITY" != "-" ]; then
+    cp "$ENTITLEMENTS" "$CONTENTS/Entitlements.plist"
+fi
 echo "Code signing with identity: $SIGN_IDENTITY"
 # Sign inner binaries first, then the main executable, then the bundle.
 # Never use --deep — it masks signing order bugs.

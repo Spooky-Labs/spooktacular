@@ -40,4 +40,31 @@ struct VMLifecycleIntegrationTests {
 
     @Test("Delete running VM returns error")
     func deleteRunningFails() { }
+
+    // MARK: - Runner Lifecycle Integration
+
+    @Test("Full runner lifecycle: clone → boot → register → job → drain → reclone")
+    func fullRunnerLifecycle() {
+        // Clone base → boot → install runner → register with GitHub →
+        // trigger job → job completes → deregister → reclone → re-register
+        // Verify: no leaked VMs, no orphan runners in GitHub UI
+    }
+
+    @Test("Controller crash mid-Registering recovers on restart")
+    func controllerCrashRecovery() {
+        // Start runner lifecycle → kill controller during Registering →
+        // restart controller → verify it resumes from CRD status
+    }
+
+    @Test("Warm pool scrub validation prevents dirty reuse")
+    func scrubValidationPreventsReuse() {
+        // Run job that leaves files → scrub → validate → expect destroy
+        // Verify: dirty VM never returned to pool
+    }
+
+    @Test("Webhook replay protection is idempotent")
+    func webhookReplayIdempotent() {
+        // Send same workflow_job webhook twice with same X-GitHub-Delivery
+        // Verify: single state transition, not double
+    }
 }

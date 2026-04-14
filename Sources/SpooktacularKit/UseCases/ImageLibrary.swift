@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// A cached VM image available for creating new virtual machines.
 ///
@@ -67,6 +66,9 @@ public final class ImageLibrary: @unchecked Sendable {
     /// The directory where images and metadata are stored.
     public let directory: URL
 
+    /// Logger for diagnostic messages.
+    private let log: any LogProvider
+
     /// All known images.
     public private(set) var images: [VirtualMachineImage] = []
 
@@ -75,25 +77,32 @@ public final class ImageLibrary: @unchecked Sendable {
         directory.appendingPathComponent("library.json")
     }
 
-    public init(directory: URL) {
+    /// Creates an image library backed by the given directory.
+    ///
+    /// - Parameters:
+    ///   - directory: The directory where images and metadata are stored.
+    ///   - log: Logger for diagnostic messages. Defaults to a
+    ///     silent provider.
+    public init(directory: URL, log: any LogProvider = SilentLogProvider()) {
         self.directory = directory
+        self.log = log
     }
 
     /// Loads the image library from disk.
     public func load() {
-        Log.images.info("Loading image library from \(self.directory.path, privacy: .public)")
+        log.info("Loading image library from \(self.directory.path)")
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         } catch {
-            Log.images.error("Failed to create image library directory: \(error.localizedDescription, privacy: .public)")
+            log.error("Failed to create image library directory: \(error.localizedDescription)")
         }
 
         do {
             let data = try Data(contentsOf: indexURL)
             images = try VirtualMachineBundle.decoder.decode([VirtualMachineImage].self, from: data)
-            Log.images.info("Loaded \(self.images.count) image(s) from library")
+            log.info("Loaded \(self.images.count) image(s) from library")
         } catch {
-            Log.images.debug("No existing image library index: \(error.localizedDescription, privacy: .public)")
+            log.debug("No existing image library index: \(error.localizedDescription)")
             images = []
         }
     }
@@ -102,7 +111,7 @@ public final class ImageLibrary: @unchecked Sendable {
     ///
     /// The file is copied (or moved) into the library directory.
     public func addIPSW(at url: URL, name: String) throws {
-        Log.images.info("Adding IPSW '\(name, privacy: .public)' from \(url.lastPathComponent, privacy: .public)")
+        log.info("Adding IPSW '\(name)' from \(url.lastPathComponent)")
         let destinationURL = directory.appendingPathComponent(url.lastPathComponent)
 
         if url.path != destinationURL.path {
@@ -121,7 +130,7 @@ public final class ImageLibrary: @unchecked Sendable {
 
     /// Adds an OCI image reference to the library.
     public func addOCI(reference: String, name: String) throws {
-        Log.images.info("Adding OCI image '\(name, privacy: .public)' (\(reference, privacy: .public))")
+        log.info("Adding OCI image '\(name)' (\(reference))")
         images.append(VirtualMachineImage(
             name: name,
             source: .oci(reference: reference)
@@ -132,17 +141,17 @@ public final class ImageLibrary: @unchecked Sendable {
     /// Removes an image from the library.
     public func remove(id: UUID) throws {
         guard let index = images.firstIndex(where: { $0.id == id }) else {
-            Log.images.debug("Image \(id) not found in library — nothing to remove")
+            log.debug("Image \(id) not found in library — nothing to remove")
             return
         }
         let image = images[index]
-        Log.images.info("Removing image '\(image.name, privacy: .public)' from library")
+        log.info("Removing image '\(image.name)' from library")
 
         if case .ipsw(let path) = image.source {
             do {
                 try FileManager.default.removeItem(atPath: path)
             } catch {
-                Log.images.error("Failed to delete IPSW at '\(path, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                log.error("Failed to delete IPSW at '\(path)': \(error.localizedDescription)")
             }
         }
 

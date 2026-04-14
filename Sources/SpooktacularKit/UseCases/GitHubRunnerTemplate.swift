@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Generates user-data scripts for GitHub Actions runner VMs.
 ///
@@ -60,7 +59,6 @@ public enum GitHubRunnerTemplate {
             script: scriptContent(repo: repo, token: token, labels: labels, ephemeral: ephemeral),
             fileName: "github-runner-setup.sh"
         )
-        Log.provision.info("Generated GitHub runner script for \(repo, privacy: .public)")
         return url
     }
 

@@ -265,6 +265,61 @@ spec:
                     type: string
                   x-kubernetes-map-type: atomic
 
+                preWarm:
+                  type: boolean
+                  description: >-
+                    Clone the next runner VM while the current job runs.
+                    Consumes a VM slot speculatively. Only useful when the
+                    pool uses a single sourceVM and jobs arrive frequently.
+                  default: false
+
+                timeouts:
+                  type: object
+                  description: >-
+                    Timeout overrides in seconds for each lifecycle phase.
+                  properties:
+                    clone:
+                      type: integer
+                      default: 120
+                    boot:
+                      type: integer
+                      default: 180
+                    register:
+                      type: integer
+                      default: 300
+                    drain:
+                      type: integer
+                      default: 60
+                    recycle:
+                      type: integer
+                      default: 120
+
+                retries:
+                  type: object
+                  description: Retry policy for failed runners.
+                  properties:
+                    maxPerRunner:
+                      type: integer
+                      default: 3
+                      minimum: 0
+                    backoffBase:
+                      type: integer
+                      default: 5
+                      minimum: 1
+
+                webhook:
+                  type: object
+                  description: >-
+                    GitHub webhook configuration. Optional — without this,
+                    the controller detects job completion via runner process
+                    exit (works with GitHub's --ephemeral flag).
+                  properties:
+                    secretRef:
+                      type: string
+                      description: >-
+                        Name of a Kubernetes Secret containing the webhook
+                        HMAC secret in a key named "secret".
+
             # -----------------------------------------------------------------
             # Status
             # -----------------------------------------------------------------

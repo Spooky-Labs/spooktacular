@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Generates user-data scripts for OpenClaw AI agent VMs.
 ///
@@ -42,7 +41,6 @@ public enum OpenClawTemplate {
         let url = try ScriptFile.writeToTempDirectory(
             script: scriptContent(), fileName: "openclaw-setup.sh"
         )
-        Log.provision.info("Generated OpenClaw script")
         return url
     }
 
