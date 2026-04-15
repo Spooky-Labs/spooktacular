@@ -58,6 +58,16 @@ private let log = Logger(subsystem: "com.spooktacular.agent", category: "router"
 /// Logger dedicated to the audit trail, visible in Console.app at `.notice` level.
 private let auditLog = Logger(subsystem: "com.spooktacular.agent", category: "audit")
 
+/// Maximum bytes captured from stdout/stderr for exec commands.
+private let maxExecOutputBytes = 1_048_576 // 1 MB
+
+/// Maximum concurrent exec commands allowed.
+private let maxConcurrentExecs = 3
+
+/// Active exec command count. Uses `nonisolated(unsafe)` because the
+/// agent router is composed of free functions, not an actor.
+nonisolated(unsafe) private var activeExecCount: Int = 0
+
 /// The agent version, reported in health checks.
 private let agentVersion = "1.0.0"
 
@@ -408,6 +418,7 @@ private func buildHTTPResponse(statusCode: Int, body: Data) -> Data {
     case 401: statusText = "Unauthorized"
     case 403: statusText = "Forbidden"
     case 404: statusText = "Not Found"
+    case 429: statusText = "Too Many Requests"
     case 500: statusText = "Internal Server Error"
     default:  statusText = "Unknown"
     }
@@ -479,6 +490,13 @@ private func handleExec(_ request: AgentHTTPRequest) -> Data {
         return errorResponse(message: "Request body must contain 'command' field.", statusCode: 400)
     }
 
+    // Enforce concurrent exec limit.
+    guard activeExecCount < maxConcurrentExecs else {
+        return errorResponse(message: "Too many concurrent exec commands. Maximum: \(maxConcurrentExecs).", statusCode: 429)
+    }
+    activeExecCount += 1
+    defer { activeExecCount -= 1 }
+
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/bash")
     process.arguments = ["-c", execReq.command]
@@ -512,8 +530,8 @@ private func handleExec(_ request: AgentHTTPRequest) -> Data {
 
     let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
     let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
-    let stdout = String(data: stdoutData, encoding: .utf8) ?? ""
-    let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+    let stdout = String(data: stdoutData.prefix(maxExecOutputBytes), encoding: .utf8) ?? ""
+    let stderr = String(data: stderrData.prefix(maxExecOutputBytes), encoding: .utf8) ?? ""
 
     let response = ExecResponse(
         exitCode: process.terminationStatus,

@@ -72,6 +72,7 @@ struct HTTPResponse: Sendable {
         case 404: "Not Found"
         case 409: "Conflict"
         case 422: "Unprocessable Entity"
+        case 429: "Too Many Requests"
         case 500: "Internal Server Error"
         case 503: "Service Unavailable"
         default: "Unknown"

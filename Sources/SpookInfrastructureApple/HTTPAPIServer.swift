@@ -118,6 +118,18 @@ public actor HTTPAPIServer {
     /// Active connections tracked for clean shutdown.
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
 
+    /// Maximum concurrent connections accepted by the server.
+    private let maxConcurrentConnections: Int = 50
+
+    /// Current number of active connections.
+    private var activeConnectionCount: Int = 0
+
+    /// Per-client rate limit: max requests per minute from a single IP.
+    private let maxRequestsPerMinute: Int = 120
+
+    /// Tracks request counts per client IP for rate limiting.
+    private var clientRequestCounts: [String: (count: Int, windowStart: Date)] = [:]
+
     /// The tenant identity for this server instance.
     ///
     /// In single-tenant mode this is ``TenantID/default``. In multi-tenant
@@ -454,6 +466,14 @@ public actor HTTPAPIServer {
 
     /// Accepts a new TCP connection and processes HTTP requests on it.
     private func handleNewConnection(_ connection: NWConnection) {
+        // Reject if at capacity
+        guard activeConnectionCount < maxConcurrentConnections else {
+            connection.cancel()
+            logger.warning("Connection rejected: at capacity (\(self.maxConcurrentConnections))")
+            return
+        }
+        activeConnectionCount += 1
+
         activeConnections[ObjectIdentifier(connection)] = connection
         let logger = self.logger
 
@@ -476,9 +496,11 @@ public actor HTTPAPIServer {
         receiveRequest(on: connection)
     }
 
-    /// Removes a connection from the active set.
+    /// Removes a connection from the active set and decrements the active count.
     private func removeConnection(_ connection: NWConnection) {
-        activeConnections.removeValue(forKey: ObjectIdentifier(connection))
+        if activeConnections.removeValue(forKey: ObjectIdentifier(connection)) != nil {
+            activeConnectionCount -= 1
+        }
     }
 
     /// Reads data from a connection until a complete HTTP request is received.
@@ -497,6 +519,46 @@ public actor HTTPAPIServer {
         }
     }
 
+    /// Checks whether a client IP is within its rate limit window.
+    ///
+    /// Each client is allowed ``maxRequestsPerMinute`` requests per
+    /// 60-second sliding window. Returns `true` if the request is
+    /// allowed, `false` if rate-limited.
+    ///
+    /// - Parameter clientIP: The IP address string of the connecting client.
+    /// - Returns: `true` if the request should proceed; `false` if rate-limited.
+    private func checkRateLimit(clientIP: String) -> Bool {
+        let now = Date()
+        if let entry = clientRequestCounts[clientIP] {
+            if now.timeIntervalSince(entry.windowStart) > 60 {
+                // New window
+                clientRequestCounts[clientIP] = (count: 1, windowStart: now)
+                return true
+            } else if entry.count >= maxRequestsPerMinute {
+                return false
+            } else {
+                clientRequestCounts[clientIP] = (count: entry.count + 1, windowStart: entry.windowStart)
+                return true
+            }
+        } else {
+            clientRequestCounts[clientIP] = (count: 1, windowStart: now)
+            return true
+        }
+    }
+
+    /// Extracts a client IP string from an `NWConnection`'s remote endpoint.
+    ///
+    /// Falls back to the endpoint's debug description when the endpoint
+    /// is not a host-port pair.
+    private func clientIP(from connection: NWConnection) -> String {
+        switch connection.endpoint {
+        case .hostPort(let host, _):
+            return "\(host)"
+        default:
+            return connection.endpoint.debugDescription
+        }
+    }
+
     /// Processes received data, parsing the HTTP request and dispatching to handlers.
     private func processReceivedData(_ data: Data, on connection: NWConnection) async {
         let request: HTTPRequest
@@ -510,6 +572,15 @@ public actor HTTPAPIServer {
         }
 
         logger.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
+
+        // Per-client rate limiting
+        let ip = clientIP(from: connection)
+        guard checkRateLimit(clientIP: ip) else {
+            logger.warning("Rate limit exceeded for \(ip, privacy: .public)")
+            let response = HTTPResponse.error(message: "Too Many Requests.", statusCode: 429)
+            sendResponse(response, on: connection)
+            return
+        }
 
         let response = await routeRequest(request)
         sendResponse(response, on: connection)

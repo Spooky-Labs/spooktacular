@@ -42,6 +42,7 @@
 
 import Foundation
 import os
+import Security
 
 // MARK: - Constants
 
@@ -98,22 +99,19 @@ struct AgentTokens {
     let readOnly: String?
 }
 
-/// Loads agent authentication tokens from the file system or environment.
+/// Loads agent authentication tokens with the following priority:
 ///
-/// **Admin (break-glass) token** is loaded from:
-/// 1. Line 1 of the file at ``tokenFilePath``.
-/// 2. The ``SPOOK_AGENT_TOKEN`` environment variable (overrides file).
+/// Token loading priority:
+/// 1. macOS Keychain (service: "com.spooktacular.agent")
+/// 2. Token file at `/Volumes/My Shared Files/.agent-token`
+/// 3. Environment variables (`SPOOK_AGENT_TOKEN`, etc.)
 ///
-/// **Runner token** is loaded from:
-/// 1. Line 2 of the file at ``tokenFilePath`` (if present).
-/// 2. The ``SPOOK_AGENT_RUNNER_TOKEN`` environment variable (overrides file).
+/// The first source that provides an admin token wins; lower-priority
+/// sources are not consulted. Runner and read-only tokens are loaded
+/// from the same source as the admin token.
 ///
-/// **Read-only token** is loaded from:
-/// 1. Line 3 of the file at ``tokenFilePath`` (if present).
-/// 2. The ``SPOOK_AGENT_READONLY_TOKEN`` environment variable (overrides file).
-///
-/// If no admin token is found, the agent runs in legacy mode
-/// (no authentication) and a warning is logged.
+/// If no admin token is found from any source, the agent runs in legacy
+/// mode (no authentication) and a warning is logged.
 ///
 /// - Returns: The loaded tokens.
 private func loadTokens() -> AgentTokens {
@@ -121,7 +119,17 @@ private func loadTokens() -> AgentTokens {
     var runner: String?
     var readOnly: String?
 
-    // Try file first
+    // Priority 1: Keychain (most secure)
+    admin = keychainLoad(account: "admin-token")
+    runner = keychainLoad(account: "runner-token")
+    readOnly = keychainLoad(account: "readonly-token")
+
+    if admin != nil {
+        log.notice("Loaded tokens from Keychain")
+        return AgentTokens(admin: admin, runner: runner, readOnly: readOnly)
+    }
+
+    // Priority 2: Token file (legacy, less secure)
     if let fileContents = try? String(contentsOfFile: tokenFilePath, encoding: .utf8) {
         let lines = fileContents.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespaces) }
@@ -141,7 +149,7 @@ private func loadTokens() -> AgentTokens {
         }
     }
 
-    // Environment variables override file
+    // Priority 3: Environment variables
     if let envToken = ProcessInfo.processInfo.environment[tokenEnvVar] {
         let trimmed = envToken.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
@@ -171,6 +179,30 @@ private func loadTokens() -> AgentTokens {
     }
 
     return AgentTokens(admin: admin, runner: runner, readOnly: readOnly)
+}
+
+/// Loads a token from the macOS Keychain.
+///
+/// Queries the Keychain for a generic password item under the
+/// `com.spooktacular.agent` service with the given account name.
+///
+/// - Parameter account: The Keychain account name (e.g. `"admin-token"`).
+/// - Returns: The token string, or `nil` if not found.
+private func keychainLoad(account: String) -> String? {
+    let query: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: "com.spooktacular.agent",
+        kSecAttrAccount as String: account,
+        kSecReturnData as String: true,
+        kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var result: AnyObject?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    guard status == errSecSuccess, let data = result as? Data,
+          let token = String(data: data, encoding: .utf8) else {
+        return nil
+    }
+    return token.trimmingCharacters(in: .whitespacesAndNewlines)
 }
 
 // MARK: - Entry Point

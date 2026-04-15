@@ -645,10 +645,45 @@ actor RunnerPoolReconciler {
                 }
             }
 
+            // Heal any runners stuck in transient states without timeouts.
+            await healStuckRunners()
+
             // Update all pool statuses.
             let poolNames = Set(runnerOwnership.values)
             for poolName in poolNames {
                 await updatePoolStatus(poolName: poolName)
+            }
+        }
+    }
+
+    /// Detects runners stuck in transient states and forces timeout events.
+    ///
+    /// A runner is considered "stuck" if it has been in a transient state
+    /// (cloning, booting, registering, draining, recycling) without an
+    /// active timeout task. This can happen if the timeout `Task` was
+    /// cancelled or lost during a controller restart. In that case the
+    /// defensive timeout scheduled above may not have fired yet and the
+    /// runner could sit idle indefinitely.
+    ///
+    /// When a stuck runner is detected, a `.timeout` event is immediately
+    /// fed to its state machine so that the normal retry / failure path
+    /// takes effect.
+    private func healStuckRunners() async {
+        let transientStates: Set<RunnerStateMachine.State> = [
+            .cloning, .booting, .registering, .draining, .recycling,
+        ]
+
+        for (name, var sm) in stateMachines {
+            guard transientStates.contains(sm.state) else { continue }
+
+            // Only heal if there is no active timeout — if a timeout is
+            // already scheduled the normal path will handle it.
+            if timeouts[name] == nil {
+                logger.warning("Healing stuck runner '\(name, privacy: .public)' in state \(sm.state.rawValue, privacy: .public)")
+                let effects = sm.transition(event: .timeout)
+                stateMachines[name] = sm
+                let poolName = runnerOwnership[name] ?? ""
+                await executeSideEffects(effects, runnerName: name, poolName: poolName)
             }
         }
     }
