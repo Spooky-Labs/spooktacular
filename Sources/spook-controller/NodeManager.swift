@@ -9,15 +9,62 @@ import Foundation
 import FoundationNetworking
 #endif
 import os
-import SpooktacularKit
+import SpookCore
+import SpookApplication
+import SpookInfrastructureApple
 
 // MARK: - NodeEndpoint
 
 /// A Mac node's connection details.
+/// A Mac node's connection, identity, and scheduling metadata.
+///
+/// Every scheduling decision filters by ``hostPoolID`` and
+/// ``tenantID``. Every control-plane call validates ``expectedIdentity``
+/// against the node's TLS certificate.
 struct NodeEndpoint: Sendable {
+    /// The Kubernetes node name.
     let name: String
+    /// The HTTPS API endpoint for `spook serve`.
     let apiURL: URL
+    /// Whether the last health check succeeded.
     var healthy: Bool
+    /// Expected TLS certificate subject or SAN for this node.
+    let expectedIdentity: String?
+    /// The host pool this node belongs to.
+    let hostPoolID: HostPoolID
+    /// The tenant that owns this node (for multi-tenant scheduling).
+    let tenantID: TenantID
+    /// Whether the node is accepting new VMs.
+    var drainState: DrainState
+    /// Node labels for scheduling (e.g., pool, gpu, xcode version).
+    var labels: [String: String]
+
+    /// Whether the node is draining, active, or in maintenance.
+    enum DrainState: String, Sendable {
+        case active
+        case draining
+        case maintenance
+    }
+
+    init(
+        name: String,
+        apiURL: URL,
+        healthy: Bool = false,
+        expectedIdentity: String? = nil,
+        hostPoolID: HostPoolID = .default,
+        tenantID: TenantID = .default,
+        drainState: DrainState = .active,
+        labels: [String: String] = [:]
+    ) {
+        self.name = name
+        self.apiURL = apiURL
+        self.healthy = healthy
+        self.expectedIdentity = expectedIdentity
+        self.hostPoolID = hostPoolID
+        self.tenantID = tenantID
+        self.drainState = drainState
+        self.labels = labels
+    }
 }
 
 // MARK: - NodeManager

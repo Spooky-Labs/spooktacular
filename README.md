@@ -12,7 +12,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 14+](https://img.shields.io/badge/macOS-14+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-419_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-424_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Download](https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Get Started](#-summon-your-first-vm)
 

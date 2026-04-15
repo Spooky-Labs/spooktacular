@@ -1,6 +1,8 @@
 import Foundation
 import os
-import SpooktacularKit
+import SpookCore
+import SpookApplication
+import SpookInfrastructureApple
 
 /// HTTP endpoint for receiving GitHub webhooks.
 ///

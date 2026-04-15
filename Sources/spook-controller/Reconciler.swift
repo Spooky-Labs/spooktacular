@@ -12,7 +12,8 @@ import Foundation
 import FoundationNetworking
 #endif
 import os
-import SpooktacularKit
+import SpookCore
+import SpookApplication
 
 // MARK: - Reconciler
 
