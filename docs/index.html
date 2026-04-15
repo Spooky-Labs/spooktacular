@@ -401,6 +401,34 @@ Spooktacular
 </div>
 </section>
 
+<!-- Enterprise Operator Section -->
+<section style="padding: 4rem 0; background: var(--bg);">
+<div class="container" style="max-width: 900px;">
+<h2 style="text-align: center; margin-bottom: 2rem;">Enterprise Operating Model</h2>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+<div style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px;">
+<h3 style="margin-bottom: 0.5rem;">Security Model</h3>
+<p style="color: var(--dim); font-size: 0.9rem; margin: 0;">Mandatory mTLS for controller-to-node traffic. Three-tier guest agent authorization (read / runner / break-glass). Keychain-backed secrets. TLS certificate hot reload.</p>
+</div>
+<div style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px;">
+<h3 style="margin-bottom: 0.5rem;">Isolation Semantics</h3>
+<p style="color: var(--dim); font-size: 0.9rem; margin: 0;"><strong>Ephemeral:</strong> destroy after each job. <strong>Warm pool:</strong> scrub + validate, destroy on failure. <strong>Persistent:</strong> named identity with snapshots. Failed scrub = VM destroyed, never reused.</p>
+</div>
+<div style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px;">
+<h3 style="margin-bottom: 0.5rem;">EC2 Mac Mapping</h3>
+<p style="color: var(--dim); font-size: 0.9rem; margin: 0;">One Dedicated Host &rarr; one Spooktacular node &rarr; two VM slots. Ephemeral mode = your Replace Root Volume equivalent, but faster. SSM for fleet operations.</p>
+</div>
+<div style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px;">
+<h3 style="margin-bottom: 0.5rem;">Runner Scale Sets</h3>
+<p style="color: var(--dim); font-size: 0.9rem; margin: 0;">RunnerPool CRD maps to GitHub ARC runner scale sets. Ephemeral runners with auto-registration, job detection via webhooks, and automatic deregistration.</p>
+</div>
+</div>
+
+<p style="text-align: center; color: var(--dim); font-size: 0.85rem;"><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md" style="color: var(--accent);">Full security model and deployment classes &rarr;</a></p>
+</div>
+</section>
+
 <!-- Bottom CTA -->
 <section class="bottom-cta">
 <div class="container">

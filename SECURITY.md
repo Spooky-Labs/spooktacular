@@ -61,6 +61,22 @@ Spooktacular supports three deployment topologies, each with different security 
 
 - **EC2 Mac fleet**: Mac instances run on AWS EC2 dedicated hosts (e.g., `mac2-m2pro.metal`). Each host runs `spook serve` as a LaunchDaemon. In enterprise mode, hosts integrate with EC2 Host Resource Groups (HRG) for placement, implement drain procedures for 24-hour minimum allocation compliance, and can use IMDS for instance identity verification. Keychain-based secret storage is recommended over environment variables in this model.
 
+## Deployment Classes
+
+| Aspect | Pilot (Single-Tenant) | Enterprise Platform (Multi-Tenant) |
+|--------|----------------------|-----------------------------------|
+| **Status** | Supported | Planned |
+| **Trust boundary** | One team per host/fleet | Multiple teams, tenant isolation |
+| **Identity model** | mTLS certificates + bearer tokens | Federated identity (OIDC/SAML) + per-user RBAC |
+| **Authorization** | Scope-based (read/runner/break-glass) | Tenant + scope + resource policy |
+| **Host scheduling** | Any available node | Tenant-partitioned host pools |
+| **Warm-pool reuse** | Allowed with scrub validation | Same-tenant only, cross-tenant forbidden |
+| **Break-glass shell** | Available with admin controls | Disabled by default, explicit per-tenant opt-in |
+| **Audit** | os.Logger (Console.app, `log show`) | External SIEM forwarding required |
+| **Locking** | Per-host flock(2) | Distributed coordination (planned) |
+
+**Current recommendation:** Deploy as Pilot (Single-Tenant) on isolated EC2 Mac hosts owned by one team. Enterprise Platform mode requires federated identity, tenant isolation, and externalized audit — tracked in the [roadmap](docs/superpowers/specs/2026-04-14-fortune20-build-plan.md).
+
 ## Security Operations
 
 ### Severity Classification
