@@ -34,10 +34,18 @@ public enum VsockProvisioner {
 
     /// The vsock port the guest agent listens on.
     ///
-    /// Port 9470 is chosen to avoid conflicts with well-known
-    /// services. The same constant must be used by the guest-side
-    /// `spooktacular-agent` binary.
+    /// Read-only vsock port (health, inspection). Used for provisioning
+    /// health checks. The guest agent listens on three ports:
+    /// - 9470: read-only
+    /// - 9471: runner (mutation except exec)
+    /// - 9472: break-glass (exec, admin only)
     public static let agentPort: UInt32 = 9470
+
+    /// Runner vsock port for mutation operations.
+    public static let runnerPort: UInt32 = 9471
+
+    /// Break-glass vsock port for shell execution.
+    public static let breakGlassPort: UInt32 = 9472
 
     // MARK: - Legacy Wire Protocol Helpers
 

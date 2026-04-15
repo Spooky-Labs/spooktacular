@@ -8,27 +8,18 @@ import os
 
 /// A host-side client that communicates with `spooktacular-agent` inside a guest VM.
 ///
-/// `GuestAgentClient` sends HTTP/1.1 requests over a VirtIO socket (vsock)
-/// connection to the agent running at port 9470. Each method opens a fresh
-/// connection, sends a single request, reads the response, and closes the
-/// file descriptors.
+/// `GuestAgentClient` sends HTTP/1.1 requests over VirtIO socket (vsock)
+/// connections to the agent. Requests are routed to the correct port
+/// based on the operation's capability tier:
 ///
-/// The agent exposes a REST-like API:
+/// | Port | Channel | Operations |
+/// |------|---------|-----------|
+/// | 9470 | Read-only | health, GET clipboard, GET apps, GET fs, GET files, GET ports |
+/// | 9471 | Runner | read-only + POST clipboard, POST apps/launch, POST apps/quit, POST files |
+/// | 9472 | Break-glass | all above + POST exec (admin only, audit-logged) |
 ///
-/// | Method | Path | Purpose |
-/// |--------|------|---------|
-/// | `GET` | `/health` | Agent health check |
-/// | `GET` | `/api/v1/clipboard` | Read clipboard text |
-/// | `POST` | `/api/v1/clipboard` | Set clipboard text |
-/// | `POST` | `/api/v1/exec` | Execute a shell command |
-/// | `GET` | `/api/v1/apps` | List running applications |
-/// | `POST` | `/api/v1/apps/launch` | Launch an app by bundle ID |
-/// | `POST` | `/api/v1/apps/quit` | Quit an app by bundle ID |
-/// | `GET` | `/api/v1/apps/frontmost` | Get the frontmost app |
-/// | `GET` | `/api/v1/fs` | List a directory |
-/// | `POST` | `/api/v1/files` | Upload a file |
-/// | `GET` | `/api/v1/files` | List uploaded files |
-/// | `GET` | `/api/v1/ports` | List listening TCP ports |
+/// This ensures exec is only reachable via port 9472, matching the
+/// guest agent's transport-layer scope enforcement.
 ///
 /// ## Thread Safety
 ///
@@ -52,8 +43,14 @@ public actor GuestAgentClient {
     /// The VirtIO socket device attached to the running VM.
     private let socketDevice: VZVirtioSocketDevice
 
-    /// The vsock port the guest agent listens on.
-    private let port: UInt32 = 9470
+    /// Vsock port for read-only operations (health, inspection).
+    private let readOnlyPort: UInt32 = 9470
+
+    /// Vsock port for runner operations (mutation except exec).
+    private let runnerPort: UInt32 = 9471
+
+    /// Vsock port for break-glass operations (exec).
+    private let breakGlassPort: UInt32 = 9472
 
     /// Shared JSON decoder for all response parsing.
     private let decoder = JSONDecoder()
@@ -212,6 +209,23 @@ public actor GuestAgentClient {
         try await request(method: "GET", path: "/api/v1/ports")
     }
 
+    // MARK: - Port Routing
+
+    /// Returns the correct vsock port for a given request based on its
+    /// capability tier, matching the guest agent's channel separation.
+    private func portForRequest(method: String, path: String) -> UInt32 {
+        // Break-glass: exec only reachable on port 9472
+        if method == "POST" && path == "/api/v1/exec" {
+            return breakGlassPort
+        }
+        // Runner: mutation endpoints on port 9471
+        if method == "POST" {
+            return runnerPort
+        }
+        // Read-only: all GET endpoints on port 9470
+        return readOnlyPort
+    }
+
     // MARK: - Internal Transport
 
     /// Sends an HTTP request to the guest agent and decodes the response.
@@ -234,10 +248,12 @@ public actor GuestAgentClient {
     private func request<T: Decodable>(
         method: String,
         path: String,
-        body: Data? = nil
+        body: Data? = nil,
+        port: UInt32? = nil
     ) async throws -> T {
         let responseData = try await rawRequest(
-            method: method, path: path, body: body
+            method: method, path: path, body: body,
+            port: port ?? portForRequest(method: method, path: path)
         )
 
         let (statusCode, responseBody) = try parseHTTPResponse(responseData)
@@ -289,7 +305,8 @@ public actor GuestAgentClient {
     private func rawRequest(
         method: String,
         path: String,
-        body: Data? = nil
+        body: Data? = nil,
+        port: UInt32 = 9470
     ) async throws -> Data {
         Log.guestAgent.debug(
             "\(method, privacy: .public) \(path, privacy: .public)"
