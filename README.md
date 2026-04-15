@@ -9,6 +9,7 @@
   the maximum Apple's EULA allows. Clone in 48ms. MIT licensed, $0 forever.
 
   [![CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml/badge.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![CodeQL](https://github.com/Spooky-Labs/spooktacular/actions/workflows/codeql.yml/badge.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/codeql.yml)
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 14+](https://img.shields.io/badge/macOS-14+-a78bfa.svg)](https://developer.apple.com/macos/)

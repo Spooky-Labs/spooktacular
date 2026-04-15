@@ -12,7 +12,9 @@ We support the current release and the immediately prior release (N and N-1). Ol
 
 ## Security Model
 
-Spooktacular is a **single-tenant, single-host** macOS VM manager designed for teams that own their Mac hardware. The security model is designed for trusted networks where the operator controls both the host and the guests.
+Spooktacular currently supports **Pilot (Single-Tenant)** deployments — one team per trust domain, on Mac hardware that team controls. See [Deployment Classes](#deployment-classes) for the full comparison between Pilot and the planned Enterprise Platform mode.
+
+In Pilot mode, the security model assumes the operator controls both the host and all guests. Production deployments require mandatory mTLS for controller-to-node traffic, Keychain-backed secret storage, and three-tier guest agent authorization.
 
 ### What this security model covers
 
