@@ -118,14 +118,14 @@ public actor HTTPAPIServer {
     /// Active connections tracked for clean shutdown.
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
 
-    /// Maximum concurrent connections accepted by the server.
-    private let maxConcurrentConnections: Int = 50
+    /// Maximum concurrent connections. Override with `SPOOK_MAX_CONNECTIONS` env var.
+    private let maxConcurrentConnections: Int
 
     /// Current number of active connections.
     private var activeConnectionCount: Int = 0
 
-    /// Per-client rate limit: max requests per minute from a single IP.
-    private let maxRequestsPerMinute: Int = 120
+    /// Per-client rate limit: max requests per minute. Override with `SPOOK_RATE_LIMIT` env var.
+    private let maxRequestsPerMinute: Int
 
     /// Tracks request counts per client IP for rate limiting.
     private var clientRequestCounts: [String: (count: Int, windowStart: Date)] = [:]
@@ -213,6 +213,8 @@ public actor HTTPAPIServer {
         self.tenantID = tenantID
         self.auditSink = auditSink
         self.insecureMode = insecureMode
+        self.maxConcurrentConnections = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50
+        self.maxRequestsPerMinute = Int(ProcessInfo.processInfo.environment["SPOOK_RATE_LIMIT"] ?? "") ?? 120
 
         let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"]
         self.apiToken = token?.isEmpty == false ? token : nil
