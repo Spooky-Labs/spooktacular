@@ -65,6 +65,21 @@ struct SpookController {
             ? SingleTenantAuthorization(policy: reusePolicy)
             : MultiTenantAuthorization(policy: reusePolicy, isolation: isolation)
 
+        // Create audit sinks
+        let auditSink: any AuditSink
+        if let auditPath = env["SPOOK_AUDIT_FILE"] {
+            do {
+                auditSink = try JSONFileAuditSink(path: auditPath)
+                logger.notice("Audit sink: JSONL file at \(auditPath, privacy: .public)")
+            } catch {
+                logger.fault("Failed to create audit file at \(auditPath, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                return
+            }
+        } else {
+            auditSink = OSLogAuditSink()
+            logger.notice("Audit sink: os.Logger (use SPOOK_AUDIT_FILE for SIEM export)")
+        }
+
         // Load TLS identity for mTLS with Mac nodes.
         // Required in production. Use SPOOK_INSECURE_CONTROLLER=1 to bypass
         // (development only — logs a prominent warning).
@@ -106,7 +121,8 @@ struct SpookController {
             tenancyMode: tenancyMode,
             authService: authService,
             isolation: isolation,
-            reusePolicy: reusePolicy
+            reusePolicy: reusePolicy,
+            auditSink: auditSink
         )
         let shutdownSignal = ShutdownSignal()
         let leaderElection = LeaderElection(client: client, leaseName: "spook-controller")

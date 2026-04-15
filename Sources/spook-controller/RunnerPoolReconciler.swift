@@ -14,6 +14,7 @@ import FoundationNetworking
 import os
 import SpookCore
 import SpookApplication
+import SpookInfrastructureApple
 
 // MARK: - RunnerPool CRD Types
 
@@ -122,6 +123,9 @@ actor RunnerPoolReconciler {
     /// Reuse policy governing VM recycling between jobs.
     private let reusePolicy: ReusePolicy
 
+    /// Structured audit sink for control-plane actions.
+    private let auditSink: any AuditSink
+
     init(
         client: KubernetesClient,
         manager: RunnerPoolManager,
@@ -130,7 +134,8 @@ actor RunnerPoolReconciler {
         authService: any AuthorizationService = SingleTenantAuthorization(),
         isolation: any TenantIsolationPolicy = SingleTenantIsolation(),
         reusePolicy: ReusePolicy = .singleTenant,
-        githubService: GitHubRunnerService? = nil
+        githubService: GitHubRunnerService? = nil,
+        auditSink: any AuditSink = OSLogAuditSink()
     ) {
         self.client = client
         self.manager = manager
@@ -140,6 +145,7 @@ actor RunnerPoolReconciler {
         self.isolation = isolation
         self.reusePolicy = reusePolicy
         self.githubService = githubService
+        self.auditSink = auditSink
         self.session = URLSession(configuration: .ephemeral)
     }
 
@@ -322,8 +328,22 @@ actor RunnerPoolReconciler {
         let hostPoolID = hostPoolIDFromPool(pool)
 
         // In multi-tenant mode, verify the tenant can schedule onto this host pool.
+        // This is the tenant scheduling gate: node selection is driven by the
+        // RunnerPool spec's `nodeName` field, which the existing Reconciler uses
+        // when placing the MacOSVM CRD onto a physical node. The isolation check
+        // here ensures the tenant is permitted to use that host pool before the
+        // MacOSVM resource is even created.
         guard isolation.canSchedule(tenant: tenantID, onto: hostPoolID) else {
-            logger.warning("Tenant '\(tenantID, privacy: .public)' cannot schedule onto pool '\(hostPoolID, privacy: .public)', skipping runner '\(name, privacy: .public)'")
+            logger.warning("Skipping runner '\(name, privacy: .public)': tenant '\(tenantID, privacy: .public)' not allowed on pool '\(hostPoolID, privacy: .public)'")
+            let context = AuthorizationContext(
+                actorIdentity: "spook-controller",
+                tenant: tenantID,
+                scope: .runner,
+                resource: name,
+                action: "scheduleRunner"
+            )
+            let audit = AuditRecord(context: context, outcome: .denied)
+            await auditSink.record(audit)
             return
         }
 
@@ -350,7 +370,7 @@ actor RunnerPoolReconciler {
             action: "createRunner"
         )
         let audit = AuditRecord(context: context, outcome: .success)
-        logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+        await auditSink.record(audit)
 
         // Drive the state machine: node is available, start cloning.
         var updatedMachine = stateMachines[name]!
@@ -376,14 +396,14 @@ actor RunnerPoolReconciler {
         guard await authService.authorize(context) else {
             logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
             let audit = AuditRecord(context: context, outcome: .denied)
-            logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+            await auditSink.record(audit)
             return
         }
 
         await deleteChildVM(name: name, poolName: poolName)
 
         let audit = AuditRecord(context: context, outcome: .success)
-        logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+        await auditSink.record(audit)
 
         stateMachines.removeValue(forKey: name)
         runnerOwnership.removeValue(forKey: name)
@@ -432,7 +452,7 @@ actor RunnerPoolReconciler {
                 guard await authService.authorize(context) else {
                     logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
                     let audit = AuditRecord(context: context, outcome: .denied)
-                    logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+                    await auditSink.record(audit)
                     continue
                 }
                 logger.info("Side effect: stop VM for '\(runnerName, privacy: .public)'")
@@ -440,7 +460,7 @@ actor RunnerPoolReconciler {
                     await callNodeAPI(method: "POST", path: "/v1/vms/\(runnerName)/stop", on: endpoint)
                 }
                 let audit = AuditRecord(context: context, outcome: .success)
-                logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+                await auditSink.record(audit)
 
             case .deleteVM:
                 let context = AuthorizationContext(
@@ -453,13 +473,13 @@ actor RunnerPoolReconciler {
                 guard await authService.authorize(context) else {
                     logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
                     let audit = AuditRecord(context: context, outcome: .denied)
-                    logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+                    await auditSink.record(audit)
                     continue
                 }
                 logger.info("Side effect: delete VM for '\(runnerName, privacy: .public)'")
                 await deleteChildVM(name: runnerName, poolName: poolName)
                 let deleteAudit = AuditRecord(context: context, outcome: .success)
-                logger.notice("AUDIT: \(deleteAudit.action, privacy: .public) \(deleteAudit.resource, privacy: .public) by \(deleteAudit.actorIdentity, privacy: .public) [\(deleteAudit.tenant.description, privacy: .public)] → \(deleteAudit.outcome.rawValue, privacy: .public)")
+                await auditSink.record(deleteAudit)
 
             case .execProvisioningScript:
                 logger.info("Side effect: exec provisioning for '\(runnerName, privacy: .public)'")
@@ -489,7 +509,7 @@ actor RunnerPoolReconciler {
                 guard await authService.authorize(context) else {
                     logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
                     let audit = AuditRecord(context: context, outcome: .denied)
-                    logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+                    await auditSink.record(audit)
                     continue
                 }
                 logger.info("Side effect: deregister runner \(runnerId) for '\(runnerName, privacy: .public)'")
@@ -502,7 +522,7 @@ actor RunnerPoolReconciler {
                     }
                 }
                 let deregAudit = AuditRecord(context: context, outcome: .success)
-                logger.notice("AUDIT: \(deregAudit.action, privacy: .public) \(deregAudit.resource, privacy: .public) by \(deregAudit.actorIdentity, privacy: .public) [\(deregAudit.tenant.description, privacy: .public)] → \(deregAudit.outcome.rawValue, privacy: .public)")
+                await auditSink.record(deregAudit)
 
             case .updateStatus(let state):
                 logger.info("Side effect: update status to '\(state.rawValue, privacy: .public)' for '\(runnerName, privacy: .public)'")
@@ -519,6 +539,52 @@ actor RunnerPoolReconciler {
                 logger.info("Side effect: create replacement for '\(runnerName, privacy: .public)'")
                 // The next reconciliation pass will detect the shortfall and
                 // create a replacement via RunnerPoolManager.
+            }
+        }
+
+        // MARK: Warm-pool reuse tenant boundary check
+        //
+        // After executing side effects, if the runner has transitioned into
+        // the `.recycling` state, enforce tenant boundaries before allowing
+        // reuse. In multi-tenant mode, cross-tenant reuse is forbidden: if
+        // the previous tenant differs from the current tenant for this
+        // runner's pool, destroy the VM instead of recycling.
+        if let machine = stateMachines[runnerName], machine.state == .recycling {
+            let currentTenant = tenantID
+            let previousTenant = runnerTenants[runnerName] ?? .default
+
+            // Verify same-tenant reuse is allowed.
+            guard isolation.canReuse(vm: runnerName, fromTenant: previousTenant, forTenant: currentTenant) else {
+                logger.warning("Cross-tenant reuse blocked for '\(runnerName, privacy: .public)': previous=\(previousTenant.description, privacy: .public) current=\(currentTenant.description, privacy: .public)")
+
+                let context = AuthorizationContext(
+                    actorIdentity: "spook-controller",
+                    tenant: currentTenant,
+                    scope: .runner,
+                    resource: runnerName,
+                    action: "crossTenantReuseBlocked"
+                )
+                let audit = AuditRecord(context: context, outcome: .denied)
+                await auditSink.record(audit)
+
+                // Destroy instead of recycling — feed recycleFailed to
+                // transition to .failed and trigger deleteVM.
+                var failedMachine = machine
+                let failEffects = failedMachine.transition(event: .recycleFailed)
+                stateMachines[runnerName] = failedMachine
+                await executeSideEffects(failEffects, runnerName: runnerName, poolName: poolName)
+                return
+            }
+
+            // Enforce reuse policy: if warm-pool reuse is disallowed
+            // (e.g., ephemeral-only multi-tenant mode), destroy immediately.
+            if !reusePolicy.warmPoolAllowed {
+                logger.info("Warm-pool reuse disallowed by policy for '\(runnerName, privacy: .public)' — destroying")
+                var failedMachine = machine
+                let failEffects = failedMachine.transition(event: .recycleFailed)
+                stateMachines[runnerName] = failedMachine
+                await executeSideEffects(failEffects, runnerName: runnerName, poolName: poolName)
+                return
             }
         }
     }

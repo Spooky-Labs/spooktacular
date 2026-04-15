@@ -118,6 +118,20 @@ public actor HTTPAPIServer {
     /// Active connections tracked for clean shutdown.
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
 
+    /// The tenant identity for this server instance.
+    ///
+    /// In single-tenant mode this is ``TenantID/default``. In multi-tenant
+    /// mode it identifies which tenant this node belongs to so that
+    /// all API operations carry proper tenant context for audit and
+    /// isolation enforcement.
+    private let tenantID: TenantID
+
+    /// Optional structured audit sink for control-plane actions.
+    ///
+    /// When set, every API request emits a structured ``AuditRecord``
+    /// through this sink. Defaults to `nil` for backward compatibility.
+    private let auditSink: (any AuditSink)?
+
     /// Dispatch source monitoring the TLS certificate file for changes.
     ///
     /// Retained here to keep the file-system event source alive for the
@@ -141,6 +155,12 @@ public actor HTTPAPIServer {
     ///     When provided, the server accepts HTTPS connections using
     ///     the supplied certificate and key. Required in production.
     ///     When `nil`, requires `insecureMode: true` or startup fails.
+    ///   - tenantID: The tenant identity for this server instance.
+    ///     Defaults to ``TenantID/default`` for single-tenant
+    ///     deployments.
+    ///   - auditSink: Optional structured audit sink. When provided,
+    ///     every API request emits an ``AuditRecord``. Defaults to
+    ///     `nil` (no structured audit — existing os.Logger behavior).
     ///   - insecureMode: When `true`, disables the requirement for an
     ///     API token when TLS is not configured. The server logs a
     ///     prominent warning when running in insecure mode.
@@ -154,6 +174,8 @@ public actor HTTPAPIServer {
         vmDirectory: URL,
         spookPath: String = "/usr/local/bin/spook",
         tlsOptions: NWProtocolTLS.Options? = nil,
+        tenantID: TenantID = .default,
+        auditSink: (any AuditSink)? = nil,
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -176,6 +198,8 @@ public actor HTTPAPIServer {
         self.port = nwPort
         self.vmDirectory = vmDirectory
         self.spookPath = spookPath
+        self.tenantID = tenantID
+        self.auditSink = auditSink
         self.insecureMode = insecureMode
 
         let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"]
@@ -531,39 +555,73 @@ public actor HTTPAPIServer {
         if let token = apiToken {
             let header = request.headers["authorization"] ?? ""
             guard header == "Bearer \(token)" else {
-                return HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
+                let response = HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
+                await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+                return response
             }
         }
 
+        // Log tenant context for all authenticated API requests.
+        logger.info("[\(self.tenantID.description, privacy: .public)] \(request.method, privacy: .public) \(request.path, privacy: .public)")
+
         if request.method == "GET" && request.path == "/metrics" {
-            return await handleMetrics()
+            let response = await handleMetrics()
+            await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+            return response
         }
 
         guard components.count >= 2,
               components[0] == "v1",
               components[1] == "vms"
         else {
-            return HTTPResponse.error(message: "Not found.", statusCode: 404)
+            let response = HTTPResponse.error(message: "Not found.", statusCode: 404)
+            await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+            return response
         }
 
         if components.count >= 3 {
             let vmName = components[2]
             guard vmName.wholeMatch(of: Self.vmNamePattern) != nil else {
-                return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400)
+                let response = HTTPResponse.error(message: "Invalid VM name.", statusCode: 400)
+                await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+                return response
             }
         }
 
+        let response: HTTPResponse
         switch (request.method, components.count) {
-        case ("GET", 2):    return handleListVMs()
-        case ("POST", 2):   return handleCreateVM(request)
-        case ("GET", 3):    return handleGetVM(name: components[2])
-        case ("DELETE", 3): return handleDeleteVM(name: components[2])
-        case ("POST", 4) where components[3] == "clone": return handleCloneVM(name: components[2], request: request)
-        case ("POST", 4) where components[3] == "start": return handleStartVM(name: components[2])
-        case ("POST", 4) where components[3] == "stop":  return handleStopVM(name: components[2])
-        case ("GET", 4)  where components[3] == "ip":    return await handleGetIP(name: components[2])
-        default: return HTTPResponse.error(message: "Not found.", statusCode: 404)
+        case ("GET", 2):    response = handleListVMs()
+        case ("POST", 2):   response = handleCreateVM(request)
+        case ("GET", 3):    response = handleGetVM(name: components[2])
+        case ("DELETE", 3): response = handleDeleteVM(name: components[2])
+        case ("POST", 4) where components[3] == "clone": response = handleCloneVM(name: components[2], request: request)
+        case ("POST", 4) where components[3] == "start": response = handleStartVM(name: components[2])
+        case ("POST", 4) where components[3] == "stop":  response = handleStopVM(name: components[2])
+        case ("GET", 4)  where components[3] == "ip":    response = await handleGetIP(name: components[2])
+        default: response = HTTPResponse.error(message: "Not found.", statusCode: 404)
         }
+
+        await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+        return response
+    }
+
+    /// Emits a structured audit record for an API request when an audit sink is configured.
+    ///
+    /// - Parameters:
+    ///   - method: The HTTP method (e.g., `"GET"`, `"POST"`).
+    ///   - path: The request path (e.g., `"/v1/vms/runner-1/start"`).
+    ///   - statusCode: The HTTP status code of the response.
+    private func emitAPIAudit(method: String, path: String, statusCode: Int) async {
+        guard let sink = auditSink else { return }
+        let record = AuditRecord(
+            actorIdentity: "api-client",
+            tenant: tenantID,
+            scope: .admin,
+            resource: path,
+            action: method,
+            outcome: statusCode < 400 ? .success : .failed
+        )
+        await sink.record(record)
     }
 
     // MARK: - Handlers
@@ -725,7 +783,7 @@ public actor HTTPAPIServer {
             try SpooktacularPaths.ensureDirectories()
             let clonedBundle = try CloneManager.clone(source: sourceBundle, to: destinationURL)
 
-            logger.notice("Cloned VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)' via API")
+            logger.notice("[\(self.tenantID.description, privacy: .public)] Cloned VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)' via API")
             return HTTPResponse.ok(vmStatus(name: name, bundle: clonedBundle), statusCode: 201)
         } catch {
             logger.error("Failed to clone VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
@@ -804,7 +862,7 @@ public actor HTTPAPIServer {
 
         do {
             try process.run()
-            logger.notice("Started VM '\(name, privacy: .public)' via API (PID \(process.processIdentifier), log: \(logFileURL.path, privacy: .public))")
+            logger.notice("[\(self.tenantID.description, privacy: .public)] Started VM '\(name, privacy: .public)' via API (PID \(process.processIdentifier), log: \(logFileURL.path, privacy: .public))")
             return HTTPResponse.ok(VMActionResponse(
                 name: name,
                 action: "start",
@@ -844,7 +902,7 @@ public actor HTTPAPIServer {
 
         let result = kill(pid, SIGTERM)
         if result == 0 {
-            logger.notice("Sent SIGTERM to VM '\(name, privacy: .public)' (PID \(pid))")
+            logger.notice("[\(self.tenantID.description, privacy: .public)] Sent SIGTERM to VM '\(name, privacy: .public)' (PID \(pid))")
             return HTTPResponse.ok(VMActionResponse(
                 name: name,
                 action: "stop",
@@ -881,7 +939,7 @@ public actor HTTPAPIServer {
 
         do {
             try FileManager.default.removeItem(at: bundleURL)
-            logger.notice("Deleted VM '\(name, privacy: .public)' via API")
+            logger.notice("[\(self.tenantID.description, privacy: .public)] Deleted VM '\(name, privacy: .public)' via API")
             return HTTPResponse.ok(VMDeleteResponse(name: name, deleted: true))
         } catch {
             logger.error("Failed to delete VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")

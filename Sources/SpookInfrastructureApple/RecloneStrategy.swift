@@ -38,6 +38,10 @@ public struct RecloneStrategy: RecycleStrategy {
     /// Recycles the VM and validates the result. If validation fails,
     /// destroys the VM to prevent dirty reuse.
     ///
+    /// When a ``ReusePolicy`` is provided and ``ReusePolicy/warmPoolAllowed``
+    /// is `false`, the VM is destroyed immediately without attempting a
+    /// recycle — enforcing ephemeral mode in multi-tenant deployments.
+    ///
     /// Because reclone produces a fresh clone, validation is a simple
     /// health check. A healthy clone always returns ``RecycleResult/clean``.
     ///
@@ -46,13 +50,26 @@ public struct RecloneStrategy: RecycleStrategy {
     ///   - source: The source template name used for cloning.
     ///   - node: A ``NodeClient`` to communicate with the node.
     ///   - endpoint: The endpoint URL of the node.
-    /// - Returns: ``RecycleResult/clean`` after a successful health check.
+    ///   - reusePolicy: Optional reuse policy. When warm-pool reuse is
+    ///     disallowed, the VM is destroyed instead of recycled.
+    /// - Returns: ``RecycleResult/clean`` after a successful health check,
+    ///   or ``RecycleResult/destroyed`` if validation failed or reuse
+    ///   is disallowed.
     public func recycleWithValidation(
         vm: String,
         source: String,
         using node: any NodeClient,
-        on endpoint: URL
+        on endpoint: URL,
+        reusePolicy: ReusePolicy? = nil
     ) async throws -> RecycleResult {
+        // If reuse policy forbids warm-pool reuse, destroy immediately.
+        if let policy = reusePolicy, !policy.warmPoolAllowed {
+            log.info("VM '\(vm)' warm-pool reuse disallowed by policy — destroying")
+            try await node.stop(vm: vm, on: endpoint)
+            try await node.delete(vm: vm, on: endpoint)
+            return .destroyed
+        }
+
         try await recycle(vm: vm, source: source, using: node, on: endpoint)
         let valid = try await validate(vm: vm, using: node, on: endpoint)
         if valid {

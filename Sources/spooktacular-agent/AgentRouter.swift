@@ -26,6 +26,32 @@ import AppKit
 import Foundation
 import os
 
+/// Optional file-based audit sink for SIEM export.
+/// Set SPOOK_AGENT_AUDIT_FILE to enable.
+nonisolated(unsafe) private var agentAuditFile: FileHandle? = {
+    guard let path = ProcessInfo.processInfo.environment["SPOOK_AGENT_AUDIT_FILE"],
+          !path.isEmpty else {
+        return nil
+    }
+    let fm = FileManager.default
+    if !fm.fileExists(atPath: path) {
+        let dir = (path as NSString).deletingLastPathComponent
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: nil)
+    }
+    guard let handle = FileHandle(forWritingAtPath: path) else { return nil }
+    handle.seekToEndOfFile()
+    return handle
+}()
+
+/// Shared JSON encoder for agent audit JSONL lines.
+private let agentAuditEncoder: JSONEncoder = {
+    let enc = JSONEncoder()
+    enc.dateEncodingStrategy = .iso8601
+    enc.outputFormatting = [.sortedKeys]
+    return enc
+}()
+
 /// Logger for agent route handlers.
 private let log = Logger(subsystem: "com.spooktacular.agent", category: "router")
 
@@ -311,6 +337,35 @@ private func emitAuditLog(method: String, path: String, statusCode: Int, tier: A
     let timestamp = ISO8601DateFormatter().string(from: Date())
     let tierLabel = tier?.rawValue ?? "none"
     auditLog.notice("AUDIT: \(method, privacy: .public) \(path, privacy: .public) → \(statusCode) [\(tierLabel, privacy: .public)] [\(timestamp, privacy: .public)]")
+
+    // For break-glass operations, also write a structured JSON line to the
+    // agent audit file when SPOOK_AGENT_AUDIT_FILE is configured.
+    if path == "/api/v1/exec", let handle = agentAuditFile {
+        struct AgentAuditEntry: Encodable {
+            let id: String
+            let timestamp: String
+            let actorIdentity: String
+            let scope: String
+            let resource: String
+            let action: String
+            let outcome: String
+            let tier: String
+        }
+        let entry = AgentAuditEntry(
+            id: UUID().uuidString,
+            timestamp: timestamp,
+            actorIdentity: "guest-agent",
+            scope: "break-glass",
+            resource: path,
+            action: method,
+            outcome: statusCode < 400 ? "success" : "failed",
+            tier: tierLabel
+        )
+        if var data = try? agentAuditEncoder.encode(entry) {
+            data.append(0x0A) // newline
+            handle.write(data)
+        }
+    }
 }
 
 // MARK: - Response Builders

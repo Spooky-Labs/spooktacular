@@ -41,6 +41,10 @@ public struct SnapshotStrategy: RecycleStrategy {
     /// Recycles the VM and validates the result. If validation fails,
     /// destroys the VM to prevent dirty reuse.
     ///
+    /// When a ``ReusePolicy`` is provided and ``ReusePolicy/warmPoolAllowed``
+    /// is `false`, the VM is destroyed immediately without attempting a
+    /// snapshot restore — enforcing ephemeral mode in multi-tenant deployments.
+    ///
     /// Restores the snapshot, boots the VM, then runs a health check.
     /// If the health check fails the VM is stopped and deleted.
     ///
@@ -49,14 +53,26 @@ public struct SnapshotStrategy: RecycleStrategy {
     ///   - source: The source template name (used if a fresh clone is needed later).
     ///   - node: A ``NodeClient`` to communicate with the node.
     ///   - endpoint: The endpoint URL of the node.
+    ///   - reusePolicy: Optional reuse policy. When warm-pool reuse is
+    ///     disallowed, the VM is destroyed instead of recycled.
     /// - Returns: ``RecycleResult/clean`` if health passes,
-    ///   ``RecycleResult/destroyed`` if health failed and the VM was torn down.
+    ///   ``RecycleResult/destroyed`` if health failed or reuse
+    ///   is disallowed.
     public func recycleWithValidation(
         vm: String,
         source: String,
         using node: any NodeClient,
-        on endpoint: URL
+        on endpoint: URL,
+        reusePolicy: ReusePolicy? = nil
     ) async throws -> RecycleResult {
+        // If reuse policy forbids warm-pool reuse, destroy immediately.
+        if let policy = reusePolicy, !policy.warmPoolAllowed {
+            log.info("VM '\(vm)' warm-pool reuse disallowed by policy — destroying")
+            try await node.stop(vm: vm, on: endpoint)
+            try await node.delete(vm: vm, on: endpoint)
+            return .destroyed
+        }
+
         try await recycle(vm: vm, source: source, using: node, on: endpoint)
         let valid = try await validate(vm: vm, using: node, on: endpoint)
         if valid {
