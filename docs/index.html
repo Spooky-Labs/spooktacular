@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spooktacular — Double Your Mac Capacity. Same Hardware.</title>
-<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Guest agent with clipboard sync, remote exec, app control. 360 tests, 15+ CLI commands. MIT licensed, $0 forever.">
-<meta name="keywords" content="macOS virtualization, Apple Silicon VM, CI/CD runners, GitHub Actions, guest agent, clipboard sync, remote exec, AI agents, open source">
+<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Ephemeral runner pools, warm-pool scrub validation, Kubernetes orchestration. 424 tests, 15+ CLI commands. MIT licensed, $0 forever.">
+<meta name="keywords" content="macOS virtualization, Apple Silicon VM, CI/CD runners, GitHub Actions, runner pools, ephemeral runners, mTLS, Kubernetes, EC2 Mac, open source">
 <meta property="og:title" content="Spooktacular — Double Your Mac Capacity">
 <meta property="og:description" content="Run 2 macOS VMs per Mac. Guest agent for clipboard, exec, apps. APFS cloning, HTTP API, Kubernetes operator. MIT licensed, $0 forever.">
 <meta property="og:type" content="website">
@@ -228,7 +228,7 @@ Spooktacular
 </div>
 
 <h1 id="hero-heading">Double your Mac capacity. <span class="gradient">Same hardware.</span></h1>
-<p class="lead">Run 2 macOS VMs per Mac with APFS cloning, a rich guest agent for clipboard sync and remote exec, and a full HTTP API. Open source, $0 forever.</p>
+<p class="lead">Run 2 macOS VMs per Mac with APFS cloning, ephemeral runner pools, warm-pool scrub validation, and Kubernetes orchestration. Open source, $0 forever.</p>
 <div class="cta">
 <a href="get-started.html" class="btn-primary">Get Started</a>
 <a href="download.html" class="btn-secondary">Download</a>
@@ -237,19 +237,21 @@ Spooktacular
 
 <!-- Terminal demo -->
 <div class="container">
-<div class="terminal" role="figure" aria-label="Terminal showing spook remote exec command">
-<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">spook remote</span></div>
+<div class="terminal" role="figure" aria-label="Terminal showing runner pool and doctor commands">
+<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">spooktacular</span></div>
 <div class="terminal-body">
-<div><span class="cmt"># Run a command inside the guest VM -- no SSH needed</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook remote exec my-vm -- "sw_vers --productVersion"</span></div>
-<div><span class="ok">15.4</span></div>
+<div><span class="cmt"># Create ephemeral GitHub runners on your Mac fleet</span></div>
+<div><span class="dim">$</span> <span class="cmd">kubectl get rp</span></div>
+<div>NAME              READY  BUSY  MIN  MAX  MODE       PHASE</div>
+<div><span class="ok">ios-ci-runners    2      0     2    4    ephemeral  Healthy</span></div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Sync the guest clipboard to your host</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook remote clipboard get my-vm</span></div>
-<div><span class="ok">Hello from inside the VM</span></div>
+<div><span class="cmt"># Verify host readiness</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook doctor</span></div>
+<div><span class="ok">&#10003;</span> Apple Silicon (arm64)</div>
+<div><span class="ok">&#10003;</span> macOS 15.4.0 &middot; TLS configured &middot; Capacity: 0/2</div>
 <div>&nbsp;</div>
-<div><span class="cmt"># Check what apps are running in the guest</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook remote apps my-vm</span></div>
+<div><span class="cmt"># Clone a VM in 48ms</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook clone base runner-01</span></div>
 <div><span class="file">com.apple.finder</span>  <span class="dim">Finder</span>  <span class="ok">running</span></div>
 <div><span class="file">com.apple.Safari</span>  <span class="dim">Safari</span>  <span class="ok">running</span></div>
 </div>
@@ -260,7 +262,7 @@ Spooktacular
 <!-- Stats -->
 <div class="container">
 <div class="stats-bar" role="figure" aria-label="Project statistics">
-<div class="stat-item"><div class="num">328</div><div class="label">Tests in 43 suites</div></div>
+<div class="stat-item"><div class="num">424</div><div class="label">Tests in 53 suites</div></div>
 <div class="stat-item"><div class="num">15+</div><div class="label">CLI commands</div></div>
 <div class="stat-item"><div class="num">~15K</div><div class="label">Lines of Swift</div></div>
 <div class="stat-item"><div class="num">$0</div><div class="label">Forever</div></div>
@@ -403,7 +405,7 @@ Spooktacular
 <section class="bottom-cta">
 <div class="container">
 <h2>Ready to double your Mac capacity?</h2>
-<p>360 tests. 15+ CLI commands. $0. Install and create your first VM in under 20 minutes.</p>
+<p>424 tests. 15+ CLI commands. $0. Install and create your first VM in under 20 minutes.</p>
 <div class="buttons">
 <a href="get-started.html" class="btn-primary">Get Started</a>
 <a href="download.html" class="btn-secondary">Download</a>

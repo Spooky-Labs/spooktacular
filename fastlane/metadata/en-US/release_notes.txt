@@ -42,4 +42,4 @@ GUI
 - Full VoiceOver and accessibility support
 
 Testing
-- 360 tests across the full stack
+- 424 tests across the full stack

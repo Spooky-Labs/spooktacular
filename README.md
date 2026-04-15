@@ -253,7 +253,7 @@ See [SECURITY.md](SECURITY.md) for the full threat model, known limitations, and
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 360 tests
+swift test               # Run 424 tests
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -261,7 +261,7 @@ swift test               # Run 360 tests
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | 419 tests + release build + .app bundle |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | 424 tests + release build + .app bundle |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [Docs](https://github.com/Spooky-Labs/spooktacular/actions/workflows/docs.yml) | Push to main | DocC generation + GitHub Pages deploy |

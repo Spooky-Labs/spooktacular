@@ -986,7 +986,7 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
 
     /// No API token is configured and the server is not running in
     /// insecure mode. An API token is required to prevent
-    /// unauthenticated access to VM management endpoints.
+    /// unauthorized access to VM management endpoints.
     case missingAPIToken
 
     /// The TLS certificate file could not be opened for monitoring.

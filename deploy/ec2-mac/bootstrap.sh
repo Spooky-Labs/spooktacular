@@ -7,8 +7,8 @@
 #
 # Usage:
 #   - As EC2 user-data (runs automatically on first boot)
-#   - Via SSM Run Command: aws ssm send-command --document-name "AWS-RunShellScript" \
-#       --parameters commands="curl -fsSL .../bootstrap.sh | bash"
+#   - Via SSM (recommended): aws ssm send-command \
+#       --instance-ids i-xxx --document-name "SpooktacularInstall"
 #   - Manually: ssh ec2-user@<ip> 'bash -s' < bootstrap.sh
 #   - Drain mode: bootstrap.sh --drain   (stop accepting new VMs)
 #   - Undrain:    bootstrap.sh --undrain  (resume accepting VMs)
