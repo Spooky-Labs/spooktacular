@@ -12,7 +12,7 @@ We support the current release and the immediately prior release (N and N-1). Ol
 
 ## Security Model
 
-Spooktacular currently supports **Pilot (Single-Tenant)** deployments — one team per trust domain, on Mac hardware that team controls. See [Deployment Classes](#deployment-classes) for the full comparison between Pilot and the planned Enterprise Platform mode.
+Spooktacular supports two deployment classes: **Pilot (Single-Tenant)** and **Enterprise Platform (Multi-Tenant)**. See [Deployment Classes](#deployment-classes) for the full comparison. Single-tenant is the recommended starting point; multi-tenant adds tenant-partitioned scheduling, cross-tenant reuse prevention, and structured SIEM audit export.
 
 In Pilot mode, the security model assumes the operator controls both the host and all guests. Production deployments require mandatory mTLS for controller-to-node traffic, Keychain-backed secret storage, and three-tier guest agent authorization.
 
@@ -54,15 +54,15 @@ These are **known limitations**, not bugs:
 
 ### Who should use Spooktacular
 
-- DevOps teams running CI/CD on Mac hardware they own
+- DevOps teams running CI/CD on Mac hardware they own (single-tenant)
+- Organizations with multiple teams sharing a Mac fleet (multi-tenant with `SPOOK_TENANCY_MODE=multi-tenant`)
 - Teams that need remote desktops or code signing on dedicated Macs
-- Operators comfortable with single-tenant security (one team per host)
 
 ### Who should NOT use Spooktacular (yet)
 
-- Multi-tenant environments where untrusted users share the same host
 - Environments requiring SOC 2 Type II compliance for the VM management layer
-- Deployments requiring per-user RBAC or federated identity (OIDC/SAML)
+- Deployments requiring federated identity (OIDC/SAML) — certificate-based identity is supported, not federated
+- Environments requiring cryptographically signed, tamper-proof audit logs
 
 ## Deployment Models
 
@@ -78,7 +78,7 @@ Spooktacular supports three deployment topologies, each with different security 
 
 | Aspect | Pilot (Single-Tenant) | Enterprise Platform (Multi-Tenant) |
 |--------|----------------------|-----------------------------------|
-| **Status** | Supported | Planned |
+| **Status** | Supported | Supported (SPOOK_TENANCY_MODE=multi-tenant) |
 | **Trust boundary** | One team per host/fleet | Multiple teams, tenant isolation |
 | **Identity model** | mTLS certificates + bearer tokens | Federated identity (OIDC/SAML) + per-user RBAC |
 | **Authorization** | Scope-based (read/runner/break-glass) | Tenant + scope + resource policy |
@@ -86,7 +86,7 @@ Spooktacular supports three deployment topologies, each with different security 
 | **Warm-pool reuse** | Allowed with scrub validation | Same-tenant only, cross-tenant forbidden |
 | **Break-glass shell** | Available with admin controls | Disabled by default, explicit per-tenant opt-in |
 | **Audit** | os.Logger (Console.app, `log show`) | External SIEM forwarding required |
-| **Locking** | Per-host flock(2) | Distributed coordination (planned) |
+| **Locking** | Per-host flock(2) | Per-host flock(2) (distributed coordination not yet available) |
 
 **Current recommendation:** Deploy as Pilot (Single-Tenant) on isolated EC2 Mac hosts owned by one team. Enterprise Platform mode requires federated identity, tenant isolation, and externalized audit — tracked in the [roadmap](docs/superpowers/specs/2026-04-14-fortune20-build-plan.md).
 
@@ -121,7 +121,7 @@ Spooktacular supports three deployment topologies, each with different security 
 | Single host, single team | Yes | Bearer token + optional TLS | os.Logger |
 | Multi-host, single team | Yes | Mandatory mTLS + bearer token | os.Logger |
 | EC2 Mac fleet | Yes | mTLS + IMDS identity | os.Logger + CloudWatch forwarding |
-| Multi-tenant | Planned | Federated identity + tenant isolation | External SIEM required |
+| Multi-tenant | Supported | Certificate identity + tenant isolation | JSONL SIEM export (SPOOK_AUDIT_FILE) |
 
 ## Reporting a Vulnerability
 
@@ -169,8 +169,8 @@ These rules are enforced by the compiler (separate SwiftPM targets) and runtime 
 1. **No production control-plane call without mTLS.** Controller refuses to start without TLS certificates (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`). The `SPOOK_INSECURE_CONTROLLER=1` bypass exists for local development only and logs a prominent warning.
 2. **No VM returned to a warm pool without positive scrub validation.** `ScrubStrategy.recycleWithValidation()` runs a verification script; failed validation triggers stop + delete via `NodeClient`.
 3. **No runner considered Ready until both guest health check and GitHub registration are confirmed.** `RunnerStateMachine` transitions through `booting` (requires `.healthCheckPassed`) and `registering` (requires `.runnerRegistered`) before reaching `.ready`.
-4. **No break-glass operation without separate scope and audit.** Shell execution requires `AuthScope.breakGlass` tier; every invocation is audit-logged at `.notice` level. Disabled by default in multi-tenant mode (planned).
+4. **No break-glass operation without separate scope and audit.** Shell execution requires `AuthScope.breakGlass` tier on vsock port 9472; every invocation produces an `AuditRecord`. Disabled by default in multi-tenant mode.
 5. **No domain logic in Apple-framework adapters.** `SpookCore` and `SpookApplication` import Foundation only (compiler-enforced via separate SwiftPM targets with no framework dependencies).
 6. **No Apple-framework types in domain objects.** `SpookCore` has zero framework imports beyond Foundation across all 22 source files.
 7. **No tenantless request path.** `AuthorizationContext` requires `TenantID` at construction. Single-tenant deployments use `TenantID.default`.
-8. **No cross-tenant warm-pool reuse.** `MultiTenantIsolation.canReuse()` returns `true` only when `fromTenant == forTenant`. (Multi-tenant mode is planned.)
+8. **No cross-tenant warm-pool reuse.** `MultiTenantIsolation.canReuse()` returns `true` only when `fromTenant == forTenant`. Enforced in `RunnerPoolReconciler` before every recycle operation.
