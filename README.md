@@ -170,18 +170,17 @@ spook serve --port 8484 --host 127.0.0.1
 
 ## Guest Agent
 
-The [guest agent](Sources/spooktacular-agent/) runs inside the VM and provides 12 HTTP endpoints over VirtIO socket — no SSH needed.
+The [guest agent](Sources/spooktacular-agent/) runs inside the VM and provides HTTP endpoints over three separate VirtIO socket channels — no SSH needed.
+
+| Port | Channel | Operations |
+|------|---------|-----------|
+| 9470 | Read-only | health, list apps, list ports, inspect |
+| 9471 | Runner | read-only + clipboard, app launch/quit, file upload |
+| 9472 | Break-glass | all above + shell exec (admin only, audit-logged) |
 
 ```bash
-# Check agent connectivity
+# Check agent connectivity (port 9470 — read-only)
 spook remote health my-vm
-
-# Run a command in the guest
-spook remote exec my-vm -- "sw_vers"
-
-# Clipboard sync
-spook remote clipboard get my-vm
-spook remote clipboard set my-vm "hello from host"
 
 # List running apps
 spook remote apps my-vm
@@ -241,13 +240,44 @@ Includes Terraform module, SSM automation, and bootstrap script. See [`deploy/ec
 
 ## Security
 
-Spooktacular is a **single-tenant, single-host** system. The security model is designed for teams that own their Mac hardware:
+Spooktacular supports **single-tenant** and **multi-tenant** deployment modes:
 
-- **HTTP API**: TLS via `--tls-cert`/`--tls-key`, bearer token required in production
-- **Guest agent**: Scoped tokens (full-access vs read-only), host CID verification, audit logging
-- **Capacity**: flock-serialized PID writes prevent TOCTOU races
+- **Mandatory mTLS** in production — controller refuses to start without certificates
+- **Three vsock channels** — read-only (9470), runner (9471), break-glass (9472) with transport-layer scope enforcement
+- **OIDC federated identity** — `OIDCTokenVerifier` for JWT validation with group-to-tenant mapping
+- **Merkle tree audit** — RFC 6962-aligned with signed tree heads (Ed25519) and inclusion proofs
+- **Distributed locking** — K8s Lease-based coordination for multi-host scheduling
 
-See [SECURITY.md](SECURITY.md) for the full threat model, known limitations, and what this tool is **not** designed for.
+See [SECURITY.md](SECURITY.md) for deployment classes, architectural invariants, and standards references.
+
+## Audit & SIEM
+
+Every control-plane action produces a structured `AuditRecord` (JSONL):
+
+```bash
+# Enable JSONL audit export
+SPOOK_AUDIT_FILE=/var/log/spooktacular/audit.jsonl spook serve ...
+
+# Ship to Splunk/Elasticsearch via FluentBit
+fluent-bit -i tail -p path=/var/log/spooktacular/audit.jsonl \
+  -o es -p Host=elasticsearch.internal -p Index=spooktacular-audit
+
+# Ship to CloudWatch Logs
+aws logs put-log-events --log-group-name spooktacular \
+  --log-stream-name "$(hostname)" \
+  --log-events "$(jq -c '{timestamp: (.timestamp | fromdate * 1000 | floor), message: tojson}' /var/log/spooktacular/audit.jsonl)"
+```
+
+Each record contains: `actorIdentity`, `tenant`, `scope`, `resource`, `action`, `outcome`, `correlationID`, `timestamp`. See [SECURITY.md](SECURITY.md#structured-audit-logging) for the full schema.
+
+## Supply Chain
+
+Every release ships with:
+
+- **Notarized binary** — Apple notarization via `notarytool`
+- **Build provenance** — [artifact attestation](https://github.com/Spooky-Labs/spooktacular/attestations) via `actions/attest-build-provenance`
+- **SBOM** — SPDX format, attached to each [GitHub Release](https://github.com/Spooky-Labs/spooktacular/releases)
+- **Code scanning** — [CodeQL for Swift](https://github.com/Spooky-Labs/spooktacular/security/code-scanning) on every push to main
 
 ## Building from Source
 
