@@ -45,8 +45,23 @@ import os
 
 // MARK: - Constants
 
-/// The vsock port the agent listens on, matching ``VsockProvisioner/agentPort``.
-private let agentPort: UInt32 = 9470
+/// The vsock port for the read-only channel, matching ``VsockProvisioner/agentPort``.
+///
+/// Serves health checks and GET-only endpoints. This is the default
+/// port that existing host-side code connects to.
+private let readonlyPort: UInt32 = 9470
+
+/// The vsock port for the runner channel.
+///
+/// Serves read-only endpoints plus mutation endpoints (launch/quit apps,
+/// set clipboard, upload files). Does NOT permit exec.
+private let runnerPort: UInt32 = 9471
+
+/// The vsock port for the break-glass channel.
+///
+/// Serves all endpoints including exec. Requires explicit break-glass
+/// authorization at the token layer as well.
+private let breakGlassPort: UInt32 = 9472
 
 /// Path to the shared-folder token file used for agent authentication.
 ///
@@ -178,9 +193,11 @@ enum SpookAgent {
         }
 
         let tokens = loadTokens()
-        log.notice("spooktacular-agent starting on vsock port \(agentPort)")
-        AgentHTTPServer.listen(
-            port: agentPort,
+        log.notice("spooktacular-agent starting: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort)")
+        AgentHTTPServer.listenAll(
+            readonlyPort: readonlyPort,
+            runnerPort: runnerPort,
+            breakGlassPort: breakGlassPort,
             adminToken: tokens.admin,
             runnerToken: tokens.runner,
             readonlyToken: tokens.readOnly

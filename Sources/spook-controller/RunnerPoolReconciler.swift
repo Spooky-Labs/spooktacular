@@ -88,6 +88,9 @@ actor RunnerPoolReconciler {
     /// Tracks which RunnerPool owns each runner, keyed by runner name.
     private var runnerOwnership: [String: String] = [:]
 
+    /// Tracks the tenant identity for each runner, keyed by runner name.
+    private var runnerTenants: [String: TenantID] = [:]
+
     /// Pending timeouts, keyed by runner name. Cancelled when the timeout fires
     /// or a ``RunnerStateMachine/SideEffect/cancelTimeout`` is returned.
     private var timeouts: [String: Task<Void, Never>] = [:]
@@ -107,15 +110,35 @@ actor RunnerPoolReconciler {
     /// GitHub API scope (e.g., "repos/org/repo" or "orgs/org").
     private var githubScope: String = ""
 
+    /// The tenancy mode (single-tenant or multi-tenant) for this controller.
+    private let tenancyMode: TenancyMode
+
+    /// Authorization service that evaluates whether actions are permitted.
+    private let authService: any AuthorizationService
+
+    /// Tenant isolation policy for scheduling and resource access.
+    private let isolation: any TenantIsolationPolicy
+
+    /// Reuse policy governing VM recycling between jobs.
+    private let reusePolicy: ReusePolicy
+
     init(
         client: KubernetesClient,
         manager: RunnerPoolManager,
         nodeManager: NodeManager,
+        tenancyMode: TenancyMode = .singleTenant,
+        authService: any AuthorizationService = SingleTenantAuthorization(),
+        isolation: any TenantIsolationPolicy = SingleTenantIsolation(),
+        reusePolicy: ReusePolicy = .singleTenant,
         githubService: GitHubRunnerService? = nil
     ) {
         self.client = client
         self.manager = manager
         self.nodeManager = nodeManager
+        self.tenancyMode = tenancyMode
+        self.authService = authService
+        self.isolation = isolation
+        self.reusePolicy = reusePolicy
         self.githubService = githubService
         self.session = URLSession(configuration: .ephemeral)
     }
@@ -281,6 +304,7 @@ actor RunnerPoolReconciler {
             await deleteChildVM(name: runnerName, poolName: poolName)
             stateMachines.removeValue(forKey: runnerName)
             runnerOwnership.removeValue(forKey: runnerName)
+            runnerTenants.removeValue(forKey: runnerName)
             timeouts[runnerName]?.cancel()
             timeouts.removeValue(forKey: runnerName)
         }
@@ -293,17 +317,40 @@ actor RunnerPoolReconciler {
         let poolName = pool.metadata.name
         logger.info("Creating runner '\(name, privacy: .public)' for pool '\(poolName, privacy: .public)'")
 
+        // Resolve tenant identity from pool labels (or default for single-tenant).
+        let tenantID = tenantIDFromPool(pool)
+        let hostPoolID = hostPoolIDFromPool(pool)
+
+        // In multi-tenant mode, verify the tenant can schedule onto this host pool.
+        guard isolation.canSchedule(tenant: tenantID, onto: hostPoolID) else {
+            logger.warning("Tenant '\(tenantID, privacy: .public)' cannot schedule onto pool '\(hostPoolID, privacy: .public)', skipping runner '\(name, privacy: .public)'")
+            return
+        }
+
         // Initialize the state machine.
         var machine = RunnerStateMachine(maxRetries: 3)
         machine.sourceVM = sourceVM
         stateMachines[name] = machine
         runnerOwnership[name] = poolName
+        runnerTenants[name] = tenantID
 
-        // Create the MacOSVM child resource via K8s API.
+        // Create the MacOSVM child resource via K8s API, including tenant metadata.
         await createChildVM(
             name: name,
-            pool: pool
+            pool: pool,
+            tenantID: tenantID
         )
+
+        // Audit the runner creation.
+        let context = AuthorizationContext(
+            actorIdentity: "spook-controller",
+            tenant: tenantID,
+            scope: .runner,
+            resource: name,
+            action: "createRunner"
+        )
+        let audit = AuditRecord(context: context, outcome: .success)
+        logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
 
         // Drive the state machine: node is available, start cloning.
         var updatedMachine = stateMachines[name]!
@@ -317,10 +364,30 @@ actor RunnerPoolReconciler {
         let poolName = pool.metadata.name
         logger.info("Deleting runner '\(name, privacy: .public)' from pool '\(poolName, privacy: .public)'")
 
+        // Authorize the destructive operation.
+        let tenantID = tenantIDFromPool(pool)
+        let context = AuthorizationContext(
+            actorIdentity: "spook-controller",
+            tenant: tenantID,
+            scope: .runner,
+            resource: name,
+            action: "deleteRunner"
+        )
+        guard await authService.authorize(context) else {
+            logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
+            let audit = AuditRecord(context: context, outcome: .denied)
+            logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+            return
+        }
+
         await deleteChildVM(name: name, poolName: poolName)
+
+        let audit = AuditRecord(context: context, outcome: .success)
+        logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
 
         stateMachines.removeValue(forKey: name)
         runnerOwnership.removeValue(forKey: name)
+        runnerTenants.removeValue(forKey: name)
         timeouts[name]?.cancel()
         timeouts.removeValue(forKey: name)
     }
@@ -331,11 +398,16 @@ actor RunnerPoolReconciler {
     ///
     /// Each side effect maps to a K8s API call or a scheduled task. The
     /// reconciler does not interpret the effects — it simply executes them.
+    /// Destructive operations are gated by the authorization service and
+    /// produce audit records.
     private func executeSideEffects(
         _ effects: [RunnerStateMachine.SideEffect],
         runnerName: String,
         poolName: String
     ) async {
+        // Resolve the tenant for this runner from its owning pool name.
+        let tenantID = tenantIDForRunner(runnerName)
+
         for effect in effects {
             switch effect {
             case .cloneVM:
@@ -350,14 +422,44 @@ actor RunnerPoolReconciler {
                 }
 
             case .stopVM:
+                let context = AuthorizationContext(
+                    actorIdentity: "spook-controller",
+                    tenant: tenantID,
+                    scope: .runner,
+                    resource: runnerName,
+                    action: "stopVM"
+                )
+                guard await authService.authorize(context) else {
+                    logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
+                    let audit = AuditRecord(context: context, outcome: .denied)
+                    logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+                    continue
+                }
                 logger.info("Side effect: stop VM for '\(runnerName, privacy: .public)'")
                 if let endpoint = await nodeManager.endpoint(for: runnerName) {
                     await callNodeAPI(method: "POST", path: "/v1/vms/\(runnerName)/stop", on: endpoint)
                 }
+                let audit = AuditRecord(context: context, outcome: .success)
+                logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
 
             case .deleteVM:
+                let context = AuthorizationContext(
+                    actorIdentity: "spook-controller",
+                    tenant: tenantID,
+                    scope: .runner,
+                    resource: runnerName,
+                    action: "deleteVM"
+                )
+                guard await authService.authorize(context) else {
+                    logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
+                    let audit = AuditRecord(context: context, outcome: .denied)
+                    logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+                    continue
+                }
                 logger.info("Side effect: delete VM for '\(runnerName, privacy: .public)'")
                 await deleteChildVM(name: runnerName, poolName: poolName)
+                let deleteAudit = AuditRecord(context: context, outcome: .success)
+                logger.notice("AUDIT: \(deleteAudit.action, privacy: .public) \(deleteAudit.resource, privacy: .public) by \(deleteAudit.actorIdentity, privacy: .public) [\(deleteAudit.tenant.description, privacy: .public)] → \(deleteAudit.outcome.rawValue, privacy: .public)")
 
             case .execProvisioningScript:
                 logger.info("Side effect: exec provisioning for '\(runnerName, privacy: .public)'")
@@ -377,6 +479,19 @@ actor RunnerPoolReconciler {
                 }
 
             case .deregisterRunner(let runnerId):
+                let context = AuthorizationContext(
+                    actorIdentity: "spook-controller",
+                    tenant: tenantID,
+                    scope: .runner,
+                    resource: runnerName,
+                    action: "deregisterRunner"
+                )
+                guard await authService.authorize(context) else {
+                    logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
+                    let audit = AuditRecord(context: context, outcome: .denied)
+                    logger.notice("AUDIT: \(audit.action, privacy: .public) \(audit.resource, privacy: .public) by \(audit.actorIdentity, privacy: .public) [\(audit.tenant.description, privacy: .public)] → \(audit.outcome.rawValue, privacy: .public)")
+                    continue
+                }
                 logger.info("Side effect: deregister runner \(runnerId) for '\(runnerName, privacy: .public)'")
                 if let service = githubService, !githubScope.isEmpty {
                     do {
@@ -386,6 +501,8 @@ actor RunnerPoolReconciler {
                         logger.error("Failed to deregister runner \(runnerId): \(error.localizedDescription, privacy: .public)")
                     }
                 }
+                let deregAudit = AuditRecord(context: context, outcome: .success)
+                logger.notice("AUDIT: \(deregAudit.action, privacy: .public) \(deregAudit.resource, privacy: .public) by \(deregAudit.actorIdentity, privacy: .public) [\(deregAudit.tenant.description, privacy: .public)] → \(deregAudit.outcome.rawValue, privacy: .public)")
 
             case .updateStatus(let state):
                 logger.info("Side effect: update status to '\(state.rawValue, privacy: .public)' for '\(runnerName, privacy: .public)'")
@@ -593,8 +710,8 @@ actor RunnerPoolReconciler {
 
     /// Creates a MacOSVM child resource with ownerReferences pointing back to
     /// the RunnerPool, so Kubernetes garbage-collects children when the pool
-    /// is deleted.
-    private func createChildVM(name: String, pool: RunnerPool) async {
+    /// is deleted. Includes tenant metadata for multi-tenant isolation.
+    private func createChildVM(name: String, pool: RunnerPool, tenantID: TenantID = .default) async {
         let namespace = client.namespace
         let baseURL = client.baseURL
         let url = baseURL.appendingPathComponent(
@@ -613,6 +730,7 @@ actor RunnerPoolReconciler {
                 "labels": [
                     "spooktacular.app/runner-pool": poolName,
                     "spooktacular.app/managed-by": "runner-pool-reconciler",
+                    "spooktacular.app/tenant": tenantID.rawValue,
                 ],
                 "ownerReferences": [
                     [
@@ -711,6 +829,38 @@ actor RunnerPoolReconciler {
         } catch {
             logger.error("Failed to update RunnerPool '\(poolName, privacy: .public)' status: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    // MARK: - Tenant Resolution
+
+    /// Extracts the ``TenantID`` from a RunnerPool's labels.
+    ///
+    /// Falls back to ``TenantID/default`` when no tenant label is present
+    /// (the single-tenant case).
+    private func tenantIDFromPool(_ pool: RunnerPool) -> TenantID {
+        if let raw = pool.metadata.labels?["spooktacular.app/tenant"] {
+            return TenantID(raw)
+        }
+        return .default
+    }
+
+    /// Extracts the ``HostPoolID`` from a RunnerPool's labels.
+    ///
+    /// Falls back to ``HostPoolID/default`` when no host-pool label is
+    /// present (the single-tenant case).
+    private func hostPoolIDFromPool(_ pool: RunnerPool) -> HostPoolID {
+        if let raw = pool.metadata.labels?["spooktacular.app/host-pool"] {
+            return HostPoolID(raw)
+        }
+        return .default
+    }
+
+    /// Resolves a ``TenantID`` for a runner name from the stored mapping.
+    ///
+    /// Falls back to ``TenantID/default`` for single-tenant deployments
+    /// or runners whose tenant was not recorded (e.g., crash recovery).
+    private func tenantIDForRunner(_ runnerName: String) -> TenantID {
+        runnerTenants[runnerName] ?? .default
     }
 
     // MARK: - Generic K8s Request

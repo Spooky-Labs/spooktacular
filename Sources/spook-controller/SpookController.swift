@@ -12,6 +12,7 @@
 /// | `NODE_LABEL_SELECTOR` | `spooktacular.app/role=mac-host` | Mac node selector |
 /// | `NODE_API_PORT` | `8484` | Port for `spook serve` |
 /// | `HEALTH_CHECK_INTERVAL` | `30` | Seconds between health checks |
+/// | `SPOOK_TENANCY_MODE` | `single-tenant` | `single-tenant` or `multi-tenant` |
 
 import Foundation
 import os
@@ -44,6 +45,25 @@ struct SpookController {
 
         let namespace = env["WATCH_NAMESPACE"] ?? client.namespace
         logger.notice("Watching ns=\(namespace, privacy: .public), selector=\(labelSelector, privacy: .public)")
+
+        // Tenancy mode: determines authorization, isolation, and reuse policies.
+        let tenancyMode: TenancyMode
+        switch env["SPOOK_TENANCY_MODE"] ?? "single-tenant" {
+        case "multi-tenant":
+            tenancyMode = .multiTenant
+            logger.notice("Tenancy mode: multi-tenant")
+        default:
+            tenancyMode = .singleTenant
+            logger.notice("Tenancy mode: single-tenant")
+        }
+
+        let reusePolicy = ReusePolicy.default(for: tenancyMode)
+        let isolation: any TenantIsolationPolicy = tenancyMode == .singleTenant
+            ? SingleTenantIsolation()
+            : MultiTenantIsolation(tenantPools: [:])  // configured from CRD labels
+        let authService: any AuthorizationService = tenancyMode == .singleTenant
+            ? SingleTenantAuthorization(policy: reusePolicy)
+            : MultiTenantAuthorization(policy: reusePolicy, isolation: isolation)
 
         // Load TLS identity for mTLS with Mac nodes.
         // Required in production. Use SPOOK_INSECURE_CONTROLLER=1 to bypass
@@ -82,7 +102,11 @@ struct SpookController {
         let poolReconciler = RunnerPoolReconciler(
             client: client,
             manager: poolManager,
-            nodeManager: nodeManager
+            nodeManager: nodeManager,
+            tenancyMode: tenancyMode,
+            authService: authService,
+            isolation: isolation,
+            reusePolicy: reusePolicy
         )
         let shutdownSignal = ShutdownSignal()
         let leaderElection = LeaderElection(client: client, leaseName: "spook-controller")

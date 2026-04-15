@@ -56,13 +56,30 @@ private let jsonDecoder = JSONDecoder()
 /// - ``readonly``: GET endpoints that inspect state without mutating it.
 /// - ``runner``: Mutation endpoints except exec (launch/quit apps, set clipboard, upload files).
 /// - ``breakGlass``: Shell execution only — requires explicit break-glass authorization.
-private enum EndpointScope: String {
+///
+/// Conforms to `Comparable` so vsock channel scopes can be compared
+/// against endpoint scopes: if the endpoint's scope exceeds the
+/// channel's scope, the request is rejected at the transport layer.
+enum EndpointScope: Int, Comparable {
     /// Read-only endpoints that inspect state without mutating it.
-    case readonly
+    case readonly = 0
     /// Runner-level mutation endpoints (apps, clipboard, files) — excludes exec.
-    case runner
+    case runner = 1
     /// Break-glass endpoints — raw shell execution only.
-    case breakGlass
+    case breakGlass = 2
+
+    static func < (lhs: EndpointScope, rhs: EndpointScope) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    /// Human-readable label for log messages.
+    var debugLabel: String {
+        switch self {
+        case .readonly: "readonly"
+        case .runner: "runner"
+        case .breakGlass: "break-glass"
+        }
+    }
 }
 
 /// Returns the ``EndpointScope`` for the given method/path pair,
@@ -89,6 +106,23 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
         return .readonly
     default:
         return nil
+    }
+}
+
+/// Returns the default vsock port for a given endpoint scope.
+///
+/// Used in 403 error messages to guide callers to the correct channel.
+///
+/// | Scope | Port |
+/// |-------|------|
+/// | `.readonly` | 9470 |
+/// | `.runner` | 9471 |
+/// | `.breakGlass` | 9472 |
+private func portForScope(_ scope: EndpointScope) -> UInt32 {
+    switch scope {
+    case .readonly: 9470
+    case .runner: 9471
+    case .breakGlass: 9472
     }
 }
 
@@ -122,12 +156,20 @@ private enum AuthTier: String {
 /// If no token is configured the agent runs in legacy mode
 /// (no auth, warning already logged at startup).
 ///
+/// Before token authentication, the router enforces a **channel scope**
+/// check. Each vsock port has a maximum scope; if the endpoint's scope
+/// exceeds the channel's scope, the request is rejected with 403
+/// regardless of the token presented. This provides physical isolation
+/// between capability tiers at the transport layer.
+///
 /// After dispatching every request the router emits an audit-level log
 /// entry via `os.Logger` at `.notice` so it appears in Console.app.
 /// The log includes the resolved authorization tier.
 ///
 /// - Parameters:
 ///   - request: The parsed HTTP request.
+///   - channelScope: The maximum ``EndpointScope`` allowed on this vsock
+///     channel. Defaults to `.breakGlass` for backward compatibility.
 ///   - adminToken: The break-glass Bearer token, or `nil` for legacy mode.
 ///     Internally referred to as `breakGlassToken` to convey intent.
 ///   - runnerToken: The runner Bearer token, or `nil` if not configured.
@@ -135,10 +177,22 @@ private enum AuthTier: String {
 /// - Returns: A complete HTTP/1.1 response as raw bytes.
 func routeRequest(
     _ request: AgentHTTPRequest,
+    channelScope: EndpointScope = .breakGlass,
     adminToken breakGlassToken: String? = nil,
     runnerToken: String? = nil,
     readonlyToken: String? = nil
 ) -> Data {
+
+    // --- Channel scope gate (transport-layer isolation) ---
+    let requiredScope = endpointScope(method: request.method, path: request.path)
+    if let required = requiredScope, required > channelScope {
+        let response = errorResponse(
+            message: "This channel does not support \(request.method) \(request.path). Use port \(portForScope(required)).",
+            statusCode: 403
+        )
+        emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: nil)
+        return response
+    }
 
     // --- Auth gate ---
     let hasAnyToken = breakGlassToken != nil || runnerToken != nil || readonlyToken != nil

@@ -68,20 +68,34 @@ enum AgentHTTPServer {
     /// endpoints are permitted. Mutation and admin endpoints return 403 Forbidden.
     nonisolated(unsafe) private static var readonlyToken: String?
 
-    /// Starts the vsock HTTP server and blocks forever.
+    /// Starts three vsock HTTP listeners in parallel — one per capability tier.
     ///
-    /// Creates a vsock socket, binds to the given port, and enters
-    /// an accept loop. Each accepted connection is dispatched to a
-    /// background queue for HTTP parsing and routing.
+    /// Each listener binds to a separate vsock port and enforces a maximum
+    /// ``EndpointScope`` at the transport layer. Requests whose endpoint
+    /// scope exceeds the channel scope are rejected with 403 before token
+    /// authentication is even attempted.
+    ///
+    /// | Port | Channel | Max Scope |
+    /// |------|---------|-----------|
+    /// | `readonlyPort`   | Read-only      | `.readonly`   |
+    /// | `runnerPort`     | Runner control | `.runner`     |
+    /// | `breakGlassPort` | Break-glass    | `.breakGlass` |
+    ///
+    /// The read-only and runner listeners run on background dispatch
+    /// queues; the break-glass listener blocks the calling thread.
     ///
     /// - Parameters:
-    ///   - port: The vsock port to listen on (default: 9470).
+    ///   - readonlyPort: The vsock port for the read-only channel (default: 9470).
+    ///   - runnerPort: The vsock port for the runner channel (default: 9471).
+    ///   - breakGlassPort: The vsock port for the break-glass channel (default: 9472).
     ///   - adminToken: The admin (break-glass) token, or `nil` for legacy mode.
     ///   - runnerToken: The runner token, or `nil` if not configured.
     ///   - readonlyToken: The read-only token, or `nil` if not configured.
     /// - Returns: Never returns; loops until the process is terminated.
-    static func listen(
-        port: UInt32 = 9470,
+    static func listenAll(
+        readonlyPort: UInt32 = 9470,
+        runnerPort: UInt32 = 9471,
+        breakGlassPort: UInt32 = 9472,
         adminToken: String? = nil,
         runnerToken: String? = nil,
         readonlyToken: String? = nil
@@ -89,7 +103,59 @@ enum AgentHTTPServer {
         self.adminToken = adminToken
         self.runnerToken = runnerToken
         self.readonlyToken = readonlyToken
-        log.info("Starting HTTP server on vsock port \(port)")
+
+        log.notice("Starting multi-channel vsock listeners: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort)")
+
+        // Start read-only and runner listeners on background queues.
+        DispatchQueue.global(qos: .default).async {
+            acceptLoop(port: readonlyPort, channelScope: .readonly)
+        }
+        DispatchQueue.global(qos: .default).async {
+            acceptLoop(port: runnerPort, channelScope: .runner)
+        }
+
+        // Block the main thread on the break-glass listener.
+        acceptLoop(port: breakGlassPort, channelScope: .breakGlass)
+    }
+
+    /// Starts the vsock HTTP server on a single port and blocks forever.
+    ///
+    /// Creates a vsock socket, binds to the given port, and enters
+    /// an accept loop. Each accepted connection is dispatched to a
+    /// background queue for HTTP parsing and routing.
+    ///
+    /// This is the legacy single-port entry point. For multi-channel
+    /// isolation, prefer ``listenAll(readonlyPort:runnerPort:breakGlassPort:adminToken:runnerToken:readonlyToken:)``.
+    ///
+    /// - Parameters:
+    ///   - port: The vsock port to listen on (default: 9470).
+    ///   - channelScope: The maximum ``EndpointScope`` allowed on this channel.
+    ///     Defaults to `.breakGlass` for backward compatibility.
+    ///   - adminToken: The admin (break-glass) token, or `nil` for legacy mode.
+    ///   - runnerToken: The runner token, or `nil` if not configured.
+    ///   - readonlyToken: The read-only token, or `nil` if not configured.
+    /// - Returns: Never returns; loops until the process is terminated.
+    static func listen(
+        port: UInt32 = 9470,
+        channelScope: EndpointScope = .breakGlass,
+        adminToken: String? = nil,
+        runnerToken: String? = nil,
+        readonlyToken: String? = nil
+    ) -> Never {
+        self.adminToken = adminToken
+        self.runnerToken = runnerToken
+        self.readonlyToken = readonlyToken
+
+        acceptLoop(port: port, channelScope: channelScope)
+    }
+
+    /// Binds a vsock socket and enters the accept loop. Blocks forever.
+    ///
+    /// - Parameters:
+    ///   - port: The vsock port to bind.
+    ///   - channelScope: The maximum ``EndpointScope`` for connections on this port.
+    private static func acceptLoop(port: UInt32, channelScope: EndpointScope) -> Never {
+        log.info("Starting HTTP server on vsock port \(port) (scope: \(channelScope.debugLabel, privacy: .public))")
 
         let fd = socket(AF_VSOCK, SOCK_STREAM, 0)
         guard fd >= 0 else {
@@ -114,18 +180,18 @@ enum AgentHTTPServer {
             }
         }
         guard bindResult == 0 else {
-            log.error("bind() failed: \(String(cString: strerror(errno)), privacy: .public)")
+            log.error("bind() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public)")
             close(fd)
             exit(1)
         }
 
         guard Darwin.listen(fd, 8) == 0 else {
-            log.error("listen() failed: \(String(cString: strerror(errno)), privacy: .public)")
+            log.error("listen() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public)")
             close(fd)
             exit(1)
         }
 
-        log.notice("Listening on vsock port \(port)")
+        log.notice("Listening on vsock port \(port) (scope: \(channelScope.debugLabel, privacy: .public))")
 
         while true {
             var clientAddr = sockaddr_vm(
@@ -150,18 +216,23 @@ enum AgentHTTPServer {
                 continue
             }
 
-            log.info("Accepted connection from CID \(clientAddr.svm_cid)")
+            log.info("Accepted connection from CID \(clientAddr.svm_cid) on port \(port)")
 
+            let scope = channelScope
             DispatchQueue.global().async {
-                handleConnection(clientFD)
+                handleConnection(clientFD, channelScope: scope)
             }
         }
     }
 
     /// Handles a single HTTP connection: read, parse, route, respond, close.
     ///
-    /// - Parameter fd: The accepted client file descriptor.
-    private static func handleConnection(_ fd: Int32) {
+    /// - Parameters:
+    ///   - fd: The accepted client file descriptor.
+    ///   - channelScope: The maximum ``EndpointScope`` for this connection's
+    ///     vsock channel. Passed through to ``routeRequest(_:channelScope:adminToken:runnerToken:readonlyToken:)``
+    ///     so endpoints exceeding the channel scope are rejected with 403.
+    private static func handleConnection(_ fd: Int32, channelScope: EndpointScope = .breakGlass) {
         defer { close(fd) }
 
         guard let requestData = readRequest(fd: fd) else {
@@ -182,7 +253,13 @@ enum AgentHTTPServer {
 
         log.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
 
-        let response = routeRequest(request, adminToken: adminToken, runnerToken: runnerToken, readonlyToken: readonlyToken)
+        let response = routeRequest(
+            request,
+            channelScope: channelScope,
+            adminToken: adminToken,
+            runnerToken: runnerToken,
+            readonlyToken: readonlyToken
+        )
         writeAll(fd: fd, data: response)
     }
 
