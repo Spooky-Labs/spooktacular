@@ -18,14 +18,25 @@ In Pilot mode, the security model assumes the operator controls both the host an
 
 ### What this security model covers
 
-- **Host ↔ Guest isolation**: VMs run in Apple's Virtualization.framework sandbox. The guest agent authenticates via bearer tokens over vsock (not over the network).
-- **Host CID gating**: The guest agent verifies the vsock connection originates from the host (CID 2), rejecting peer-to-peer connections.
-- **API authentication**: The HTTP API requires a bearer token (`SPOOK_API_TOKEN`) when not in `--insecure` mode. TLS is supported via `--tls-cert`/`--tls-key`.
-- **Three-tier guest agent authorization**: The guest agent supports three token tiers — read-only (health, list, inspect), runner (job lifecycle operations), and break-glass (full mutation including exec, file writes, and app control). Read-only tokens cannot execute commands, write files, or control applications. The runner tier is scoped to CI lifecycle operations only.
+- **Host ↔ Guest isolation**: VMs run in Apple's Virtualization.framework sandbox. The guest agent communicates over vsock (not the network), with host CID verification rejecting peer-to-peer connections.
+- **Separate vsock channels per capability tier**: The guest agent binds three vsock ports, each enforcing a maximum scope at the transport layer before token authentication:
+  - Port 9470: read-only (health, inspection, diagnostics)
+  - Port 9471: runner control (mutation except exec)
+  - Port 9472: break-glass (exec — disabled by default, requires explicit token)
+  Requests exceeding the channel's scope are rejected with 403 at the socket accept layer.
+- **HTTP API authentication**: The HTTP API requires TLS in production (`--tls-cert`/`--tls-key`) and a bearer token (`SPOOK_API_TOKEN`). Only `/health` is unauthenticated (liveness probe). Production startup fails without TLS unless `--insecure` is explicitly set (development only).
+- **Three-tier guest agent authorization**: Read-only, runner, and break-glass token tiers. Shell execution (`/api/v1/exec`) requires a break-glass token and is only accessible on port 9472. Runner tokens get 403 on exec. Read-only tokens cannot mutate anything.
 - **Mandatory mTLS in production**: The controller refuses to start without TLS certificates (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`). Both the controller and Mac nodes present certificates, preventing unauthorized API access even if a bearer token is compromised. Bearer tokens are retained as a secondary auth layer (defense in depth). The `SPOOK_INSECURE_CONTROLLER=1` bypass exists for local development only.
 - **Keychain-based secret storage**: API tokens, runner registration tokens, and TLS private keys are stored in the macOS Keychain via `SecItemAdd`/`SecItemCopyMatching` rather than plaintext configuration files.
 - **TLS certificate hot reload**: TLS certificates can be rotated without restarting the server. The server watches certificate files via `DispatchSource` and reloads them on change, enabling zero-downtime cert rotation.
-- **Audit logging**: Every guest agent request is logged at `os.Logger` `.notice` level with method, path, status code, and ISO-8601 timestamp. Logs are queryable via Console.app or `log show`.
+- **Structured audit logging**: Every control-plane action produces an `AuditRecord` with: actor identity, tenant ID, authorization scope, resource, action, outcome, request ID, and ISO-8601 timestamp. Two concrete sinks:
+  - `OSLogAuditSink`: writes to Apple's unified logging (`log show --predicate 'category == "audit"'`)
+  - `JSONFileAuditSink`: appends JSONL to a file for SIEM ingestion (Splunk, Elasticsearch, CloudWatch Logs)
+  
+  JSONL schema per line:
+  ```json
+  {"id":"...","timestamp":"2026-04-15T...","actorIdentity":"spook-controller","tenant":"blue","scope":"runner","resource":"vm-001","action":"deleteVM","outcome":"success","correlationID":"req-123"}
+  ```
 - **VM name validation**: Regex-validated to prevent path traversal.
 - **Capacity enforcement**: 2-VM limit with flock-serialized PID file writes to prevent TOCTOU races.
 - **Code signing**: Hardened runtime, notarized for distribution, no `--deep` signing.
@@ -38,8 +49,8 @@ These are **known limitations**, not bugs:
 - **No federated identity**: mTLS is mandatory in production, but identity is certificate-based, not federated. There is no integration with OIDC, SAML, or cloud IAM providers.
 - **No per-user identity**: Authentication is token-based, not user-based. A single shared token authenticates all requests. There is no RBAC beyond the three-tier agent scope system.
 - **No distributed locking**: Capacity enforcement uses `flock(2)`, which is per-host only. In a multi-controller deployment, each controller must target distinct hosts.
-- **No tamper-resistant audit**: Audit logs use `os.Logger`, which is the standard macOS logging facility. Logs are not cryptographically signed or forwarded to a SIEM. Operators should configure log forwarding separately.
-- **Blast radius of a compromised token**: A break-glass API token grants control over all VMs on that host. A break-glass agent token grants shell execution, file writes, and app control inside that guest. Use read-only or runner-scoped tokens where full mutation is not needed.
+- **No tamper-resistant audit**: Audit records are structured (JSONL with actor, tenant, scope, resource, outcome) and can be forwarded to a SIEM via `JSONFileAuditSink`. However, logs are not cryptographically signed or append-only. Operators should forward to their own tamper-resistant storage.
+- **Blast radius of a compromised token**: A break-glass token grants shell execution inside the guest, but only on port 9472. Runner and read-only tokens cannot reach exec even if replayed against other ports. Use the narrowest token tier that meets your needs.
 
 ### Who should use Spooktacular
 
