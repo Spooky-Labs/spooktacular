@@ -67,8 +67,30 @@ public actor GuestAgentClient {
     /// - Parameter socketDevice: The `VZVirtioSocketDevice` from a
     ///   running `VZVirtualMachine`. Obtain it via
     ///   `vm.socketDevices.first as? VZVirtioSocketDevice`.
-    public init(socketDevice: VZVirtioSocketDevice) {
+    /// Bearer tokens for each capability tier. The client includes
+    /// the appropriate token in the Authorization header based on
+    /// which vsock port the request targets.
+    private let readOnlyToken: String?
+    private let runnerToken: String?
+    private let breakGlassToken: String?
+
+    /// Creates a client with optional per-tier authentication tokens.
+    ///
+    /// - Parameters:
+    ///   - socketDevice: The `VZVirtioSocketDevice` from a running VM.
+    ///   - readOnlyToken: Token for read-only operations (port 9470).
+    ///   - runnerToken: Token for runner operations (port 9471).
+    ///   - breakGlassToken: Token for break-glass exec (port 9472).
+    public init(
+        socketDevice: VZVirtioSocketDevice,
+        readOnlyToken: String? = nil,
+        runnerToken: String? = nil,
+        breakGlassToken: String? = nil
+    ) {
         self.socketDevice = socketDevice
+        self.readOnlyToken = readOnlyToken
+        self.runnerToken = runnerToken
+        self.breakGlassToken = breakGlassToken
     }
 
     // MARK: - Public API
@@ -226,6 +248,16 @@ public actor GuestAgentClient {
         return readOnlyPort
     }
 
+    /// Returns the Bearer token for the given vsock port.
+    private func tokenForPort(_ port: UInt32) -> String? {
+        switch port {
+        case breakGlassPort: return breakGlassToken
+        case runnerPort: return runnerToken
+        case readOnlyPort: return readOnlyToken
+        default: return nil
+        }
+    }
+
     // MARK: - Internal Transport
 
     /// Sends an HTTP request to the guest agent and decodes the response.
@@ -341,6 +373,12 @@ public actor GuestAgentClient {
         var httpRequest = "\(method) \(path) HTTP/1.1\r\n"
         httpRequest += "Host: localhost\r\n"
         httpRequest += "Connection: close\r\n"
+
+        // Include the appropriate Bearer token for this channel.
+        if let token = tokenForPort(port) {
+            httpRequest += "Authorization: Bearer \(token)\r\n"
+        }
+
         if let body {
             httpRequest += "Content-Type: application/json\r\n"
             httpRequest += "Content-Length: \(body.count)\r\n"
