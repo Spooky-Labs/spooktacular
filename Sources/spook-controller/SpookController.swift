@@ -13,8 +13,12 @@
 /// | `NODE_API_PORT` | `8484` | Port for `spook serve` |
 /// | `HEALTH_CHECK_INTERVAL` | `30` | Seconds between health checks |
 /// | `SPOOK_TENANCY_MODE` | `single-tenant` | `single-tenant` or `multi-tenant` |
+/// | `SPOOK_TENANT_CONFIG` | (none) | Path to JSON tenant-pool mapping file |
+/// | `SPOOK_AUDIT_MERKLE` | (none) | Set to `1` to enable Merkle audit sink |
+/// | `SPOOK_AUDIT_SIGNING_KEY` | (none) | Path to Ed25519 signing key for Merkle audit |
 
 import Foundation
+import CryptoKit
 import os
 import SpookCore
 import SpookApplication
@@ -58,9 +62,32 @@ struct SpookController {
         }
 
         let reusePolicy = ReusePolicy.default(for: tenancyMode)
+
+        // Load tenant-pool mapping from SPOOK_TENANT_CONFIG file or environment
+        let tenantConfig: TenantConfig?
+        let tenantPools: [TenantID: Set<HostPoolID>]
+        if let configPath = env["SPOOK_TENANT_CONFIG"],
+           let configData = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
+           let config = try? JSONDecoder().decode(TenantConfig.self, from: configData) {
+            tenantConfig = config
+            var pools: [TenantID: Set<HostPoolID>] = [:]
+            for (key, value) in config.tenantPools {
+                pools[TenantID(key)] = Set(value.map { HostPoolID($0) })
+            }
+            tenantPools = pools
+            logger.notice("Loaded tenant config from \(configPath, privacy: .public): \(tenantPools.count) tenants")
+        } else {
+            tenantConfig = nil
+            tenantPools = [:]
+            if tenancyMode == .multiTenant {
+                logger.warning("Multi-tenant mode but no SPOOK_TENANT_CONFIG — all tenants will use default pool")
+            }
+        }
+
+        let breakGlassTenants = Set((tenantConfig?.breakGlassTenants ?? []).map { TenantID($0) })
         let isolation: any TenantIsolationPolicy = tenancyMode == .singleTenant
             ? SingleTenantIsolation()
-            : MultiTenantIsolation(tenantPools: [:])  // configured from CRD labels
+            : MultiTenantIsolation(tenantPools: tenantPools, breakGlassTenants: breakGlassTenants)
         let authService: any AuthorizationService = tenancyMode == .singleTenant
             ? SingleTenantAuthorization(policy: reusePolicy)
             : MultiTenantAuthorization(policy: reusePolicy, isolation: isolation)
@@ -262,4 +289,23 @@ enum ControllerError: Error, LocalizedError, Sendable {
         case .apiError(let m):           "K8s API error: \(m)"
         }
     }
+}
+
+// MARK: - Tenant Configuration
+
+/// JSON configuration for tenant-to-pool mapping.
+///
+/// Load from `SPOOK_TENANT_CONFIG` file path. Example:
+/// ```json
+/// {
+///   "tenantPools": {
+///     "team-a": ["pool-1"],
+///     "team-b": ["pool-2"]
+///   },
+///   "breakGlassTenants": ["team-a"]
+/// }
+/// ```
+private struct TenantConfig: Codable {
+    let tenantPools: [String: [String]]
+    let breakGlassTenants: [String]?
 }

@@ -100,8 +100,15 @@ public struct MultiTenantIsolation: TenantIsolationPolicy {
     /// Maps tenants to their permitted host pools.
     private let tenantPools: [TenantID: Set<HostPoolID>]
 
-    public init(tenantPools: [TenantID: Set<HostPoolID>] = [:]) {
+    /// Tenants explicitly granted break-glass access.
+    private let breakGlassTenants: Set<TenantID>
+
+    public init(
+        tenantPools: [TenantID: Set<HostPoolID>] = [:],
+        breakGlassTenants: Set<TenantID> = []
+    ) {
         self.tenantPools = tenantPools
+        self.breakGlassTenants = breakGlassTenants
     }
 
     public func canSchedule(tenant: TenantID, onto pool: HostPoolID) -> Bool {
@@ -115,7 +122,6 @@ public struct MultiTenantIsolation: TenantIsolationPolicy {
     }
 
     public func breakGlassAllowed(for tenant: TenantID) -> Bool {
-        // Disabled by default — must be explicitly granted per-tenant
-        false
+        breakGlassTenants.contains(tenant)
     }
 }
