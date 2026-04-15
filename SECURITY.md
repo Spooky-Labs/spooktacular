@@ -46,10 +46,9 @@ In Pilot mode, the security model assumes the operator controls both the host an
 
 These are **known limitations**, not bugs:
 
-- **No federated identity**: mTLS is mandatory in production, but identity is certificate-based, not federated. There is no integration with OIDC, SAML, or cloud IAM providers.
-- **No per-user identity**: Authentication is token-based, not user-based. A single shared token authenticates all requests. There is no RBAC beyond the three-tier agent scope system.
-- **No distributed locking**: Capacity enforcement uses `flock(2)`, which is per-host only. In a multi-controller deployment, each controller must target distinct hosts.
-- **No tamper-resistant audit**: Audit records are structured (JSONL with actor, tenant, scope, resource, outcome) and can be forwarded to a SIEM via `JSONFileAuditSink`. However, logs are not cryptographically signed or append-only. Operators should forward to their own tamper-resistant storage.
+- **Federated identity is OIDC-only**: `OIDCTokenVerifier` supports OIDC (JWT) tokens with issuer, audience, and expiry validation. SAML is not yet supported. Group-to-scope and group-to-tenant mapping is configurable via `OIDCProviderConfig`.
+- **Distributed locking is Kubernetes-only**: `KubernetesLeaseLock` provides lease-based coordination via K8s Lease objects with optimistic concurrency. Non-Kubernetes deployments still use per-host `flock(2)`.
+- **Tamper-evident audit, not tamper-proof**: `HashChainAuditSink` chains records using SHA-256 hashes — tampering breaks the chain and is detectable. However, records are not cryptographically signed with a private key. For full non-repudiation, forward chained records to a tamper-proof store.
 - **Blast radius of a compromised token**: A break-glass token grants shell execution inside the guest, but only on port 9472. Runner and read-only tokens cannot reach exec even if replayed against other ports. Use the narrowest token tier that meets your needs.
 
 ### Who should use Spooktacular
@@ -80,15 +79,15 @@ Spooktacular supports three deployment topologies, each with different security 
 |--------|----------------------|-----------------------------------|
 | **Status** | Supported | Supported (SPOOK_TENANCY_MODE=multi-tenant) |
 | **Trust boundary** | One team per host/fleet | Multiple teams, tenant isolation |
-| **Identity model** | mTLS certificates + bearer tokens | Federated identity (OIDC/SAML) + per-user RBAC |
-| **Authorization** | Scope-based (read/runner/break-glass) | Tenant + scope + resource policy |
-| **Host scheduling** | Any available node | Tenant-partitioned host pools |
-| **Warm-pool reuse** | Allowed with scrub validation | Same-tenant only, cross-tenant forbidden |
+| **Identity model** | mTLS certificates + bearer tokens | OIDC federated identity (`OIDCTokenVerifier`) + group-to-tenant mapping |
+| **Authorization** | Scope-based (read/runner/break-glass) | Tenant + scope + resource policy via `FederatedAuthorization` |
+| **Host scheduling** | Any available node | Tenant-partitioned host pools (`TenantIsolationPolicy`) |
+| **Warm-pool reuse** | Allowed with scrub validation | Same-tenant only, cross-tenant forbidden (`canReuse()`) |
 | **Break-glass shell** | Available with admin controls | Disabled by default, explicit per-tenant opt-in |
-| **Audit** | os.Logger (Console.app, `log show`) | External SIEM forwarding required |
-| **Locking** | Per-host flock(2) | Per-host flock(2) (distributed coordination not yet available) |
+| **Audit** | os.Logger + optional JSONL export | Hash-chained JSONL (`HashChainAuditSink`) + SIEM forwarding |
+| **Locking** | Per-host flock(2) | K8s Lease-based distributed locking (`KubernetesLeaseLock`) |
 
-**Current recommendation:** Deploy as Pilot (Single-Tenant) on isolated EC2 Mac hosts owned by one team. Enterprise Platform mode requires federated identity, tenant isolation, and externalized audit — tracked in the [roadmap](docs/superpowers/specs/2026-04-14-fortune20-build-plan.md).
+**Both deployment classes are supported.** Single-tenant is the recommended starting point. Multi-tenant adds OIDC identity, tenant-partitioned scheduling, hash-chained audit, and K8s distributed locking.
 
 ## Security Operations
 
