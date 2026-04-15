@@ -46,7 +46,8 @@ In Pilot mode, the security model assumes the operator controls both the host an
 
 These are **known limitations**, not bugs:
 
-- **Federated identity is OIDC-only**: `OIDCTokenVerifier` supports OIDC (JWT) tokens with issuer, audience, and expiry validation. SAML is not yet supported. Group-to-scope and group-to-tenant mapping is configurable via `OIDCProviderConfig`.
+- **Federated identity supports OIDC (JWT) and SAML 2.0**: OIDC uses JWKS-based RS256 signature verification. SAML uses X.509 certificate-based XML signature verification via Security.framework. Group-to-scope and group-to-tenant mapping is configurable via `OIDCProviderConfig` and `SAMLProviderConfig`.
+- **FIPS 140-2 key storage via Secure Enclave**: FIPS 140-2 key storage is available via Apple's Secure Enclave on Apple Silicon (`FIPSKeyStore`). Keys are generated and used inside the Secure Enclave hardware — private keys never leave the enclave. On systems without Secure Enclave (e.g., VMs, CI), falls back to Keychain-backed software keys.
 - **Distributed locking is Kubernetes-only**: `KubernetesLeaseLock` provides lease-based coordination via K8s Lease objects with optimistic concurrency. Non-Kubernetes deployments still use per-host `flock(2)`.
 - **Tamper-evident audit (RFC 6962 / NIST SP 800-53 AU-9/AU-10)**: `MerkleAuditSink` uses a Merkle tree structure aligned with [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962.html) (Certificate Transparency). Leaf hashes use `SHA256(0x00 || data)`, interior nodes use `SHA256(0x01 || left || right)`. Signed Tree Heads (Ed25519) provide non-repudiation per [NIST AU-10](https://csf.tools/reference/nist-sp-800-53/r5/au/au-9/). Inclusion proofs verify specific records in O(log n). However, the log is not backed by an append-only storage layer — for SOC 2 Type II compliance, forward Merkle-rooted records to immutable storage (S3 Object Lock, WORM, or a transparency log like [Sigstore Rekor](https://github.com/sigstore/rekor)).
 - **Blast radius of a compromised token**: A break-glass token grants shell execution inside the guest, but only on port 9472. Runner and read-only tokens cannot reach exec even if replayed against other ports. Use the narrowest token tier that meets your needs.
@@ -60,7 +61,7 @@ These are **known limitations**, not bugs:
 ### Who should NOT use Spooktacular (yet)
 
 - Environments requiring SOC 2 Type II compliance for the VM management layer
-- Deployments requiring federated identity (OIDC/SAML) — certificate-based identity is supported, not federated
+- Deployments requiring federated identity beyond OIDC/SAML — certificate-based, OIDC, and SAML 2.0 identity are supported
 - Environments requiring cryptographically signed, tamper-proof audit logs
 
 ## Deployment Models
