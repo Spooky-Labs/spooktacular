@@ -89,7 +89,7 @@ private let log = Logger(subsystem: "com.spooktacular.agent", category: "agent")
 /// Tokens loaded from file or environment.
 struct AgentTokens {
     /// Admin (break-glass) token — grants access to all endpoints including exec.
-    /// `nil` means legacy mode (no authentication).
+    /// Required — agent refuses to start without this token.
     let admin: String?
     /// Runner token — grants mutation access (launch/quit apps, clipboard, files)
     /// but NOT exec. `nil` means no runner token configured.
@@ -175,7 +175,8 @@ private func loadTokens() -> AgentTokens {
     }
 
     if admin == nil {
-        log.warning("No auth token found — running in legacy mode (unauthenticated). Set \(tokenEnvVar, privacy: .public) or place a token at \(tokenFilePath, privacy: .public).")
+        log.fault("No admin token found. The agent requires at least a break-glass token. Set \(tokenEnvVar, privacy: .public), store in Keychain, or place at \(tokenFilePath, privacy: .public).")
+        exit(1)
     }
 
     return AgentTokens(admin: admin, runner: runner, readOnly: readOnly)

@@ -50,7 +50,7 @@ enum AgentHTTPServer {
         var svm_cid: UInt32
     }
 
-    /// The admin (break-glass) authentication token, or `nil` for legacy mode.
+    /// The admin (break-glass) authentication token, — required.
     ///
     /// Set exactly once before the accept loop begins and never mutated
     /// afterward, so concurrent reads from connection-handler queues are safe.
@@ -88,7 +88,7 @@ enum AgentHTTPServer {
     ///   - readonlyPort: The vsock port for the read-only channel (default: 9470).
     ///   - runnerPort: The vsock port for the runner channel (default: 9471).
     ///   - breakGlassPort: The vsock port for the break-glass channel (default: 9472).
-    ///   - adminToken: The admin (break-glass) token, or `nil` for legacy mode.
+    ///   - adminToken: The admin (break-glass) token, — required.
     ///   - runnerToken: The runner token, or `nil` if not configured.
     ///   - readonlyToken: The read-only token, or `nil` if not configured.
     /// - Returns: Never returns; loops until the process is terminated.
@@ -131,7 +131,7 @@ enum AgentHTTPServer {
     ///   - port: The vsock port to listen on (default: 9470).
     ///   - channelScope: The maximum ``EndpointScope`` allowed on this channel.
     ///     Defaults to `.breakGlass` for backward compatibility.
-    ///   - adminToken: The admin (break-glass) token, or `nil` for legacy mode.
+    ///   - adminToken: The admin (break-glass) token, — required.
     ///   - runnerToken: The runner token, or `nil` if not configured.
     ///   - readonlyToken: The read-only token, or `nil` if not configured.
     /// - Returns: Never returns; loops until the process is terminated.

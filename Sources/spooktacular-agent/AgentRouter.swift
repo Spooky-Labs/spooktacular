@@ -174,8 +174,6 @@ private enum AuthTier: String {
     case runner
     /// Read-only — GET endpoints only.
     case readonly
-    /// Legacy mode — no tokens configured, all endpoints allowed.
-    case legacy
 }
 
 /// Routes an ``AgentHTTPRequest`` to the appropriate handler.
@@ -206,7 +204,7 @@ private enum AuthTier: String {
 ///   - request: The parsed HTTP request.
 ///   - channelScope: The maximum ``EndpointScope`` allowed on this vsock
 ///     channel. Defaults to `.breakGlass` for backward compatibility.
-///   - adminToken: The break-glass Bearer token, or `nil` for legacy mode.
+///   - adminToken: The break-glass Bearer token, — required.
 ///     Internally referred to as `breakGlassToken` to convey intent.
 ///   - runnerToken: The runner Bearer token, or `nil` if not configured.
 ///   - readonlyToken: The read-only Bearer token, or `nil` if not configured.
@@ -275,11 +273,15 @@ func routeRequest(
                 emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: authTier)
                 return response
             }
-        case .breakGlass, .legacy:
-            break // Break-glass and legacy allow everything
+        case .breakGlass:
+            break // Break-glass allows everything
         }
     } else {
-        authTier = .legacy
+        // No tokens configured — agent should have refused to start.
+        // Reject as a safety net.
+        let response = errorResponse(message: "No authentication configured. Agent misconfigured.", statusCode: 500)
+        emitAuditLog(method: request.method, path: request.path, statusCode: 500, tier: nil)
+        return response
     }
 
     // --- Dispatch ---
