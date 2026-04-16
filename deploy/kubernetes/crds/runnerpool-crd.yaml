@@ -66,6 +66,13 @@ spec:
               required:
                 - sourceVM
                 - ci
+              x-kubernetes-validations:
+                - rule: "self.minRunners <= self.maxRunners"
+                  message: "minRunners must be <= maxRunners"
+                - rule: "[has(self.ci.github), has(self.ci.circleci), has(self.ci.jenkins)].exists_one(v, v)"
+                  message: "exactly one of ci.github, ci.circleci, ci.jenkins must be set"
+                - rule: "!has(self.preWarm) || !self.preWarm || self.mode != 'persistent'"
+                  message: "preWarm has no effect when mode is 'persistent'"
               properties:
 
                 # ==============================================================

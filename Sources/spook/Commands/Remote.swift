@@ -1,7 +1,6 @@
 import ArgumentParser
 import Foundation
 import SpooktacularKit
-@preconcurrency import Virtualization
 
 extension Spook {
 
@@ -75,9 +74,7 @@ extension Spook.Remote {
         let bundle = try VirtualMachineBundle.load(from: bundleURL)
         let vm = try VirtualMachine(bundle: bundle)
 
-        guard let vzVM = vm.vzVM,
-              let socketDevice = vzVM.socketDevices.first
-                as? VZVirtioSocketDevice else {
+        guard let client = vm.makeGuestAgentClient() else {
             print(Style.error("✗ VM '\(name)' has no VirtIO socket device."))
             print(Style.dim(
                 "  The VM configuration may be missing the socket device. "
@@ -85,8 +82,7 @@ extension Spook.Remote {
             ))
             throw ExitCode.failure
         }
-
-        return GuestAgentClient(socketDevice: socketDevice)
+        return client
     }
 }
 

@@ -20,8 +20,6 @@ struct Spook: AsyncParsableCommand {
             Set.self,
             Get.self,
             Snapshot.self,
-            Restore.self,
-            Snapshots.self,
             Share.self,
             SSH.self,
             Exec.self,

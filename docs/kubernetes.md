@@ -1,6 +1,9 @@
 # Spooktacular Kubernetes Integration
 
-> **Important:** The Kubernetes operator is on the roadmap. This document describes the planned architecture. For current VM management, use the `spook` CLI.
+> **Status:** Shipping. The controller runs today, reconciles `MacOSVM` and
+> `RunnerPool` custom resources, and is the primary integration path for
+> EC2 Mac CI fleets. For single-host use, the `spook` CLI still works
+> standalone.
 
 Run macOS virtual machines as Kubernetes resources. Each Mac host
 adds 2 VM pods to your cluster (Apple's kernel limit).

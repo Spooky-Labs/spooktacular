@@ -1,0 +1,45 @@
+{{- if and .Values.metrics.enabled .Values.metrics.serviceMonitor.enabled }}
+# =============================================================================
+# ServiceMonitor — Prometheus Operator integration
+# =============================================================================
+#
+# Emits CRD-driven scrape config for the controller's /metrics endpoint so
+# Prometheus Operator automatically discovers it. Toggle on with:
+#
+#   --set metrics.serviceMonitor.enabled=true
+#
+# Requires:
+#   - Prometheus Operator installed in the cluster
+#   - A Prometheus instance whose `serviceMonitorSelector` matches the
+#     labels below (most installs pick up all ServiceMonitors by default).
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "spooktacular.fullname" . }}
+  {{- with .Values.metrics.serviceMonitor.namespace }}
+  namespace: {{ . }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+    {{- with .Values.metrics.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "spooktacular.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval | default "30s" }}
+      scheme: http
+      honorLabels: true
+{{- end }}

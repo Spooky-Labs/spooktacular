@@ -1,0 +1,87 @@
+{{- if and .Values.tls.enabled .Values.tls.certManager.enabled }}
+# =============================================================================
+# cert-manager integration — automatic mTLS certificate issuance
+# =============================================================================
+#
+# When .Values.tls.certManager.enabled is true, the chart provisions:
+#   1. A self-signed Issuer that roots the internal PKI.
+#   2. A CA Certificate issued by that Issuer.
+#   3. An intermediate Issuer backed by the CA.
+#   4. A controller Certificate (client cert, used for mTLS to Mac nodes).
+#
+# This removes the manual openssl/cert-manager setup that used to stand
+# between `helm install` and "runners ready". Requires:
+#   - cert-manager >= 1.14 installed in the cluster
+# =============================================================================
+
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-selfsigned
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+
+---
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-ca
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+spec:
+  isCA: true
+  commonName: {{ include "spooktacular.fullname" . }}-ca
+  secretName: {{ include "spooktacular.fullname" . }}-ca
+  duration: 43800h  # 5 years
+  renewBefore: 8760h  # 1 year before expiry
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ include "spooktacular.fullname" . }}-selfsigned
+    kind: Issuer
+
+---
+
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-ca-issuer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+spec:
+  ca:
+    secretName: {{ include "spooktacular.fullname" . }}-ca
+
+---
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-controller-client
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.tls.existingSecret | default (printf "%s-controller-tls" (include "spooktacular.fullname" .)) }}
+  duration: 8760h  # 1 year
+  renewBefore: 720h  # 30 days before expiry
+  commonName: {{ include "spooktacular.fullname" . }}-controller
+  usages:
+    - client auth
+    - digital signature
+    - key encipherment
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ include "spooktacular.fullname" . }}-ca-issuer
+    kind: Issuer
+{{- end }}

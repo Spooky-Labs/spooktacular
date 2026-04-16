@@ -1,0 +1,98 @@
+{{- if and .Values.metrics.enabled .Values.metrics.grafana.enabled }}
+# =============================================================================
+# Grafana dashboard ConfigMap — runner fleet overview
+# =============================================================================
+#
+# Grafana's sidecar dashboard loader watches for ConfigMaps with the label
+# `grafana_dashboard=1` and imports any `*.json` payload it finds. Toggle on
+# with `--set metrics.grafana.enabled=true`. Requires kube-prometheus-stack
+# or another Grafana install configured with the dashboard sidecar.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-dashboard
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  spooktacular-runner-pool.json: |-
+    {
+      "title": "Spooktacular — Runner Pool Overview",
+      "uid": "spooktacular-runner-pool",
+      "tags": ["spooktacular", "macos", "runners"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "time": { "from": "now-6h", "to": "now" },
+      "panels": [
+        {
+          "title": "Ready Runners",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+          "targets": [{
+            "expr": "sum(spook_runner_pool_ready)",
+            "legendFormat": "ready"
+          }],
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "red", "value": 0 }, { "color": "green", "value": 1 }] } } }
+        },
+        {
+          "title": "Busy Runners",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+          "targets": [{ "expr": "sum(spook_runner_pool_busy)", "legendFormat": "busy" }]
+        },
+        {
+          "title": "Pending Runners",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+          "targets": [{ "expr": "sum(spook_runner_pool_pending)", "legendFormat": "pending" }]
+        },
+        {
+          "title": "Failed Runners (last hour)",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+          "targets": [{ "expr": "increase(spook_runner_pool_failed_total[1h])", "legendFormat": "failed" }],
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green", "value": 0 }, { "color": "red", "value": 1 }] } } }
+        },
+        {
+          "title": "Runner State Transitions",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+          "targets": [
+            { "expr": "sum by (state) (spook_runner_state)", "legendFormat": "{{ "{{" }} state {{ "}}" }}" }
+          ]
+        },
+        {
+          "title": "Clone latency (p50/p95/p99)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+          "targets": [
+            { "expr": "histogram_quantile(0.50, rate(spook_vm_clone_seconds_bucket[5m]))", "legendFormat": "p50" },
+            { "expr": "histogram_quantile(0.95, rate(spook_vm_clone_seconds_bucket[5m]))", "legendFormat": "p95" },
+            { "expr": "histogram_quantile(0.99, rate(spook_vm_clone_seconds_bucket[5m]))", "legendFormat": "p99" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "s" } }
+        },
+        {
+          "title": "Runner registration latency (p50/p95)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+          "targets": [
+            { "expr": "histogram_quantile(0.50, rate(spook_runner_register_seconds_bucket[5m]))", "legendFormat": "p50" },
+            { "expr": "histogram_quantile(0.95, rate(spook_runner_register_seconds_bucket[5m]))", "legendFormat": "p95" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "s" } }
+        },
+        {
+          "title": "Node Capacity (VMs per host)",
+          "type": "table",
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 },
+          "targets": [
+            { "expr": "spook_node_running_vms", "legendFormat": "{{ "{{" }} node {{ "}}" }}", "format": "table", "instant": true }
+          ]
+        }
+      ]
+    }
+{{- end }}

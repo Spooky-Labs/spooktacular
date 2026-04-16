@@ -20,8 +20,14 @@ extension Spook {
                 """
         )
 
-        @Flag(help: "Output as JSON.")
+        @Flag(name: [.short, .long], help: "Output as JSON.")
         var json: Bool = false
+
+        @Flag(name: [.customLong("ip")], help: "Include the resolved IP address (adds a column, or a field in JSON).")
+        var includeIP: Bool = false
+
+        @Flag(name: [.customLong("running")], help: "Only list running VMs.")
+        var runningOnly: Bool = false
 
         func run() async throws {
             try SpooktacularPaths.ensureDirectories()
@@ -40,7 +46,7 @@ extension Spook {
                 return
             }
 
-            let bundles: [(String, VirtualMachineBundle)] = contents.compactMap { url in
+            var bundles: [(String, VirtualMachineBundle)] = contents.compactMap { url in
                 let name = url.deletingPathExtension().lastPathComponent
                 do {
                     let bundle = try VirtualMachineBundle.load(from: url)
@@ -51,14 +57,30 @@ extension Spook {
                 }
             }.sorted { $0.0 < $1.0 }
 
+            if runningOnly {
+                bundles = bundles.filter { PIDFile.isRunning(bundleURL: $0.1.url) }
+            }
+
+            // Resolve IPs once, up front, so the table rendering stays sync.
+            var ipByName: [String: String] = [:]
+            if includeIP {
+                for (name, bundle) in bundles {
+                    guard PIDFile.isRunning(bundleURL: bundle.url),
+                          let mac = bundle.spec.macAddress,
+                          let ip = try? await IPResolver.resolveIP(macAddress: mac)
+                    else { continue }
+                    ipByName[name] = ip
+                }
+            }
+
             if json {
-                printJSON(bundles)
+                printJSON(bundles, ipByName: ipByName)
             } else {
-                printTable(bundles)
+                printTable(bundles, ipByName: ipByName)
             }
         }
 
-        private func printTable(_ bundles: [(String, VirtualMachineBundle)]) {
+        private func printTable(_ bundles: [(String, VirtualMachineBundle)], ipByName: [String: String] = [:]) {
             var rows: [[String]] = []
             var runningCount = 0
 
@@ -71,7 +93,7 @@ extension Spook {
                 let isRunning = PIDFile.isRunning(bundleURL: bundle.url)
                 if isRunning { runningCount += 1 }
 
-                rows.append([
+                var row: [String] = [
                     Style.bold(name),
                     isRunning ? Style.green("● running") : Style.dim("○ stopped"),
                     "\(bundle.spec.cpuCount) cores",
@@ -80,13 +102,16 @@ extension Spook {
                     Style.networkLabel(bundle.spec.networkMode),
                     audio,
                     setup,
-                ])
+                ]
+                if includeIP {
+                    row.append(ipByName[name] ?? Style.dim("—"))
+                }
+                rows.append(row)
             }
 
-            Style.table(
-                headers: ["NAME", "STATE", "CPU", "MEM", "DISK", "NET", "♪", "STATUS"],
-                rows: rows
-            )
+            var headers = ["NAME", "STATE", "CPU", "MEM", "DISK", "NET", "♪", "STATUS"]
+            if includeIP { headers.append("IP") }
+            Style.table(headers: headers, rows: rows)
 
             print()
             let vmLabel = bundles.count == 1 ? "virtual machine" : "virtual machines"
@@ -95,7 +120,7 @@ extension Spook {
             )
         }
 
-        private func printJSON(_ bundles: [(String, VirtualMachineBundle)]) {
+        private func printJSON(_ bundles: [(String, VirtualMachineBundle)], ipByName: [String: String] = [:]) {
             struct VMEntry: Encodable {
                 let name: String
                 let running: Bool
@@ -108,6 +133,7 @@ extension Spook {
                 let setupCompleted: Bool
                 let id: String
                 let path: String
+                let ip: String?
             }
 
             let entries = bundles.map { (name, bundle) in
@@ -122,7 +148,8 @@ extension Spook {
                     audio: bundle.spec.audioEnabled,
                     setupCompleted: bundle.metadata.setupCompleted,
                     id: bundle.metadata.id.uuidString,
-                    path: bundle.url.path
+                    path: bundle.url.path,
+                    ip: ipByName[name]
                 )
             }
 

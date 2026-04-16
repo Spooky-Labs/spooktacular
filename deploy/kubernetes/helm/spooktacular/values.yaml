@@ -156,6 +156,14 @@ metrics:
     namespace: ""
     additionalLabels: {}
 
+  # Install a Grafana dashboard ConfigMap.
+  #
+  # When true, creates a ConfigMap labeled `grafana_dashboard=1` that
+  # the Grafana sidecar picks up automatically (kube-prometheus-stack
+  # and most Grafana installs with the dashboard sidecar enabled).
+  grafana:
+    enabled: false
+
 # -----------------------------------------------------------------------------
 # Pod Disruption Budget
 # -----------------------------------------------------------------------------
