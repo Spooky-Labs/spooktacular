@@ -117,10 +117,10 @@ public struct VirtualMachineBundle: Sendable {
         let metadata = VirtualMachineMetadata()
 
         let configData = try Self.encoder.encode(spec)
-        try configData.write(to: url.appendingPathComponent(configFileName))
+        try configData.write(to: url.appendingPathComponent(configFileName), options: .atomic)
 
         let metadataData = try Self.encoder.encode(metadata)
-        try metadataData.write(to: url.appendingPathComponent(metadataFileName))
+        try metadataData.write(to: url.appendingPathComponent(metadataFileName), options: .atomic)
 
         Log.vm.info("Created bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
         return VirtualMachineBundle(url: url, spec: spec, metadata: metadata)
@@ -138,7 +138,7 @@ public struct VirtualMachineBundle: Sendable {
     ///   - bundleURL: The file URL of the `.vm` bundle directory.
     public static func writeSpec(_ spec: VirtualMachineSpecification, to bundleURL: URL) throws {
         let data = try encoder.encode(spec)
-        try data.write(to: bundleURL.appendingPathComponent(configFileName))
+        try data.write(to: bundleURL.appendingPathComponent(configFileName), options: .atomic)
     }
 
     /// Writes updated metadata to an existing bundle directory.
@@ -152,7 +152,7 @@ public struct VirtualMachineBundle: Sendable {
     public static func writeMetadata(_ metadata: VirtualMachineMetadata, to url: URL) throws {
         Log.vm.debug("Writing metadata to \(url.lastPathComponent, privacy: .public)")
         let data = try Self.encoder.encode(metadata)
-        try data.write(to: url.appendingPathComponent(metadataFileName))
+        try data.write(to: url.appendingPathComponent(metadataFileName), options: .atomic)
     }
 
     // MARK: - Loading Bundles

@@ -2,6 +2,7 @@ import Foundation
 import SpookCore
 import SpookApplication
 import Security
+import CryptoKit
 
 /// Loads a client identity from the Keychain and configures a
 /// `URLSession` for mutual TLS (mTLS).
@@ -141,60 +142,113 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
         return Data(base64Encoded: base64) ?? pem
     }
 
-    /// Imports a DER-encoded certificate and private key into a `SecIdentity`.
+    /// Prefix for Keychain labels/tags created by this provider.
+    ///
+    /// Using a deterministic prefix scoped to the certificate's SHA-256
+    /// fingerprint means repeated imports of the same cert produce one
+    /// Keychain entry — never a growing stack — and a different cert
+    /// produces a distinct entry that can be cleaned up independently.
+    private static let keychainLabelPrefix = "com.spooktacular.tls.client"
+
+    /// Imports a DER-encoded certificate and private key and returns a
+    /// `SecIdentity` pairing them.
+    ///
+    /// The cert and key are inserted into the user's login Keychain with
+    /// an application tag derived from the certificate's SHA-256 digest.
+    /// Any prior entries with the same tag are removed first, preventing
+    /// the unbounded growth that a naive `SecItemAdd` would produce on
+    /// repeated imports. The private key is marked
+    /// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` so it never
+    /// syncs off the host via iCloud Keychain.
     private static func importIdentity(certDER: Data, keyDER: Data) throws -> SecIdentity {
-        // Create the certificate.
         guard let certificate = SecCertificateCreateWithData(nil, certDER as CFData) else {
             throw TLSProviderError.invalidClientCertificate
         }
 
-        // Import the private key.
         let keyAttributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
             kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
         ]
-
         var keyError: Unmanaged<CFError>?
-        guard let privateKey = SecKeyCreateWithData(keyDER as CFData,
-                                                    keyAttributes as CFDictionary,
-                                                    &keyError) else {
+        guard let privateKey = SecKeyCreateWithData(
+            keyDER as CFData,
+            keyAttributes as CFDictionary,
+            &keyError
+        ) else {
             throw TLSProviderError.invalidPrivateKey(keyError?.takeRetainedValue())
         }
 
-        // Add both to the Keychain so SecIdentityCreate can find the pair.
-        let certAddQuery: [String: Any] = [
+        let fingerprint = Data(SHA256.hash(data: certDER))
+        let label = "\(keychainLabelPrefix)-\(fingerprint.base64EncodedString())"
+        let applicationTag = Data("\(label).key".utf8)
+
+        // Purge any prior entries for this exact certificate fingerprint.
+        SecItemDelete([
+            kSecClass as String: kSecClassCertificate,
+            kSecAttrLabel as String: label,
+        ] as CFDictionary)
+        SecItemDelete([
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: applicationTag,
+        ] as CFDictionary)
+
+        let certStatus = SecItemAdd([
             kSecClass as String: kSecClassCertificate,
             kSecValueRef as String: certificate,
-        ]
-        SecItemDelete(certAddQuery as CFDictionary) // remove stale entry
-        let certStatus = SecItemAdd(certAddQuery as CFDictionary, nil)
+            kSecAttrLabel as String: label,
+        ] as CFDictionary, nil)
         guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
             throw TLSProviderError.keychainError(certStatus)
         }
 
-        let keyAddQuery: [String: Any] = [
+        let keyStatus = SecItemAdd([
             kSecClass as String: kSecClassKey,
             kSecValueRef as String: privateKey,
-        ]
-        SecItemDelete(keyAddQuery as CFDictionary) // remove stale entry
-        let keyStatus = SecItemAdd(keyAddQuery as CFDictionary, nil)
+            kSecAttrApplicationTag as String: applicationTag,
+            kSecAttrLabel as String: label,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ] as CFDictionary, nil)
         guard keyStatus == errSecSuccess || keyStatus == errSecDuplicateItem else {
             throw TLSProviderError.keychainError(keyStatus)
         }
 
-        // Retrieve the identity that pairs cert + key.
-        let identityQuery: [String: Any] = [
-            kSecClass as String: kSecClassIdentity,
-            kSecReturnRef as String: true,
-        ]
+        // Retrieve the identity scoped to our label — never any other
+        // identity that happens to live in the same Keychain.
         var identityRef: CFTypeRef?
-        let identityStatus = SecItemCopyMatching(identityQuery as CFDictionary, &identityRef)
+        let identityStatus = SecItemCopyMatching([
+            kSecClass as String: kSecClassIdentity,
+            kSecAttrLabel as String: label,
+            kSecReturnRef as String: true,
+        ] as CFDictionary, &identityRef)
         guard identityStatus == errSecSuccess, let identity = identityRef else {
             throw TLSProviderError.identityNotFound(identityStatus)
         }
 
         // swiftlint:disable:next force_cast
         return identity as! SecIdentity
+    }
+
+    /// Removes Keychain items associated with a specific client certificate.
+    ///
+    /// Call this during uninstall or when rotating to a new client cert
+    /// to purge the prior identity's entries from the login Keychain.
+    ///
+    /// - Parameter certDER: The DER-encoded certificate whose Keychain
+    ///   entries should be removed. The fingerprint is used to locate
+    ///   the matching cert and private key.
+    public static func purgeKeychainItems(forCertificateDER certDER: Data) {
+        let fingerprint = Data(SHA256.hash(data: certDER))
+        let label = "\(keychainLabelPrefix)-\(fingerprint.base64EncodedString())"
+        let applicationTag = Data("\(label).key".utf8)
+
+        SecItemDelete([
+            kSecClass as String: kSecClassCertificate,
+            kSecAttrLabel as String: label,
+        ] as CFDictionary)
+        SecItemDelete([
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: applicationTag,
+        ] as CFDictionary)
     }
 }
 

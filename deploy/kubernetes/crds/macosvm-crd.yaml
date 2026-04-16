@@ -291,20 +291,24 @@ spec:
                 phase:
                   type: string
                   description: >-
-                    Current lifecycle phase of the VM.
+                    Current lifecycle phase of the VM. The controller
+                    advances phase as the VM moves through its lifecycle.
                     - Pending: Resource accepted, waiting for node assignment.
-                    - Creating: VM is being cloned and configured on a node.
-                    - Running: VM is booted and responsive.
-                    - Stopped: VM has been shut down (still exists on disk).
-                    - Failed: An error occurred; see message for details.
-                    - Terminating: VM is being deleted and cleaned up.
+                    - Cloning: APFS copy-on-write clone of the base bundle is in progress.
+                    - Starting: VM configuration is booting on the assigned node.
+                    - Running: VM is booted, responsive, and an IP has been resolved.
+                    - Stopping: Graceful shutdown is in progress.
+                    - Failed: An unrecoverable error occurred; see message for details.
+                    - Deleted: VM has been removed from the node; the resource is
+                      pending finalizer cleanup.
                   enum:
                     - Pending
-                    - Creating
+                    - Cloning
+                    - Starting
                     - Running
-                    - Stopped
+                    - Stopping
                     - Failed
-                    - Terminating
+                    - Deleted
 
                 ip:
                   type: string

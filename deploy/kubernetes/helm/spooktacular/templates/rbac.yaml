@@ -87,6 +87,39 @@ rules:
       - update
 
   # ---------------------------------------------------------------------------
+  # RunnerPool resources — the pool reconciler owns autoscaling and
+  # creates/deletes MacOSVMs to satisfy pool replica counts.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - spooktacular.app
+    resources:
+      - runnerpools
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  - apiGroups:
+      - spooktacular.app
+    resources:
+      - runnerpools/status
+    verbs:
+      - get
+      - update
+      - patch
+
+  - apiGroups:
+      - spooktacular.app
+    resources:
+      - runnerpools/finalizers
+    verbs:
+      - update
+
+  # ---------------------------------------------------------------------------
   # Secrets — read-only access to retrieve runner tokens and TLS certs
   # referenced by MacOSVM resources.
   # ---------------------------------------------------------------------------

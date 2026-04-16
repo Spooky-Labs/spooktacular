@@ -127,6 +127,26 @@ public actor HTTPAPIServer {
     /// Per-client rate limit: max requests per minute. Override with `SPOOK_RATE_LIMIT` env var.
     private let maxRequestsPerMinute: Int
 
+    /// Maximum total bytes (headers + body) accepted for a single request.
+    ///
+    /// Oversized requests are rejected with HTTP 413 before the body is
+    /// fully buffered. Defaults to 1 MiB; override with
+    /// `SPOOK_MAX_REQUEST_BYTES`.
+    private let maxRequestBytes: Int
+
+    /// Maximum seconds to wait for a complete request after the first byte.
+    ///
+    /// Clients that send bytes more slowly than this (the slow-loris
+    /// family of denial-of-service attacks) are rejected with HTTP 408.
+    /// Defaults to 30 s; override with `SPOOK_REQUEST_TIMEOUT_SECONDS`.
+    private let requestTimeoutSeconds: TimeInterval
+
+    /// Default maximum request size: 1 MiB.
+    private static let defaultMaxRequestBytes = 1 << 20
+
+    /// Default request read timeout: 30 seconds.
+    private static let defaultRequestTimeoutSeconds: TimeInterval = 30
+
     /// Tracks request counts per client IP for rate limiting.
     private var clientRequestCounts: [String: (count: Int, windowStart: Date)] = [:]
 
@@ -223,6 +243,10 @@ public actor HTTPAPIServer {
         self.insecureMode = insecureMode
         self.maxConcurrentConnections = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50
         self.maxRequestsPerMinute = Int(ProcessInfo.processInfo.environment["SPOOK_RATE_LIMIT"] ?? "") ?? 120
+        self.maxRequestBytes = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_REQUEST_BYTES"] ?? "")
+            ?? Self.defaultMaxRequestBytes
+        self.requestTimeoutSeconds = Double(ProcessInfo.processInfo.environment["SPOOK_REQUEST_TIMEOUT_SECONDS"] ?? "")
+            ?? Self.defaultRequestTimeoutSeconds
 
         let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"]
         self.apiToken = token?.isEmpty == false ? token : nil
@@ -513,19 +537,77 @@ public actor HTTPAPIServer {
         }
     }
 
-    /// Reads data from a connection until a complete HTTP request is received.
+    /// Reads bytes from a connection, buffering until a complete HTTP
+    /// request has arrived or a safety limit trips.
+    ///
+    /// Enforces three safety limits:
+    /// - **Total size** (`maxRequestBytes`): rejects with HTTP 413 before
+    ///   the body is fully read, defeating memory-exhaustion attacks.
+    /// - **Total time** (`requestTimeoutSeconds`): rejects with HTTP 408
+    ///   when the client sends bytes too slowly (slow-loris).
+    /// - **Malformed headers**: rejects with HTTP 400 as soon as the
+    ///   header block is complete and unparseable.
     private nonisolated func receiveRequest(on connection: NWConnection) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
-            guard let self, let data, !data.isEmpty else {
-                if isComplete || error != nil {
-                    connection.cancel()
-                }
+        readIntoBuffer(
+            on: connection,
+            buffer: Data(),
+            deadline: Date().addingTimeInterval(requestTimeoutSeconds),
+            maxBytes: maxRequestBytes
+        )
+    }
+
+    /// Recursive reader that accumulates bytes until a complete request
+    /// is parseable or a limit is exceeded.
+    private nonisolated func readIntoBuffer(
+        on connection: NWConnection,
+        buffer: Data,
+        deadline: Date,
+        maxBytes: Int
+    ) {
+        if Date() > deadline {
+            let response = HTTPResponse.error(message: "Request Timeout.", statusCode: 408)
+            sendResponse(response, on: connection)
+            return
+        }
+
+        let remaining = maxBytes - buffer.count
+        guard remaining > 0 else {
+            let response = HTTPResponse.error(message: "Payload Too Large.", statusCode: 413)
+            sendResponse(response, on: connection)
+            return
+        }
+
+        let chunk = min(remaining, 65_536)
+        connection.receive(minimumIncompleteLength: 1, maximumLength: chunk) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+
+            var next = buffer
+            if let data { next.append(data) }
+
+            if next.count > maxBytes {
+                let response = HTTPResponse.error(message: "Payload Too Large.", statusCode: 413)
+                self.sendResponse(response, on: connection)
                 return
             }
 
-            Task {
-                await self.processReceivedData(data, on: connection)
+            do {
+                if let request = try HTTPRequestParser.parseIfComplete(next) {
+                    Task { await self.processParsedRequest(request, on: connection) }
+                    return
+                }
+            } catch {
+                let response = HTTPResponse.error(message: "Malformed HTTP request.", statusCode: 400)
+                self.sendResponse(response, on: connection)
+                return
             }
+
+            if error != nil || isComplete {
+                // Connection closed before a full request arrived.
+                connection.cancel()
+                return
+            }
+
+            self.readIntoBuffer(on: connection, buffer: next, deadline: deadline, maxBytes: maxBytes)
         }
     }
 
@@ -569,21 +651,10 @@ public actor HTTPAPIServer {
         }
     }
 
-    /// Processes received data, parsing the HTTP request and dispatching to handlers.
-    private func processReceivedData(_ data: Data, on connection: NWConnection) async {
-        let request: HTTPRequest
-        do {
-            request = try HTTPRequestParser.parse(data)
-        } catch {
-            logger.debug("Failed to parse HTTP request: \(error.localizedDescription, privacy: .public)")
-            let response = HTTPResponse.error(message: "Malformed HTTP request.", statusCode: 400)
-            sendResponse(response, on: connection)
-            return
-        }
-
+    /// Dispatches a fully-parsed request: logs, rate-limits, routes.
+    private func processParsedRequest(_ request: HTTPRequest, on connection: NWConnection) async {
         logger.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
 
-        // Per-client rate limiting
         let ip = clientIP(from: connection)
         guard checkRateLimit(clientIP: ip) else {
             logger.warning("Rate limit exceeded for \(ip, privacy: .public)")
@@ -610,6 +681,26 @@ public actor HTTPAPIServer {
     /// alphanumeric, dot, underscore, or hyphen characters.
     private nonisolated(unsafe) static let vmNamePattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$/
 
+    /// Constant-time string equality.
+    ///
+    /// Compares byte-by-byte without short-circuiting, so the running
+    /// time depends only on length, not on which bytes match. This is
+    /// the primitive that prevents bearer-token-enumeration timing
+    /// attacks on the Authorization header.
+    ///
+    /// Length is treated as non-secret and checked first — bailing out
+    /// on length is standard and does not constitute a timing leak.
+    static func constantTimeEqual(_ lhs: String, _ rhs: String) -> Bool {
+        let a = Array(lhs.utf8)
+        let b = Array(rhs.utf8)
+        guard a.count == b.count else { return false }
+        var diff: UInt8 = 0
+        for i in 0..<a.count {
+            diff |= a[i] ^ b[i]
+        }
+        return diff == 0
+    }
+
     /// Routes an HTTP request to the appropriate handler based on method and path.
     ///
     /// Path matching uses simple prefix/component matching:
@@ -635,7 +726,7 @@ public actor HTTPAPIServer {
 
         if let token = apiToken {
             let header = request.headers["authorization"] ?? ""
-            guard header == "Bearer \(token)" else {
+            guard Self.constantTimeEqual(header, "Bearer \(token)") else {
                 let response = HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
                 await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
                 return response
