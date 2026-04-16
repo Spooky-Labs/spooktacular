@@ -53,7 +53,10 @@ let package = Package(
         // ──────────────────────────────────────────────
         .target(
             name: "SpookInfrastructureApple",
-            dependencies: ["SpookCore", "SpookApplication"],
+            dependencies: [
+                "SpookCore",
+                "SpookApplication",
+            ],
             path: "Sources/SpookInfrastructureApple"
         ),
 
