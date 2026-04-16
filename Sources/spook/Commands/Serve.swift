@@ -118,16 +118,55 @@ extension Spook {
             // Wire enterprise stack from environment variables
             let env = ProcessInfo.processInfo.environment
 
+            // Tenancy mode
+            let tenancyMode: TenancyMode = env["SPOOK_TENANCY_MODE"] == "multi-tenant"
+                ? .multiTenant : .singleTenant
+
+            // Tenant isolation
+            let isolation: any TenantIsolationPolicy
+            if tenancyMode == .multiTenant {
+                if let configPath = env["SPOOK_TENANT_CONFIG"],
+                   let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)) {
+                    struct TC: Codable { let tenantPools: [String: [String]]; let breakGlassTenants: [String]? }
+                    if let tc = try? JSONDecoder().decode(TC.self, from: data) {
+                        var pools: [TenantID: Swift.Set<HostPoolID>] = [:]
+                        for (k, v) in tc.tenantPools { pools[TenantID(k)] = Swift.Set(v.map { HostPoolID($0) }) }
+                        let bg = Swift.Set((tc.breakGlassTenants ?? []).map { TenantID($0) })
+                        isolation = MultiTenantIsolation(tenantPools: pools, breakGlassTenants: bg)
+                    } else {
+                        isolation = MultiTenantIsolation(tenantPools: [:])
+                    }
+                } else {
+                    isolation = MultiTenantIsolation(tenantPools: [:])
+                }
+            } else {
+                isolation = SingleTenantIsolation()
+            }
+
             // RBAC
+            let roleStore = try JSONRoleStore(configPath: env["SPOOK_RBAC_CONFIG"])
             let authService: (any AuthorizationService)?
-            if env["SPOOK_RBAC_CONFIG"] != nil || !insecure {
-                let roleStore = try JSONRoleStore(configPath: env["SPOOK_RBAC_CONFIG"])
-                authService = RBACAuthorization(
-                    roleStore: roleStore,
-                    isolation: SingleTenantIsolation()
-                )
+            if !insecure {
+                if tenancyMode == .multiTenant {
+                    authService = MultiTenantAuthorization(
+                        policy: .multiTenant, isolation: isolation, roleStore: roleStore
+                    )
+                } else {
+                    authService = SingleTenantAuthorization(
+                        policy: .singleTenant, roleStore: roleStore
+                    )
+                }
             } else {
                 authService = nil
+            }
+
+            // IdP registry
+            if let idpPath = env["SPOOK_IDP_CONFIG"],
+               let idpData = try? Data(contentsOf: URL(fileURLWithPath: idpPath)) {
+                struct IdPFile: Codable { let providers: [IdPConfig] }
+                if let config = try? JSONDecoder().decode(IdPFile.self, from: idpData) {
+                    print(Style.info("Loaded \(config.providers.count) identity provider(s)"))
+                }
             }
 
             // Audit sink chain
