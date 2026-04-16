@@ -224,7 +224,7 @@ extension Spook {
             // Use the volume root if the storage directory doesn't exist yet.
             let checkURL = fileManager.fileExists(atPath: storageURL.path)
                 ? storageURL
-                : URL(fileURLWithPath: "/")
+                : URL(filePath: "/")
 
             do {
                 let values = try checkURL.resourceValues(

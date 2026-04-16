@@ -500,7 +500,7 @@ private func handleExec(_ request: AgentHTTPRequest) -> Data {
     defer { activeExecCount -= 1 }
 
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/bash")
+    process.executableURL = URL(filePath: "/bin/bash")
     process.arguments = ["-c", execReq.command]
 
     let stdoutPipe = Pipe()
@@ -655,7 +655,7 @@ private func handleListFS(_ request: AgentHTTPRequest) -> Data {
         return errorResponse(message: "Query parameter 'path' is required.", statusCode: 400)
     }
 
-    let url = URL(fileURLWithPath: dirPath)
+    let url = URL(filePath: dirPath)
     let fm = FileManager.default
 
     do {
@@ -705,7 +705,7 @@ private func handleUploadFile(_ request: AgentHTTPRequest) -> Data {
     }
 
     // Prevent directory traversal
-    let safeName = URL(fileURLWithPath: payload.name).lastPathComponent
+    let safeName = URL(filePath: payload.name).lastPathComponent
     guard !safeName.isEmpty, safeName != ".", safeName != ".." else {
         return errorResponse(message: "Invalid file name.", statusCode: 400)
     }
@@ -770,7 +770,7 @@ private func handleListFiles() -> Data {
 /// ports and the processes that own them.
 private func handleListPorts() -> Data {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+    process.executableURL = URL(filePath: "/usr/sbin/lsof")
     process.arguments = ["-iTCP", "-sTCP:LISTEN", "-nP", "-F", "pcn"]
 
     let pipe = Pipe()

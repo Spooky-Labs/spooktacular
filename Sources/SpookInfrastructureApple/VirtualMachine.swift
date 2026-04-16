@@ -286,19 +286,29 @@ public final class VirtualMachine: NSObject, Sendable {
             Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)'")
             try vm.requestStop()
 
-            // Poll state off the main actor to avoid blocking UI.
-            // macOS guests typically ignore requestStop(), so we
-            // escalate to a force-stop if the VM is still running.
-            let stopped = await Task.detached { [weak self] in
-                for _ in 0..<60 {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    if await self?.state == .stopped { return true }
+            // Wait for the state-change stream to yield `.stopped`, or
+            // time out after `gracefulStopTimeout` seconds. Racing two
+            // async paths is cheaper than polling — no main-actor hops,
+            // no 60× cache-busting Task.detached awakenings.
+            let stream = stateStream
+            let timeout = Self.gracefulStopTimeout
+            let stopped = await withTaskGroup(of: Bool.self) { group in
+                group.addTask {
+                    for await state in stream where state == .stopped {
+                        return true
+                    }
+                    return false
                 }
-                return false
-            }.value
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(timeout))
+                    return false
+                }
+                defer { group.cancelAll() }
+                return await group.next() ?? false
+            }
 
             if !stopped {
-                Log.vm.warning("Graceful stop timed out for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
+                Log.vm.warning("Graceful stop timed out after \(Self.gracefulStopTimeout)s for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
                 nonisolated(unsafe) let unsafeVM = vm
                 try await unsafeVM.stop()
                 Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' force-stopped after graceful timeout")

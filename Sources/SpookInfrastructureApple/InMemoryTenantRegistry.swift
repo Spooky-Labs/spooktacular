@@ -14,7 +14,7 @@ public actor InMemoryTenantRegistry: TenantRegistry {
         self.persistPath = persistPath
         // Load from file if it exists
         if let path = persistPath,
-           let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+           let data = try? Data(contentsOf: URL(filePath: path)),
            let loaded = try? JSONDecoder().decode([TenantDefinition].self, from: data) {
             for t in loaded { tenants[t.id] = t }
         }
@@ -67,7 +67,7 @@ public actor InMemoryTenantRegistry: TenantRegistry {
     private func persist() async throws {
         guard let path = persistPath else { return }
         let data = try JSONEncoder().encode(Array(tenants.values))
-        try data.write(to: URL(fileURLWithPath: path))
+        try data.write(to: URL(filePath: path))
     }
 }
 

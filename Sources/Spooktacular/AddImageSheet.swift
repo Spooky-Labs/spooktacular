@@ -172,7 +172,7 @@ struct AddImageSheet: View {
         errorMessage = nil
         do {
             if sourceType == .localFile {
-                let url = URL(fileURLWithPath: filePath)
+                let url = URL(filePath: filePath)
                 guard FileManager.default.fileExists(atPath: url.path) else {
                     errorMessage = "File not found at \(filePath)"
                     return

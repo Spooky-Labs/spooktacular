@@ -126,7 +126,7 @@ extension Spook {
             let isolation: any TenantIsolationPolicy
             if tenancyMode == .multiTenant {
                 if let configPath = env["SPOOK_TENANT_CONFIG"],
-                   let data = try? Data(contentsOf: URL(fileURLWithPath: configPath)) {
+                   let data = try? Data(contentsOf: URL(filePath: configPath)) {
                     struct TC: Codable { let tenantPools: [String: [String]]; let breakGlassTenants: [String]? }
                     if let tc = try? JSONDecoder().decode(TC.self, from: data) {
                         var pools: [TenantID: Swift.Set<HostPoolID>] = [:]
@@ -162,7 +162,7 @@ extension Spook {
 
             // IdP registry
             if let idpPath = env["SPOOK_IDP_CONFIG"],
-               let idpData = try? Data(contentsOf: URL(fileURLWithPath: idpPath)) {
+               let idpData = try? Data(contentsOf: URL(filePath: idpPath)) {
                 struct IdPFile: Codable { let providers: [IdPConfig] }
                 if let config = try? JSONDecoder().decode(IdPFile.self, from: idpData) {
                     print(Style.info("Loaded \(config.providers.count) identity provider(s)"))
@@ -304,8 +304,8 @@ extension Spook {
         ///   cannot be created.
         private static func loadTLSIdentity(certPath: String, keyPath: String) throws -> SecIdentity {
             // Read PEM files.
-            let certURL = URL(fileURLWithPath: certPath)
-            let keyURL = URL(fileURLWithPath: keyPath)
+            let certURL = URL(filePath: certPath)
+            let keyURL = URL(filePath: keyPath)
 
             let certPEM = try Data(contentsOf: certURL)
             let keyPEM = try Data(contentsOf: keyURL)

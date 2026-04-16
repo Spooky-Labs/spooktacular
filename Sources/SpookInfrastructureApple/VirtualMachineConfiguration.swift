@@ -145,7 +145,7 @@ public enum VirtualMachineConfiguration {
             let folder = folders[0]
             let share = VZSingleDirectoryShare(
                 directory: VZSharedDirectory(
-                    url: URL(fileURLWithPath: folder.hostPath),
+                    url: URL(filePath: folder.hostPath),
                     readOnly: folder.readOnly
                 )
             )
@@ -159,7 +159,7 @@ public enum VirtualMachineConfiguration {
         return folders.map { folder in
             let share = VZSingleDirectoryShare(
                 directory: VZSharedDirectory(
-                    url: URL(fileURLWithPath: folder.hostPath),
+                    url: URL(filePath: folder.hostPath),
                     readOnly: folder.readOnly
                 )
             )

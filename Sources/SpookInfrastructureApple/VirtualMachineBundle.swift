@@ -25,7 +25,7 @@ import os
 /// ## Creating a New Bundle
 ///
 /// ```swift
-/// let url = URL(fileURLWithPath: "~/.spooktacular/vms/my-vm.vm")
+/// let url = URL(filePath: "~/.spooktacular/vms/my-vm.vm")
 /// let spec = VirtualMachineSpecification(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
 /// let bundle = try VirtualMachineBundle.create(at: url, spec: spec)
 /// ```

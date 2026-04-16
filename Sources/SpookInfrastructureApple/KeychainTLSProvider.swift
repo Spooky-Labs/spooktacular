@@ -56,9 +56,9 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
     /// - Throws: If any file cannot be read or if the Security
     ///   framework rejects the data.
     public convenience init(certPath: String, keyPath: String, caPath: String) throws {
-        let certData = try Data(contentsOf: URL(fileURLWithPath: certPath))
-        let keyData  = try Data(contentsOf: URL(fileURLWithPath: keyPath))
-        let caData   = try Data(contentsOf: URL(fileURLWithPath: caPath))
+        let certData = try Data(contentsOf: URL(filePath: certPath))
+        let keyData  = try Data(contentsOf: URL(filePath: keyPath))
+        let caData   = try Data(contentsOf: URL(filePath: caPath))
 
         // Import client certificate + key into a PKCS #12 identity.
         let identity = try Self.importIdentity(certDER: Self.decodePEM(certData),

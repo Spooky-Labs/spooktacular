@@ -68,7 +68,7 @@ struct SpookController {
         let tenantConfig: TenantConfig?
         let tenantPools: [TenantID: Set<HostPoolID>]
         if let configPath = env["SPOOK_TENANT_CONFIG"],
-           let configData = try? Data(contentsOf: URL(fileURLWithPath: configPath)),
+           let configData = try? Data(contentsOf: URL(filePath: configPath)),
            let config = try? JSONDecoder().decode(TenantConfig.self, from: configData) {
             tenantConfig = config
             var pools: [TenantID: Set<HostPoolID>] = [:]
@@ -144,7 +144,7 @@ struct SpookController {
         // IdP registry (SPOOK_IDP_CONFIG)
         let idpVerifier: MultiIdPVerifier = MultiIdPVerifier()
         if let idpPath = env["SPOOK_IDP_CONFIG"],
-           let idpData = try? Data(contentsOf: URL(fileURLWithPath: idpPath)) {
+           let idpData = try? Data(contentsOf: URL(filePath: idpPath)) {
             struct IdPFileConfig: Codable { let providers: [IdPConfig] }
             if let config = try? JSONDecoder().decode(IdPFileConfig.self, from: idpData) {
                 for provider in config.providers {

@@ -254,7 +254,7 @@ extension Spook {
                     }
                     print()
                 } else {
-                    ipswURL = URL(fileURLWithPath: fromIpsw)
+                    ipswURL = URL(filePath: fromIpsw)
                     guard FileManager.default.fileExists(atPath: ipswURL.path) else {
                         print(Style.error("✗ IPSW file not found at '\(fromIpsw)'."))
                         print(Style.dim("  Verify the file path exists, or use '--from-ipsw latest' to download automatically."))
@@ -312,7 +312,7 @@ extension Spook {
                 } else if openclaw {
                     provisionScript = try OpenClawTemplate.generate()
                 } else if let path = userData {
-                    provisionScript = URL(fileURLWithPath: path)
+                    provisionScript = URL(filePath: path)
                 }
 
                 if let script = provisionScript {

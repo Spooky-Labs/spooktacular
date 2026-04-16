@@ -1070,7 +1070,7 @@ public actor HTTPAPIServer {
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: spookPath)
+        process.executableURL = URL(filePath: spookPath)
         process.arguments = ["start", name, "--headless"]
         process.standardOutput = logFileHandle
         process.standardError = logFileHandle

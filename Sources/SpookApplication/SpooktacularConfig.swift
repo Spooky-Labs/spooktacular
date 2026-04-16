@@ -97,7 +97,7 @@ public struct SpooktacularConfig: Sendable, Codable {
 
     /// Loads configuration from a JSON file.
     public static func load(from path: String) throws -> SpooktacularConfig {
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let data = try Data(contentsOf: URL(filePath: path))
         return try JSONDecoder().decode(SpooktacularConfig.self, from: data)
     }
 }

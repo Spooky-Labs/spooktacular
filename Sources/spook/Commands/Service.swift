@@ -89,7 +89,7 @@ extension Spook.Service {
             }
 
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            process.executableURL = URL(filePath: "/bin/launchctl")
             process.arguments = ["bootstrap", "system", plistPath]
 
             do {
@@ -154,7 +154,7 @@ extension Spook.Service {
 
             let label = ServicePlist.label(for: name)
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            process.executableURL = URL(filePath: "/bin/launchctl")
             process.arguments = ["bootout", "system/\(label)"]
 
             do {
@@ -224,7 +224,7 @@ extension Spook.Service {
                 let vmName = String(label.dropFirst("\(prefix).".count))
 
                 let probe = Process()
-                probe.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+                probe.executableURL = URL(filePath: "/bin/launchctl")
                 probe.arguments = ["print", "system/\(label)"]
                 probe.standardOutput = FileHandle.nullDevice
                 probe.standardError = FileHandle.nullDevice

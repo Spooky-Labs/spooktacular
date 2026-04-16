@@ -16,7 +16,7 @@ import os
 /// ## Usage
 ///
 /// ```swift
-/// let scriptURL = URL(fileURLWithPath: "/path/to/setup.sh")
+/// let scriptURL = URL(filePath: "/path/to/setup.sh")
 /// let bundle = try VirtualMachineBundle.load(from: bundleURL)
 /// try DiskInjector.inject(script: scriptURL, into: bundle)
 /// ```

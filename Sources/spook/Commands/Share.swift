@@ -82,7 +82,7 @@ extension Spook.Share {
                 throw ExitCode.failure
             }
 
-            let shareTag = tag ?? URL(fileURLWithPath: path).lastPathComponent
+            let shareTag = tag ?? URL(filePath: path).lastPathComponent
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
             let newFolder = SharedFolder(

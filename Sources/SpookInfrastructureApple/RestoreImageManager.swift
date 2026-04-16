@@ -229,16 +229,18 @@ public final class RestoreImageManager: Sendable {
             restoringFromImageAt: ipswURL
         )
 
-        // Observe progress.
+        // Observe progress. Use `defer` for the invalidation so it
+        // also runs when `install()` throws — otherwise the KVO
+        // observation leaks until `installer` deallocates.
         let observation = installer.progress.observe(
             \.fractionCompleted,
             options: [.new]
         ) { progressObj, _ in
             progress(progressObj.fractionCompleted)
         }
+        defer { observation.invalidate() }
 
         try await installer.install()
-        observation.invalidate()
         Log.ipsw.notice("macOS installation complete for '\(bundle.url.lastPathComponent, privacy: .public)'")
     }
 
@@ -250,7 +252,10 @@ public final class RestoreImageManager: Sendable {
     /// which on APFS results in a sparse file that consumes
     /// minimal physical disk space.
     private func createSparseImage(at url: URL, sizeInBytes: UInt64) throws {
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+        // Use `.withoutOverwriting` so a stale file at `url` is
+        // surfaced as an error rather than silently truncated —
+        // `createSparseImage` is always creating a *new* image.
+        try Data().write(to: url, options: .withoutOverwriting)
 
         let handle = try FileHandle(forWritingTo: url)
         defer { try? handle.close() }

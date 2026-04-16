@@ -51,7 +51,10 @@ struct SAMLVerifierTests {
 
     @Test("FIPSError has descriptions")
     func fipsErrorDescriptions() {
-        let errors: [FIPSError] = [.accessControlFailed, .keyGenerationFailed, .publicKeyExtractionFailed, .keyNotFound("test"), .signingFailed]
+        let errors: [FIPSError] = [
+            .accessControlFailed, .keyGenerationFailed, .publicKeyExtractionFailed,
+            .keyNotFound("test"), .signingFailed, .secureEnclaveUnavailable,
+        ]
         for error in errors {
             #expect(error.errorDescription != nil)
         }

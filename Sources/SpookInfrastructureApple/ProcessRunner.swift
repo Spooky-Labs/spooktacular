@@ -40,7 +40,7 @@ public enum ProcessRunner {
         arguments: [String]
     ) throws -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
+        process.executableURL = URL(filePath: executable)
         process.arguments = arguments
 
         let pipe = Pipe()

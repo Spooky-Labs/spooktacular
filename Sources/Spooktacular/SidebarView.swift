@@ -259,7 +259,7 @@ struct ImageRow: View {
     private var sourceLabel: String {
         switch image.source {
         case .ipsw(let path):
-            URL(fileURLWithPath: path).lastPathComponent
+            URL(filePath: path).lastPathComponent
         case .oci(let ref):
             ref
         }

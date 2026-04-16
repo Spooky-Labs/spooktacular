@@ -73,7 +73,7 @@ public struct MacOSGroupAuthorization: AuthorizationService {
     /// Queries the current user's macOS group memberships.
     private static func currentUserGroups() -> Swift.Set<String> {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/id")
+        process.executableURL = URL(filePath: "/usr/bin/id")
         process.arguments = ["-Gn"]
         let pipe = Pipe()
         process.standardOutput = pipe

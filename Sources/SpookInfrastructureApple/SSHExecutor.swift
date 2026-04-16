@@ -148,7 +148,7 @@ public enum SSHExecutor {
     ///   SSH process exits with a non-zero status.
     public static func execInteractive(arguments: [String]) throws {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        process.executableURL = URL(filePath: "/usr/bin/ssh")
         process.arguments = arguments
         process.standardInput = FileHandle.standardInput
         process.standardOutput = FileHandle.standardOutput
@@ -243,7 +243,7 @@ public enum SSHExecutor {
         arguments: [String]
     ) async throws -> Int32 {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: path)
+        process.executableURL = URL(filePath: path)
         process.arguments = arguments
 
         process.standardOutput = FileHandle.standardOutput

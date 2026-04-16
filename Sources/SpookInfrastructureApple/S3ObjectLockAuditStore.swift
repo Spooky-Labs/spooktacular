@@ -156,10 +156,18 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
         let amzDateStr = amzDate(now)
         let scope = "\(dateStamp)/\(region)/s3/aws4_request"
 
-        // Canonical headers (sorted)
+        // Canonical headers (sorted).
+        //
+        // AWS SigV4 §3.2 requires values to be trimmed and internal
+        // sequential whitespace collapsed before signing. Without this,
+        // S3 rejects requests where any header value contains
+        // leading/trailing/internal extra whitespace.
         var headers: [(String, String)] = []
         for (key, value) in request.allHTTPHeaderFields ?? [:] {
-            headers.append((key.lowercased(), value))
+            let normalizedValue = value
+                .trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            headers.append((key.lowercased(), normalizedValue))
         }
         headers.sort { $0.0 < $1.0 }
         let signedHeaders = headers.map(\.0).joined(separator: ";")
@@ -207,18 +215,36 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
         return Data(mac)
     }
 
-    private func amzDate(_ date: Date) -> String {
+    /// Cached formatter for the `X-Amz-Date` header format
+    /// (`yyyyMMdd'T'HHmmss'Z'`).
+    ///
+    /// `DateFormatter` is expensive to allocate — enough to show up in
+    /// profiles when auditing at any real rate. Cached as a stored
+    /// property since this type is already an `actor`, guaranteeing
+    /// exclusive access at each call site.
+    private let amzDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
         f.timeZone = TimeZone(identifier: "UTC")
-        return f.string(from: date)
-    }
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
-    private func shortDate(_ date: Date) -> String {
+    /// Cached formatter for SigV4's date stamp (`yyyyMMdd`).
+    private let shortDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyyMMdd"
         f.timeZone = TimeZone(identifier: "UTC")
-        return f.string(from: date)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private func amzDate(_ date: Date) -> String {
+        amzDateFormatter.string(from: date)
+    }
+
+    private func shortDate(_ date: Date) -> String {
+        shortDateFormatter.string(from: date)
     }
 }
 

@@ -39,7 +39,7 @@ public actor JSONRoleStore: RoleStore {
 
         // Override with config file if provided
         if let path = configPath,
-           let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
+           let data = try? Data(contentsOf: URL(filePath: path)) {
             let config = try JSONDecoder().decode(RBACFileConfig.self, from: data)
             for rc in config.roles {
                 let perms = Set(rc.permissions.map { Permission(resource: $0.resource, action: $0.action) })

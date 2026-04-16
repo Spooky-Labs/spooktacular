@@ -92,7 +92,7 @@ enum LaunchDaemon {
         print("Wrote \(daemonPlistPath)")
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.executableURL = URL(filePath: "/bin/launchctl")
         process.arguments = ["bootstrap", "system", daemonPlistPath]
 
         do {
@@ -194,7 +194,7 @@ enum LaunchDaemon {
         // Load via launchctl bootstrap gui/<uid>
         let uid = getuid()
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.executableURL = URL(filePath: "/bin/launchctl")
         process.arguments = ["bootstrap", "gui/\(uid)", plistPath]
 
         do {
