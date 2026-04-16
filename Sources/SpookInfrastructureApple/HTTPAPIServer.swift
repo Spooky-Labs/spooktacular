@@ -138,6 +138,12 @@ public actor HTTPAPIServer {
     /// isolation enforcement.
     private let tenantID: TenantID
 
+    /// Optional authorization service for RBAC enforcement.
+    ///
+    /// When set, every API request is checked against the actor's
+    /// roles before dispatching to the handler. Deny by default.
+    private let authService: (any AuthorizationService)?
+
     /// Optional structured audit sink for control-plane actions.
     ///
     /// When set, every API request emits a structured ``AuditRecord``
@@ -187,6 +193,7 @@ public actor HTTPAPIServer {
         spookPath: String = "/usr/local/bin/spook",
         tlsOptions: NWProtocolTLS.Options? = nil,
         tenantID: TenantID = .default,
+        authService: (any AuthorizationService)? = nil,
         auditSink: (any AuditSink)? = nil,
         insecureMode: Bool = false
     ) throws {
@@ -211,6 +218,7 @@ public actor HTTPAPIServer {
         self.vmDirectory = vmDirectory
         self.spookPath = spookPath
         self.tenantID = tenantID
+        self.authService = authService
         self.auditSink = auditSink
         self.insecureMode = insecureMode
         self.maxConcurrentConnections = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50
@@ -634,6 +642,27 @@ public actor HTTPAPIServer {
             }
         }
 
+        // RBAC enforcement: check resource-level permissions before dispatch.
+        if let auth = authService {
+            let resource = inferResource(from: request.path)
+            let action = inferAction(from: request.method, path: request.path)
+            let context = AuthorizationContext(
+                actorIdentity: "api-client",
+                tenant: tenantID,
+                scope: .admin,
+                resource: resource,
+                action: action
+            )
+            guard await auth.authorize(context) else {
+                let response = HTTPResponse.error(
+                    message: "Forbidden. Your role does not have permission: \(resource):\(action)",
+                    statusCode: 403
+                )
+                await emitAPIAudit(method: request.method, path: request.path, statusCode: 403)
+                return response
+            }
+        }
+
         // Log tenant context for all authenticated API requests.
         logger.info("[\(self.tenantID.description, privacy: .public)] \(request.method, privacy: .public) \(request.path, privacy: .public)")
 
@@ -684,6 +713,28 @@ public actor HTTPAPIServer {
     ///   - method: The HTTP method (e.g., `"GET"`, `"POST"`).
     ///   - path: The request path (e.g., `"/v1/vms/runner-1/start"`).
     ///   - statusCode: The HTTP status code of the response.
+    /// Maps an API path to a resource type for RBAC evaluation.
+    private func inferResource(from path: String) -> String {
+        if path.hasPrefix("/v1/vms") { return "vm" }
+        if path.hasPrefix("/v1/audit") { return "audit" }
+        if path == "/metrics" { return "metrics" }
+        return "api"
+    }
+
+    /// Maps an HTTP method + path to an action for RBAC evaluation.
+    private func inferAction(from method: String, path: String) -> String {
+        switch method {
+        case "GET": return "list"
+        case "POST":
+            if path.hasSuffix("/clone") { return "create" }
+            if path.hasSuffix("/start") { return "start" }
+            if path.hasSuffix("/stop") { return "stop" }
+            return "create"
+        case "DELETE": return "delete"
+        default: return "unknown"
+        }
+    }
+
     private func emitAPIAudit(method: String, path: String, statusCode: Int) async {
         guard let sink = auditSink else { return }
         let record = AuditRecord(
