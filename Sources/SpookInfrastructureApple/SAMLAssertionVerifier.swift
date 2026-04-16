@@ -5,15 +5,19 @@ import SpookApplication
 
 /// Verifies SAML Response XML and extracts assertions.
 ///
-/// Uses Security.framework for X.509 certificate parsing and
-/// XML signature verification.
+/// Uses Apple's `XMLParser` (Foundation) for standards-compliant XML
+/// parsing and `Security.framework` for X.509 signature verification.
+///
+/// ## Standards
+/// - [SAML 2.0 Core (OASIS)](http://docs.oasis-open.org/security/saml/v2.0/saml-core-2.0-os.pdf)
+/// - [XML Signature (W3C)](https://www.w3.org/TR/xmldsig-core1/)
+/// - [OWASP SAML Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/SAML_Security_Cheat_Sheet.html)
 public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
     private let config: SAMLProviderConfig
     private let idpCertificate: SecCertificate
 
     public init(config: SAMLProviderConfig) throws {
         self.config = config
-        // Parse the IdP's X.509 certificate from base64
         guard let certData = Data(base64Encoded: config.certificate),
               let cert = SecCertificateCreateWithData(nil, certData as CFData) else {
             throw SAMLError.invalidCertificate
@@ -21,102 +25,88 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         self.idpCertificate = cert
     }
 
-    /// Verifies a base64-encoded SAML Response and extracts the identity.
     public func verify(token: String) async throws -> FederatedIdentity {
-        // 1. Base64 decode the SAML Response
         guard let responseData = Data(base64Encoded: token),
               let responseXML = String(data: responseData, encoding: .utf8) else {
             throw SAMLError.malformedResponse
         }
 
-        // 2. Parse the XML to extract key fields
         let assertion = try parseAssertion(from: responseXML)
 
-        // 3. Verify the issuer matches
         guard assertion.issuer == config.entityID else {
             throw SAMLError.issuerMismatch
         }
 
-        // 4. Check expiry
         guard !assertion.isExpired else {
             throw SAMLError.assertionExpired
         }
 
-        // 5. Verify XML signature
         try verifySignature(xml: responseXML)
 
-        // 6. Convert to FederatedIdentity
         return assertion.toFederatedIdentity()
     }
 
-    /// Parses a SAML assertion from XML using simple string extraction.
-    /// For production, consider a proper XML parser.
+    // MARK: - XMLParser-Based Parsing
+
+    /// Parses a SAML assertion using Apple's XMLParser (not regex).
     private func parseAssertion(from xml: String) throws -> SAMLAssertion {
-        // Extract Issuer
-        guard let issuer = extractElement("Issuer", from: xml) else {
+        guard let data = xml.data(using: .utf8) else {
             throw SAMLError.malformedResponse
         }
 
-        // Extract NameID
-        guard let nameID = extractElement("NameID", from: xml) else {
+        let delegate = SAMLXMLParserDelegate()
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+        parser.shouldResolveExternalEntities = false // Prevent XXE attacks
+        guard parser.parse() else {
             throw SAMLError.malformedResponse
         }
 
-        // Extract NameID Format attribute
-        let nameIDFormat = extractAttribute("Format", fromElement: "NameID", in: xml)
+        guard let issuer = delegate.issuer else {
+            throw SAMLError.malformedResponse
+        }
+        guard let nameID = delegate.nameID else {
+            throw SAMLError.malformedResponse
+        }
 
-        // Extract SessionNotOnOrAfter
         let sessionExpiry: Date?
-        if let expiryStr = extractAttribute("SessionNotOnOrAfter", fromElement: "AuthnStatement", in: xml) {
-            let formatter = ISO8601DateFormatter()
-            sessionExpiry = formatter.date(from: expiryStr)
+        if let expiryStr = delegate.sessionNotOnOrAfter {
+            sessionExpiry = ISO8601DateFormatter().date(from: expiryStr)
         } else {
             sessionExpiry = nil
         }
 
-        // Extract Attributes
-        var attributes: [String: [String]] = [:]
-        let attrPattern = try NSRegularExpression(
-            pattern: #"<(?:saml:)?Attribute\s+Name="([^"]+)"[^>]*>(.*?)</(?:saml:)?Attribute>"#,
-            options: .dotMatchesLineSeparators
-        )
-        let valuePattern = try NSRegularExpression(
-            pattern: #"<(?:saml:)?AttributeValue[^>]*>([^<]+)</(?:saml:)?AttributeValue>"#
-        )
-
-        let attrMatches = attrPattern.matches(in: xml, range: NSRange(xml.startIndex..., in: xml))
-        for match in attrMatches {
-            guard let nameRange = Range(match.range(at: 1), in: xml),
-                  let bodyRange = Range(match.range(at: 2), in: xml) else { continue }
-            let name = String(xml[nameRange])
-            let body = String(xml[bodyRange])
-            let valueMatches = valuePattern.matches(in: body, range: NSRange(body.startIndex..., in: body))
-            let values = valueMatches.compactMap { m -> String? in
-                guard let r = Range(m.range(at: 1), in: body) else { return nil }
-                return String(body[r])
-            }
-            attributes[name] = values
-        }
-
         return SAMLAssertion(
-            issuer: issuer, nameID: nameID,
-            nameIDFormat: nameIDFormat,
+            issuer: issuer,
+            nameID: nameID,
+            nameIDFormat: delegate.nameIDFormat,
             sessionExpiresAt: sessionExpiry,
-            attributes: attributes
+            attributes: delegate.attributes
         )
     }
 
-    /// Verifies the XML signature using the IdP's X.509 certificate.
+    // MARK: - XML Signature Verification
+
     private func verifySignature(xml: String) throws {
-        // Extract the SignatureValue and SignedInfo from the XML
-        guard let signatureB64 = extractElement("SignatureValue", from: xml),
-              let signatureData = Data(base64Encoded: signatureB64.replacingOccurrences(
-                  of: "\\s", with: "", options: .regularExpression
-              )) else {
+        guard let data = xml.data(using: .utf8) else {
             throw SAMLError.signatureVerificationFailed
         }
 
-        // Get the public key from the IdP certificate
+        let sigDelegate = SignatureXMLParserDelegate()
+        let parser = XMLParser(data: data)
+        parser.delegate = sigDelegate
+        parser.shouldResolveExternalEntities = false
+        guard parser.parse(), let signatureB64 = sigDelegate.signatureValue else {
+            throw SAMLError.signatureVerificationFailed
+        }
+
+        let cleanedSig = signatureB64.replacingOccurrences(
+            of: "\\s", with: "", options: .regularExpression
+        )
+        guard let signatureData = Data(base64Encoded: cleanedSig) else {
+            throw SAMLError.signatureVerificationFailed
+        }
+
         guard let publicKey = SecCertificateCopyKey(idpCertificate) else {
             throw SAMLError.signatureVerificationFailed
         }
@@ -129,7 +119,6 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         let signedInfo = String(xml[signedInfoStart.lowerBound...signedInfoEnd.upperBound])
         let signedInfoData = Data(signedInfo.utf8)
 
-        // Verify with RSA-SHA256
         var error: Unmanaged<CFError>?
         let valid = SecKeyVerifySignature(
             publicKey,
@@ -142,38 +131,108 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
             throw SAMLError.signatureVerificationFailed
         }
     }
+}
 
-    private func extractElement(_ name: String, from xml: String) -> String? {
-        let patterns = [
-            "<\(name)[^>]*>([^<]+)</\(name)>",
-            "<saml:\(name)[^>]*>([^<]+)</saml:\(name)>",
-            "<saml2:\(name)[^>]*>([^<]+)</saml2:\(name)>",
-        ]
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: xml, range: NSRange(xml.startIndex..., in: xml)),
-               let range = Range(match.range(at: 1), in: xml) {
-                return String(xml[range])
-            }
+// MARK: - SAML XML Parser Delegate
+
+/// Parses SAML assertion elements using Apple's XMLParser.
+///
+/// Handles namespace prefixes (saml:, saml2:, unprefixed) and
+/// extracts Issuer, NameID, Attributes, and SessionNotOnOrAfter.
+/// `shouldResolveExternalEntities = false` prevents XXE attacks.
+private final class SAMLXMLParserDelegate: NSObject, XMLParserDelegate {
+    var issuer: String?
+    var nameID: String?
+    var nameIDFormat: String?
+    var sessionNotOnOrAfter: String?
+    var attributes: [String: [String]] = [:]
+
+    private var currentElement: String?
+    private var currentText = ""
+    private var currentAttributeName: String?
+    private var currentAttributeValues: [String] = []
+    private var inAttributeValue = false
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?,
+                attributes: [String: String] = [:]) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+        currentElement = localName
+        currentText = ""
+
+        switch localName {
+        case "NameID":
+            nameIDFormat = attributes["Format"]
+        case "AuthnStatement":
+            sessionNotOnOrAfter = attributes["SessionNotOnOrAfter"]
+        case "Attribute":
+            currentAttributeName = attributes["Name"]
+            currentAttributeValues = []
+        case "AttributeValue":
+            inAttributeValue = true
+        default:
+            break
         }
-        return nil
     }
 
-    private func extractAttribute(_ attr: String, fromElement element: String, in xml: String) -> String? {
-        let patterns = [
-            "<\(element)[^>]*\(attr)=\"([^\"]+)\"",
-            "<saml:\(element)[^>]*\(attr)=\"([^\"]+)\"",
-        ]
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: xml, range: NSRange(xml.startIndex..., in: xml)),
-               let range = Range(match.range(at: 1), in: xml) {
-                return String(xml[range])
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        currentText += string
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+        let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch localName {
+        case "Issuer":
+            if issuer == nil { issuer = text }
+        case "NameID":
+            if nameID == nil { nameID = text }
+        case "AttributeValue":
+            if !text.isEmpty { currentAttributeValues.append(text) }
+            inAttributeValue = false
+        case "Attribute":
+            if let name = currentAttributeName, !currentAttributeValues.isEmpty {
+                self.attributes[name] = currentAttributeValues
             }
+            currentAttributeName = nil
+        default:
+            break
         }
-        return nil
+        currentText = ""
     }
 }
+
+/// Parses XML signature elements to extract SignatureValue.
+private final class SignatureXMLParserDelegate: NSObject, XMLParserDelegate {
+    var signatureValue: String?
+    private var currentElement: String?
+    private var currentText = ""
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?,
+                attributes: [String: String] = [:]) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+        currentElement = localName
+        currentText = ""
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        currentText += string
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String,
+                namespaceURI: String?, qualifiedName qName: String?) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+        if localName == "SignatureValue" {
+            signatureValue = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        currentText = ""
+    }
+}
+
+// MARK: - Errors
 
 public enum SAMLError: Error, LocalizedError, Sendable {
     case invalidCertificate
