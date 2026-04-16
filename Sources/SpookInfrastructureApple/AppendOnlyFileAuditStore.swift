@@ -19,7 +19,7 @@ import SpookApplication
 /// SPOOK_AUDIT_IMMUTABLE=1
 /// SPOOK_AUDIT_IMMUTABLE_PATH=/var/log/spooktacular/audit-immutable.jsonl
 /// ```
-public actor AppendOnlyFileAuditStore: ImmutableAuditStore {
+public actor AppendOnlyFileAuditStore: ImmutableAuditStore, AuditSink {
     private let fileHandle: FileHandle
     private let filePath: String
     private let encoder: JSONEncoder
@@ -65,6 +65,12 @@ public actor AppendOnlyFileAuditStore: ImmutableAuditStore {
         }
     }
 
+    // AuditSink conformance
+    public func record(_ entry: AuditRecord) async {
+        _ = try? await append(entry)
+    }
+
+    // ImmutableAuditStore conformance
     public func append(_ record: AuditRecord) async throws -> UInt64 {
         let seq = sequenceNumber
         sequenceNumber += 1

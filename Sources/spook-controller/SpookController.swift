@@ -19,6 +19,7 @@
 
 import Foundation
 import CryptoKit
+import CryptoKit
 import os
 import SpookCore
 import SpookApplication
@@ -102,19 +103,63 @@ struct SpookController {
             ? SingleTenantAuthorization(policy: reusePolicy, roleStore: roleStore)
             : MultiTenantAuthorization(policy: reusePolicy, isolation: isolation, roleStore: roleStore)
 
-        // Create audit sinks
-        let auditSink: any AuditSink
+        // Create audit sink chain:
+        // Base sink → optional immutable store → optional Merkle tree → final sink
+        var baseSink: any AuditSink
         if let auditPath = env["SPOOK_AUDIT_FILE"] {
             do {
-                auditSink = try JSONFileAuditSink(path: auditPath)
+                baseSink = try JSONFileAuditSink(path: auditPath)
                 logger.notice("Audit sink: JSONL file at \(auditPath, privacy: .public)")
             } catch {
-                logger.fault("Failed to create audit file at \(auditPath, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                logger.fault("Failed to create audit file: \(error.localizedDescription, privacy: .public)")
                 return
             }
         } else {
-            auditSink = OSLogAuditSink()
+            baseSink = OSLogAuditSink()
             logger.notice("Audit sink: os.Logger (use SPOOK_AUDIT_FILE for SIEM export)")
+        }
+
+        // Immutable append-only store (SPOOK_AUDIT_IMMUTABLE_PATH)
+        if let immutablePath = env["SPOOK_AUDIT_IMMUTABLE_PATH"] {
+            do {
+                let immutableStore = try AppendOnlyFileAuditStore(path: immutablePath)
+                // Wrap: records go to both the base sink AND the immutable store
+                baseSink = DualAuditSink(primary: baseSink, secondary: immutableStore)
+                logger.notice("Immutable audit store: \(immutablePath, privacy: .public) (UF_APPEND)")
+            } catch {
+                logger.warning("Failed to create immutable audit store: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        // Merkle tree tamper-evidence (auto in multi-tenant, or SPOOK_AUDIT_MERKLE=1)
+        let auditSink: any AuditSink
+        if tenancyMode == .multiTenant || env["SPOOK_AUDIT_MERKLE"] == "1" {
+            let signingKey = Curve25519.Signing.PrivateKey()
+            auditSink = MerkleAuditSink(wrapping: baseSink, signingKey: signingKey)
+            logger.notice("Audit: Merkle tree enabled (RFC 6962 tamper-evidence)")
+        } else {
+            auditSink = baseSink
+        }
+
+        // IdP registry (SPOOK_IDP_CONFIG)
+        let idpVerifier: MultiIdPVerifier = MultiIdPVerifier()
+        if let idpPath = env["SPOOK_IDP_CONFIG"],
+           let idpData = try? Data(contentsOf: URL(fileURLWithPath: idpPath)) {
+            struct IdPFileConfig: Codable { let providers: [IdPConfig] }
+            if let config = try? JSONDecoder().decode(IdPFileConfig.self, from: idpData) {
+                for provider in config.providers {
+                    switch provider {
+                    case .oidc(let oidcConfig):
+                        let verifier = OIDCTokenVerifier(config: oidcConfig, http: URLSessionHTTPClient())
+                        await idpVerifier.register(issuer: oidcConfig.issuerURL, verifier: verifier)
+                    case .saml(let samlConfig):
+                        if let verifier = try? SAMLAssertionVerifier(config: samlConfig) {
+                            await idpVerifier.register(issuer: samlConfig.entityID, verifier: verifier)
+                        }
+                    }
+                }
+                logger.notice("IdP registry: loaded \(config.providers.count) provider(s) from \(idpPath, privacy: .public)")
+            }
         }
 
         // Load TLS identity for mTLS with Mac nodes.
