@@ -44,7 +44,7 @@ public actor MerkleAuditSink: AuditSink {
     private let inner: any AuditSink
     private let signingKey: Curve25519.Signing.PrivateKey
     private let encoder: JSONEncoder
-    private var leaves: [Data] = []
+    var leaves: [Data] = []
     private var tree: [[Data]] = []
 
     /// Creates a Merkle tree audit sink wrapping another sink.

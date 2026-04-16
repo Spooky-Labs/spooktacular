@@ -537,7 +537,7 @@ public actor HTTPAPIServer {
     ///
     /// - Parameter clientIP: The IP address string of the connecting client.
     /// - Returns: `true` if the request should proceed; `false` if rate-limited.
-    private func checkRateLimit(clientIP: String) -> Bool {
+    func checkRateLimit(clientIP: String) -> Bool {
         let now = Date()
         if let entry = clientRequestCounts[clientIP] {
             if now.timeIntervalSince(entry.windowStart) > 60 {
@@ -714,7 +714,7 @@ public actor HTTPAPIServer {
     ///   - path: The request path (e.g., `"/v1/vms/runner-1/start"`).
     ///   - statusCode: The HTTP status code of the response.
     /// Maps an API path to a resource type for RBAC evaluation.
-    private func inferResource(from path: String) -> String {
+    func inferResource(from path: String) -> String {
         if path.hasPrefix("/v1/vms") { return "vm" }
         if path.hasPrefix("/v1/audit") { return "audit" }
         if path == "/metrics" { return "metrics" }
@@ -722,7 +722,7 @@ public actor HTTPAPIServer {
     }
 
     /// Maps an HTTP method + path to an action for RBAC evaluation.
-    private func inferAction(from method: String, path: String) -> String {
+    func inferAction(from method: String, path: String) -> String {
         switch method {
         case "GET": return "list"
         case "POST":
@@ -735,7 +735,7 @@ public actor HTTPAPIServer {
         }
     }
 
-    private func emitAPIAudit(method: String, path: String, statusCode: Int) async {
+    func emitAPIAudit(method: String, path: String, statusCode: Int) async {
         guard let sink = auditSink else { return }
         let record = AuditRecord(
             actorIdentity: "api-client",

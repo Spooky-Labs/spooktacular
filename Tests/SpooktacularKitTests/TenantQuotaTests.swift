@@ -2,73 +2,126 @@ import Testing
 import Foundation
 @testable import SpookCore
 
-@Suite("TenantQuota")
+@Suite("Tenant Quota", .tags(.security))
 struct TenantQuotaTests {
 
-    @Test("Default quota allows 2 VMs")
-    func defaultQuota() {
-        let quota = TenantQuota.default
-        let usage = TenantUsage(activeVMs: 1)
-        let request = ResourceRequest(cpuCores: 4, memoryGB: 8)
-        #expect(quota.evaluate(usage: usage, request: request).isAllowed)
-    }
+    // MARK: - Quota Evaluation
 
-    @Test("Exceeding VM limit is denied")
-    func vmLimitExceeded() {
-        let quota = TenantQuota(maxVMs: 2)
-        let usage = TenantUsage(activeVMs: 2)
-        let request = ResourceRequest()
-        let decision = quota.evaluate(usage: usage, request: request)
-        #expect(!decision.isAllowed)
-        if case .denied(let reason) = decision {
-            #expect(reason.contains("VM limit"))
+    @Suite("Quota Evaluation")
+    struct QuotaEvaluation {
+
+        @Test("quota exceeded scenarios are correctly denied", arguments: [
+            // (activeVMs, cpuUsed, memUsed, maxVMs, maxCPU, maxMem, reqCPU, reqMem, expectedKeyword)
+            (2, 0, 0, 2, 16, 32, 4, 8, "VM limit"),
+            (1, 6, 0, 10, 8, 32, 4, 8, "CPU"),
+            (0, 0, 12, 10, 32, 16, 4, 8, "Memory"),
+        ] as [(Int, Int, Int, Int, Int, Int, Int, Int, String)])
+        func quotaExceeded(
+            activeVMs: Int, cpuUsed: Int, memUsed: Int,
+            maxVMs: Int, maxCPU: Int, maxMem: Int,
+            reqCPU: Int, reqMem: Int,
+            expectedKeyword: String
+        ) {
+            let quota = TenantQuota(maxVMs: maxVMs, maxCPUCores: maxCPU, maxMemoryGB: maxMem)
+            let usage = TenantUsage(activeVMs: activeVMs, cpuCores: cpuUsed, memoryGB: memUsed)
+            let request = ResourceRequest(cpuCores: reqCPU, memoryGB: reqMem)
+            let decision = quota.evaluate(usage: usage, request: request)
+            #expect(!decision.isAllowed)
+            if case .denied(let reason) = decision {
+                #expect(reason.contains(expectedKeyword))
+            }
+        }
+
+        @Test("request within all limits is allowed")
+        func withinLimits() {
+            let quota = TenantQuota(maxVMs: 4, maxCPUCores: 16, maxMemoryGB: 32)
+            let usage = TenantUsage(activeVMs: 2, cpuCores: 8, memoryGB: 16)
+            let request = ResourceRequest(cpuCores: 4, memoryGB: 8)
+            #expect(quota.evaluate(usage: usage, request: request).isAllowed)
+        }
+
+        @Test("request at exact boundary is allowed")
+        func exactBoundary() {
+            let quota = TenantQuota(maxVMs: 3, maxCPUCores: 12, maxMemoryGB: 24)
+            let usage = TenantUsage(activeVMs: 2, cpuCores: 8, memoryGB: 16)
+            let request = ResourceRequest(cpuCores: 4, memoryGB: 8)
+            #expect(quota.evaluate(usage: usage, request: request).isAllowed)
+        }
+
+        @Test("unlimited quota allows any resource request")
+        func unlimitedQuota() {
+            let quota = TenantQuota.unlimited
+            let usage = TenantUsage(activeVMs: 100, cpuCores: 1000, memoryGB: 10000)
+            let request = ResourceRequest(cpuCores: 100, memoryGB: 100)
+            #expect(quota.evaluate(usage: usage, request: request).isAllowed)
         }
     }
 
-    @Test("Exceeding CPU quota is denied")
-    func cpuQuotaExceeded() {
-        let quota = TenantQuota(maxVMs: 10, maxCPUCores: 8)
-        let usage = TenantUsage(activeVMs: 1, cpuCores: 6)
-        let request = ResourceRequest(cpuCores: 4, memoryGB: 4)
-        let decision = quota.evaluate(usage: usage, request: request)
-        #expect(!decision.isAllowed)
-        if case .denied(let reason) = decision {
-            #expect(reason.contains("CPU"))
+    // MARK: - Defaults
+
+    @Suite("Defaults")
+    struct Defaults {
+
+        @Test("default quota allows up to 2 VMs")
+        func defaultQuotaAllows2VMs() {
+            let quota = TenantQuota.default
+            let usage = TenantUsage(activeVMs: 1)
+            let request = ResourceRequest(cpuCores: 4, memoryGB: 8)
+            #expect(quota.evaluate(usage: usage, request: request).isAllowed)
+        }
+
+        @Test("default quota denies third VM")
+        func defaultQuotaDeniesThirdVM() {
+            let quota = TenantQuota.default
+            let usage = TenantUsage(activeVMs: 2)
+            let request = ResourceRequest()
+            let decision = quota.evaluate(usage: usage, request: request)
+            #expect(!decision.isAllowed)
+        }
+
+        @Test("default quota has expected limits")
+        func defaultQuotaLimits() {
+            let quota = TenantQuota.default
+            #expect(quota.maxVMs == 2)
+            #expect(quota.maxCPUCores == 16)
+            #expect(quota.maxMemoryGB == 32)
+            #expect(quota.maxRunnerPools == 4)
+        }
+
+        @Test("unlimited quota has Int.max for all limits")
+        func unlimitedQuotaLimits() {
+            let quota = TenantQuota.unlimited
+            #expect(quota.maxVMs == .max)
+            #expect(quota.maxCPUCores == .max)
+            #expect(quota.maxMemoryGB == .max)
+            #expect(quota.maxRunnerPools == .max)
         }
     }
 
-    @Test("Exceeding memory quota is denied")
-    func memoryQuotaExceeded() {
-        let quota = TenantQuota(maxVMs: 10, maxCPUCores: 32, maxMemoryGB: 16)
-        let usage = TenantUsage(activeVMs: 0, cpuCores: 0, memoryGB: 12)
-        let request = ResourceRequest(cpuCores: 4, memoryGB: 8)
-        let decision = quota.evaluate(usage: usage, request: request)
-        #expect(!decision.isAllowed)
-        if case .denied(let reason) = decision {
-            #expect(reason.contains("Memory"))
+    // MARK: - QuotaDecision
+
+    @Suite("QuotaDecision")
+    struct QuotaDecisionTests {
+
+        @Test("allowed equals allowed")
+        func allowedEquality() {
+            #expect(QuotaDecision.allowed == QuotaDecision.allowed)
         }
-    }
 
-    @Test("Within all limits is allowed")
-    func withinLimits() {
-        let quota = TenantQuota(maxVMs: 4, maxCPUCores: 16, maxMemoryGB: 32)
-        let usage = TenantUsage(activeVMs: 2, cpuCores: 8, memoryGB: 16)
-        let request = ResourceRequest(cpuCores: 4, memoryGB: 8)
-        #expect(quota.evaluate(usage: usage, request: request).isAllowed)
-    }
+        @Test("denied with same reason equals denied")
+        func deniedEquality() {
+            #expect(QuotaDecision.denied("a") == QuotaDecision.denied("a"))
+        }
 
-    @Test("Unlimited quota allows everything")
-    func unlimitedQuota() {
-        let quota = TenantQuota.unlimited
-        let usage = TenantUsage(activeVMs: 100, cpuCores: 1000, memoryGB: 10000)
-        let request = ResourceRequest(cpuCores: 100, memoryGB: 100)
-        #expect(quota.evaluate(usage: usage, request: request).isAllowed)
-    }
+        @Test("allowed does not equal denied")
+        func allowedNotEqualDenied() {
+            #expect(QuotaDecision.allowed != QuotaDecision.denied("x"))
+        }
 
-    @Test("QuotaDecision equality")
-    func decisionEquality() {
-        #expect(QuotaDecision.allowed == QuotaDecision.allowed)
-        #expect(QuotaDecision.denied("a") == QuotaDecision.denied("a"))
-        #expect(QuotaDecision.allowed != QuotaDecision.denied("x"))
+        @Test("isAllowed returns true only for .allowed")
+        func isAllowedProperty() {
+            #expect(QuotaDecision.allowed.isAllowed)
+            #expect(!QuotaDecision.denied("reason").isAllowed)
+        }
     }
 }
