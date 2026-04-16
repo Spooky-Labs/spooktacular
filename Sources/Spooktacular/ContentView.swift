@@ -84,24 +84,13 @@ struct ContentView: View {
     @ViewBuilder
     private var emptyState: some View {
         if appState.vms.isEmpty {
-            ContentUnavailableView {
-                Label("No Virtual Machines", systemImage: "desktopcomputer")
-            } description: {
-                Text("Create your first macOS virtual machine to get started.")
-            } actions: {
-                Button {
-                    appState.showCreateSheet = true
-                } label: {
-                    Text("Create VM")
-                }
-                .glassButton()
+            EmptyStateView(onCreate: { appState.showCreateSheet = true })
                 .accessibilityIdentifier(AccessibilityID.createVMButton)
-            }
         } else {
             ContentUnavailableView(
                 "Select a VM",
                 systemImage: "sidebar.left",
-                description: Text("Choose a virtual machine from the sidebar.")
+                description: Text("Choose a workspace from the sidebar.")
             )
         }
     }

@@ -59,6 +59,12 @@ final class AppState {
     /// pasteboard and the focused workspace.
     let clipboardBridge = ClipboardBridge()
 
+    /// Macos notification poster for VM lifecycle transitions.
+    let notifications = VMNotifications()
+
+    /// Whether the ⌘K command palette is currently presented.
+    var showCommandPalette: Bool = false
+
     /// Returns (or creates) the port monitor for a workspace.
     ///
     /// Wires the monitor to the guest agent once per workspace.
@@ -160,7 +166,9 @@ final class AppState {
             AccessibilityNotification.Announcement(
                 "Virtual machine \(name) started"
             ).post()
+            notifications.notifyStarted(name)
         } catch {
+            notifications.notifyFailed(name, error: error.localizedDescription)
             presentError(error)
         }
     }
@@ -177,6 +185,7 @@ final class AppState {
             AccessibilityNotification.Announcement(
                 "Virtual machine \(name) stopped"
             ).post()
+            notifications.notifyStopped(name)
         } catch {
             presentError(error)
         }

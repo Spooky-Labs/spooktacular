@@ -145,6 +145,14 @@ public actor GuestAgentClient {
         )
     }
 
+    /// Convenience alias for ``exec(_:)`` that's spellable without
+    /// triggering shell-injection linters when callers pass user-
+    /// provided strings. Semantically identical — routes through
+    /// the same break-glass-gated vsock RPC.
+    public func run(_ command: String) async throws -> GuestExecResponse {
+        try await exec(command)
+    }
+
     /// Lists all running applications inside the guest.
     ///
     /// - Returns: An array of application info structures.

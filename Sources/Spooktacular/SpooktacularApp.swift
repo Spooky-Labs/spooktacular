@@ -31,6 +31,10 @@ struct SpooktacularApp: App {
                     AddImageSheet()
                         .environment(appState)
                 }
+                .sheet(isPresented: Bindable(appState).showCommandPalette) {
+                    CommandPalette()
+                        .environment(appState)
+                }
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     appState.stopAllRunningVMs()
                 }
@@ -87,6 +91,11 @@ struct SpooktacularApp: App {
                 appState.showAddImage = true
             }
             .keyboardShortcut("i", modifiers: [.command, .shift])
+
+            Button("Open Command Palette") {
+                appState.showCommandPalette = true
+            }
+            .keyboardShortcut("k", modifiers: [.command])
         }
     }
 
