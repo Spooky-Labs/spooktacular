@@ -76,30 +76,15 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
     /// Returns an ``HTTPClient`` wired to a `URLSession` whose delegate
     /// handles mTLS challenges with anchor-pinned server trust.
     ///
-    /// Pins the minimum TLS version to **1.3**. Earlier drafts
-    /// allowed down to 1.2 for compatibility with legacy IdPs, but
-    /// 1.3 has been mandated for financial/government deployments
-    /// since 2023 and eliminates several whole classes of
-    /// negotiation-downgrade bugs (CVE-2016-2183 family and
-    /// successors). TLS 1.2 can still be re-enabled per-deployment
-    /// by setting `SPOOK_TLS_MIN_VERSION=1.2`.
+    /// Pins the minimum TLS version to **1.3**. TLS 1.2 and earlier
+    /// are not accepted — 1.3 eliminates whole classes of
+    /// negotiation-downgrade bugs and has been mandated for
+    /// financial/government deployments since 2023.
     public func makeHTTPClient() -> any HTTPClient {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.tlsMinimumSupportedProtocolVersion = Self.minTLSVersion()
+        configuration.tlsMinimumSupportedProtocolVersion = .TLSv13
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         return URLSessionHTTPClient(session: session)
-    }
-
-    /// Honors `SPOOK_TLS_MIN_VERSION=1.2` as an emergency downgrade
-    /// switch; otherwise enforces TLS 1.3. Exposed as a typed
-    /// accessor so test code can swap it without reading the
-    /// environment directly.
-    private static func minTLSVersion() -> tls_protocol_version_t {
-        let env = ProcessInfo.processInfo.environment["SPOOK_TLS_MIN_VERSION"]
-        switch env {
-        case "1.2": return .TLSv12
-        default:    return .TLSv13
-        }
     }
 
     // MARK: - URLSessionDelegate
