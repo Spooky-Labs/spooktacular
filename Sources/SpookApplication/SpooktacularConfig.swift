@@ -84,7 +84,10 @@ public struct SpooktacularConfig: Sendable, Codable {
                 merkleEnabled: env["SPOOK_AUDIT_MERKLE"] == "1",
                 merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY"],
                 s3Bucket: env["SPOOK_AUDIT_S3_BUCKET"],
-                s3Region: env["SPOOK_AUDIT_S3_REGION"]
+                s3Region: env["SPOOK_AUDIT_S3_REGION"],
+                s3Prefix: env["SPOOK_AUDIT_S3_PREFIX"],
+                s3RetentionDays: env["SPOOK_AUDIT_S3_RETENTION_DAYS"].flatMap(Int.init),
+                s3BatchSize: env["SPOOK_AUDIT_S3_BATCH_SIZE"].flatMap(Int.init)
             ),
             server: ServerConfig(
                 host: env["SPOOK_HOST"] ?? "127.0.0.1",
@@ -188,17 +191,37 @@ public struct AuditConfig: Sendable, Codable {
     public let s3Bucket: String?
     public let s3Region: String?
 
+    /// S3 key prefix for audit objects. Defaults to `"audit/"` so
+    /// operators can drop the bucket next to unrelated objects
+    /// without polluting the root.
+    public let s3Prefix: String?
+
+    /// Object Lock retention in days. Defaults to 2555 (7 years) to
+    /// meet the common SOC 2 / HIPAA retention minimum.
+    public let s3RetentionDays: Int?
+
+    /// How many records to buffer before uploading a batch. Larger
+    /// batches cut S3 request cost; smaller batches reduce the tail
+    /// of records lost on crash. Defaults to 100.
+    public let s3BatchSize: Int?
+
     public init(filePath: String? = nil, immutablePath: String? = nil,
                 merkleEnabled: Bool = false,
                 merkleSigningKeyPath: String? = nil,
                 s3Bucket: String? = nil,
-                s3Region: String? = nil) {
+                s3Region: String? = nil,
+                s3Prefix: String? = nil,
+                s3RetentionDays: Int? = nil,
+                s3BatchSize: Int? = nil) {
         self.filePath = filePath
         self.immutablePath = immutablePath
         self.merkleEnabled = merkleEnabled
         self.merkleSigningKeyPath = merkleSigningKeyPath
         self.s3Bucket = s3Bucket
         self.s3Region = s3Region
+        self.s3Prefix = s3Prefix
+        self.s3RetentionDays = s3RetentionDays
+        self.s3BatchSize = s3BatchSize
     }
 }
 

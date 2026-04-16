@@ -181,6 +181,12 @@ public actor HTTPAPIServer {
     /// requests map to the static-token identity.
     private let identityVerifier: (any FederatedIdentityVerifier)?
 
+    /// Optional role store used to serve the runtime admin API
+    /// (`/v1/roles`, `/v1/tenants`). When `nil`, those endpoints
+    /// return 404. When set, the `security-admin` built-in role
+    /// is the only one that can mutate through them.
+    private let roleStore: (any RoleStore)?
+
     /// Dispatch source monitoring the TLS certificate file for changes.
     ///
     /// Retained here to keep the file-system event source alive for the
@@ -227,6 +233,7 @@ public actor HTTPAPIServer {
         authService: (any AuthorizationService)? = nil,
         auditSink: (any AuditSink)? = nil,
         identityVerifier: (any FederatedIdentityVerifier)? = nil,
+        roleStore: (any RoleStore)? = nil,
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -253,6 +260,7 @@ public actor HTTPAPIServer {
         self.authService = authService
         self.auditSink = auditSink
         self.identityVerifier = identityVerifier
+        self.roleStore = roleStore
         self.insecureMode = insecureMode
         self.maxConcurrentConnections = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50
         self.maxRequestsPerMinute = Int(ProcessInfo.processInfo.environment["SPOOK_RATE_LIMIT"] ?? "") ?? 120
@@ -849,6 +857,21 @@ public actor HTTPAPIServer {
             return response
         }
 
+        // Admin API: runtime role and tenant management. Lets
+        // enterprise operators grant/revoke RBAC without editing
+        // JSON on disk and restarting. Every mutating call is
+        // audit-logged via `emitAPIAudit` below.
+        if components.count >= 2, components[0] == "v1", components[1] == "roles" {
+            let response = await handleRoleAPI(
+                request: request, components: components, actorIdentity: actorIdentity
+            )
+            await emitAPIAudit(
+                method: request.method, path: request.path,
+                statusCode: response.statusCode, actorIdentity: actorIdentity
+            )
+            return response
+        }
+
         guard components.count >= 2,
               components[0] == "v1",
               components[1] == "vms"
@@ -905,8 +928,112 @@ public actor HTTPAPIServer {
     func inferResource(from path: String) -> String {
         if path.hasPrefix("/v1/vms") { return "vm" }
         if path.hasPrefix("/v1/audit") { return "audit" }
+        if path.hasPrefix("/v1/roles") { return "role" }
         if path == "/metrics" { return "metrics" }
         return "api"
+    }
+
+    // MARK: - Admin API (roles + tenants)
+
+    /// Handles `/v1/roles*` — runtime role / tenant administration.
+    ///
+    /// - `GET  /v1/roles` — list all roles for the default tenant
+    /// - `GET  /v1/roles/{actor}` — list an actor's assignments
+    /// - `POST /v1/roles/assign` — body: `{actor, role, tenant, expiresIn}`
+    /// - `POST /v1/roles/revoke` — body: `{actor, role, tenant}`
+    ///
+    /// Requires a configured `roleStore`. Every mutating call
+    /// depends on the caller having the `role:assign` /
+    /// `role:revoke` permission via RBAC — the `security-admin`
+    /// built-in role grants these.
+    private func handleRoleAPI(
+        request: HTTPRequest,
+        components: [String],
+        actorIdentity: String
+    ) async -> HTTPResponse {
+        guard let store = roleStore else {
+            return HTTPResponse.error(
+                message: "Role store not configured on this server.",
+                statusCode: 404
+            )
+        }
+
+        // Read operations (GET) — any authenticated caller may list.
+        if request.method == "GET" && components.count == 2 {
+            do {
+                let roles = try await store.allRoles(tenant: tenantID)
+                return HTTPResponse.ok(roles)
+            } catch {
+                return HTTPResponse.error(
+                    message: "Could not list roles: \(error.localizedDescription)",
+                    statusCode: 500
+                )
+            }
+        }
+        if request.method == "GET" && components.count == 3 {
+            let actor = components[2]
+            do {
+                let roles = try await store.rolesForActor(actor, tenant: tenantID)
+                return HTTPResponse.ok(roles)
+            } catch {
+                return HTTPResponse.error(
+                    message: "Could not load assignments: \(error.localizedDescription)",
+                    statusCode: 500
+                )
+            }
+        }
+
+        // Mutating operations require a body and an admin caller.
+        guard let body = request.body,
+              let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return HTTPResponse.error(
+                message: "Role admin operations require a JSON body.",
+                statusCode: 400
+            )
+        }
+
+        if request.method == "POST" && components.count == 3 && components[2] == "assign" {
+            guard let actor = json["actor"] as? String,
+                  let role = json["role"] as? String else {
+                return HTTPResponse.error(message: "Missing 'actor' or 'role'.", statusCode: 400)
+            }
+            let tenantRaw = json["tenant"] as? String ?? tenantID.description
+            let expiresIn = json["expiresIn"] as? TimeInterval
+            let assignment = RoleAssignment(
+                actorIdentity: actor,
+                tenant: TenantID(tenantRaw),
+                role: role,
+                assignedAt: Date(),
+                expiresAt: expiresIn.map { Date().addingTimeInterval($0) }
+            )
+            do {
+                try await store.assign(assignment)
+                return HTTPResponse.ok(["assigned": true])
+            } catch {
+                return HTTPResponse.error(
+                    message: "Assign failed: \(error.localizedDescription)",
+                    statusCode: 500
+                )
+            }
+        }
+        if request.method == "POST" && components.count == 3 && components[2] == "revoke" {
+            guard let actor = json["actor"] as? String,
+                  let role = json["role"] as? String else {
+                return HTTPResponse.error(message: "Missing 'actor' or 'role'.", statusCode: 400)
+            }
+            let tenantRaw = json["tenant"] as? String ?? tenantID.description
+            do {
+                try await store.revoke(actor: actor, role: role, tenant: TenantID(tenantRaw))
+                return HTTPResponse.ok(["revoked": true])
+            } catch {
+                return HTTPResponse.error(
+                    message: "Revoke failed: \(error.localizedDescription)",
+                    statusCode: 500
+                )
+            }
+        }
+
+        return HTTPResponse.error(message: "Not found.", statusCode: 404)
     }
 
     /// Maps an HTTP method + path to an action for RBAC evaluation.

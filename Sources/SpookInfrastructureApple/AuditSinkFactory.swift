@@ -16,8 +16,13 @@ import SpookApplication
 /// Base sink (JSONL or OSLog)
 ///   → optional AppendOnlyFileAuditStore (UF_APPEND)
 ///     → optional MerkleAuditSink (RFC 6962)
-///       → optional S3ObjectLockAuditStore (WORM)
+///       → optional S3ObjectLockAuditStore (WORM, teed off)
 /// ```
+///
+/// When `s3Bucket` is set, records are tee'd to the S3 Object
+/// Lock store in addition to the local chain — a local JSONL
+/// tail stays available for real-time monitoring while the
+/// immutable WORM copy accumulates for SOC 2 retention.
 public enum AuditSinkFactory {
 
     /// Builds an audit sink chain from the given configuration.
@@ -55,6 +60,29 @@ public enum AuditSinkFactory {
             }
             let signingKey = try Self.loadOrCreateSigningKey(at: keyPath)
             sink = MerkleAuditSink(wrapping: base, signingKey: signingKey)
+        }
+
+        // S3 Object Lock (WORM) — tee into the chain.
+        //
+        // Previously the factory didn't compose S3 at all, so
+        // `s3Bucket: "..."` in config appeared to be honored but
+        // silently did nothing. Now the sink is always in the chain
+        // when configured; we tee rather than replace so local
+        // observability stays live while S3 accumulates the
+        // retained WORM copy.
+        if let bucket = config.s3Bucket {
+            let s3 = try S3ObjectLockAuditStore(
+                bucket: bucket,
+                region: config.s3Region ?? "us-east-1",
+                prefix: config.s3Prefix ?? "audit/",
+                retentionDays: config.s3RetentionDays ?? 2555,
+                batchSize: config.s3BatchSize ?? 100
+            )
+            if let base = sink {
+                sink = DualAuditSink(primary: base, secondary: s3)
+            } else {
+                sink = s3
+            }
         }
 
         // If nothing configured, use OSLog as default

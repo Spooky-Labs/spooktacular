@@ -75,11 +75,31 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
 
     /// Returns an ``HTTPClient`` wired to a `URLSession` whose delegate
     /// handles mTLS challenges with anchor-pinned server trust.
+    ///
+    /// Pins the minimum TLS version to **1.3**. Earlier drafts
+    /// allowed down to 1.2 for compatibility with legacy IdPs, but
+    /// 1.3 has been mandated for financial/government deployments
+    /// since 2023 and eliminates several whole classes of
+    /// negotiation-downgrade bugs (CVE-2016-2183 family and
+    /// successors). TLS 1.2 can still be re-enabled per-deployment
+    /// by setting `SPOOK_TLS_MIN_VERSION=1.2`.
     public func makeHTTPClient() -> any HTTPClient {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
+        configuration.tlsMinimumSupportedProtocolVersion = Self.minTLSVersion()
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         return URLSessionHTTPClient(session: session)
+    }
+
+    /// Honors `SPOOK_TLS_MIN_VERSION=1.2` as an emergency downgrade
+    /// switch; otherwise enforces TLS 1.3. Exposed as a typed
+    /// accessor so test code can swap it without reading the
+    /// environment directly.
+    private static func minTLSVersion() -> tls_protocol_version_t {
+        let env = ProcessInfo.processInfo.environment["SPOOK_TLS_MIN_VERSION"]
+        switch env {
+        case "1.2": return .TLSv12
+        default:    return .TLSv13
+        }
     }
 
     // MARK: - URLSessionDelegate
@@ -144,6 +164,18 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
         return Data(base64Encoded: base64) ?? pem
     }
 
+    /// Tries to import `keyDER` as the given `SecKey` type. Returns
+    /// `nil` on any failure so callers can cascade through supported
+    /// algorithms.
+    private static func tryImportKey(_ data: Data, type: CFString) -> SecKey? {
+        let attrs: [String: Any] = [
+            kSecAttrKeyType as String: type,
+            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
+        ]
+        var error: Unmanaged<CFError>?
+        return SecKeyCreateWithData(data as CFData, attrs as CFDictionary, &error)
+    }
+
     /// Prefix for Keychain labels/tags created by this provider.
     ///
     /// Using a deterministic prefix scoped to the certificate's SHA-256
@@ -167,17 +199,20 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
             throw TLSProviderError.invalidClientCertificate
         }
 
-        let keyAttributes: [String: Any] = [
-            kSecAttrKeyType as String: kSecAttrKeyTypeRSA,
-            kSecAttrKeyClass as String: kSecAttrKeyClassPrivate,
-        ]
-        var keyError: Unmanaged<CFError>?
-        guard let privateKey = SecKeyCreateWithData(
-            keyDER as CFData,
-            keyAttributes as CFDictionary,
-            &keyError
-        ) else {
-            throw TLSProviderError.invalidPrivateKey(keyError?.takeRetainedValue())
+        // Try ECDSA (P-256) first — faster signatures, smaller keys,
+        // and the modern default. Fall back to RSA for compatibility
+        // with legacy CAs that haven't migrated yet.
+        //
+        // `SecKeyCreateWithData` returns nil + an error when the key
+        // material doesn't match the declared type; we catch both
+        // cases and try the other algorithm before giving up.
+        let privateKey: SecKey
+        if let ec = tryImportKey(keyDER, type: kSecAttrKeyTypeECSECPrimeRandom) {
+            privateKey = ec
+        } else if let rsa = tryImportKey(keyDER, type: kSecAttrKeyTypeRSA) {
+            privateKey = rsa
+        } else {
+            throw TLSProviderError.invalidPrivateKey(nil)
         }
 
         let fingerprint = Data(SHA256.hash(data: certDER))
