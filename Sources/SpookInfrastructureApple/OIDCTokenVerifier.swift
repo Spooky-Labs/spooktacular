@@ -56,7 +56,15 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             throw OIDCError.malformedToken
         }
 
-        // 3. Verify cryptographic signature against JWKS
+        // 3. OWASP: Strictly validate algorithm (prevent none/HS256 confusion)
+        // Only RS256 is permitted. Reject ALL other algorithms explicitly.
+        // See: https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
+        let allowedAlgorithms: Swift.Set<String> = ["RS256"]
+        guard allowedAlgorithms.contains(alg) else {
+            throw OIDCError.unsupportedAlgorithm(alg)
+        }
+
+        // 4. Verify cryptographic signature against JWKS
         let keys = try await getJWKS()
         guard let matchingKey = keys.first(where: { $0["kid"] as? String == kid }) else {
             throw OIDCError.signatureVerificationFailed
@@ -67,12 +75,7 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             throw OIDCError.malformedToken
         }
 
-        if alg == "RS256" {
-            try verifyRS256(signedInput: signedInput, signature: signatureData, jwk: matchingKey)
-        } else {
-            // Unsupported algorithm
-            throw OIDCError.signatureVerificationFailed
-        }
+        try verifyRS256(signedInput: signedInput, signature: signatureData, jwk: matchingKey)
 
         // 4. Decode payload
         guard let payloadData = base64URLDecode(String(parts[1])),
@@ -251,6 +254,8 @@ public enum OIDCError: Error, LocalizedError, Sendable {
     case jwksFetchFailed
     /// JWT signature verification failed against provider's JWKS.
     case signatureVerificationFailed
+    /// JWT uses an unsupported or dangerous algorithm (e.g., none, HS256).
+    case unsupportedAlgorithm(String)
 
     public var errorDescription: String? {
         switch self {
@@ -260,6 +265,7 @@ public enum OIDCError: Error, LocalizedError, Sendable {
         case .tokenExpired: "Token has expired"
         case .jwksFetchFailed: "Failed to fetch JWKS from identity provider"
         case .signatureVerificationFailed: "JWT signature verification failed against provider's JWKS"
+        case .unsupportedAlgorithm(let alg): "JWT uses unsupported algorithm '\(alg)'. Only RS256 is permitted."
         }
     }
 }
