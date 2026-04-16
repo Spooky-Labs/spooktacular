@@ -5,7 +5,19 @@ PROJECT_ROOT = File.expand_path("..", __dir__)
 APP_BUNDLE = File.join(PROJECT_ROOT, "Spooktacular.app")
 PKG_FILE = File.join(PROJECT_ROOT, "Spooktacular.pkg")
 APP_IDENTIFIER = "com.spooktacular.app"
-TEAM_ID = "4AM5US9G8B"
+
+# Developer contact fields — sourced from .env so forks can override
+# without editing the Fastfile. Defaults keep Spooktacular's canonical
+# submission flow working without configuration.
+TEAM_ID                 = ENV["FASTLANE_TEAM_ID"]                 || "4AM5US9G8B"
+ITC_TEAM_ID             = ENV["FASTLANE_ITC_TEAM_ID"]             || TEAM_ID
+APPLE_ID                = ENV["FASTLANE_APPLE_ID"]                || "davisperris@gmail.com"
+CONTACT_FIRST_NAME      = ENV["FASTLANE_CONTACT_FIRST_NAME"]      || "Perris"
+CONTACT_LAST_NAME       = ENV["FASTLANE_CONTACT_LAST_NAME"]       || "Davis"
+CONTACT_EMAIL           = ENV["FASTLANE_CONTACT_EMAIL"]           || APPLE_ID
+CONTACT_PHONE           = ENV["FASTLANE_CONTACT_PHONE"]           || "+1 (555) 000-0000"
+APP_REVIEW_EMAIL        = ENV["FASTLANE_APP_REVIEW_EMAIL"]        || APPLE_ID
+APP_FEEDBACK_EMAIL      = ENV["FASTLANE_APP_FEEDBACK_EMAIL"]      || APPLE_ID
 
 platform :mac do
 
@@ -111,13 +123,13 @@ platform :mac do
       team_id: TEAM_ID,
 
       beta_app_description: app_description,
-      beta_app_feedback_email: "davisperris@gmail.com",
+      beta_app_feedback_email: APP_FEEDBACK_EMAIL,
 
       beta_app_review_info: {
-        contact_email: "davisperris@gmail.com",
-        contact_first_name: "Perris",
-        contact_last_name: "Davis",
-        contact_phone: "+1 (555) 000-0000",
+        contact_email: CONTACT_EMAIL,
+        contact_first_name: CONTACT_FIRST_NAME,
+        contact_last_name: CONTACT_LAST_NAME,
+        contact_phone: CONTACT_PHONE,
         demo_account_required: false,
         notes: review_notes
       },
@@ -126,7 +138,7 @@ platform :mac do
 
       localized_app_info: {
         "en-US" => {
-          feedback_email: "davisperris@gmail.com",
+          feedback_email: APP_FEEDBACK_EMAIL,
           marketing_url: "https://spooktacular.app",
           privacy_policy_url: "https://spooktacular.app/privacy.html",
           description: app_description
@@ -187,10 +199,10 @@ platform :mac do
       force: true,
 
       app_review_information: {
-        first_name: "Perris",
-        last_name: "Davis",
-        phone_number: "+1 (555) 000-0000",
-        email_address: "davisperris@gmail.com",
+        first_name: CONTACT_FIRST_NAME,
+        last_name: CONTACT_LAST_NAME,
+        phone_number: CONTACT_PHONE,
+        email_address: APP_REVIEW_EMAIL,
         demo_user: "",
         demo_password: "",
         notes: review_notes

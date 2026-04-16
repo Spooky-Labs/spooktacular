@@ -19,7 +19,7 @@ jobs:
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
 
@@ -53,7 +53,7 @@ jobs:
 
       # 7. Attest build provenance
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with:
           subject-path: Spooktacular.app.zip
 
@@ -71,9 +71,11 @@ jobs:
             --generate-notes \
             Spooktacular.app.zip
 
-      # 10. Submit to App Store
-      - name: Submit to App Store
-        continue-on-error: true
+      # 10. Submit to TestFlight. This step fails the workflow if the
+      #     upload fails — previously masked with continue-on-error,
+      #     which silently suppressed real upload problems during
+      #     releases.
+      - name: Submit to TestFlight
         run: |
           bundle exec fastlane run upload_to_testflight \
             pkg:"$PWD/Spooktacular.pkg" \

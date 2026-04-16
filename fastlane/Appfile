@@ -1,8 +1,11 @@
 # Spooktacular — App Store Connect configuration
 #
-# Update these with your Apple Developer account details.
+# These default to Spooktacular's canonical submission flow. Forks
+# should override via `fastlane/.env` (see `.env.default`) — Fastlane
+# auto-loads that file before this one runs, so the env-var fallbacks
+# below pick up overrides without needing to edit this file.
 
 app_identifier "com.spooktacular.app"
-apple_id "davisperris@gmail.com"
-team_id "4AM5US9G8B"
-itc_team_id "4AM5US9G8B"
+apple_id(ENV["FASTLANE_APPLE_ID"] || "davisperris@gmail.com")
+team_id(ENV["FASTLANE_TEAM_ID"] || "4AM5US9G8B")
+itc_team_id(ENV["FASTLANE_ITC_TEAM_ID"] || "4AM5US9G8B")
