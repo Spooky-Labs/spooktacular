@@ -124,6 +124,19 @@ public enum BuiltInRole {
                 Permission(resource: "audit", action: "export"),
                 Permission(resource: "audit", action: "verify"),
                 Permission(resource: "host", action: "rotate-certs"),
+                // Manage RBAC at runtime via /v1/roles. The HTTP
+                // admin endpoints map to these specific actions
+                // (not role:create) so we grant them explicitly
+                // rather than relying on the generic verb map.
+                Permission(resource: "role", action: "list"),
+                Permission(resource: "role", action: "assign"),
+                Permission(resource: "role", action: "revoke"),
+                // Break-glass is a distinct permission gate on top
+                // of the tenancy policy's allow decision. Without
+                // it, any authenticated actor that requested
+                // `scope: .breakGlass` got shell access whenever
+                // the tenant permitted break-glass at all.
+                Permission(resource: "break-glass", action: "invoke"),
              ]))
     }
 }

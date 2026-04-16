@@ -369,7 +369,14 @@ extension Spook {
 
             return await withCheckedContinuation { continuation in
                 nonisolated(unsafe) var resumed = false
+                // Doctor handshakes at the same floor the server will
+                // accept; otherwise doctor reports success against a
+                // downgraded cipher and the operator believes TLS 1.3
+                // is working when in fact 1.2 was negotiated.
                 let tlsParams = NWProtocolTLS.Options()
+                sec_protocol_options_set_min_tls_protocol_version(
+                    tlsParams.securityProtocolOptions, .TLSv13
+                )
                 let tcpOptions = NWProtocolTCP.Options()
                 let params = NWParameters(tls: tlsParams, tcp: tcpOptions)
 

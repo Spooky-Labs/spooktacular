@@ -26,6 +26,25 @@ import AppKit
 import Foundation
 import os
 
+/// Constant-time string equality.
+///
+/// Bearer-token comparison in the guest agent must not short-circuit
+/// on the first differing byte; otherwise an attacker who can measure
+/// vsock round-trip latency can brute-force the token a character at
+/// a time. Length is checked first (length is not secret); body
+/// comparison is done with XOR-accumulator so the timing depends
+/// only on length.
+private func constantTimeEqual(_ lhs: String, _ rhs: String) -> Bool {
+    let a = Array(lhs.utf8)
+    let b = Array(rhs.utf8)
+    guard a.count == b.count else { return false }
+    var diff: UInt8 = 0
+    for i in 0..<a.count {
+        diff |= a[i] ^ b[i]
+    }
+    return diff == 0
+}
+
 /// Optional file-based audit sink for SIEM export.
 /// Set SPOOK_AGENT_AUDIT_FILE to enable.
 nonisolated(unsafe) private var agentAuditFile: FileHandle? = {
@@ -64,9 +83,34 @@ private let maxExecOutputBytes = 1_048_576 // 1 MB
 /// Maximum concurrent exec commands allowed.
 private let maxConcurrentExecs = 3
 
-/// Active exec command count. Uses `nonisolated(unsafe)` because the
-/// agent router is composed of free functions, not an actor.
-nonisolated(unsafe) private var activeExecCount: Int = 0
+/// Serializes access to ``activeExecCount`` across the agent's
+/// concurrent dispatch queues. `nonisolated(unsafe) var` alone was
+/// not safe: two simultaneous requests could read the same count,
+/// both pass the guard, both increment, and the limit degraded to
+/// `maxConcurrentExecs + N` rather than `maxConcurrentExecs`. An
+/// `os_unfair_lock` protects the increment-and-check as a single
+/// atomic operation with no kernel-context-switch cost.
+nonisolated(unsafe) private var _activeExecLock = os_unfair_lock()
+nonisolated(unsafe) private var _activeExecCount: Int = 0
+
+/// Attempts to reserve one of the ``maxConcurrentExecs`` slots.
+/// Returns `true` on success; `false` when the limit is reached.
+/// Callers MUST call ``releaseExecSlot()`` on success.
+private func acquireExecSlot() -> Bool {
+    os_unfair_lock_lock(&_activeExecLock)
+    defer { os_unfair_lock_unlock(&_activeExecLock) }
+    guard _activeExecCount < maxConcurrentExecs else { return false }
+    _activeExecCount += 1
+    return true
+}
+
+/// Releases an exec slot previously acquired with
+/// ``acquireExecSlot()``. Safe to call in a `defer` block.
+private func releaseExecSlot() {
+    os_unfair_lock_lock(&_activeExecLock)
+    defer { os_unfair_lock_unlock(&_activeExecLock) }
+    _activeExecCount = max(0, _activeExecCount - 1)
+}
 
 /// The agent version, reported in health checks.
 private let agentVersion = "1.0.0"
@@ -235,10 +279,23 @@ func routeRequest(
     if hasAnyToken {
         let authHeader = request.headers["authorization"] ?? ""
 
-        // Determine which token was presented
-        let isBreakGlass = breakGlassToken != nil && authHeader == "Bearer \(breakGlassToken!)"
-        let isRunner = runnerToken != nil && authHeader == "Bearer \(runnerToken!)"
-        let isReadOnly = readonlyToken != nil && authHeader == "Bearer \(readonlyToken!)"
+        // Determine which token was presented.
+        //
+        // `==` on Swift `String` is short-circuiting and leaks the
+        // byte-position of the first mismatch through timing —
+        // classic oracle for recovering the break-glass token a
+        // character at a time. `constantTimeEqual` below XOR-folds
+        // every byte regardless of match state, so the comparison
+        // time depends only on the length.
+        let isBreakGlass = breakGlassToken.map {
+            constantTimeEqual(authHeader, "Bearer \($0)")
+        } ?? false
+        let isRunner = runnerToken.map {
+            constantTimeEqual(authHeader, "Bearer \($0)")
+        } ?? false
+        let isReadOnly = readonlyToken.map {
+            constantTimeEqual(authHeader, "Bearer \($0)")
+        } ?? false
 
         if isBreakGlass {
             authTier = .breakGlass
@@ -492,12 +549,16 @@ private func handleExec(_ request: AgentHTTPRequest) -> Data {
         return errorResponse(message: "Request body must contain 'command' field.", statusCode: 400)
     }
 
-    // Enforce concurrent exec limit.
-    guard activeExecCount < maxConcurrentExecs else {
-        return errorResponse(message: "Too many concurrent exec commands. Maximum: \(maxConcurrentExecs).", statusCode: 429)
+    // Enforce concurrent exec limit with an atomic slot reservation.
+    // The previous read-then-increment pattern was racy under
+    // concurrent dispatch and allowed limit overrun.
+    guard acquireExecSlot() else {
+        return errorResponse(
+            message: "Too many concurrent exec commands. Maximum: \(maxConcurrentExecs).",
+            statusCode: 429
+        )
     }
-    activeExecCount += 1
-    defer { activeExecCount -= 1 }
+    defer { releaseExecSlot() }
 
     let process = Process()
     process.executableURL = URL(filePath: "/bin/bash")

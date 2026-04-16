@@ -331,8 +331,15 @@ private final class ClusterTLSDelegate: NSObject, URLSessionDelegate, Sendable {
               let trust = challenge.protectionSpace.serverTrust
         else { completionHandler(.performDefaultHandling, nil); return }
 
+        // If the cluster CA file is missing (empty secret, volume not
+        // yet mounted, future config change), we previously fell back
+        // to `.performDefaultHandling`, which silently trusts the
+        // system root store. That turns into a full MITM bypass if a
+        // misconfigured or adversarially-modified cluster presents a
+        // cert chained to a public root CA. Fail closed instead — no
+        // pinned CA ⇒ no connection.
         guard !caCertificates.isEmpty else {
-            completionHandler(.performDefaultHandling, nil)
+            completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
 

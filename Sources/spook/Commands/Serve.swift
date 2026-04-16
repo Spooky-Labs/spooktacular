@@ -104,10 +104,20 @@ extension Spook {
             }
 
             // Load TLS identity when certificate and key are provided.
+            //
+            // `NWProtocolTLS.Options()` defaults to a TLS 1.0 floor on
+            // macOS. We pin **1.3** here explicitly so the server-side
+            // listener can't quietly negotiate a weaker version than
+            // what we advertise. URLSession-side (the client) already
+            // enforces 1.3 in `KeychainTLSProvider`, but that's a
+            // separate control surface.
             var tlsOptions: NWProtocolTLS.Options?
             if let certPath = tlsCert, let keyPath = tlsKey {
                 let identity = try Self.loadTLSIdentity(certPath: certPath, keyPath: keyPath)
                 let options = NWProtocolTLS.Options()
+                sec_protocol_options_set_min_tls_protocol_version(
+                    options.securityProtocolOptions, .TLSv13
+                )
                 sec_protocol_options_set_local_identity(
                     options.securityProtocolOptions,
                     sec_identity_create(identity)!

@@ -387,7 +387,13 @@ public actor HTTPAPIServer {
     public func reloadTLS(identity: SecIdentity) async throws {
         logger.notice("Reloading TLS certificates")
 
+        // Apply the same TLS 1.3 floor the initial listener enforces —
+        // without this a hot-reload produces a listener weaker than the
+        // one it's replacing, which is the opposite of the intent.
         let newOptions = NWProtocolTLS.Options()
+        sec_protocol_options_set_min_tls_protocol_version(
+            newOptions.securityProtocolOptions, .TLSv13
+        )
         sec_protocol_options_set_local_identity(
             newOptions.securityProtocolOptions,
             sec_identity_create(identity)!
@@ -1037,7 +1043,18 @@ public actor HTTPAPIServer {
     }
 
     /// Maps an HTTP method + path to an action for RBAC evaluation.
+    ///
+    /// Role-admin paths are checked **before** the generic verb map
+    /// so `POST /v1/roles/assign` evaluates as `role:assign` (not
+    /// `role:create`) and `POST /v1/roles/revoke` evaluates as
+    /// `role:revoke`. Without this split, the RBAC gate at the
+    /// request dispatcher would check a permission that no built-in
+    /// role grants — meaning either every caller was denied (best
+    /// case) or whoever happened to have `role:create` got
+    /// privilege-escalation power (worst case).
     func inferAction(from method: String, path: String) -> String {
+        if path.hasSuffix("/roles/assign") { return "assign" }
+        if path.hasSuffix("/roles/revoke") { return "revoke" }
         switch method {
         case "GET": return "list"
         case "POST":
