@@ -1,16 +1,32 @@
 import SwiftUI
 
 /// The Spooktacular macOS application.
+///
+/// Uses a multi-window scene architecture:
+///
+/// - **Library window** (`id: "library"`) — the home view: VM list,
+///   search, create/clone/delete. Always presented at launch.
+/// - **Workspace window** (`id: "workspace", for: String.self`) —
+///   one window per running VM, opened by passing the VM name to
+///   `openWindow(id:value:)`. Hosts `VZVirtualMachineView` and a
+///   Liquid-Glass toolbar.
+///
+/// This matches the GhostVM pattern where each VM feels like its
+/// own app: the library is just the dashboard; workspaces stand
+/// on their own and can remain open after the library is hidden.
 @main
 struct SpooktacularApp: App {
 
     @State private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup {
+
+        // MARK: - Library Window
+
+        WindowGroup(id: "library") {
             ContentView()
                 .environment(appState)
-                .frame(minWidth: 600, minHeight: 400)
+                .frame(minWidth: 720, minHeight: 460)
                 .sheet(isPresented: Bindable(appState).showAddImage) {
                     AddImageSheet()
                         .environment(appState)
@@ -20,72 +36,31 @@ struct SpooktacularApp: App {
                 }
         }
         .windowStyle(.automatic)
-        .defaultSize(width: 900, height: 600)
+        .defaultSize(width: 960, height: 640)
         .commands {
-            CommandGroup(after: .newItem) {
-                Button("New Virtual Machine…") {
-                    appState.showCreateSheet = true
-                }
-                .keyboardShortcut("n", modifiers: [.command])
+            workspaceCommands
+            helpCommands
+        }
 
-                Button("Add Image…") {
-                    appState.showAddImage = true
-                }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-            }
+        // MARK: - Workspace Windows
 
-            CommandGroup(replacing: .help) {
-                Button("Spooktacular Help") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.dev/docs")!
-                    )
-                }
-
-                Divider()
-
-                Button("Getting Started") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.dev/docs/getting-started")!
-                    )
-                }
-
-                Button("CLI Reference") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.dev/docs/cli")!
-                    )
-                }
-
-                Button("Kubernetes Guide") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.dev/docs/kubernetes")!
-                    )
-                }
-
-                Button("Provisioning Modes") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.dev/docs/provisioning")!
-                    )
-                }
-
-                Divider()
-
-                Button("Report an Issue…") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://github.com/spooktacular/spooktacular/issues")!
-                    )
-                }
-
-                Button("Release Notes") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://github.com/spooktacular/spooktacular/releases")!
-                    )
-                }
+        WindowGroup(id: "workspace", for: String.self) { $vmName in
+            if let name = vmName {
+                WorkspaceWindow(vmName: name)
+                    .environment(appState)
             }
         }
+        .defaultSize(width: 1024, height: 640)
+        .windowResizability(.contentMinSize)
+
+        // MARK: - Settings
 
         Settings {
             SettingsView()
+                .environment(appState)
         }
+
+        // MARK: - Menu Bar
 
         MenuBarExtra(
             "Spooktacular",
@@ -95,6 +70,56 @@ struct SpooktacularApp: App {
         ) {
             MenuBarView()
                 .environment(appState)
+        }
+    }
+
+    // MARK: - Command Groups
+
+    @CommandsBuilder
+    private var workspaceCommands: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("New Virtual Machine…") {
+                appState.showCreateSheet = true
+            }
+            .keyboardShortcut("n", modifiers: [.command])
+
+            Button("Add Image…") {
+                appState.showAddImage = true
+            }
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+        }
+    }
+
+    @CommandsBuilder
+    private var helpCommands: some Commands {
+        CommandGroup(replacing: .help) {
+            Button("Spooktacular Help") {
+                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs")!)
+            }
+
+            Divider()
+
+            Button("Getting Started") {
+                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/getting-started")!)
+            }
+
+            Button("CLI Reference") {
+                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/cli")!)
+            }
+
+            Button("Kubernetes Guide") {
+                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/kubernetes")!)
+            }
+
+            Divider()
+
+            Button("Report an Issue…") {
+                NSWorkspace.shared.open(URL(string: "https://github.com/Spooky-Labs/spooktacular/issues")!)
+            }
+
+            Button("Release Notes") {
+                NSWorkspace.shared.open(URL(string: "https://github.com/Spooky-Labs/spooktacular/releases")!)
+            }
         }
     }
 }

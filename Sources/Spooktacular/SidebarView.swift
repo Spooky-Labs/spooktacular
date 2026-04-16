@@ -98,6 +98,8 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func vmContextMenu(for name: String) -> some View {
+        OpenWorkspaceButton(vmName: name)
+        Divider()
         if appState.isRunning(name) {
             Button("Stop", systemImage: "stop.fill") {
                 Task { await appState.stopVM(name) }
@@ -114,6 +116,22 @@ struct SidebarView: View {
         Divider()
         Button("Delete", systemImage: "trash", role: .destructive) {
             confirmDelete = name
+        }
+    }
+}
+
+// MARK: - Open Workspace Button
+
+/// Button that opens a dedicated workspace window via the SwiftUI
+/// `openWindow` environment value. Extracted so both the sidebar
+/// context menu and the detail pane can reuse it.
+struct OpenWorkspaceButton: View {
+    let vmName: String
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Open Workspace", systemImage: "macwindow") {
+            openWindow(id: "workspace", value: vmName)
         }
     }
 }

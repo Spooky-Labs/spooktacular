@@ -31,6 +31,25 @@ final class AppState {
     /// Guest agent clients for running VMs.
     var agentClients: [String: GuestAgentClient] = [:]
 
+    /// Names of VMs whose dedicated workspace window is currently
+    /// open. Populated by ``workspaceDidOpen(_:)`` /
+    /// ``workspaceDidClose(_:)`` from `WorkspaceWindow`.
+    var openWorkspaceWindows: Set<String> = []
+
+    /// Name of the workspace whose window is currently key (front-
+    /// most). `nil` when the library or another non-workspace scene
+    /// holds focus. Drives ``workspaceIconCoordinator``.
+    var focusedWorkspace: String? {
+        didSet {
+            guard oldValue != focusedWorkspace else { return }
+            let spec = focusedWorkspace.flatMap { vms[$0]?.metadata.iconSpec }
+            workspaceIconCoordinator.focusChanged(to: spec)
+        }
+    }
+
+    /// Swaps the Dock tile to reflect the focused workspace.
+    let workspaceIconCoordinator = WorkspaceIconCoordinator()
+
     // MARK: - Error Handling
 
     /// A user-facing error message for the centralized alert.
@@ -175,6 +194,25 @@ final class AppState {
             ).post()
         } catch {
             presentError(error)
+        }
+    }
+
+    // MARK: - Workspace Window Lifecycle
+
+    /// Called by `WorkspaceWindow` when it first appears.
+    ///
+    /// Tracks the open window so the library can show a "focused"
+    /// indicator and so quit can close workspaces gracefully.
+    func workspaceDidOpen(_ name: String) async {
+        openWorkspaceWindows.insert(name)
+    }
+
+    /// Called by `WorkspaceWindow` when it disappears (user closed
+    /// the window or app quit).
+    func workspaceDidClose(_ name: String) {
+        openWorkspaceWindows.remove(name)
+        if focusedWorkspace == name {
+            focusedWorkspace = nil
         }
     }
 
