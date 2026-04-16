@@ -126,9 +126,3 @@ struct MultiTenantAuthTests {
 }
 
 /// A role store that returns no roles (deny-by-default).
-private actor EmptyRoleStore: RoleStore {
-    func rolesForActor(_ identity: String, tenant: TenantID) async throws -> [Role] { [] }
-    func allRoles(tenant: TenantID) async throws -> [Role] { [] }
-    func assign(_ assignment: RoleAssignment) async throws {}
-    func revoke(actor: String, role: String, tenant: TenantID) async throws {}
-}

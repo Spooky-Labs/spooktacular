@@ -63,7 +63,7 @@ struct ScrubValidationTests {
     func scrubValidationFailureDestroysVM() async throws {
         // ScrubStrategy.recycle throws on non-zero exit, so we need a phased
         // mock: first exec (cleanup) succeeds, second exec (validation) fails.
-        let phasedMock = PhasedMockNodeClient()
+        let phasedMock = ScrubPhasedMockNodeClient()
         phasedMock.execResults = [
             GuestExecResult(exitCode: 0, stdout: "OK", stderr: ""),   // cleanup succeeds
             GuestExecResult(exitCode: 1, stdout: "", stderr: "dirty") // validation fails
@@ -166,7 +166,7 @@ struct ScrubValidationTests {
 /// A mock that returns a different ``GuestExecResult`` for each successive
 /// `execInGuest` call, enabling tests that need cleanup to succeed while
 /// validation fails.
-private final class PhasedMockNodeClient: NodeClient, @unchecked Sendable {
+private final class ScrubPhasedMockNodeClient: NodeClient, @unchecked Sendable {
     var calls: [String] = []
     var healthResult = true
     var execResults: [GuestExecResult] = []

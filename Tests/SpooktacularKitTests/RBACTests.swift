@@ -146,21 +146,3 @@ struct RBACTests {
 
 // MARK: - Test Helpers
 
-private actor InMemoryRoleStore: RoleStore {
-    var roles: [String: Role] = [:]
-    var assignments: [String: [RoleAssignment]] = [:]
-
-    func addRole(_ role: Role) { roles[role.id] = role }
-    func addAssignment(_ a: RoleAssignment) { assignments[a.actorIdentity, default: []].append(a) }
-
-    func rolesForActor(_ identity: String, tenant: TenantID) async throws -> [Role] {
-        (assignments[identity] ?? [])
-            .filter { $0.tenant == tenant && !$0.isExpired }
-            .compactMap { roles[$0.role] }
-    }
-    func allRoles(tenant: TenantID) async throws -> [Role] { Array(roles.values) }
-    func assign(_ a: RoleAssignment) async throws { assignments[a.actorIdentity, default: []].append(a) }
-    func revoke(actor: String, role: String, tenant: TenantID) async throws {
-        assignments[actor]?.removeAll { $0.role == role && $0.tenant == tenant }
-    }
-}

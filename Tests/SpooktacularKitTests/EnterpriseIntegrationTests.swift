@@ -31,7 +31,7 @@ struct EnterpriseIntegrationTests {
     @Test("Multi-tenant denies break-glass for unconfigured tenant")
     func breakGlassDeniedByDefault() async {
         let isolation = MultiTenantIsolation(tenantPools: [:])
-        let auth = MultiTenantAuthorization(policy: .multiTenant, isolation: isolation, roleStore: DenyAllRoleStore())
+        let auth = MultiTenantAuthorization(policy: .multiTenant, isolation: isolation, roleStore: EmptyRoleStore())
         let ctx = AuthorizationContext(
             actorIdentity: "user", tenant: TenantID("x"),
             scope: .breakGlass, resource: "vm", action: "exec"
@@ -74,7 +74,7 @@ struct EnterpriseIntegrationTests {
     @Test("MerkleAuditSink produces signed tree heads")
     func merkleSTH() async {
         let key = Curve25519.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: MemorySink(), signingKey: key)
+        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signingKey: key)
         let record = AuditRecord(
             actorIdentity: "t", tenant: .default, scope: .read,
             resource: "h", action: "check", outcome: .success
@@ -89,7 +89,7 @@ struct EnterpriseIntegrationTests {
     @Test("MerkleAuditSink tree grows monotonically")
     func merkleGrowth() async {
         let key = Curve25519.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: MemorySink(), signingKey: key)
+        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signingKey: key)
         for i in 0..<5 {
             let r = AuditRecord(
                 actorIdentity: "a\(i)", tenant: .default, scope: .read,
@@ -103,7 +103,7 @@ struct EnterpriseIntegrationTests {
     @Test("MerkleAuditSink inclusion proof is non-empty")
     func merkleInclusionProof() async {
         let key = Curve25519.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: MemorySink(), signingKey: key)
+        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signingKey: key)
         for i in 0..<4 {
             let r = AuditRecord(
                 actorIdentity: "a", tenant: .default, scope: .read,
@@ -137,14 +137,4 @@ struct EnterpriseIntegrationTests {
     }
 }
 
-private actor MemorySink: AuditSink {
-    var records: [AuditRecord] = []
-    func record(_ entry: AuditRecord) async { records.append(entry) }
-}
 
-private actor DenyAllRoleStore: RoleStore {
-    func rolesForActor(_ identity: String, tenant: TenantID) async throws -> [Role] { [] }
-    func allRoles(tenant: TenantID) async throws -> [Role] { [] }
-    func assign(_ assignment: RoleAssignment) async throws {}
-    func revoke(actor: String, role: String, tenant: TenantID) async throws {}
-}

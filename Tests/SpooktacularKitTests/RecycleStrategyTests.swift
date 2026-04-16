@@ -7,43 +7,7 @@ import Testing
 
 // MARK: - Mock Node Client
 
-/// A mock implementation of ``NodeClient`` that records calls in order
-/// and returns configurable results for `health` and `execInGuest`.
-final class MockNodeClient: NodeClient, @unchecked Sendable {
-    var calls: [String] = []
-    var healthResult = true
-    var execResult = GuestExecResult(exitCode: 0, stdout: "OK", stderr: "")
-
-    func clone(vm: String, from source: String, on node: URL) async throws {
-        calls.append("clone:\(vm):\(source)")
-    }
-
-    func start(vm: String, on node: URL) async throws {
-        calls.append("start:\(vm)")
-    }
-
-    func stop(vm: String, on node: URL) async throws {
-        calls.append("stop:\(vm)")
-    }
-
-    func delete(vm: String, on node: URL) async throws {
-        calls.append("delete:\(vm)")
-    }
-
-    func restoreSnapshot(vm: String, snapshot: String, on node: URL) async throws {
-        calls.append("restore:\(vm):\(snapshot)")
-    }
-
-    func execInGuest(vm: String, command: String, on node: URL) async throws -> GuestExecResult {
-        calls.append("exec:\(vm)")
-        return execResult
-    }
-
-    func health(vm: String, on node: URL) async throws -> Bool {
-        calls.append("health:\(vm)")
-        return healthResult
-    }
-}
+// MockNodeClient is defined in TestHelpers.swift
 
 // MARK: - RecycleStrategy Tests
 

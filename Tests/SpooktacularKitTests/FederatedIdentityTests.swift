@@ -44,8 +44,3 @@ struct FederatedIdentityTests {
 }
 
 /// Minimal mock for testing.
-private struct MockHTTPClient: HTTPClient {
-    func execute(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        (Data(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-    }
-}
