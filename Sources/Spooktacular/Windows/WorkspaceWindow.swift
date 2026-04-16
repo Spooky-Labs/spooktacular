@@ -26,6 +26,10 @@ struct WorkspaceWindow: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showSnapshots: Bool = false
+    @State private var showHardware: Bool = false
+    @State private var showPorts: Bool = false
+
     var body: some View {
         Group {
             if let bundle = appState.vms[vmName] {
@@ -41,6 +45,14 @@ struct WorkspaceWindow: View {
         }
         .onDisappear {
             appState.workspaceDidClose(vmName)
+        }
+        .sheet(isPresented: $showSnapshots) {
+            SnapshotInspector(vmName: vmName)
+                .environment(appState)
+        }
+        .sheet(isPresented: $showHardware) {
+            HardwareEditor(vmName: vmName)
+                .environment(appState)
         }
     }
 
@@ -81,6 +93,25 @@ struct WorkspaceWindow: View {
             .glassButton()
             .help("Stop this workspace")
             .accessibilityIdentifier(AccessibilityID.stopButton)
+
+            Button {
+                showSnapshots = true
+            } label: {
+                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+            }
+            .glassButton()
+            .help("Manage snapshots for this workspace")
+
+            Button {
+                showPorts.toggle()
+            } label: {
+                Label("Ports", systemImage: "network")
+            }
+            .glassButton()
+            .help("See listening ports inside the workspace")
+            .popover(isPresented: $showPorts, arrowEdge: .bottom) {
+                PortPanel(monitor: appState.portMonitor(for: vmName))
+            }
         }
     }
 
@@ -96,6 +127,22 @@ struct WorkspaceWindow: View {
             .tint(.green)
             .help("Start this workspace")
             .accessibilityIdentifier(AccessibilityID.startButton)
+
+            Button {
+                showHardware = true
+            } label: {
+                Label("Hardware", systemImage: "cpu")
+            }
+            .glassButton()
+            .help("Edit CPU, memory, and disk")
+
+            Button {
+                showSnapshots = true
+            } label: {
+                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+            }
+            .glassButton()
+            .help("Manage snapshots for this workspace")
         }
     }
 }

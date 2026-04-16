@@ -50,6 +50,32 @@ final class AppState {
     /// Swaps the Dock tile to reflect the focused workspace.
     let workspaceIconCoordinator = WorkspaceIconCoordinator()
 
+    /// Per-workspace port monitors. Lazily instantiated on first
+    /// access so VMs that never open a port panel don't incur the
+    /// polling cost.
+    private var portMonitors: [String: PortForwardingMonitor] = [:]
+
+    /// The shared clipboard bridge — handles sync between the host
+    /// pasteboard and the focused workspace.
+    let clipboardBridge = ClipboardBridge()
+
+    /// Returns (or creates) the port monitor for a workspace.
+    ///
+    /// Wires the monitor to the guest agent once per workspace.
+    /// Callers should treat the returned value as a stable,
+    /// observable model for SwiftUI bindings.
+    func portMonitor(for name: String) -> PortForwardingMonitor {
+        if let existing = portMonitors[name] {
+            return existing
+        }
+        let monitor = PortForwardingMonitor()
+        portMonitors[name] = monitor
+        if let client = agentClients[name], let bundle = vms[name] {
+            monitor.start(client: client, macAddress: bundle.spec.macAddress)
+        }
+        return monitor
+    }
+
     // MARK: - Error Handling
 
     /// A user-facing error message for the centralized alert.
