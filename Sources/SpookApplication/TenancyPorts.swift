@@ -47,42 +47,72 @@ public protocol AuditSink: Sendable {
 
 // MARK: - Default Implementations
 
-/// Single-tenant authorization: checks scope only, no tenant isolation.
+/// Single-tenant authorization with optional RBAC.
+///
+/// When a `RoleStore` is provided, checks resource-level permissions
+/// (deny-by-default per OWASP). Without a role store, falls back to
+/// scope-based authorization for backward compatibility.
 public struct SingleTenantAuthorization: AuthorizationService {
     private let policy: ReusePolicy
+    private let roleStore: (any RoleStore)?
 
-    public init(policy: ReusePolicy = .singleTenant) {
+    public init(policy: ReusePolicy = .singleTenant, roleStore: (any RoleStore)? = nil) {
         self.policy = policy
+        self.roleStore = roleStore
     }
 
     public func authorize(_ context: AuthorizationContext) async -> Bool {
-        // In single-tenant mode, break-glass is allowed if policy permits
         if context.scope == .breakGlass {
             return policy.breakGlassAllowed
         }
+        // If RBAC is configured, enforce resource-level permissions
+        if let store = roleStore {
+            guard let roles = try? await store.rolesForActor(
+                context.actorIdentity, tenant: context.tenant
+            ), !roles.isEmpty else {
+                return false // deny by default (OWASP)
+            }
+            let needed = Permission(resource: context.resource, action: context.action)
+            return roles.contains { $0.allows(needed) }
+        }
+        // Legacy fallback: scope-based only (no role store configured)
         return true
     }
 }
 
-/// Multi-tenant authorization: enforces tenant boundaries and scope.
+/// Multi-tenant authorization with mandatory RBAC.
+///
+/// Always checks resource-level permissions via `RoleStore`.
+/// Deny by default per OWASP. Break-glass requires explicit
+/// per-tenant opt-in via `TenantIsolationPolicy`.
 public struct MultiTenantAuthorization: AuthorizationService {
     private let policy: ReusePolicy
     private let isolation: any TenantIsolationPolicy
+    private let roleStore: any RoleStore
 
     public init(
         policy: ReusePolicy = .multiTenant,
-        isolation: any TenantIsolationPolicy
+        isolation: any TenantIsolationPolicy,
+        roleStore: any RoleStore
     ) {
         self.policy = policy
         self.isolation = isolation
+        self.roleStore = roleStore
     }
 
     public func authorize(_ context: AuthorizationContext) async -> Bool {
-        // Break-glass disabled by default in multi-tenant
+        // Break-glass requires explicit tenant-level permission
         if context.scope == .breakGlass {
             return isolation.breakGlassAllowed(for: context.tenant)
         }
-        return true
+        // RBAC: deny by default, check resource-level permissions
+        guard let roles = try? await roleStore.rolesForActor(
+            context.actorIdentity, tenant: context.tenant
+        ), !roles.isEmpty else {
+            return false
+        }
+        let needed = Permission(resource: context.resource, action: context.action)
+        return roles.contains { $0.allows(needed) }
     }
 }
 

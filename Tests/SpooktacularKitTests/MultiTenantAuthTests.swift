@@ -69,7 +69,7 @@ struct MultiTenantAuthTests {
     @Test("MultiTenantAuthorization denies break-glass by default")
     func multiTenantDeniesBreakGlass() async {
         let isolation = MultiTenantIsolation(tenantPools: [:])
-        let auth = MultiTenantAuthorization(policy: .multiTenant, isolation: isolation)
+        let auth = MultiTenantAuthorization(policy: .multiTenant, isolation: isolation, roleStore: EmptyRoleStore())
         let ctx = AuthorizationContext(
             actorIdentity: "test", tenant: TenantID("blue"), scope: .breakGlass,
             resource: "vm-1", action: "exec"
@@ -123,4 +123,12 @@ struct MultiTenantAuthTests {
         #expect(AuthScope.runner < AuthScope.admin)
         #expect(AuthScope.admin < AuthScope.breakGlass)
     }
+}
+
+/// A role store that returns no roles (deny-by-default).
+private actor EmptyRoleStore: RoleStore {
+    func rolesForActor(_ identity: String, tenant: TenantID) async throws -> [Role] { [] }
+    func allRoles(tenant: TenantID) async throws -> [Role] { [] }
+    func assign(_ assignment: RoleAssignment) async throws {}
+    func revoke(actor: String, role: String, tenant: TenantID) async throws {}
 }

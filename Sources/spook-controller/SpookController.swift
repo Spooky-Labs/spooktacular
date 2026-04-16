@@ -88,9 +88,19 @@ struct SpookController {
         let isolation: any TenantIsolationPolicy = tenancyMode == .singleTenant
             ? SingleTenantIsolation()
             : MultiTenantIsolation(tenantPools: tenantPools, breakGlassTenants: breakGlassTenants)
+        // RBAC: load role store for resource-level authorization (OWASP deny-by-default)
+        let roleStore: any RoleStore
+        do {
+            roleStore = try JSONRoleStore(configPath: env["SPOOK_RBAC_CONFIG"])
+            logger.notice("RBAC enabled: \(env["SPOOK_RBAC_CONFIG"] ?? "built-in roles")")
+        } catch {
+            logger.fault("Failed to load RBAC config: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
         let authService: any AuthorizationService = tenancyMode == .singleTenant
-            ? SingleTenantAuthorization(policy: reusePolicy)
-            : MultiTenantAuthorization(policy: reusePolicy, isolation: isolation)
+            ? SingleTenantAuthorization(policy: reusePolicy, roleStore: roleStore)
+            : MultiTenantAuthorization(policy: reusePolicy, isolation: isolation, roleStore: roleStore)
 
         // Create audit sinks
         let auditSink: any AuditSink
