@@ -5,98 +5,53 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("OpenClawTemplate")
+@Suite("OpenClaw Template", .tags(.template))
 struct OpenClawTemplateTests {
 
-    // MARK: - Script Content
+    let script = OpenClawTemplate.scriptContent()
 
-    @Test("Script starts with a shebang line")
-    func hasShebang() {
+    @Suite("Script Structure")
+    struct Structure {
         let script = OpenClawTemplate.scriptContent()
-        #expect(script.hasPrefix("#!/bin/bash"))
+
+        @Test("starts with bash shebang")
+        func shebang() { #expect(script.hasPrefix("#!/bin/bash")) }
+
+        @Test("uses set -euo pipefail for safety")
+        func strictMode() { #expect(script.contains("set -euo pipefail")) }
     }
 
-    @Test("Script uses set -euo pipefail for safety")
-    func strictMode() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("set -euo pipefail"))
+    @Test("script includes all required elements",
+          arguments: [
+              "Homebrew/install/HEAD/install.sh",
+              "/opt/homebrew/bin/brew shellenv",
+              "brew install node@24",
+              "/opt/homebrew/opt/node@24/bin",
+              "npm install -g openclaw@latest",
+              "openclaw onboard --install-daemon",
+              "NONINTERACTIVE=1",
+              "if ! command -v brew",
+          ])
+    func requiredElement(expected: String) {
+        #expect(script.contains(expected), "Script missing: \(expected)")
     }
 
-    @Test("Script installs Homebrew")
-    func installsHomebrew() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("Homebrew/install/HEAD/install.sh"))
-    }
+    @Suite("File Generation")
+    struct FileGeneration {
 
-    @Test("Script configures Homebrew shell environment")
-    func configuresBrewShellenv() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("/opt/homebrew/bin/brew shellenv"))
-    }
+        @Test("generates an executable file whose content matches scriptContent()")
+        func generatesExecutableFile() throws {
+            let url = try OpenClawTemplate.generate()
+            defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
-    @Test("Script installs Node.js 24 via Homebrew")
-    func installsNode() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("brew install node@24"))
-    }
+            #expect(FileManager.default.fileExists(atPath: url.path))
 
-    @Test("Script adds Node.js to PATH")
-    func addsNodeToPath() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("/opt/homebrew/opt/node@24/bin"))
-    }
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            let permissions = try #require(attrs[.posixPermissions] as? Int)
+            #expect(permissions == 0o755)
 
-    @Test("Script installs OpenClaw via npm")
-    func installsOpenClaw() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("npm install -g openclaw@latest"))
-    }
-
-    @Test("Script installs the gateway daemon")
-    func installsDaemon() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("openclaw onboard --install-daemon"))
-    }
-
-    @Test("Script skips Homebrew install if already present")
-    func skipsBrewIfPresent() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("if ! command -v brew"))
-    }
-
-    @Test("Script uses NONINTERACTIVE mode for Homebrew")
-    func noninteractiveBrew() {
-        let script = OpenClawTemplate.scriptContent()
-        #expect(script.contains("NONINTERACTIVE=1"))
-    }
-
-    // MARK: - File Generation
-
-    @Test("generate() creates a file on disk")
-    func generatesFile() throws {
-        let url = try OpenClawTemplate.generate()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-
-        #expect(FileManager.default.fileExists(atPath: url.path))
-    }
-
-    @Test("Generated file is executable")
-    func fileIsExecutable() throws {
-        let url = try OpenClawTemplate.generate()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-
-        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
-        let permissions = attrs[.posixPermissions] as? Int
-        #expect(permissions == 0o755)
-    }
-
-    @Test("Generated file content matches scriptContent()")
-    func fileContentMatchesScript() throws {
-        let url = try OpenClawTemplate.generate()
-        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-
-        let fileContent = try String(contentsOf: url, encoding: .utf8)
-        let expected = OpenClawTemplate.scriptContent()
-        #expect(fileContent == expected)
+            let fileContent = try String(contentsOf: url, encoding: .utf8)
+            #expect(fileContent == OpenClawTemplate.scriptContent())
+        }
     }
 }

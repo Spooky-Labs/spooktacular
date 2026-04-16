@@ -5,51 +5,36 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("PIDFile.terminate")
+@Suite("PIDFile.terminate", .tags(.infrastructure))
 struct PIDFileTerminateTests {
 
-    /// Creates a temporary bundle directory for testing.
-    private func makeTempBundle() -> URL {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathComponent("test.vm")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
-
-    @Test("terminate removes PID file when process doesn't exist")
+    @Test("Removes PID file when process doesn't exist", .timeLimit(.minutes(1)))
     func terminateRemovesStalePIDFile() async throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+        let tmp = TempDirectory()
+        let bundleURL = tmp.file("test.vm")
+        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        // Write a PID file with a dead process ID.
         let stalePID: pid_t = 99999999
         try Data("\(stalePID)".utf8).write(
             to: bundleURL.appendingPathComponent(PIDFile.fileName)
         )
 
-        // Verify the PID file exists before terminate.
-        #expect(PIDFile.read(from: bundleURL) == stalePID)
+        let pidBefore = try #require(PIDFile.read(from: bundleURL), "PID must exist before terminate")
+        #expect(pidBefore == stalePID)
 
         await PIDFile.terminate(bundleURL: bundleURL)
 
-        // PID file should be removed.
         #expect(PIDFile.read(from: bundleURL) == nil)
     }
 
-    @Test("terminate is no-op when no PID file exists")
+    @Test("Is no-op when no PID file exists", .timeLimit(.minutes(1)))
     func terminateNoOpWithoutPIDFile() async {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+        let tmp = TempDirectory()
+        let bundleURL = tmp.file("test.vm")
+        try? FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        // No PID file exists.
         #expect(PIDFile.read(from: bundleURL) == nil)
-
-        // Should not crash or throw.
         await PIDFile.terminate(bundleURL: bundleURL)
-
-        // Still no PID file.
         #expect(PIDFile.read(from: bundleURL) == nil)
     }
-
 }

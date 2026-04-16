@@ -7,7 +7,7 @@ import Foundation
 
 // MARK: - Guest Agent Model Round-Trip Tests
 
-@Suite("GuestAgentModels")
+@Suite("Guest Agent Models", .tags(.security, .integration))
 struct GuestAgentModelTests {
 
     @Test("ExecResponse round-trips through JSON")
@@ -20,7 +20,7 @@ struct GuestAgentModelTests {
         #expect(decoded.stderr == "")
     }
 
-    @Test("AppInfo round-trips")
+    @Test("AppInfo round-trips through JSON")
     func appInfoRoundTrip() throws {
         let info = GuestAppInfo(name: "Safari", bundleID: "com.apple.Safari", isActive: true, pid: 123)
         let data = try JSONEncoder().encode(info)
@@ -31,7 +31,7 @@ struct GuestAgentModelTests {
         #expect(decoded.pid == 123)
     }
 
-    @Test("FSEntry round-trips")
+    @Test("FSEntry round-trips through JSON")
     func fsEntryRoundTrip() throws {
         let entry = GuestFSEntry(name: "Documents", isDirectory: true, size: 0)
         let data = try JSONEncoder().encode(entry)
@@ -41,7 +41,7 @@ struct GuestAgentModelTests {
         #expect(decoded.size == 0)
     }
 
-    @Test("PortInfo round-trips")
+    @Test("PortInfo round-trips through JSON")
     func portInfoRoundTrip() throws {
         let info = GuestPortInfo(port: 8080, pid: 456, processName: "node")
         let data = try JSONEncoder().encode(info)
@@ -51,7 +51,7 @@ struct GuestAgentModelTests {
         #expect(decoded.processName == "node")
     }
 
-    @Test("HealthResponse round-trips")
+    @Test("HealthResponse round-trips through JSON")
     func healthRoundTrip() throws {
         let response = GuestHealthResponse(status: "ok", version: "1.0.0", uptime: 42.5)
         let data = try JSONEncoder().encode(response)
@@ -61,7 +61,7 @@ struct GuestAgentModelTests {
         #expect(decoded.uptime == 42.5)
     }
 
-    @Test("FileInfo round-trips")
+    @Test("FileInfo round-trips through JSON")
     func fileInfoRoundTrip() throws {
         let info = GuestFileInfo(name: "test.txt", data: "aGVsbG8=")
         let data = try JSONEncoder().encode(info)
@@ -73,46 +73,41 @@ struct GuestAgentModelTests {
 
 // MARK: - Guest Agent Error Tests
 
-@Suite("GuestAgentError")
+@Suite("Guest Agent Errors", .tags(.security, .integration))
 struct GuestAgentErrorTests {
 
-    @Test("All cases have descriptions")
-    func descriptions() {
-        let errors: [GuestAgentError] = [
-            .notConnected,
-            .httpError(statusCode: 500, message: "fail"),
-            .invalidResponse,
-            .timeout,
-        ]
-        for error in errors {
-            #expect(error.errorDescription != nil)
-            #expect(!error.errorDescription!.isEmpty)
-            #expect(error.recoverySuggestion != nil)
-            #expect(!error.recoverySuggestion!.isEmpty)
-        }
+    @Test("all error cases have non-empty descriptions and recovery suggestions",
+          arguments: [
+              GuestAgentError.notConnected,
+              GuestAgentError.httpError(statusCode: 500, message: "fail"),
+              GuestAgentError.invalidResponse,
+              GuestAgentError.timeout,
+          ])
+    func descriptionsPresent(error: GuestAgentError) {
+        #expect(error.errorDescription != nil)
+        #expect(!error.errorDescription!.isEmpty)
+        #expect(error.recoverySuggestion != nil)
+        #expect(!error.recoverySuggestion!.isEmpty)
     }
 
-    @Test("httpError includes status code in description")
+    @Test("httpError includes status code and message in description")
     func httpErrorDetail() {
         let error = GuestAgentError.httpError(statusCode: 404, message: "Not found")
-        #expect(error.errorDescription!.contains("404"))
-    }
-
-    @Test("httpError includes message in description")
-    func httpErrorMessage() {
-        let error = GuestAgentError.httpError(statusCode: 500, message: "Internal error")
-        #expect(error.errorDescription!.contains("Internal error"))
+        let description = error.errorDescription ?? ""
+        #expect(description.contains("404"))
+        #expect(description.contains("Not found"))
     }
 
     @Test("notConnected suggests installing the agent")
     func notConnectedSuggestion() {
         let error = GuestAgentError.notConnected
-        #expect(error.recoverySuggestion!.contains("spooktacular-agent"))
+        #expect(error.recoverySuggestion?.contains("spooktacular-agent") == true)
     }
 
     @Test("invalidResponse suggests updating the agent")
     func invalidResponseSuggestion() {
         let error = GuestAgentError.invalidResponse
-        #expect(error.recoverySuggestion!.lowercased().contains("update"))
+        let suggestion = error.recoverySuggestion ?? ""
+        #expect(suggestion.lowercased().contains("update"))
     }
 }

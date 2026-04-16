@@ -2,11 +2,17 @@ import Testing
 import Foundation
 @testable import SpookCore
 
-@Suite("DistributedLock")
+@Suite("DistributedLock", .tags(.infrastructure))
 struct DistributedLockTests {
+
     @Test("Lease reports expired when past expiresAt")
     func leaseExpired() {
-        let lease = DistributedLease(name: "test", holder: "h1", acquiredAt: Date.distantPast, duration: 1)
+        let lease = DistributedLease(
+            name: "test",
+            holder: "h1",
+            acquiredAt: Date.distantPast,
+            duration: 1
+        )
         #expect(lease.isExpired)
     }
 
@@ -16,7 +22,7 @@ struct DistributedLockTests {
         #expect(!lease.isExpired)
     }
 
-    @Test("Lease encodes and decodes")
+    @Test("Lease encodes and decodes with correct field values")
     func leaseCodable() throws {
         let lease = DistributedLease(name: "cap-lock", holder: "node-01", duration: 15)
         let data = try JSONEncoder().encode(lease)

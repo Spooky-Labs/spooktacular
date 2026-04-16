@@ -3,175 +3,157 @@ import Foundation
 @testable import SpooktacularKit
 @testable import SpookInfrastructureApple
 
-@Suite("DiskInjector")
+@Suite("DiskInjector", .tags(.infrastructure))
 struct DiskInjectorTests {
 
     // MARK: - LaunchDaemon Plist Generation
 
-    @Test("Generated plist is valid XML")
-    func plistIsValidXML() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        let data = try #require(plist.data(using: .utf8))
-        // PropertyListSerialization will throw if the XML is malformed.
-        let parsed = try PropertyListSerialization.propertyList(
-            from: data, format: nil
+    @Suite("LaunchDaemon plist", .tags(.infrastructure))
+    struct LaunchDaemonPlistTests {
+
+        /// Parses the generated plist once, used by parameterized tests.
+        private func parsedPlist() throws -> [String: Any] {
+            let plist = DiskInjector.generateLaunchDaemonPlist()
+            let data = try #require(plist.data(using: .utf8))
+            return try #require(
+                try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+            )
+        }
+
+        @Test("Generated plist is valid XML")
+        func plistIsValidXML() throws {
+            _ = try parsedPlist()
+        }
+
+        @Test(
+            "Plist contains expected keys and values",
+            arguments: [
+                ("Label", "com.spooktacular.user-data"),
+                ("StandardOutPath", "/var/log/spooktacular-user-data.log"),
+                ("StandardErrorPath", "/var/log/spooktacular-user-data.error.log"),
+            ]
         )
-        #expect(parsed is [String: Any])
-    }
+        func plistStringValue(key: String, expected: String) throws {
+            let dict = try parsedPlist()
+            let value = try #require(dict[key] as? String)
+            #expect(value == expected)
+        }
 
-    @Test("Generated plist has correct Label")
-    func plistHasCorrectLabel() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let label = try #require(dict["Label"] as? String)
-        #expect(label == "com.spooktacular.user-data")
-    }
+        @Test("RunAtLoad is true")
+        func plistRunsAtLoad() throws {
+            let dict = try parsedPlist()
+            let runAtLoad = try #require(dict["RunAtLoad"] as? Bool)
+            #expect(runAtLoad == true)
+        }
 
-    @Test("Generated plist has correct ProgramArguments")
-    func plistHasCorrectProgramArguments() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let args = try #require(dict["ProgramArguments"] as? [String])
-        #expect(args == ["/bin/bash", "/usr/local/bin/spooktacular-user-data.sh"])
-    }
+        @Test("ProgramArguments are correct")
+        func plistHasCorrectProgramArguments() throws {
+            let dict = try parsedPlist()
+            let args = try #require(dict["ProgramArguments"] as? [String])
+            #expect(args == ["/bin/bash", "/usr/local/bin/spooktacular-user-data.sh"])
+        }
 
-    @Test("Generated plist runs at load")
-    func plistRunsAtLoad() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let runAtLoad = try #require(dict["RunAtLoad"] as? Bool)
-        #expect(runAtLoad == true)
-    }
-
-    @Test("Generated plist has stdout log path")
-    func plistHasStdoutPath() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let stdoutPath = try #require(dict["StandardOutPath"] as? String)
-        #expect(stdoutPath == "/var/log/spooktacular-user-data.log")
-    }
-
-    @Test("Generated plist has stderr log path")
-    func plistHasStderrPath() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let stderrPath = try #require(dict["StandardErrorPath"] as? String)
-        #expect(stderrPath == "/var/log/spooktacular-user-data.error.log")
-    }
-
-    @Test("Daemon label constant matches plist Label")
-    func daemonLabelMatchesPlist() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        #expect(plist.contains(DiskInjector.daemonLabel))
-    }
-
-    @Test("Guest script path constant matches plist ProgramArguments")
-    func guestScriptPathMatchesPlist() throws {
-        let plist = DiskInjector.generateLaunchDaemonPlist()
-        #expect(plist.contains(DiskInjector.guestScriptPath))
+        @Test("Daemon label and guest script path constants match plist content")
+        func constantsMatchPlist() {
+            let plist = DiskInjector.generateLaunchDaemonPlist()
+            #expect(plist.contains(DiskInjector.daemonLabel))
+            #expect(plist.contains(DiskInjector.guestScriptPath))
+        }
     }
 
     // MARK: - hdiutil Plist Parsing
 
-    @Test("parseDeviceFromPlist extracts device from valid GUID_partition_scheme")
-    func parseDeviceFromValidPlist() {
-        let xml = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
-        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>system-entities</key>
-            <array>
-                <dict>
-                    <key>content-hint</key>
-                    <string>GUID_partition_scheme</string>
-                    <key>dev-entry</key>
-                    <string>/dev/disk4</string>
-                </dict>
-                <dict>
-                    <key>content-hint</key>
-                    <string>Apple_APFS</string>
-                    <key>dev-entry</key>
-                    <string>/dev/disk4s1</string>
-                </dict>
-            </array>
-        </dict>
-        </plist>
-        """
-        let device = DiskInjector.parseDeviceFromPlist(xml)
-        #expect(device == "/dev/disk4")
-    }
+    @Suite("parseDeviceFromPlist", .tags(.infrastructure))
+    struct ParseDeviceTests {
 
-    @Test("parseDeviceFromPlist falls back to first dev-entry")
-    func parseDeviceFallback() {
-        let xml = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
-        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>system-entities</key>
-            <array>
-                <dict>
-                    <key>content-hint</key>
-                    <string>Apple_APFS</string>
-                    <key>dev-entry</key>
-                    <string>/dev/disk5s1</string>
-                </dict>
-            </array>
-        </dict>
-        </plist>
-        """
-        let device = DiskInjector.parseDeviceFromPlist(xml)
-        #expect(device == "/dev/disk5s1")
-    }
+        @Test("Extracts device from valid GUID_partition_scheme")
+        func parseDeviceFromValidPlist() {
+            let xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>system-entities</key>
+                <array>
+                    <dict>
+                        <key>content-hint</key>
+                        <string>GUID_partition_scheme</string>
+                        <key>dev-entry</key>
+                        <string>/dev/disk4</string>
+                    </dict>
+                    <dict>
+                        <key>content-hint</key>
+                        <string>Apple_APFS</string>
+                        <key>dev-entry</key>
+                        <string>/dev/disk4s1</string>
+                    </dict>
+                </array>
+            </dict>
+            </plist>
+            """
+            #expect(DiskInjector.parseDeviceFromPlist(xml) == "/dev/disk4")
+        }
 
-    @Test("parseDeviceFromPlist returns nil for invalid input")
-    func parseDeviceReturnsNilForInvalid() {
-        #expect(DiskInjector.parseDeviceFromPlist("not a plist") == nil)
-        #expect(DiskInjector.parseDeviceFromPlist("") == nil)
+        @Test("Falls back to first dev-entry when no GUID_partition_scheme")
+        func parseDeviceFallback() {
+            let xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
+            "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>system-entities</key>
+                <array>
+                    <dict>
+                        <key>content-hint</key>
+                        <string>Apple_APFS</string>
+                        <key>dev-entry</key>
+                        <string>/dev/disk5s1</string>
+                    </dict>
+                </array>
+            </dict>
+            </plist>
+            """
+            #expect(DiskInjector.parseDeviceFromPlist(xml) == "/dev/disk5s1")
+        }
+
+        @Test(
+            "Returns nil for invalid input",
+            arguments: ["not a plist", ""]
+        )
+        func parseDeviceReturnsNilForInvalid(input: String) {
+            #expect(DiskInjector.parseDeviceFromPlist(input) == nil)
+        }
     }
 
     // MARK: - DiskInjectorError
 
-    @Test("DiskInjectorError is equatable")
-    func errorEquatable() {
-        #expect(
-            DiskInjectorError.diskImageNotFound(path: "/a")
-            == DiskInjectorError.diskImageNotFound(path: "/a")
-        )
-        #expect(
-            DiskInjectorError.diskImageNotFound(path: "/a")
-            != DiskInjectorError.diskImageNotFound(path: "/b")
-        )
-        #expect(
-            DiskInjectorError.mountFailed(reason: "x")
-            == DiskInjectorError.mountFailed(reason: "x")
-        )
-        #expect(
-            DiskInjectorError.processFailed(command: "a", exitCode: 1)
-            == DiskInjectorError.processFailed(command: "a", exitCode: 1)
-        )
-        #expect(
-            DiskInjectorError.processFailed(command: "a", exitCode: 1)
-            != DiskInjectorError.processFailed(command: "a", exitCode: 2)
-        )
-    }
+    @Suite("DiskInjectorError", .tags(.infrastructure))
+    struct DiskInjectorErrorTests {
 
+        @Test("Is equatable across cases")
+        func errorEquatable() {
+            #expect(
+                DiskInjectorError.diskImageNotFound(path: "/a")
+                == DiskInjectorError.diskImageNotFound(path: "/a")
+            )
+            #expect(
+                DiskInjectorError.diskImageNotFound(path: "/a")
+                != DiskInjectorError.diskImageNotFound(path: "/b")
+            )
+            #expect(
+                DiskInjectorError.mountFailed(reason: "x")
+                == DiskInjectorError.mountFailed(reason: "x")
+            )
+            #expect(
+                DiskInjectorError.processFailed(command: "a", exitCode: 1)
+                == DiskInjectorError.processFailed(command: "a", exitCode: 1)
+            )
+            #expect(
+                DiskInjectorError.processFailed(command: "a", exitCode: 1)
+                != DiskInjectorError.processFailed(command: "a", exitCode: 2)
+            )
+        }
+    }
 }

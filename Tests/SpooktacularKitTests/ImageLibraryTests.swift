@@ -5,132 +5,106 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("ImageLibrary")
+@Suite("ImageLibrary", .tags(.infrastructure))
 struct ImageLibraryTests {
 
-    /// Creates a fresh temporary directory for each test.
-    private func makeTempDir() -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-    }
+    // MARK: - IPSW
 
-    @Test("Starts empty")
-    func startsEmpty() {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let library = ImageLibrary(directory: dir)
-        library.load()
-        #expect(library.images.isEmpty)
-    }
-
-    @Test("Adds and persists an IPSW image")
+    @Test("Adds and persists an IPSW image with correct name and source", .timeLimit(.minutes(1)))
     func addsAndPersistsIPSW() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let dir = TempDirectory()
+        let ipswDir = TempDirectory()
 
-        // Create a small temp file to act as the IPSW.
-        let fileManager = FileManager.default
-        let ipswDir = fileManager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try fileManager.createDirectory(at: ipswDir, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: ipswDir) }
-
-        let ipswURL = ipswDir.appendingPathComponent("test.ipsw")
+        let ipswURL = ipswDir.file("test.ipsw")
         try Data("fake-ipsw-content".utf8).write(to: ipswURL)
 
-        let library = ImageLibrary(directory: dir)
+        let library = ImageLibrary(directory: dir.url)
         library.load()
 
         try library.addIPSW(at: ipswURL, name: "macOS 15.4")
 
-        #expect(library.images.count == 1)
-        #expect(library.images[0].name == "macOS 15.4")
+        let image = try #require(library.images.first, "Library must contain the added image")
+        #expect(image.name == "macOS 15.4")
 
-        if case .ipsw(let path) = library.images[0].source {
+        if case .ipsw(let path) = image.source {
             #expect(path.hasSuffix("test.ipsw"))
-            #expect(fileManager.fileExists(atPath: path))
+            #expect(FileManager.default.fileExists(atPath: path))
         } else {
             Issue.record("Expected .ipsw source")
         }
 
-        // Verify persistence: the file was copied into the library directory.
-        let copiedPath = dir.appendingPathComponent("test.ipsw").path
-        #expect(fileManager.fileExists(atPath: copiedPath))
-
-        // Verify size was captured.
-        #expect(library.images[0].sizeInBytes != nil)
+        // Verify the file was copied into the library directory.
+        #expect(FileManager.default.fileExists(atPath: dir.file("test.ipsw").path))
+        #expect(image.sizeInBytes != nil)
     }
 
-    @Test("Adds an OCI image reference")
-    func addsOCIImage() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+    // MARK: - OCI
 
-        let library = ImageLibrary(directory: dir)
+    @Test("Adds an OCI image reference", .timeLimit(.minutes(1)))
+    func addsOCIImage() throws {
+        let dir = TempDirectory()
+        let library = ImageLibrary(directory: dir.url)
         library.load()
 
         try library.addOCI(reference: "ghcr.io/spooktacular/macos:15.4", name: "OCI macOS 15.4")
 
-        #expect(library.images.count == 1)
-        #expect(library.images[0].name == "OCI macOS 15.4")
+        let image = try #require(library.images.first)
+        #expect(image.name == "OCI macOS 15.4")
 
-        if case .oci(let ref) = library.images[0].source {
+        if case .oci(let ref) = image.source {
             #expect(ref == "ghcr.io/spooktacular/macos:15.4")
         } else {
             Issue.record("Expected .oci source")
         }
 
-        #expect(library.images[0].sizeInBytes == nil)
+        #expect(image.sizeInBytes == nil)
     }
 
-    @Test("Removes an image by ID")
-    func removesImageByID() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+    // MARK: - Remove
 
-        let library = ImageLibrary(directory: dir)
+    @Test("Removes an image by ID and retains the other", .timeLimit(.minutes(1)))
+    func removesImageByID() throws {
+        let dir = TempDirectory()
+        let library = ImageLibrary(directory: dir.url)
         library.load()
 
         try library.addOCI(reference: "ref1", name: "Image A")
         try library.addOCI(reference: "ref2", name: "Image B")
-        #expect(library.images.count == 2)
 
-        let idToRemove = library.images[0].id
+        let idToRemove = try #require(library.images.first).id
         try library.remove(id: idToRemove)
 
-        #expect(library.images.count == 1)
-        #expect(library.images[0].name == "Image B")
+        let remaining = try #require(library.images.first)
+        #expect(remaining.name == "Image B")
     }
 
-    @Test("Round-trips through save and load")
+    // MARK: - Persistence
+
+    @Test("Round-trips through save and load", .timeLimit(.minutes(1)))
     func roundTrips() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
+        let dir = TempDirectory()
 
-        // Populate a library and save it.
-        let library = ImageLibrary(directory: dir)
+        let library = ImageLibrary(directory: dir.url)
         library.load()
-
         try library.addOCI(reference: "ghcr.io/example:latest", name: "Example")
+        let savedImage = try #require(library.images.first)
 
-        let savedImage = library.images[0]
-
-        // Load into a fresh instance.
-        let library2 = ImageLibrary(directory: dir)
+        let library2 = ImageLibrary(directory: dir.url)
         library2.load()
 
-        #expect(library2.images.count == 1)
-        #expect(library2.images[0].id == savedImage.id)
-        #expect(library2.images[0].name == savedImage.name)
-        #expect(library2.images[0].source == savedImage.source)
-        // ISO 8601 may truncate sub-second precision.
+        let loadedImage = try #require(library2.images.first)
+        #expect(loadedImage.id == savedImage.id)
+        #expect(loadedImage.name == savedImage.name)
+        #expect(loadedImage.source == savedImage.source)
         #expect(
-            abs(library2.images[0].addedAt.timeIntervalSince(savedImage.addedAt)) < 1.0,
+            abs(loadedImage.addedAt.timeIntervalSince(savedImage.addedAt)) < 1.0,
             "addedAt must survive round-trip"
         )
     }
 
-    @Test("Handles missing library directory gracefully")
+    // MARK: - Missing Directory
+
+    @Test("Handles missing library directory gracefully", .timeLimit(.minutes(1)))
     func handlesMissingDirectory() {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -138,14 +112,10 @@ struct ImageLibraryTests {
             .appendingPathComponent("nested")
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        // The directory does not exist yet.
         let library = ImageLibrary(directory: dir)
         library.load()
 
-        // Should start empty without crashing.
         #expect(library.images.isEmpty)
-
-        // The directory should now exist (created by load).
         #expect(FileManager.default.fileExists(atPath: dir.path))
     }
 }

@@ -5,209 +5,204 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("PIDFile")
+@Suite("PIDFile", .tags(.infrastructure))
 struct PIDFileTests {
-
-    /// Creates a temporary bundle directory for testing.
-    private func makeTempBundle() -> URL {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathComponent("test.vm")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
-    }
 
     // MARK: - Write and Read
 
-    @Test("Writes current PID and reads it back")
-    func writeAndRead() throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+    @Suite("Write and read", .tags(.infrastructure))
+    struct WriteReadTests {
 
-        try PIDFile.write(to: bundleURL)
+        @Test("Writes current PID and reads it back", .timeLimit(.minutes(1)))
+        func writeAndRead() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        let pid = PIDFile.read(from: bundleURL)
-        let expected = ProcessInfo.processInfo.processIdentifier
-        #expect(pid == expected)
-    }
+            try PIDFile.write(to: bundleURL)
 
-    @Test("Read returns nil when no PID file exists")
-    func readNonexistent() {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+            let pid = try #require(PIDFile.read(from: bundleURL))
+            #expect(pid == ProcessInfo.processInfo.processIdentifier)
+        }
 
-        let pid = PIDFile.read(from: bundleURL)
-        #expect(pid == nil)
-    }
+        @Test("Read returns nil when no PID file exists", .timeLimit(.minutes(1)))
+        func readNonexistent() {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try? FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+            #expect(PIDFile.read(from: bundleURL) == nil)
+        }
 
-    @Test("Read returns nil for malformed PID file")
-    func readMalformed() throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+        @Test("Read returns nil for malformed PID file", .timeLimit(.minutes(1)))
+        func readMalformed() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        try Data("not-a-number".utf8).write(
-            to: bundleURL.appendingPathComponent(PIDFile.fileName)
-        )
-
-        let pid = PIDFile.read(from: bundleURL)
-        #expect(pid == nil)
+            try Data("not-a-number".utf8).write(
+                to: bundleURL.appendingPathComponent(PIDFile.fileName)
+            )
+            #expect(PIDFile.read(from: bundleURL) == nil)
+        }
     }
 
     // MARK: - Remove
 
-    @Test("Remove deletes the PID file")
-    func removeDeletesFile() throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+    @Suite("Remove", .tags(.infrastructure))
+    struct RemoveTests {
 
-        try PIDFile.write(to: bundleURL)
-        #expect(PIDFile.read(from: bundleURL) != nil)
+        @Test("Remove deletes the PID file", .timeLimit(.minutes(1)))
+        func removeDeletesFile() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        PIDFile.remove(from: bundleURL)
-        #expect(PIDFile.read(from: bundleURL) == nil)
-    }
+            try PIDFile.write(to: bundleURL)
+            try #require(PIDFile.read(from: bundleURL) != nil, "PID file must exist before removal")
 
-    @Test("Remove succeeds silently when no PID file exists")
-    func removeNonexistent() {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+            PIDFile.remove(from: bundleURL)
+            #expect(PIDFile.read(from: bundleURL) == nil)
+        }
 
-        // Should not throw or crash.
-        PIDFile.remove(from: bundleURL)
+        @Test("Remove succeeds silently when no PID file exists", .timeLimit(.minutes(1)))
+        func removeNonexistent() {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try? FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+            PIDFile.remove(from: bundleURL)
+        }
     }
 
     // MARK: - Process Alive Check
 
-    @Test("Current process is alive")
-    func currentProcessAlive() {
-        let myPID = ProcessInfo.processInfo.processIdentifier
-        #expect(PIDFile.isProcessAlive(myPID))
-    }
+    @Suite("isProcessAlive", .tags(.infrastructure))
+    struct ProcessAliveTests {
 
-    @Test("Non-existent PID is not alive")
-    func nonexistentProcessNotAlive() {
-        // PID 99999999 is extremely unlikely to exist.
-        #expect(!PIDFile.isProcessAlive(99999999))
+        @Test(
+            "Alive check for known PIDs",
+            arguments: [
+                (ProcessInfo.processInfo.processIdentifier, true),
+                (pid_t(99999999), false),
+            ]
+        )
+        func processAlive(pid: pid_t, expectedAlive: Bool) {
+            #expect(PIDFile.isProcessAlive(pid) == expectedAlive)
+        }
     }
 
     // MARK: - isRunning
 
-    @Test("isRunning returns true when PID file points to a live process")
-    func isRunningTrue() throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+    @Suite("isRunning", .tags(.infrastructure))
+    struct IsRunningTests {
 
-        try PIDFile.write(to: bundleURL) // writes current process PID
-        #expect(PIDFile.isRunning(bundleURL: bundleURL))
-    }
+        @Test("Returns true when PID file points to a live process", .timeLimit(.minutes(1)))
+        func isRunningTrue() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-    @Test("isRunning returns false when no PID file exists")
-    func isRunningNoPIDFile() {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+            try PIDFile.write(to: bundleURL)
+            #expect(PIDFile.isRunning(bundleURL: bundleURL))
+        }
 
-        #expect(!PIDFile.isRunning(bundleURL: bundleURL))
-    }
+        @Test("Returns false when no PID file exists", .timeLimit(.minutes(1)))
+        func isRunningNoPIDFile() {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try? FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+            #expect(!PIDFile.isRunning(bundleURL: bundleURL))
+        }
 
-    @Test("isRunning returns false for stale PID file")
-    func isRunningStale() throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+        @Test("Returns false for stale PID file", .timeLimit(.minutes(1)))
+        func isRunningStale() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        try Data("99999999".utf8).write(
-            to: bundleURL.appendingPathComponent(PIDFile.fileName)
-        )
-        #expect(!PIDFile.isRunning(bundleURL: bundleURL))
-    }
+            try Data("99999999".utf8).write(
+                to: bundleURL.appendingPathComponent(PIDFile.fileName)
+            )
+            #expect(!PIDFile.isRunning(bundleURL: bundleURL))
+        }
 
-    @Test("isRunning removes stale PID file from disk")
-    func isRunningRemovesStalePID() throws {
-        let bundleURL = makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: bundleURL.deletingLastPathComponent()) }
+        @Test("Removes stale PID file from disk", .timeLimit(.minutes(1)))
+        func removesStale() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        let pidURL = bundleURL.appendingPathComponent(PIDFile.fileName)
-        try Data("99999999".utf8).write(to: pidURL)
-        #expect(FileManager.default.fileExists(atPath: pidURL.path))
+            let pidURL = bundleURL.appendingPathComponent(PIDFile.fileName)
+            try Data("99999999".utf8).write(to: pidURL)
+            try #require(
+                FileManager.default.fileExists(atPath: pidURL.path),
+                "PID file must exist before isRunning check"
+            )
 
-        _ = PIDFile.isRunning(bundleURL: bundleURL)
-
-        #expect(!FileManager.default.fileExists(atPath: pidURL.path))
+            _ = PIDFile.isRunning(bundleURL: bundleURL)
+            #expect(!FileManager.default.fileExists(atPath: pidURL.path))
+        }
     }
 
     // MARK: - writeAndEnsureCapacity
 
-    @Test("writeAndEnsureCapacity succeeds when under limit")
-    func writeAndEnsureCapacitySucceeds() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        let bundleURL = root.appendingPathComponent("test.vm")
-        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+    @Suite("writeAndEnsureCapacity", .tags(.infrastructure))
+    struct WriteAndEnsureCapacityTests {
 
-        try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: root)
+        @Test("Succeeds when under limit", .timeLimit(.minutes(1)))
+        func succeeds() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
 
-        // PID file should exist.
-        let pid = PIDFile.read(from: bundleURL)
-        #expect(pid == ProcessInfo.processInfo.processIdentifier)
-    }
+            try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: tmp.url)
 
-    @Test("writeAndEnsureCapacity succeeds with one existing VM")
-    func capacityWithOneExisting() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let myPID = ProcessInfo.processInfo.processIdentifier
-
-        // 1 existing "running" VM.
-        let existingURL = root.appendingPathComponent("vm1.vm")
-        try FileManager.default.createDirectory(at: existingURL, withIntermediateDirectories: true)
-        try Data("\(myPID)".utf8).write(
-            to: existingURL.appendingPathComponent(PIDFile.fileName)
-        )
-
-        // Our new VM should succeed (1 existing + 1 new = 2, at limit but not over).
-        let bundleURL = root.appendingPathComponent("vm2.vm")
-        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
-
-        #expect(throws: Never.self) {
-            try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: root)
+            let pid = try #require(PIDFile.read(from: bundleURL))
+            #expect(pid == ProcessInfo.processInfo.processIdentifier)
         }
 
-        // PID file should exist after success.
-        let pid = PIDFile.read(from: bundleURL)
-        #expect(pid == myPID)
-    }
+        @Test("Succeeds with one existing VM", .timeLimit(.minutes(1)))
+        func capacityWithOneExisting() throws {
+            let tmp = TempDirectory()
+            let myPID = ProcessInfo.processInfo.processIdentifier
 
-    @Test("writeAndEnsureCapacity removes PID and throws when over limit")
-    func writeAndEnsureCapacityOverLimit() throws {
-        let root = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-
-        let myPID = ProcessInfo.processInfo.processIdentifier
-
-        // Create 2 existing "running" VMs (at the limit).
-        for name in ["vm1", "vm2"] {
-            let url = root.appendingPathComponent("\(name).vm")
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            let existingURL = tmp.file("vm1.vm")
+            try FileManager.default.createDirectory(at: existingURL, withIntermediateDirectories: true)
             try Data("\(myPID)".utf8).write(
-                to: url.appendingPathComponent(PIDFile.fileName)
+                to: existingURL.appendingPathComponent(PIDFile.fileName)
             )
+
+            let bundleURL = tmp.file("vm2.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+
+            #expect(throws: Never.self) {
+                try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: tmp.url)
+            }
+
+            let pid = try #require(PIDFile.read(from: bundleURL))
+            #expect(pid == myPID)
         }
 
-        // The third VM should fail.
-        let bundleURL = root.appendingPathComponent("vm3.vm")
-        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+        @Test("Removes PID and throws when over limit", .timeLimit(.minutes(1)))
+        func overLimit() throws {
+            let tmp = TempDirectory()
+            let myPID = ProcessInfo.processInfo.processIdentifier
 
-        #expect(throws: CapacityError.self) {
-            try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: root)
+            for name in ["vm1", "vm2"] {
+                let url = tmp.file("\(name).vm")
+                try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                try Data("\(myPID)".utf8).write(
+                    to: url.appendingPathComponent(PIDFile.fileName)
+                )
+            }
+
+            let bundleURL = tmp.file("vm3.vm")
+            try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
+
+            #expect(throws: CapacityError.self) {
+                try PIDFile.writeAndEnsureCapacity(bundleURL: bundleURL, vmDirectory: tmp.url)
+            }
+
+            #expect(PIDFile.read(from: bundleURL) == nil)
         }
-
-        // PID file should have been cleaned up.
-        #expect(PIDFile.read(from: bundleURL) == nil)
     }
-
 }

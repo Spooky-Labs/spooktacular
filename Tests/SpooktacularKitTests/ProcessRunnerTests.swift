@@ -5,7 +5,7 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("ProcessRunner")
+@Suite("ProcessRunner", .tags(.infrastructure))
 struct ProcessRunnerTests {
 
     @Test("run captures stdout")

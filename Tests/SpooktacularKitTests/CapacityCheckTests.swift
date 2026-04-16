@@ -5,14 +5,8 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("CapacityCheck")
+@Suite("CapacityCheck", .tags(.infrastructure))
 struct CapacityCheckTests {
-
-    /// Creates a temporary directory for a test.
-    private func makeTempDir() -> URL {
-        FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-    }
 
     /// Creates a fake VM bundle with an optional PID file.
     private func createBundle(
@@ -26,7 +20,6 @@ struct CapacityCheckTests {
             withIntermediateDirectories: true
         )
 
-        // Write a minimal config.json and metadata.json so it's a valid bundle dir.
         let spec = VirtualMachineSpecification()
         let configData = try VirtualMachineBundle.encoder.encode(spec)
         try configData.write(to: bundleURL.appendingPathComponent("config.json"))
@@ -36,8 +29,9 @@ struct CapacityCheckTests {
         try metadataData.write(to: bundleURL.appendingPathComponent("metadata.json"))
 
         if let pid {
-            let pidData = Data("\(pid)".utf8)
-            try pidData.write(to: bundleURL.appendingPathComponent("pid"))
+            try Data("\(pid)".utf8).write(
+                to: bundleURL.appendingPathComponent("pid")
+            )
         }
     }
 
@@ -50,158 +44,151 @@ struct CapacityCheckTests {
 
     // MARK: - Running Count
 
-    @Test("Returns 0 for an empty directory")
-    func emptyDirectory() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    @Suite("runningCount", .tags(.infrastructure))
+    struct RunningCountTests {
 
-        #expect(CapacityCheck.runningCount(in: dir) == 0)
-    }
+        private var outer: CapacityCheckTests { CapacityCheckTests() }
 
-    @Test("Returns 0 when no VMs have PID files")
-    func noPIDFiles() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        @Test("Returns 0 for an empty directory", .timeLimit(.minutes(1)))
+        func emptyDirectory() throws {
+            let tmp = TempDirectory()
+            #expect(CapacityCheck.runningCount(in: tmp.url) == 0)
+        }
 
-        try createBundle(named: "vm1", in: dir)
-        try createBundle(named: "vm2", in: dir)
+        @Test("Returns 0 when no VMs have PID files", .timeLimit(.minutes(1)))
+        func noPIDFiles() throws {
+            let tmp = TempDirectory()
+            try outer.createBundle(named: "vm1", in: tmp.url)
+            try outer.createBundle(named: "vm2", in: tmp.url)
+            #expect(CapacityCheck.runningCount(in: tmp.url) == 0)
+        }
 
-        #expect(CapacityCheck.runningCount(in: dir) == 0)
-    }
+        @Test("Returns 0 for stale PID files (dead process)", .timeLimit(.minutes(1)))
+        func stalePIDFiles() throws {
+            let tmp = TempDirectory()
+            try outer.createBundle(named: "vm1", in: tmp.url, withPID: 99999999)
+            #expect(CapacityCheck.runningCount(in: tmp.url) == 0)
+        }
 
-    @Test("Returns 0 for stale PID files (dead process)")
-    func stalePIDFiles() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        @Test("Counts bundle with the current process's PID as running", .timeLimit(.minutes(1)))
+        func currentProcessPID() throws {
+            let tmp = TempDirectory()
+            let myPID = ProcessInfo.processInfo.processIdentifier
+            try outer.createBundle(named: "vm1", in: tmp.url, withPID: myPID)
+            #expect(CapacityCheck.runningCount(in: tmp.url) == 1)
+        }
 
-        // Use PID 99999999 which is almost certainly not running.
-        try createBundle(named: "vm1", in: dir, withPID: 99999999)
-
-        #expect(CapacityCheck.runningCount(in: dir) == 0)
-    }
-
-    @Test("Stale PID files are removed during runningVMs scan")
-    func stalePIDFilesRemoved() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        try createBundle(named: "vm1", in: dir, withPID: 99999999)
-        let pidURL = dir.appendingPathComponent("vm1.vm")
-            .appendingPathComponent(PIDFile.fileName)
-
-        #expect(FileManager.default.fileExists(atPath: pidURL.path))
-        _ = CapacityCheck.runningVMs(in: dir)
-        #expect(!FileManager.default.fileExists(atPath: pidURL.path))
-    }
-
-    @Test("Counts bundle with the current process's PID as running")
-    func currentProcessPID() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        let myPID = ProcessInfo.processInfo.processIdentifier
-        try createBundle(named: "vm1", in: dir, withPID: myPID)
-
-        #expect(CapacityCheck.runningCount(in: dir) == 1)
-    }
-
-    @Test("Returns 0 for a nonexistent directory")
-    func nonexistentDirectory() {
-        let dir = URL(fileURLWithPath: "/tmp/nonexistent-\(UUID())")
-        #expect(CapacityCheck.runningCount(in: dir) == 0)
+        @Test("Returns 0 for a nonexistent directory")
+        func nonexistentDirectory() {
+            let dir = URL(fileURLWithPath: "/tmp/nonexistent-\(UUID())")
+            #expect(CapacityCheck.runningCount(in: dir) == 0)
+        }
     }
 
     // MARK: - Running VMs
 
-    @Test("Lists running VM names sorted alphabetically")
-    func runningVMNames() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    @Suite("runningVMs", .tags(.infrastructure))
+    struct RunningVMsTests {
 
-        let myPID = ProcessInfo.processInfo.processIdentifier
-        try createBundle(named: "beta", in: dir, withPID: myPID)
-        try createBundle(named: "alpha", in: dir, withPID: myPID)
-        try createBundle(named: "gamma", in: dir) // no PID, not running
+        private var outer: CapacityCheckTests { CapacityCheckTests() }
 
-        let names = CapacityCheck.runningVMs(in: dir)
-        #expect(names == ["alpha", "beta"])
+        @Test("Lists running VM names sorted alphabetically", .timeLimit(.minutes(1)))
+        func sortedNames() throws {
+            let tmp = TempDirectory()
+            let myPID = ProcessInfo.processInfo.processIdentifier
+            try outer.createBundle(named: "beta", in: tmp.url, withPID: myPID)
+            try outer.createBundle(named: "alpha", in: tmp.url, withPID: myPID)
+            try outer.createBundle(named: "gamma", in: tmp.url) // no PID
+
+            let names = CapacityCheck.runningVMs(in: tmp.url)
+            #expect(names == ["alpha", "beta"])
+        }
+
+        @Test("Stale PID files are removed during scan", .timeLimit(.minutes(1)))
+        func stalePIDFilesRemoved() throws {
+            let tmp = TempDirectory()
+            try outer.createBundle(named: "vm1", in: tmp.url, withPID: 99999999)
+            let pidURL = tmp.url.appendingPathComponent("vm1.vm")
+                .appendingPathComponent(PIDFile.fileName)
+
+            let existed = FileManager.default.fileExists(atPath: pidURL.path)
+            try #require(existed, "PID file must exist before scan")
+
+            _ = CapacityCheck.runningVMs(in: tmp.url)
+            #expect(!FileManager.default.fileExists(atPath: pidURL.path))
+        }
     }
 
     // MARK: - Ensure Capacity
 
-    @Test("ensureCapacity succeeds when no VMs are running")
-    func capacityAvailable() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    @Suite("ensureCapacity", .tags(.infrastructure))
+    struct EnsureCapacityTests {
 
-        try createBundle(named: "vm1", in: dir)
+        private var outer: CapacityCheckTests { CapacityCheckTests() }
 
-        #expect(throws: Never.self) {
-            try CapacityCheck.ensureCapacity(in: dir)
-        }
-    }
+        @Test("Succeeds when no VMs are running", .timeLimit(.minutes(1)))
+        func capacityAvailable() throws {
+            let tmp = TempDirectory()
+            try outer.createBundle(named: "vm1", in: tmp.url)
 
-    @Test("ensureCapacity succeeds with 1 running VM")
-    func capacityWithOne() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        let myPID = ProcessInfo.processInfo.processIdentifier
-        try createBundle(named: "vm1", in: dir, withPID: myPID)
-
-        #expect(throws: Never.self) {
-            try CapacityCheck.ensureCapacity(in: dir)
-        }
-    }
-
-    @Test("ensureCapacity throws when 2 VMs are running")
-    func capacityReached() throws {
-        let dir = makeTempDir()
-        defer { try? FileManager.default.removeItem(at: dir) }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        let myPID = ProcessInfo.processInfo.processIdentifier
-        try createBundle(named: "vm1", in: dir, withPID: myPID)
-        try createBundle(named: "vm2", in: dir, withPID: myPID)
-
-        #expect {
-            try CapacityCheck.ensureCapacity(in: dir)
-        } throws: { error in
-            guard let capacityError = error as? CapacityError else { return false }
-            if case .limitReached(let running) = capacityError {
-                return running == ["vm1", "vm2"]
+            #expect(throws: Never.self) {
+                try CapacityCheck.ensureCapacity(in: tmp.url)
             }
-            return false
+        }
+
+        @Test("Succeeds with 1 running VM", .timeLimit(.minutes(1)))
+        func capacityWithOne() throws {
+            let tmp = TempDirectory()
+            let myPID = ProcessInfo.processInfo.processIdentifier
+            try outer.createBundle(named: "vm1", in: tmp.url, withPID: myPID)
+
+            #expect(throws: Never.self) {
+                try CapacityCheck.ensureCapacity(in: tmp.url)
+            }
+        }
+
+        @Test("Throws when 2 VMs are running", .timeLimit(.minutes(1)))
+        func capacityReached() throws {
+            let tmp = TempDirectory()
+            let myPID = ProcessInfo.processInfo.processIdentifier
+            try outer.createBundle(named: "vm1", in: tmp.url, withPID: myPID)
+            try outer.createBundle(named: "vm2", in: tmp.url, withPID: myPID)
+
+            #expect {
+                try CapacityCheck.ensureCapacity(in: tmp.url)
+            } throws: { error in
+                guard let capacityError = error as? CapacityError else { return false }
+                if case .limitReached(let running) = capacityError {
+                    return running == ["vm1", "vm2"]
+                }
+                return false
+            }
         }
     }
 
     // MARK: - CapacityError
 
-    @Test("CapacityError has a descriptive message")
-    func errorMessage() {
-        let error = CapacityError.limitReached(running: ["runner-1", "runner-2"])
-        let description = error.localizedDescription
-        #expect(description.contains("2 concurrent VMs"))
-        #expect(description.contains("runner-1"))
-        #expect(description.contains("runner-2"))
-        let recovery = error.recoverySuggestion ?? ""
-        #expect(recovery.contains("Stop a running VM"))
-    }
+    @Suite("CapacityError", .tags(.infrastructure))
+    struct CapacityErrorTests {
 
-    @Test("CapacityError is equatable")
-    func errorEquatable() {
-        let a = CapacityError.limitReached(running: ["a", "b"])
-        let b = CapacityError.limitReached(running: ["a", "b"])
-        let c = CapacityError.limitReached(running: ["x"])
-        #expect(a == b)
-        #expect(a != c)
+        @Test("Has a descriptive message containing VM count and names")
+        func errorMessage() {
+            let error = CapacityError.limitReached(running: ["runner-1", "runner-2"])
+            let description = error.localizedDescription
+            #expect(description.contains("2 concurrent VMs"))
+            #expect(description.contains("runner-1"))
+            #expect(description.contains("runner-2"))
+            let recovery = error.recoverySuggestion ?? ""
+            #expect(recovery.contains("Stop a running VM"))
+        }
+
+        @Test("Is equatable")
+        func errorEquatable() {
+            let a = CapacityError.limitReached(running: ["a", "b"])
+            let b = CapacityError.limitReached(running: ["a", "b"])
+            let c = CapacityError.limitReached(running: ["x"])
+            #expect(a == b)
+            #expect(a != c)
+        }
     }
 }

@@ -10,26 +10,20 @@ import Foundation
 /// Validates that adding and removing shared folders correctly
 /// updates the `config.json` inside a VM bundle, and that the
 /// changes survive a reload from disk.
-@Suite("Share persistence")
+@Suite("Share persistence", .tags(.lifecycle))
 struct SharePersistenceTests {
 
     // MARK: - Helpers
 
-    /// Creates a temporary VM bundle for testing.
-    /// The caller is responsible for cleanup via the returned
-    /// parent directory URL.
     private func makeTempBundle(
         spec: VirtualMachineSpecification = VirtualMachineSpecification()
-    ) throws -> (bundle: VirtualMachineBundle, parentDir: URL) {
-        let parentDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        let bundleURL = parentDir.appendingPathComponent("test.vm")
+    ) throws -> (bundle: VirtualMachineBundle, tmp: TempDirectory) {
+        let tmp = TempDirectory()
+        let bundleURL = tmp.file("test.vm")
         let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
-        return (bundle, parentDir)
+        return (bundle, tmp)
     }
 
-    /// Writes an updated spec to the bundle's config.json, mirroring
-    /// the logic used by the share commands.
     private func writeSpec(_ spec: VirtualMachineSpecification, to bundleURL: URL) throws {
         let data = try VirtualMachineBundle.encoder.encode(spec)
         try data.write(
@@ -39,207 +33,138 @@ struct SharePersistenceTests {
 
     // MARK: - Add Tests
 
-    @Test("Adding a shared folder persists to config.json")
-    func addPersists() throws {
-        let (bundle, parentDir) = try makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: parentDir) }
+    @Suite("Add shared folders", .tags(.lifecycle))
+    struct AddTests {
 
-        #expect(bundle.spec.sharedFolders.isEmpty)
+        @Test("Adding a shared folder persists to config.json", .timeLimit(.minutes(1)))
+        func addPersists() throws {
+            let outer = SharePersistenceTests()
+            let (bundle, _tmp) = try outer.makeTempBundle()
+            try #require(bundle.spec.sharedFolders.isEmpty, "Must start with no shared folders")
 
-        let newFolder = SharedFolder(
-            hostPath: "/tmp/shared",
-            tag: "myshare",
-            readOnly: false
-        )
-        let updatedSpec = VirtualMachineSpecification(
-            cpuCount: bundle.spec.cpuCount,
-            memorySizeInBytes: bundle.spec.memorySizeInBytes,
-            diskSizeInBytes: bundle.spec.diskSizeInBytes,
-            displayCount: bundle.spec.displayCount,
-            networkMode: bundle.spec.networkMode,
-            audioEnabled: bundle.spec.audioEnabled,
-            microphoneEnabled: bundle.spec.microphoneEnabled,
-            sharedFolders: bundle.spec.sharedFolders + [newFolder],
-            macAddress: bundle.spec.macAddress,
-            autoResizeDisplay: bundle.spec.autoResizeDisplay,
-            clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
-        )
-        try writeSpec(updatedSpec, to: bundle.url)
+            let newFolder = SharedFolder(hostPath: "/tmp/shared", tag: "myshare", readOnly: false)
+            let updatedSpec = bundle.spec.with(
+                sharedFolders: bundle.spec.sharedFolders + [newFolder]
+            )
+            try outer.writeSpec(updatedSpec, to: bundle.url)
 
-        // Reload from disk and verify.
-        let reloaded = try VirtualMachineBundle.load(from: bundle.url)
-        #expect(reloaded.spec.sharedFolders.count == 1)
-        #expect(reloaded.spec.sharedFolders[0].hostPath == "/tmp/shared")
-        #expect(reloaded.spec.sharedFolders[0].tag == "myshare")
-        #expect(reloaded.spec.sharedFolders[0].readOnly == false)
-    }
+            let reloaded = try VirtualMachineBundle.load(from: bundle.url)
+            let folder = try #require(reloaded.spec.sharedFolders.first)
+            #expect(folder.hostPath == "/tmp/shared")
+            #expect(folder.tag == "myshare")
+            #expect(folder.readOnly == false)
+        }
 
-    @Test("Adding a read-only shared folder persists correctly")
-    func addReadOnlyPersists() throws {
-        let (bundle, parentDir) = try makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: parentDir) }
+        @Test("Adding a read-only shared folder persists correctly", .timeLimit(.minutes(1)))
+        func addReadOnlyPersists() throws {
+            let outer = SharePersistenceTests()
+            let (bundle, _tmp) = try outer.makeTempBundle()
 
-        let newFolder = SharedFolder(
-            hostPath: "/data",
-            tag: "data",
-            readOnly: true
-        )
-        let updatedSpec = VirtualMachineSpecification(
-            cpuCount: bundle.spec.cpuCount,
-            memorySizeInBytes: bundle.spec.memorySizeInBytes,
-            diskSizeInBytes: bundle.spec.diskSizeInBytes,
-            displayCount: bundle.spec.displayCount,
-            networkMode: bundle.spec.networkMode,
-            audioEnabled: bundle.spec.audioEnabled,
-            microphoneEnabled: bundle.spec.microphoneEnabled,
-            sharedFolders: [newFolder],
-            macAddress: bundle.spec.macAddress,
-            autoResizeDisplay: bundle.spec.autoResizeDisplay,
-            clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
-        )
-        try writeSpec(updatedSpec, to: bundle.url)
+            let newFolder = SharedFolder(hostPath: "/data", tag: "data", readOnly: true)
+            let updatedSpec = bundle.spec.with(sharedFolders: [newFolder])
+            try outer.writeSpec(updatedSpec, to: bundle.url)
 
-        let reloaded = try VirtualMachineBundle.load(from: bundle.url)
-        #expect(reloaded.spec.sharedFolders.count == 1)
-        #expect(reloaded.spec.sharedFolders[0].readOnly == true)
-    }
+            let reloaded = try VirtualMachineBundle.load(from: bundle.url)
+            let folder = try #require(reloaded.spec.sharedFolders.first)
+            #expect(folder.readOnly == true)
+        }
 
-    @Test("Adding multiple shared folders preserves order")
-    func addMultiple() throws {
-        let (bundle, parentDir) = try makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: parentDir) }
+        @Test("Adding multiple shared folders preserves order", .timeLimit(.minutes(1)))
+        func addMultiple() throws {
+            let outer = SharePersistenceTests()
+            let (bundle, _tmp) = try outer.makeTempBundle()
 
-        let folders = [
-            SharedFolder(hostPath: "/tmp/a", tag: "alpha"),
-            SharedFolder(hostPath: "/tmp/b", tag: "beta"),
-            SharedFolder(hostPath: "/tmp/c", tag: "gamma", readOnly: true),
-        ]
-        let updatedSpec = VirtualMachineSpecification(
-            cpuCount: bundle.spec.cpuCount,
-            memorySizeInBytes: bundle.spec.memorySizeInBytes,
-            diskSizeInBytes: bundle.spec.diskSizeInBytes,
-            displayCount: bundle.spec.displayCount,
-            networkMode: bundle.spec.networkMode,
-            audioEnabled: bundle.spec.audioEnabled,
-            microphoneEnabled: bundle.spec.microphoneEnabled,
-            sharedFolders: folders,
-            macAddress: bundle.spec.macAddress,
-            autoResizeDisplay: bundle.spec.autoResizeDisplay,
-            clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
-        )
-        try writeSpec(updatedSpec, to: bundle.url)
+            let folders = [
+                SharedFolder(hostPath: "/tmp/a", tag: "alpha"),
+                SharedFolder(hostPath: "/tmp/b", tag: "beta"),
+                SharedFolder(hostPath: "/tmp/c", tag: "gamma", readOnly: true),
+            ]
+            let updatedSpec = bundle.spec.with(sharedFolders: folders)
+            try outer.writeSpec(updatedSpec, to: bundle.url)
 
-        let reloaded = try VirtualMachineBundle.load(from: bundle.url)
-        #expect(reloaded.spec.sharedFolders.count == 3)
-        #expect(reloaded.spec.sharedFolders[0].tag == "alpha")
-        #expect(reloaded.spec.sharedFolders[1].tag == "beta")
-        #expect(reloaded.spec.sharedFolders[2].tag == "gamma")
+            let reloaded = try VirtualMachineBundle.load(from: bundle.url)
+            let tags = reloaded.spec.sharedFolders.map(\.tag)
+            #expect(tags == ["alpha", "beta", "gamma"])
+        }
     }
 
     // MARK: - Remove Tests
 
-    @Test("Removing a shared folder persists to config.json")
-    func removePersists() throws {
-        let folder = SharedFolder(hostPath: "/tmp/shared", tag: "myshare")
-        let initialSpec = VirtualMachineSpecification(sharedFolders: [folder])
+    @Suite("Remove shared folders", .tags(.lifecycle))
+    struct RemoveTests {
 
-        let (bundle, parentDir) = try makeTempBundle(spec: initialSpec)
-        defer { try? FileManager.default.removeItem(at: parentDir) }
+        @Test("Removing a shared folder persists to config.json", .timeLimit(.minutes(1)))
+        func removePersists() throws {
+            let outer = SharePersistenceTests()
+            let folder = SharedFolder(hostPath: "/tmp/shared", tag: "myshare")
+            let (bundle, _tmp) = try outer.makeTempBundle(
+                spec: VirtualMachineSpecification(sharedFolders: [folder])
+            )
+            try #require(bundle.spec.sharedFolders.count == 1, "Must start with one folder")
 
-        #expect(bundle.spec.sharedFolders.count == 1)
+            let filtered = bundle.spec.sharedFolders.filter { $0.tag != "myshare" }
+            let updatedSpec = bundle.spec.with(sharedFolders: filtered)
+            try outer.writeSpec(updatedSpec, to: bundle.url)
 
-        // Remove the folder by filtering out its tag.
-        let filtered = bundle.spec.sharedFolders.filter { $0.tag != "myshare" }
-        let updatedSpec = VirtualMachineSpecification(
-            cpuCount: bundle.spec.cpuCount,
-            memorySizeInBytes: bundle.spec.memorySizeInBytes,
-            diskSizeInBytes: bundle.spec.diskSizeInBytes,
-            displayCount: bundle.spec.displayCount,
-            networkMode: bundle.spec.networkMode,
-            audioEnabled: bundle.spec.audioEnabled,
-            microphoneEnabled: bundle.spec.microphoneEnabled,
-            sharedFolders: filtered,
-            macAddress: bundle.spec.macAddress,
-            autoResizeDisplay: bundle.spec.autoResizeDisplay,
-            clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
-        )
-        try writeSpec(updatedSpec, to: bundle.url)
+            let reloaded = try VirtualMachineBundle.load(from: bundle.url)
+            #expect(reloaded.spec.sharedFolders.isEmpty)
+        }
 
-        // Reload from disk and verify empty.
-        let reloaded = try VirtualMachineBundle.load(from: bundle.url)
-        #expect(reloaded.spec.sharedFolders.isEmpty)
-    }
+        @Test("Removing one folder leaves others intact", .timeLimit(.minutes(1)))
+        func removeSelectivelyPreservesOthers() throws {
+            let outer = SharePersistenceTests()
+            let folders = [
+                SharedFolder(hostPath: "/tmp/a", tag: "alpha"),
+                SharedFolder(hostPath: "/tmp/b", tag: "beta"),
+                SharedFolder(hostPath: "/tmp/c", tag: "gamma"),
+            ]
+            let (bundle, _tmp) = try outer.makeTempBundle(
+                spec: VirtualMachineSpecification(sharedFolders: folders)
+            )
 
-    @Test("Removing one folder leaves others intact")
-    func removeSelectivelyPreservesOthers() throws {
-        let folders = [
-            SharedFolder(hostPath: "/tmp/a", tag: "alpha"),
-            SharedFolder(hostPath: "/tmp/b", tag: "beta"),
-            SharedFolder(hostPath: "/tmp/c", tag: "gamma"),
-        ]
-        let initialSpec = VirtualMachineSpecification(sharedFolders: folders)
+            let filtered = bundle.spec.sharedFolders.filter { $0.tag != "beta" }
+            let updatedSpec = bundle.spec.with(sharedFolders: filtered)
+            try outer.writeSpec(updatedSpec, to: bundle.url)
 
-        let (bundle, parentDir) = try makeTempBundle(spec: initialSpec)
-        defer { try? FileManager.default.removeItem(at: parentDir) }
-
-        let filtered = bundle.spec.sharedFolders.filter { $0.tag != "beta" }
-        let updatedSpec = VirtualMachineSpecification(
-            cpuCount: bundle.spec.cpuCount,
-            memorySizeInBytes: bundle.spec.memorySizeInBytes,
-            diskSizeInBytes: bundle.spec.diskSizeInBytes,
-            displayCount: bundle.spec.displayCount,
-            networkMode: bundle.spec.networkMode,
-            audioEnabled: bundle.spec.audioEnabled,
-            microphoneEnabled: bundle.spec.microphoneEnabled,
-            sharedFolders: filtered,
-            macAddress: bundle.spec.macAddress,
-            autoResizeDisplay: bundle.spec.autoResizeDisplay,
-            clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
-        )
-        try writeSpec(updatedSpec, to: bundle.url)
-
-        let reloaded = try VirtualMachineBundle.load(from: bundle.url)
-        #expect(reloaded.spec.sharedFolders.count == 2)
-        #expect(reloaded.spec.sharedFolders.map(\.tag) == ["alpha", "gamma"])
+            let reloaded = try VirtualMachineBundle.load(from: bundle.url)
+            #expect(reloaded.spec.sharedFolders.map(\.tag) == ["alpha", "gamma"])
+        }
     }
 
     // MARK: - List Tests
 
-    @Test("Empty bundle reports no shared folders")
+    @Test("Empty bundle reports no shared folders", .timeLimit(.minutes(1)))
     func listEmpty() throws {
-        let (bundle, parentDir) = try makeTempBundle()
-        defer { try? FileManager.default.removeItem(at: parentDir) }
-
+        let (bundle, _tmp) = try makeTempBundle()
         let loaded = try VirtualMachineBundle.load(from: bundle.url)
         #expect(loaded.spec.sharedFolders.isEmpty)
     }
 
-    @Test("Bundle with shares reports correct folder details")
+    @Test("Bundle with shares reports correct folder details", .timeLimit(.minutes(1)))
     func listWithShares() throws {
         let folders = [
             SharedFolder(hostPath: "/Users/test/code", tag: "code", readOnly: false),
             SharedFolder(hostPath: "/Users/test/data", tag: "data", readOnly: true),
         ]
-        let initialSpec = VirtualMachineSpecification(sharedFolders: folders)
+        let (bundle, _tmp) = try makeTempBundle(
+            spec: VirtualMachineSpecification(sharedFolders: folders)
+        )
 
-        let (_, parentDir) = try makeTempBundle(spec: initialSpec)
-        defer { try? FileManager.default.removeItem(at: parentDir) }
+        let loaded = try VirtualMachineBundle.load(from: bundle.url)
+        let first = try #require(loaded.spec.sharedFolders.first)
+        let second = try #require(loaded.spec.sharedFolders.last)
 
-        let bundleURL = parentDir.appendingPathComponent("test.vm")
-        let loaded = try VirtualMachineBundle.load(from: bundleURL)
-
-        #expect(loaded.spec.sharedFolders.count == 2)
-        #expect(loaded.spec.sharedFolders[0].hostPath == "/Users/test/code")
-        #expect(loaded.spec.sharedFolders[0].tag == "code")
-        #expect(loaded.spec.sharedFolders[0].readOnly == false)
-        #expect(loaded.spec.sharedFolders[1].hostPath == "/Users/test/data")
-        #expect(loaded.spec.sharedFolders[1].tag == "data")
-        #expect(loaded.spec.sharedFolders[1].readOnly == true)
+        #expect(first.hostPath == "/Users/test/code")
+        #expect(first.tag == "code")
+        #expect(first.readOnly == false)
+        #expect(second.hostPath == "/Users/test/data")
+        #expect(second.tag == "data")
+        #expect(second.readOnly == true)
     }
 
-    // MARK: - Spec Preservation Tests
+    // MARK: - Spec Preservation
 
-    @Test("Adding a share preserves other spec fields")
+    @Test("Adding a share preserves other spec fields", .timeLimit(.minutes(1)))
     func addPreservesOtherFields() throws {
         let initialSpec = VirtualMachineSpecification(
             cpuCount: 8,
@@ -255,22 +180,11 @@ struct SharePersistenceTests {
             clipboardSharingEnabled: false
         )
 
-        let (bundle, parentDir) = try makeTempBundle(spec: initialSpec)
-        defer { try? FileManager.default.removeItem(at: parentDir) }
+        let (bundle, _tmp) = try makeTempBundle(spec: initialSpec)
 
         let newFolder = SharedFolder(hostPath: "/tmp/test", tag: "test")
-        let updatedSpec = VirtualMachineSpecification(
-            cpuCount: bundle.spec.cpuCount,
-            memorySizeInBytes: bundle.spec.memorySizeInBytes,
-            diskSizeInBytes: bundle.spec.diskSizeInBytes,
-            displayCount: bundle.spec.displayCount,
-            networkMode: bundle.spec.networkMode,
-            audioEnabled: bundle.spec.audioEnabled,
-            microphoneEnabled: bundle.spec.microphoneEnabled,
-            sharedFolders: bundle.spec.sharedFolders + [newFolder],
-            macAddress: bundle.spec.macAddress,
-            autoResizeDisplay: bundle.spec.autoResizeDisplay,
-            clipboardSharingEnabled: bundle.spec.clipboardSharingEnabled
+        let updatedSpec = bundle.spec.with(
+            sharedFolders: bundle.spec.sharedFolders + [newFolder]
         )
         try writeSpec(updatedSpec, to: bundle.url)
 
@@ -284,7 +198,7 @@ struct SharePersistenceTests {
         #expect(reloaded.spec.macAddress == MACAddress("aa:bb:cc:dd:ee:ff"))
         #expect(reloaded.spec.autoResizeDisplay == false)
         #expect(reloaded.spec.clipboardSharingEnabled == false)
-        #expect(reloaded.spec.sharedFolders.count == 1)
-        #expect(reloaded.spec.sharedFolders[0].tag == "test")
+        let folder = try #require(reloaded.spec.sharedFolders.first)
+        #expect(folder.tag == "test")
     }
 }

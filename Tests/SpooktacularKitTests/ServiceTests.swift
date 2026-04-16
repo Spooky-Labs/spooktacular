@@ -6,8 +6,11 @@ import Foundation
 @testable import SpookCore
 
 /// Tests for per-VM LaunchDaemon plist generation.
-@Suite("Service plist generation")
+@Suite("Service Plist Generation", .tags(.infrastructure))
 struct ServiceTests {
+
+    private static let defaultPath = "/usr/local/bin/spook"
+    private static let defaultVM = "runner-01"
 
     private func parsePlist(_ xml: String) throws -> [String: Any] {
         let data = Data(xml.utf8)
@@ -22,148 +25,100 @@ struct ServiceTests {
         case notDictionary
     }
 
-    // MARK: - Per-VM Label
+    // MARK: - Plist Validity
 
-    @Test("Plist label includes the VM name")
-    func plistLabelIncludesVMName() throws {
+    @Test("generated plist is valid XML that parses as a dictionary")
+    func validXML() throws {
         let plist = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-01"
+            executablePath: Self.defaultPath, vmName: Self.defaultVM
         )
         let dictionary = try parsePlist(plist)
-        #expect(dictionary["Label"] as? String == "com.spooktacular.vm.runner-01")
+        #expect(!dictionary.isEmpty)
     }
 
-    @Test("Different VM names produce different labels")
-    func differentVMNamesDifferentLabels() throws {
-        let plist1 = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-01"
+    // MARK: - Standard Properties (Parameterized)
+
+    @Test("plist contains expected standard properties",
+          arguments: [
+              ("Label", "com.spooktacular.vm.runner-01"),
+              ("RunAtLoad", "true"),
+              ("KeepAlive", "false"),
+              ("StandardOutPath", "/var/log/spooktacular.runner-01.log"),
+              ("StandardErrorPath", "/var/log/spooktacular.runner-01.error.log"),
+          ] as [(String, String)])
+    func standardProperty(key: String, expected: String) throws {
+        let plist = ServicePlist.generate(
+            executablePath: Self.defaultPath, vmName: Self.defaultVM
         )
-        let plist2 = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-02"
-        )
-        let dict1 = try parsePlist(plist1)
-        let dict2 = try parsePlist(plist2)
-        #expect(dict1["Label"] as? String != dict2["Label"] as? String)
+        let dictionary = try parsePlist(plist)
+        if let boolVal = dictionary[key] as? Bool {
+            #expect(String(boolVal) == expected, "\(key) should be \(expected)")
+        } else {
+            let value = try #require(dictionary[key] as? String, "Missing key: \(key)")
+            #expect(value == expected, "\(key) should be \(expected)")
+        }
     }
 
     // MARK: - ProgramArguments
 
-    @Test("ProgramArguments includes the VM name")
-    func programArgumentsIncludesVMName() throws {
-        let plist = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "ci-worker"
-        )
-        let dictionary = try parsePlist(plist)
-        let arguments = dictionary["ProgramArguments"] as? [String]
-        #expect(arguments?.contains("ci-worker") == true)
-    }
+    @Suite("ProgramArguments")
+    struct ProgramArguments {
 
-    @Test("ProgramArguments runs 'start <name> --headless'")
-    func programArgumentsStartHeadless() throws {
-        let path = "/opt/spooktacular/bin/spook"
-        let plist = ServicePlist.generate(
-            executablePath: path,
-            vmName: "runner-01"
-        )
-        let dictionary = try parsePlist(plist)
-        let arguments = dictionary["ProgramArguments"] as? [String]
-        #expect(arguments == [path, "start", "runner-01", "--headless"])
-    }
+        @Test("arguments are [path, start, vmName, --headless]")
+        func fullArgumentList() throws {
+            let path = "/opt/spooktacular/bin/spook"
+            let plist = ServicePlist.generate(executablePath: path, vmName: "runner-01")
+            let data = Data(plist.utf8)
+            let dict = try PropertyListSerialization.propertyList(
+                from: data, options: [], format: nil
+            ) as! [String: Any]
+            let args = try #require(dict["ProgramArguments"] as? [String])
+            #expect(args == [path, "start", "runner-01", "--headless"])
+        }
 
-    @Test("Different VM names produce different ProgramArguments")
-    func differentVMNamesDifferentArguments() throws {
-        let plist1 = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-01"
-        )
-        let plist2 = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-02"
-        )
-        let dict1 = try parsePlist(plist1)
-        let dict2 = try parsePlist(plist2)
-        let args1 = dict1["ProgramArguments"] as? [String]
-        let args2 = dict2["ProgramArguments"] as? [String]
-        #expect(args1 != args2)
-        #expect(args1?.contains("runner-01") == true)
-        #expect(args2?.contains("runner-02") == true)
-    }
+        @Test("different VM names produce different arguments")
+        func differentVMNames() throws {
+            let plist1 = ServicePlist.generate(
+                executablePath: "/usr/local/bin/spook", vmName: "runner-01"
+            )
+            let plist2 = ServicePlist.generate(
+                executablePath: "/usr/local/bin/spook", vmName: "runner-02"
+            )
+            let dict1 = try PropertyListSerialization.propertyList(
+                from: Data(plist1.utf8), options: [], format: nil
+            ) as! [String: Any]
+            let dict2 = try PropertyListSerialization.propertyList(
+                from: Data(plist2.utf8), options: [], format: nil
+            ) as! [String: Any]
 
-    @Test("Custom executable path is embedded in ProgramArguments")
-    func customExecutablePath() throws {
-        let customPath = "/Users/ci/builds/spook"
-        let plist = ServicePlist.generate(
-            executablePath: customPath,
-            vmName: "test-vm"
-        )
-        let dictionary = try parsePlist(plist)
-        let arguments = dictionary["ProgramArguments"] as? [String]
-        #expect(arguments?.first == customPath)
-    }
-
-    // MARK: - Standard Properties
-
-    @Test("RunAtLoad is true")
-    func runAtLoad() throws {
-        let plist = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-01"
-        )
-        let dictionary = try parsePlist(plist)
-        #expect(dictionary["RunAtLoad"] as? Bool == true)
-    }
-
-    @Test("KeepAlive is false")
-    func keepAlive() throws {
-        let plist = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-01"
-        )
-        let dictionary = try parsePlist(plist)
-        #expect(dictionary["KeepAlive"] as? Bool == false)
-    }
-
-    @Test("Log paths include the VM name")
-    func logPathsIncludeVMName() throws {
-        let plist = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-01"
-        )
-        let dictionary = try parsePlist(plist)
-        #expect(dictionary["StandardOutPath"] as? String == "/var/log/spooktacular.runner-01.log")
-        #expect(dictionary["StandardErrorPath"] as? String == "/var/log/spooktacular.runner-01.error.log")
-    }
-
-    // MARK: - Plist Validity
-
-    @Test("Plist is valid XML")
-    func validXML() throws {
-        let plist = ServicePlist.generate(
-            executablePath: "/usr/local/bin/spook",
-            vmName: "runner-01"
-        )
-        let data = Data(plist.utf8)
-        let object = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-        #expect(object is [String: Any])
+            let args1 = try #require(dict1["ProgramArguments"] as? [String])
+            let args2 = try #require(dict2["ProgramArguments"] as? [String])
+            #expect(args1 != args2)
+            #expect(args1.contains("runner-01"))
+            #expect(args2.contains("runner-02"))
+        }
     }
 
     // MARK: - Helper Functions
 
-    @Test("label(for:) returns correct label")
-    func labelHelper() {
-        #expect(ServicePlist.label(for: "runner-01") == "com.spooktacular.vm.runner-01")
-        #expect(ServicePlist.label(for: "ci-worker") == "com.spooktacular.vm.ci-worker")
-    }
+    @Suite("Helpers")
+    struct Helpers {
 
-    @Test("plistPath(for:) returns correct path")
-    func plistPathHelper() {
-        #expect(
-            ServicePlist.plistPath(for: "runner-01")
-                == "/Library/LaunchDaemons/com.spooktacular.vm.runner-01.plist"
-        )
+        @Test("label(for:) returns prefixed label",
+              arguments: [
+                  ("runner-01", "com.spooktacular.vm.runner-01"),
+                  ("ci-worker", "com.spooktacular.vm.ci-worker"),
+              ] as [(String, String)])
+        func labelHelper(vmName: String, expected: String) {
+            #expect(ServicePlist.label(for: vmName) == expected)
+        }
+
+        @Test("plistPath(for:) returns LaunchDaemons path")
+        func plistPathHelper() {
+            #expect(
+                ServicePlist.plistPath(for: "runner-01")
+                    == "/Library/LaunchDaemons/com.spooktacular.vm.runner-01.plist"
+            )
+        }
     }
 }

@@ -5,20 +5,18 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("SharedFolderProvisioner")
+@Suite("SharedFolderProvisioner", .tags(.infrastructure))
 struct SharedFolderProvisionerTests {
 
     // MARK: - Staging Directory
 
-    @Test("Staging directory is inside the bundle")
+    @Test("Staging directory is inside the bundle with correct name", .timeLimit(.minutes(1)))
     func stagingDirectoryLocation() throws {
-        let bundleURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString).vm")
-        try FileManager.default.createDirectory(at: bundleURL, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: bundleURL) }
-
-        let spec = VirtualMachineSpecification()
-        let bundle = try VirtualMachineBundle.create(at: bundleURL.appendingPathComponent("inner.vm"), spec: spec)
+        let tmp = TempDirectory()
+        let bundle = try VirtualMachineBundle.create(
+            at: tmp.file("inner.vm"),
+            spec: VirtualMachineSpecification()
+        )
 
         let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
         #expect(staging.path.hasPrefix(bundle.url.path))
@@ -27,212 +25,171 @@ struct SharedFolderProvisionerTests {
 
     // MARK: - Provision
 
-    @Test("Script is copied to staging directory")
-    func scriptCopied() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    @Suite("Provision", .tags(.infrastructure))
+    struct ProvisionTests {
 
-        // Create a test script.
-        let scriptURL = tempDir.appendingPathComponent("setup.sh")
-        try "#!/bin/bash\necho hello".write(to: scriptURL, atomically: true, encoding: .utf8)
-
-        // Create a VM bundle.
-        let bundleURL = tempDir.appendingPathComponent("my-vm.vm")
-        let spec = VirtualMachineSpecification()
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
-
-        // Provision.
-        try SharedFolderProvisioner.provision(script: scriptURL, bundle: bundle)
-
-        // Verify the script was copied.
-        let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
-        let copiedScript = staging.appendingPathComponent(SharedFolderProvisioner.scriptFileName)
-        #expect(FileManager.default.fileExists(atPath: copiedScript.path))
-
-        let content = try String(contentsOf: copiedScript, encoding: .utf8)
-        #expect(content.contains("echo hello"))
-    }
-
-    @Test("Script has executable permissions")
-    func scriptExecutable() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let scriptURL = tempDir.appendingPathComponent("setup.sh")
-        try "#!/bin/bash\necho test".write(to: scriptURL, atomically: true, encoding: .utf8)
-
-        let bundleURL = tempDir.appendingPathComponent("exec-vm.vm")
-        let spec = VirtualMachineSpecification()
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
-
-        try SharedFolderProvisioner.provision(script: scriptURL, bundle: bundle)
-
-        let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
-        let copiedScript = staging.appendingPathComponent(SharedFolderProvisioner.scriptFileName)
-        let attrs = try FileManager.default.attributesOfItem(atPath: copiedScript.path)
-        let permissions = attrs[.posixPermissions] as? Int
-        #expect(permissions == 0o755)
-    }
-
-    @Test("Trigger file is created")
-    func triggerFileCreated() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let scriptURL = tempDir.appendingPathComponent("setup.sh")
-        try "#!/bin/bash".write(to: scriptURL, atomically: true, encoding: .utf8)
-
-        let bundleURL = tempDir.appendingPathComponent("trigger-vm.vm")
-        let spec = VirtualMachineSpecification()
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
-
-        try SharedFolderProvisioner.provision(script: scriptURL, bundle: bundle)
-
-        let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
-        let trigger = staging.appendingPathComponent(SharedFolderProvisioner.triggerFileName)
-        #expect(FileManager.default.fileExists(atPath: trigger.path))
-
-        // Trigger file should be empty.
-        let data = try Data(contentsOf: trigger)
-        #expect(data.isEmpty)
-    }
-
-    @Test("Provisioning with missing script throws scriptNotFound")
-    func missingScriptThrows() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let bundleURL = tempDir.appendingPathComponent("missing-vm.vm")
-        let spec = VirtualMachineSpecification()
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
-
-        let bogusScript = tempDir.appendingPathComponent("does-not-exist.sh")
-        #expect(throws: SharedFolderProvisionerError.self) {
-            try SharedFolderProvisioner.provision(script: bogusScript, bundle: bundle)
+        private func setup(
+            scriptContent: String = "#!/bin/bash\necho hello"
+        ) throws -> (bundle: VirtualMachineBundle, scriptURL: URL, tmp: TempDirectory) {
+            let tmp = TempDirectory()
+            let scriptURL = tmp.file("setup.sh")
+            try scriptContent.write(to: scriptURL, atomically: true, encoding: .utf8)
+            let bundle = try VirtualMachineBundle.create(
+                at: tmp.file("my-vm.vm"),
+                spec: VirtualMachineSpecification()
+            )
+            return (bundle, scriptURL, tmp)
         }
-    }
 
-    @Test("Provisioning replaces existing script")
-    func replacesExistingScript() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("test-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        @Test("Script is copied to staging directory with correct content", .timeLimit(.minutes(1)))
+        func scriptCopied() throws {
+            let (bundle, scriptURL, _tmp) = try setup()
+            try SharedFolderProvisioner.provision(script: scriptURL, bundle: bundle)
 
-        let bundleURL = tempDir.appendingPathComponent("replace-vm.vm")
-        let spec = VirtualMachineSpecification()
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
+            let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
+            let copiedScript = staging.appendingPathComponent(SharedFolderProvisioner.scriptFileName)
+            let content = try String(contentsOf: copiedScript, encoding: .utf8)
+            #expect(content.contains("echo hello"))
+        }
 
-        // First provision.
-        let script1 = tempDir.appendingPathComponent("first.sh")
-        try "#!/bin/bash\necho first".write(to: script1, atomically: true, encoding: .utf8)
-        try SharedFolderProvisioner.provision(script: script1, bundle: bundle)
+        @Test("Script has executable permissions (0o755)", .timeLimit(.minutes(1)))
+        func scriptExecutable() throws {
+            let (bundle, scriptURL, _tmp) = try setup(scriptContent: "#!/bin/bash\necho test")
+            try SharedFolderProvisioner.provision(script: scriptURL, bundle: bundle)
 
-        // Second provision with different content.
-        let script2 = tempDir.appendingPathComponent("second.sh")
-        try "#!/bin/bash\necho second".write(to: script2, atomically: true, encoding: .utf8)
-        try SharedFolderProvisioner.provision(script: script2, bundle: bundle)
+            let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
+            let copiedScript = staging.appendingPathComponent(SharedFolderProvisioner.scriptFileName)
+            let attrs = try FileManager.default.attributesOfItem(atPath: copiedScript.path)
+            let permissions = try #require(attrs[.posixPermissions] as? Int)
+            #expect(permissions == 0o755)
+        }
 
-        let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
-        let copiedScript = staging.appendingPathComponent(SharedFolderProvisioner.scriptFileName)
-        let content = try String(contentsOf: copiedScript, encoding: .utf8)
-        #expect(content.contains("second"))
-        #expect(!content.contains("first"))
+        @Test("Trigger file is created and empty", .timeLimit(.minutes(1)))
+        func triggerFileCreated() throws {
+            let (bundle, scriptURL, _tmp) = try setup(scriptContent: "#!/bin/bash")
+            try SharedFolderProvisioner.provision(script: scriptURL, bundle: bundle)
+
+            let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
+            let trigger = staging.appendingPathComponent(SharedFolderProvisioner.triggerFileName)
+            let triggerExists = FileManager.default.fileExists(atPath: trigger.path)
+            try #require(triggerExists, "Trigger file must exist")
+
+            let data = try Data(contentsOf: trigger)
+            #expect(data.isEmpty)
+        }
+
+        @Test("Missing script throws scriptNotFound", .timeLimit(.minutes(1)))
+        func missingScriptThrows() throws {
+            let tmp = TempDirectory()
+            let bundle = try VirtualMachineBundle.create(
+                at: tmp.file("missing-vm.vm"),
+                spec: VirtualMachineSpecification()
+            )
+
+            let bogusScript = tmp.file("does-not-exist.sh")
+            #expect(throws: SharedFolderProvisionerError.self) {
+                try SharedFolderProvisioner.provision(script: bogusScript, bundle: bundle)
+            }
+        }
+
+        @Test("Re-provisioning replaces existing script", .timeLimit(.minutes(1)))
+        func replacesExistingScript() throws {
+            let tmp = TempDirectory()
+            let bundle = try VirtualMachineBundle.create(
+                at: tmp.file("replace-vm.vm"),
+                spec: VirtualMachineSpecification()
+            )
+
+            let script1 = tmp.file("first.sh")
+            try "#!/bin/bash\necho first".write(to: script1, atomically: true, encoding: .utf8)
+            try SharedFolderProvisioner.provision(script: script1, bundle: bundle)
+
+            let script2 = tmp.file("second.sh")
+            try "#!/bin/bash\necho second".write(to: script2, atomically: true, encoding: .utf8)
+            try SharedFolderProvisioner.provision(script: script2, bundle: bundle)
+
+            let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
+            let copiedScript = staging.appendingPathComponent(SharedFolderProvisioner.scriptFileName)
+            let content = try String(contentsOf: copiedScript, encoding: .utf8)
+            #expect(content.contains("second"))
+            #expect(!content.contains("first"))
+        }
     }
 
     // MARK: - Watcher Plist
 
-    @Test("Watcher plist is valid XML")
-    func watcherPlistIsValidXML() throws {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let parsed = try PropertyListSerialization.propertyList(
-            from: data, format: nil
-        )
-        #expect(parsed is [String: Any])
-    }
+    @Suite("Watcher plist", .tags(.infrastructure))
+    struct WatcherPlistTests {
 
-    @Test("Watcher plist has correct Label")
-    func watcherPlistLabel() throws {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let label = try #require(dict["Label"] as? String)
-        #expect(label == SharedFolderProvisioner.watcherLabel)
-    }
+        private func parsedPlist() throws -> [String: Any] {
+            let plist = SharedFolderProvisioner.watcherPlist()
+            let data = try #require(plist.data(using: .utf8))
+            return try #require(
+                try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+            )
+        }
 
-    @Test("Watcher plist has correct StartInterval")
-    func watcherPlistInterval() throws {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let interval = try #require(dict["StartInterval"] as? Int)
-        #expect(interval == SharedFolderProvisioner.watcherInterval)
-    }
+        @Test("Is valid XML")
+        func isValidXML() throws {
+            _ = try parsedPlist()
+        }
 
-    @Test("Watcher plist runs at load")
-    func watcherPlistRunsAtLoad() throws {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let runAtLoad = try #require(dict["RunAtLoad"] as? Bool)
-        #expect(runAtLoad == true)
-    }
+        @Test("Has correct Label matching constant")
+        func label() throws {
+            let dict = try parsedPlist()
+            let label = try #require(dict["Label"] as? String)
+            #expect(label == SharedFolderProvisioner.watcherLabel)
+        }
 
-    @Test("Watcher plist uses /bin/bash")
-    func watcherPlistUsesBash() throws {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        let data = try #require(plist.data(using: .utf8))
-        let dict = try #require(
-            try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
-        )
-        let args = try #require(dict["ProgramArguments"] as? [String])
-        #expect(args.first == "/bin/bash")
-    }
+        @Test("Has correct StartInterval matching constant")
+        func interval() throws {
+            let dict = try parsedPlist()
+            let interval = try #require(dict["StartInterval"] as? Int)
+            #expect(interval == SharedFolderProvisioner.watcherInterval)
+        }
 
-    @Test("Watcher plist references the shared files volume")
-    func watcherPlistReferencesSharedVolume() {
-        let plist = SharedFolderProvisioner.watcherPlist()
-        #expect(plist.contains("/Volumes/My Shared Files/"))
+        @Test("RunAtLoad is true")
+        func runsAtLoad() throws {
+            let dict = try parsedPlist()
+            let runAtLoad = try #require(dict["RunAtLoad"] as? Bool)
+            #expect(runAtLoad == true)
+        }
+
+        @Test("Uses /bin/bash as first program argument")
+        func usesBash() throws {
+            let dict = try parsedPlist()
+            let args = try #require(dict["ProgramArguments"] as? [String])
+            #expect(args.first == "/bin/bash")
+        }
+
+        @Test("References the shared files volume")
+        func referencesSharedVolume() {
+            let plist = SharedFolderProvisioner.watcherPlist()
+            #expect(plist.contains("/Volumes/My Shared Files/"))
+        }
     }
 
     // MARK: - Watcher Install Script
 
-    @Test("Watcher install script is a valid shell script")
-    func installScriptIsBash() {
-        let script = SharedFolderProvisioner.watcherInstallScript()
-        #expect(script.hasPrefix("#!/bin/bash"))
-    }
+    @Suite("Watcher install script", .tags(.infrastructure))
+    struct WatcherInstallScriptTests {
 
-    @Test("Watcher install script references the watcher label")
-    func installScriptReferencesLabel() {
-        let script = SharedFolderProvisioner.watcherInstallScript()
-        #expect(script.contains(SharedFolderProvisioner.watcherLabel))
-    }
+        @Test("Is a valid bash script")
+        func isBash() {
+            #expect(SharedFolderProvisioner.watcherInstallScript().hasPrefix("#!/bin/bash"))
+        }
 
-    @Test("Watcher install script uses launchctl")
-    func installScriptUsesLaunchctl() {
-        let script = SharedFolderProvisioner.watcherInstallScript()
-        #expect(script.contains("launchctl"))
+        @Test("References the watcher label and launchctl")
+        func referencesLabelAndLaunchctl() {
+            let script = SharedFolderProvisioner.watcherInstallScript()
+            #expect(script.contains(SharedFolderProvisioner.watcherLabel))
+            #expect(script.contains("launchctl"))
+        }
     }
 
     // MARK: - Constants
 
-    @Test("Watcher label constant is a reverse-DNS string")
+    @Test("Watcher label is a reverse-DNS string")
     func watcherLabelFormat() {
         let label = SharedFolderProvisioner.watcherLabel
         #expect(label.hasPrefix("com.spooktacular."))
@@ -256,5 +213,4 @@ struct SharedFolderProvisionerTests {
             == SharedFolderProvisionerError.stagingDirectoryFailed(path: "/x")
         )
     }
-
 }

@@ -5,94 +5,64 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("Compatibility")
+@Suite("Compatibility", .tags(.configuration))
 struct CompatibilityTests {
 
-    @Test("Host version equal to image version is compatible")
-    func equalVersions() {
-        let host = OperatingSystemVersion(majorVersion: 26, minorVersion: 2, patchVersion: 0)
-        let image = OperatingSystemVersion(majorVersion: 26, minorVersion: 2, patchVersion: 0)
+    // MARK: - Version Checks (parameterized)
+
+    @Test(
+        "Host >= image is compatible",
+        arguments: [
+            // (host major, host minor, host patch, image major, image minor, image patch)
+            (26, 2, 0, 26, 2, 0),  // equal
+            (26, 4, 0, 26, 2, 0),  // host newer minor
+            (27, 0, 0, 26, 4, 0),  // host newer major
+        ]
+    )
+    func compatible(
+        hostMajor: Int, hostMinor: Int, hostPatch: Int,
+        imageMajor: Int, imageMinor: Int, imagePatch: Int
+    ) {
+        let host = OperatingSystemVersion(majorVersion: hostMajor, minorVersion: hostMinor, patchVersion: hostPatch)
+        let image = OperatingSystemVersion(majorVersion: imageMajor, minorVersion: imageMinor, patchVersion: imagePatch)
 
         let result = Compatibility.check(hostVersion: host, imageVersion: image)
         #expect(result == .compatible)
-    }
-
-    @Test("Host version newer than image version is compatible")
-    func newerHost() {
-        let host = OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 0)
-        let image = OperatingSystemVersion(majorVersion: 26, minorVersion: 2, patchVersion: 0)
-
-        let result = Compatibility.check(hostVersion: host, imageVersion: image)
-        #expect(result == .compatible)
-    }
-
-    @Test("Host major version newer than image is compatible")
-    func newerHostMajor() {
-        let host = OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)
-        let image = OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 0)
-
-        let result = Compatibility.check(hostVersion: host, imageVersion: image)
-        #expect(result == .compatible)
-    }
-
-    @Test("Host version older than image by minor version is incompatible")
-    func olderHostMinor() {
-        let host = OperatingSystemVersion(majorVersion: 26, minorVersion: 2, patchVersion: 0)
-        let image = OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 1)
-
-        let result = Compatibility.check(hostVersion: host, imageVersion: image)
-        #expect(result == .hostTooOld(
-            hostVersion: host,
-            imageVersion: image
-        ))
-    }
-
-    @Test("Host version older than image by major version is incompatible")
-    func olderHostMajor() {
-        let host = OperatingSystemVersion(majorVersion: 15, minorVersion: 4, patchVersion: 0)
-        let image = OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)
-
-        let result = Compatibility.check(hostVersion: host, imageVersion: image)
-        #expect(result == .hostTooOld(
-            hostVersion: host,
-            imageVersion: image
-        ))
-    }
-
-    @Test("Patch version difference: host older patch is incompatible")
-    func olderHostPatch() {
-        let host = OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 0)
-        let image = OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 1)
-
-        let result = Compatibility.check(hostVersion: host, imageVersion: image)
-        #expect(result == .hostTooOld(
-            hostVersion: host,
-            imageVersion: image
-        ))
-    }
-
-    @Test("Compatible result provides no message")
-    func compatibleMessage() {
-        let result = Compatibility.Result.compatible
         #expect(result.isCompatible)
         #expect(result.errorMessage == nil)
     }
 
-    @Test("Incompatible result provides an actionable error message")
+    @Test(
+        "Host < image is incompatible",
+        arguments: [
+            // (host major, host minor, host patch, image major, image minor, image patch)
+            (26, 2, 0, 26, 4, 1),  // host older minor
+            (15, 4, 0, 26, 0, 0),  // host older major
+            (26, 4, 0, 26, 4, 1),  // host older patch
+        ]
+    )
+    func incompatible(
+        hostMajor: Int, hostMinor: Int, hostPatch: Int,
+        imageMajor: Int, imageMinor: Int, imagePatch: Int
+    ) {
+        let host = OperatingSystemVersion(majorVersion: hostMajor, minorVersion: hostMinor, patchVersion: hostPatch)
+        let image = OperatingSystemVersion(majorVersion: imageMajor, minorVersion: imageMinor, patchVersion: imagePatch)
+
+        let result = Compatibility.check(hostVersion: host, imageVersion: image)
+        #expect(result == .hostTooOld(hostVersion: host, imageVersion: image))
+        #expect(!result.isCompatible)
+    }
+
+    // MARK: - Error Message
+
+    @Test("Incompatible result provides an actionable error message with version strings")
     func incompatibleMessage() {
         let host = OperatingSystemVersion(majorVersion: 26, minorVersion: 2, patchVersion: 0)
         let image = OperatingSystemVersion(majorVersion: 26, minorVersion: 4, patchVersion: 1)
 
-        let result = Compatibility.Result.hostTooOld(
-            hostVersion: host,
-            imageVersion: image
-        )
-        #expect(!result.isCompatible)
-
-        let message = result.errorMessage
-        #expect(message != nil)
-        #expect(message!.contains("26.2.0"))
-        #expect(message!.contains("26.4.1"))
+        let result = Compatibility.Result.hostTooOld(hostVersion: host, imageVersion: image)
+        let message = try! #require(result.errorMessage)
+        #expect(message.contains("26.2.0"))
+        #expect(message.contains("26.4.1"))
     }
-
 }

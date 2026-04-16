@@ -5,13 +5,13 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("VirtualMachineBundle")
+@Suite("VirtualMachineBundle", .tags(.lifecycle))
 struct VirtualMachineBundleTests {
 
     // MARK: - VirtualMachineSpecification Defaults and Clamping
 
-    @Suite("VirtualMachineSpecification defaults and clamping")
-    struct VirtualMachineSpecificationDefaultsTests {
+    @Suite("Specification defaults and clamping", .tags(.lifecycle))
+    struct SpecDefaultsTests {
 
         @Test("Default spec has expected values")
         func defaultValues() {
@@ -21,42 +21,40 @@ struct VirtualMachineBundleTests {
             #expect(spec.diskSizeInBytes == 64 * 1024 * 1024 * 1024)
             #expect(spec.displayCount == 1)
             #expect(spec.networkMode == .nat)
+            #expect(spec.audioEnabled == true)
+            #expect(spec.microphoneEnabled == false)
+            #expect(spec.sharedFolders.isEmpty)
+            #expect(spec.macAddress == nil)
+            #expect(spec.autoResizeDisplay == true)
+            #expect(spec.clipboardSharingEnabled == true)
         }
 
-        @Test("Respects the 4-CPU minimum for macOS VMs")
-        func minimumCPUCount() {
-            let spec = VirtualMachineSpecification(cpuCount: 2)
-            #expect(spec.cpuCount == 4)
+        @Test(
+            "CPU count is clamped to minimum of 4",
+            arguments: [
+                (2, 4),
+                (4, 4),
+                (12, 12),
+            ]
+        )
+        func cpuCountClamping(input: Int, expected: Int) {
+            let spec = VirtualMachineSpecification(cpuCount: input)
+            #expect(spec.cpuCount == expected)
         }
 
-        @Test("CPU count at exactly the minimum passes through")
-        func cpuCountAtMinimum() {
-            let spec = VirtualMachineSpecification(cpuCount: 4)
-            #expect(spec.cpuCount == 4)
-        }
-
-        @Test("CPU count above minimum passes through unchanged")
-        func cpuCountAboveMinimum() {
-            let spec = VirtualMachineSpecification(cpuCount: 12)
-            #expect(spec.cpuCount == 12)
-        }
-
-        @Test("Display count is clamped to minimum of 1")
-        func displayCountFloor() {
-            let spec = VirtualMachineSpecification(displayCount: 0)
-            #expect(spec.displayCount == 1)
-        }
-
-        @Test("Display count is clamped to maximum of 2")
-        func displayCountCeiling() {
-            let spec = VirtualMachineSpecification(displayCount: 5)
-            #expect(spec.displayCount == 2)
-        }
-
-        @Test("Negative display count is clamped to 1")
-        func negativeDisplayCount() {
-            let spec = VirtualMachineSpecification(displayCount: -1)
-            #expect(spec.displayCount == 1)
+        @Test(
+            "Display count is clamped to 1...2",
+            arguments: [
+                (-1, 1),
+                (0, 1),
+                (1, 1),
+                (2, 2),
+                (5, 2),
+            ]
+        )
+        func displayCountClamping(input: Int, expected: Int) {
+            let spec = VirtualMachineSpecification(displayCount: input)
+            #expect(spec.displayCount == expected)
         }
 
         @Test("Two specs with identical parameters are equal")
@@ -89,47 +87,11 @@ struct VirtualMachineBundleTests {
             let cleared = original.with(macAddress: .some(nil))
             #expect(cleared.macAddress == nil)
         }
-
-        @Test("Default spec has audio enabled")
-        func defaultAudioEnabled() {
-            let spec = VirtualMachineSpecification()
-            #expect(spec.audioEnabled == true)
-        }
-
-        @Test("Default spec has microphone disabled")
-        func defaultMicrophoneDisabled() {
-            let spec = VirtualMachineSpecification()
-            #expect(spec.microphoneEnabled == false)
-        }
-
-        @Test("Default spec has no shared folders")
-        func defaultNoSharedFolders() {
-            let spec = VirtualMachineSpecification()
-            #expect(spec.sharedFolders.isEmpty)
-        }
-
-        @Test("Default spec has no custom MAC address")
-        func defaultNoMacAddress() {
-            let spec = VirtualMachineSpecification()
-            #expect(spec.macAddress == nil)
-        }
-
-        @Test("Default spec has auto-resize enabled")
-        func defaultAutoResizeEnabled() {
-            let spec = VirtualMachineSpecification()
-            #expect(spec.autoResizeDisplay == true)
-        }
-
-        @Test("Default spec has clipboard sharing enabled")
-        func defaultClipboardSharingEnabled() {
-            let spec = VirtualMachineSpecification()
-            #expect(spec.clipboardSharingEnabled == true)
-        }
     }
 
     // MARK: - SharedFolder
 
-    @Suite("SharedFolder")
+    @Suite("SharedFolder", .tags(.lifecycle))
     struct SharedFolderTests {
 
         @Test("Round-trips through JSON")
@@ -158,18 +120,16 @@ struct VirtualMachineBundleTests {
         }
     }
 
-    // MARK: - VirtualMachineSpecification Serialization
+    // MARK: - Specification Serialization
 
-    @Suite("VirtualMachineSpecification JSON round-trip")
-    struct VirtualMachineSpecificationSerializationTests {
+    @Suite("Specification JSON round-trip", .tags(.lifecycle))
+    struct SpecSerializationTests {
 
-        @Test("Round-trips a default spec through VirtualMachineBundle's encoder")
+        @Test("Round-trips a default spec")
         func defaultSpecRoundTrip() throws {
             let spec = VirtualMachineSpecification()
-
             let data = try VirtualMachineBundle.encoder.encode(spec)
             let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineSpecification.self, from: data)
-
             #expect(decoded == spec)
         }
 
@@ -182,10 +142,8 @@ struct VirtualMachineBundleTests {
                 displayCount: 2,
                 networkMode: .bridged(interface: "en0")
             )
-
             let data = try VirtualMachineBundle.encoder.encode(spec)
             let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineSpecification.self, from: data)
-
             #expect(decoded == spec)
         }
 
@@ -205,10 +163,10 @@ struct VirtualMachineBundleTests {
         }
     }
 
-    // MARK: - VirtualMachineMetadata Serialization
+    // MARK: - Metadata
 
-    @Suite("VirtualMachineMetadata")
-    struct VirtualMachineMetadataTests {
+    @Suite("Metadata", .tags(.lifecycle))
+    struct MetadataTests {
 
         @Test("Generates a unique ID on creation")
         func uniqueID() {
@@ -217,12 +175,11 @@ struct VirtualMachineBundleTests {
             #expect(a.id != b.id)
         }
 
-        @Test("Records creation date")
+        @Test("Records creation date within current time window")
         func creationDate() {
             let before = Date()
             let metadata = VirtualMachineMetadata()
             let after = Date()
-
             #expect(metadata.createdAt >= before)
             #expect(metadata.createdAt <= after)
         }
@@ -234,7 +191,7 @@ struct VirtualMachineBundleTests {
             #expect(metadata.lastBootedAt == nil)
         }
 
-        @Test("Round-trips all fields through VirtualMachineBundle's encoder including createdAt")
+        @Test("Round-trips all fields through encoder")
         func fullRoundTrip() throws {
             var metadata = VirtualMachineMetadata()
             metadata.setupCompleted = true
@@ -245,14 +202,13 @@ struct VirtualMachineBundleTests {
 
             #expect(decoded.id == metadata.id)
             #expect(decoded.setupCompleted == true)
-            #expect(decoded.lastBootedAt != nil)
-            // ISO 8601 truncates to seconds, so compare within 1s.
+            let lastBooted = try #require(decoded.lastBootedAt)
             #expect(
                 abs(decoded.createdAt.timeIntervalSince(metadata.createdAt)) < 1.0,
                 "createdAt must survive round-trip"
             )
             #expect(
-                abs(decoded.lastBootedAt!.timeIntervalSince(metadata.lastBootedAt!)) < 1.0,
+                abs(lastBooted.timeIntervalSince(metadata.lastBootedAt!)) < 1.0,
                 "lastBootedAt must survive round-trip"
             )
         }
@@ -261,7 +217,6 @@ struct VirtualMachineBundleTests {
         func setupCompletion() {
             var metadata = VirtualMachineMetadata()
             #expect(metadata.setupCompleted == false)
-
             metadata.setupCompleted = true
             #expect(metadata.setupCompleted == true)
         }
@@ -269,21 +224,13 @@ struct VirtualMachineBundleTests {
 
     // MARK: - Bundle Directory Operations
 
-    @Suite("Bundle directory operations")
+    @Suite("Bundle directory operations", .tags(.lifecycle))
     struct BundleDirectoryTests {
 
-        /// Creates a temporary directory for a test. Cleaned up by the caller.
-        private func makeTempDir() -> URL {
-            FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-        }
-
-        @Test("Creates a bundle directory at the specified path")
+        @Test("Creates a bundle directory at the specified path", .timeLimit(.minutes(1)))
         func createBundle() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             #expect(FileManager.default.fileExists(atPath: bundleURL.path))
@@ -291,12 +238,10 @@ struct VirtualMachineBundleTests {
             #expect(bundle.spec.cpuCount == 4)
         }
 
-        @Test("Writes config.json readable by VirtualMachineBundle.decoder")
+        @Test("Writes config.json readable by decoder", .timeLimit(.minutes(1)))
         func writesValidConfig() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             let spec = VirtualMachineSpecification(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
             _ = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
 
@@ -305,28 +250,26 @@ struct VirtualMachineBundleTests {
             #expect(decoded == spec)
         }
 
-        @Test("Writes metadata.json to the bundle directory")
+        @Test("Writes metadata.json to the bundle directory", .timeLimit(.minutes(1)))
         func writesMetadata() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             let metadataURL = bundleURL.appendingPathComponent("metadata.json")
-            #expect(FileManager.default.fileExists(atPath: metadataURL.path))
-
+            try #require(
+                FileManager.default.fileExists(atPath: metadataURL.path),
+                "metadata.json must exist"
+            )
             let data = try Data(contentsOf: metadataURL)
             let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineMetadata.self, from: data)
             #expect(decoded.setupCompleted == false)
         }
 
-        @Test("Loads an existing bundle from disk with matching spec and metadata")
+        @Test("Loads an existing bundle from disk with matching spec and metadata", .timeLimit(.minutes(1)))
         func loadBundle() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             let original = try VirtualMachineBundle.create(
                 at: bundleURL,
                 spec: VirtualMachineSpecification(cpuCount: 6)
@@ -337,14 +280,12 @@ struct VirtualMachineBundleTests {
             #expect(loaded.metadata.id == original.metadata.id)
         }
 
-        @Test("writeMetadata persists and can be reloaded")
+        @Test("writeMetadata persists and can be reloaded", .timeLimit(.minutes(1)))
         func writeMetadataRoundTrip() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
-            #expect(bundle.metadata.setupCompleted == false)
+            try #require(bundle.metadata.setupCompleted == false)
 
             var updated = bundle.metadata
             updated.setupCompleted = true
@@ -355,15 +296,13 @@ struct VirtualMachineBundleTests {
             #expect(reloaded.metadata.id == bundle.metadata.id)
         }
 
-        @Test("writeSpec persists and reloads correctly")
+        @Test("writeSpec persists and reloads correctly", .timeLimit(.minutes(1)))
         func writeSpecRoundTrip() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             let originalSpec = VirtualMachineSpecification(cpuCount: 4, memorySizeInBytes: 8 * 1024 * 1024 * 1024)
             let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: originalSpec)
-            #expect(bundle.spec.cpuCount == 4)
+            try #require(bundle.spec.cpuCount == 4)
 
             let updatedSpec = VirtualMachineSpecification(
                 cpuCount: 12,
@@ -376,16 +315,16 @@ struct VirtualMachineBundleTests {
 
             let reloaded = try VirtualMachineBundle.load(from: bundleURL)
             #expect(reloaded.spec == updatedSpec)
-            #expect(reloaded.spec.cpuCount == 12)
-            #expect(reloaded.spec.memorySizeInBytes == 32 * 1024 * 1024 * 1024)
-            #expect(reloaded.spec.diskSizeInBytes == 128 * 1024 * 1024 * 1024)
-            #expect(reloaded.spec.displayCount == 2)
-            #expect(reloaded.spec.networkMode == .bridged(interface: "en0"))
-            // Metadata should be unchanged.
             #expect(reloaded.metadata.id == bundle.metadata.id)
         }
+    }
 
-        @Test("Throws notFound when loading a nonexistent bundle")
+    // MARK: - Error Cases
+
+    @Suite("Error cases", .tags(.lifecycle))
+    struct ErrorCaseTests {
+
+        @Test("Throws notFound when loading a nonexistent bundle", .timeLimit(.minutes(1)))
         func loadNonexistent() {
             let bogus = URL(fileURLWithPath: "/tmp/nonexistent-\(UUID()).vm")
             #expect {
@@ -396,15 +335,12 @@ struct VirtualMachineBundleTests {
             }
         }
 
-        @Test("Throws invalidConfiguration when config.json is corrupt")
+        @Test("Throws invalidConfiguration when config.json is corrupt", .timeLimit(.minutes(1)))
         func loadCorruptConfig() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
-            // Corrupt config.json
             try Data("not-json".utf8).write(
                 to: bundleURL.appendingPathComponent("config.json")
             )
@@ -417,15 +353,12 @@ struct VirtualMachineBundleTests {
             }
         }
 
-        @Test("Throws invalidMetadata when metadata.json is corrupt")
+        @Test("Throws invalidMetadata when metadata.json is corrupt", .timeLimit(.minutes(1)))
         func loadCorruptMetadata() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
-            // Corrupt metadata.json
             try Data("not-json".utf8).write(
                 to: bundleURL.appendingPathComponent("metadata.json")
             )
@@ -438,12 +371,10 @@ struct VirtualMachineBundleTests {
             }
         }
 
-        @Test("Throws alreadyExists when creating at an existing path")
+        @Test("Throws alreadyExists when creating at an existing path", .timeLimit(.minutes(1)))
         func createAtExistingPath() throws {
-            let tempDir = makeTempDir()
-            defer { try? FileManager.default.removeItem(at: tempDir) }
-
-            let bundleURL = tempDir.appendingPathComponent("test.vm")
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
             _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
 
             #expect {

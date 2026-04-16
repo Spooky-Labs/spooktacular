@@ -5,79 +5,140 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("CloneManager")
+@Suite("CloneManager", .tags(.infrastructure))
 struct CloneManagerTests {
 
     /// Creates a temporary bundle with a fake disk image for testing.
-    private func makeTestBundle() throws -> (VirtualMachineBundle, URL) {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        let bundleURL = tempDir.appendingPathComponent("source.vm")
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(cpuCount: 6))
+    private func makeTestBundle(in tmp: TempDirectory) throws -> VirtualMachineBundle {
+        let bundleURL = tmp.url.appendingPathComponent("source.vm")
+        let bundle = try VirtualMachineBundle.create(
+            at: bundleURL,
+            spec: VirtualMachineSpecification(cpuCount: 6)
+        )
 
-        // Write fake disk.img and platform artifacts
-        let diskURL = bundleURL.appendingPathComponent("disk.img")
-        try Data("fake-disk-content".utf8).write(to: diskURL)
+        for (name, content) in [
+            ("disk.img", "fake-disk-content"),
+            ("auxiliary.bin", "fake-aux-content"),
+            ("hardware-model.bin", "fake-hardware-model"),
+            ("machine-identifier.bin", "original-machine-id"),
+        ] {
+            try Data(content.utf8).write(to: bundleURL.appendingPathComponent(name))
+        }
 
-        let auxURL = bundleURL.appendingPathComponent("auxiliary.bin")
-        try Data("fake-aux-content".utf8).write(to: auxURL)
-
-        let hwModelURL = bundleURL.appendingPathComponent("hardware-model.bin")
-        try Data("fake-hardware-model".utf8).write(to: hwModelURL)
-
-        let midURL = bundleURL.appendingPathComponent("machine-identifier.bin")
-        try Data("original-machine-id".utf8).write(to: midURL)
-
-        return (bundle, tempDir)
+        return bundle
     }
 
-    @Test("Creates a new bundle directory for the clone")
-    func createsDirectory() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    // MARK: - Clone Creation
 
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        let clone = try CloneManager.clone(source: source, to: destURL)
+    @Suite("Successful clone", .tags(.infrastructure))
+    struct SuccessfulCloneTests {
 
-        #expect(FileManager.default.fileExists(atPath: destURL.path))
-        #expect(clone.url == destURL)
+        private func setup() throws -> (source: VirtualMachineBundle, clone: VirtualMachineBundle, tmp: TempDirectory) {
+            let tmp = TempDirectory()
+            let outer = CloneManagerTests()
+            let source = try outer.makeTestBundle(in: tmp)
+            let destURL = tmp.url.appendingPathComponent("clone.vm")
+            let clone = try CloneManager.clone(source: source, to: destURL)
+            return (source, clone, tmp)
+        }
+
+        @Test("Creates a new bundle directory for the clone", .timeLimit(.minutes(1)))
+        func createsDirectory() throws {
+            let (_, clone, tmp) = try setup()
+            withExtendedLifetime(tmp) {
+                #expect(FileManager.default.fileExists(atPath: clone.url.path))
+            }
+        }
+
+        @Test("Preserves the spec from the source bundle", .timeLimit(.minutes(1)))
+        func preservesSpec() throws {
+            let (source, clone, _tmp) = try setup()
+            #expect(clone.spec.cpuCount == source.spec.cpuCount)
+            #expect(clone.spec.memorySizeInBytes == source.spec.memorySizeInBytes)
+            #expect(clone.spec.networkMode == source.spec.networkMode)
+        }
+
+        @Test("Generates a new unique metadata ID", .timeLimit(.minutes(1)))
+        func newMetadataID() throws {
+            let (source, clone, _tmp) = try setup()
+            #expect(clone.metadata.id != source.metadata.id)
+        }
+
+        @Test("Clone can be loaded back as a valid VirtualMachineBundle", .timeLimit(.minutes(1)))
+        func cloneIsLoadable() throws {
+            let (source, clone, _tmp) = try setup()
+            let loaded = try VirtualMachineBundle.load(from: clone.url)
+            #expect(loaded.spec == source.spec)
+            #expect(loaded.metadata.id != source.metadata.id)
+        }
     }
 
-    @Test("Preserves the spec from the source bundle")
-    func preservesSpec() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    // MARK: - File Copying
 
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        let clone = try CloneManager.clone(source: source, to: destURL)
+    @Suite("File artifacts", .tags(.infrastructure))
+    struct FileArtifactTests {
 
-        #expect(clone.spec.cpuCount == source.spec.cpuCount)
-        #expect(clone.spec.memorySizeInBytes == source.spec.memorySizeInBytes)
-        #expect(clone.spec.networkMode == source.spec.networkMode)
+        private func setup() throws -> (source: VirtualMachineBundle, destURL: URL, tmp: TempDirectory) {
+            let tmp = TempDirectory()
+            let outer = CloneManagerTests()
+            let source = try outer.makeTestBundle(in: tmp)
+            let destURL = tmp.url.appendingPathComponent("clone.vm")
+            _ = try CloneManager.clone(source: source, to: destURL)
+            return (source, destURL, tmp)
+        }
+
+        @Test(
+            "Copies required bundle artifacts",
+            .timeLimit(.minutes(1)),
+            arguments: ["disk.img", "auxiliary.bin", "hardware-model.bin"]
+        )
+        func copiesArtifact(filename: String) throws {
+            let (_, destURL, _tmp) = try setup()
+            #expect(FileManager.default.fileExists(
+                atPath: destURL.appendingPathComponent(filename).path
+            ))
+        }
+
+        @Test("Copies disk.img content faithfully", .timeLimit(.minutes(1)))
+        func diskContent() throws {
+            let (_, destURL, _tmp) = try setup()
+            let content = try String(data: Data(contentsOf: destURL.appendingPathComponent("disk.img")), encoding: .utf8)
+            #expect(content == "fake-disk-content")
+        }
+
+        @Test("Hardware model is identical to source", .timeLimit(.minutes(1)))
+        func hardwareModelIdentical() throws {
+            let (source, destURL, _tmp) = try setup()
+            let cloneData = try Data(contentsOf: destURL.appendingPathComponent("hardware-model.bin"))
+            let sourceData = try Data(contentsOf: source.url.appendingPathComponent("hardware-model.bin"))
+            #expect(cloneData == sourceData, "Hardware model must be identical to source")
+        }
+
+        @Test("Writes a NEW machine identifier (not copied from source)", .timeLimit(.minutes(1)))
+        func newMachineIdentifier() throws {
+            let (source, destURL, _tmp) = try setup()
+            let cloneMID = destURL.appendingPathComponent("machine-identifier.bin")
+            let cloneData = try Data(contentsOf: cloneMID)
+            let sourceData = try Data(contentsOf: source.url.appendingPathComponent("machine-identifier.bin"))
+            #expect(
+                cloneData != sourceData,
+                "Machine identifier MUST differ -- reusing causes undefined behavior"
+            )
+        }
     }
 
-    @Test("Generates a new unique metadata ID for the clone")
-    func newMetadataID() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    // MARK: - Setup Inheritance
 
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        let clone = try CloneManager.clone(source: source, to: destURL)
-
-        #expect(clone.metadata.id != source.metadata.id)
-    }
-
-    @Test("Inherits setupCompleted from the source")
+    @Test("Inherits setupCompleted from the source", .timeLimit(.minutes(1)))
     func inheritsSetupCompleted() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let tmp = TempDirectory()
+        let source = try makeTestBundle(in: tmp)
 
-        // Simulate a source where setup is already done
         var updatedMetadata = source.metadata
         updatedMetadata.setupCompleted = true
         try VirtualMachineBundle.writeMetadata(updatedMetadata, to: source.url)
 
-        let destURL = tempDir.appendingPathComponent("clone.vm")
+        let destURL = tmp.url.appendingPathComponent("clone.vm")
         let clone = try CloneManager.clone(
             source: try VirtualMachineBundle.load(from: source.url),
             to: destURL
@@ -86,156 +147,78 @@ struct CloneManagerTests {
         #expect(clone.metadata.setupCompleted == true)
     }
 
-    @Test("Copies the disk image")
-    func copiesDisk() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
+    // MARK: - Error Handling
 
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        _ = try CloneManager.clone(source: source, to: destURL)
+    @Suite("Error handling", .tags(.infrastructure))
+    struct ErrorHandlingTests {
 
-        let cloneDisk = destURL.appendingPathComponent("disk.img")
-        #expect(FileManager.default.fileExists(atPath: cloneDisk.path))
+        @Test("Throws alreadyExists when destination already exists", .timeLimit(.minutes(1)))
+        func throwsOnExistingDest() throws {
+            let tmp = TempDirectory()
+            let outer = CloneManagerTests()
+            let source = try outer.makeTestBundle(in: tmp)
+            let destURL = tmp.url.appendingPathComponent("clone.vm")
+            _ = try CloneManager.clone(source: source, to: destURL)
 
-        let content = try String(data: Data(contentsOf: cloneDisk), encoding: .utf8)
-        #expect(content == "fake-disk-content")
-    }
-
-    @Test("Copies auxiliary storage")
-    func copiesAuxiliary() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        _ = try CloneManager.clone(source: source, to: destURL)
-
-        let cloneAux = destURL.appendingPathComponent("auxiliary.bin")
-        #expect(FileManager.default.fileExists(atPath: cloneAux.path))
-    }
-
-    @Test("Copies hardware model")
-    func copiesHardwareModel() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        _ = try CloneManager.clone(source: source, to: destURL)
-
-        let cloneHW = destURL.appendingPathComponent("hardware-model.bin")
-        #expect(FileManager.default.fileExists(atPath: cloneHW.path))
-
-        let content = try Data(contentsOf: cloneHW)
-        let sourceContent = try Data(
-            contentsOf: source.url.appendingPathComponent("hardware-model.bin")
-        )
-        #expect(content == sourceContent, "Hardware model must be identical to source")
-    }
-
-    @Test("Writes a NEW machine identifier (not copied from source)")
-    func newMachineIdentifier() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        _ = try CloneManager.clone(source: source, to: destURL)
-
-        let cloneMID = destURL.appendingPathComponent("machine-identifier.bin")
-        #expect(FileManager.default.fileExists(atPath: cloneMID.path))
-
-        let cloneData = try Data(contentsOf: cloneMID)
-        let sourceData = try Data(
-            contentsOf: source.url.appendingPathComponent("machine-identifier.bin")
-        )
-        #expect(cloneData != sourceData,
-                "Machine identifier MUST differ — reusing causes undefined behavior")
-    }
-
-    @Test("Clone can be loaded back as a valid VirtualMachineBundle")
-    func cloneIsLoadable() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        _ = try CloneManager.clone(source: source, to: destURL)
-
-        let loaded = try VirtualMachineBundle.load(from: destURL)
-        #expect(loaded.spec == source.spec)
-        #expect(loaded.metadata.id != source.metadata.id)
-    }
-
-    @Test("Throws alreadyExists when destination already exists")
-    func throwsOnExistingDest() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        _ = try CloneManager.clone(source: source, to: destURL)
-
-        #expect {
-            try CloneManager.clone(source: source, to: destURL)
-        } throws: { error in
-            guard let bundleError = error as? VirtualMachineBundleError else { return false }
-            return bundleError == .alreadyExists(url: destURL)
+            #expect {
+                try CloneManager.clone(source: source, to: destURL)
+            } throws: { error in
+                guard let bundleError = error as? VirtualMachineBundleError else { return false }
+                return bundleError == .alreadyExists(url: destURL)
+            }
         }
-    }
 
-    @Test("Partial clone is cleaned up on failure")
-    func rollbackOnFailure() throws {
-        let (source, tempDir) = try makeTestBundle()
-        defer {
-            // Restore permissions so cleanup succeeds.
-            try? FileManager.default.setAttributes(
-                [.posixPermissions: 0o644],
-                ofItemAtPath: source.url.appendingPathComponent("disk.img").path
+        @Test("Partial clone is cleaned up on failure", .timeLimit(.minutes(1)))
+        func rollbackOnFailure() throws {
+            let tmp = TempDirectory()
+            let outer = CloneManagerTests()
+            let source = try outer.makeTestBundle(in: tmp)
+
+            // Make the source disk.img unreadable so copyItem fails.
+            let diskURL = source.url.appendingPathComponent("disk.img")
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o000],
+                ofItemAtPath: diskURL.path
             )
-            try? FileManager.default.removeItem(at: tempDir)
+            defer {
+                try? FileManager.default.setAttributes(
+                    [.posixPermissions: 0o644],
+                    ofItemAtPath: diskURL.path
+                )
+            }
+
+            let destURL = tmp.url.appendingPathComponent("rollback-clone.vm")
+
+            #expect(throws: Error.self) {
+                try CloneManager.clone(source: source, to: destURL)
+            }
+
+            #expect(
+                !FileManager.default.fileExists(atPath: destURL.path),
+                "Destination must be cleaned up after a clone failure"
+            )
         }
 
-        // Make the source disk.img unreadable so copyItem fails
-        // inside the do block, after the destination directory has
-        // been created. This triggers the catch block which should
-        // clean up the partial destination directory.
-        let diskURL = source.url.appendingPathComponent("disk.img")
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o000],
-            ofItemAtPath: diskURL.path
-        )
+        @Test("Skips missing source files without crashing", .timeLimit(.minutes(1)))
+        func skipsMissingFiles() throws {
+            let tmp = TempDirectory()
+            let sourceURL = tmp.url.appendingPathComponent("sparse.vm")
+            let source = try VirtualMachineBundle.create(
+                at: sourceURL,
+                spec: VirtualMachineSpecification()
+            )
 
-        let destURL = tempDir.appendingPathComponent("rollback-clone.vm")
+            try Data("fake-mid".utf8).write(
+                to: sourceURL.appendingPathComponent("machine-identifier.bin")
+            )
 
-        #expect(throws: Error.self) {
-            try CloneManager.clone(source: source, to: destURL)
+            let destURL = tmp.url.appendingPathComponent("clone.vm")
+            let clone = try CloneManager.clone(source: source, to: destURL)
+
+            #expect(clone.spec == source.spec)
+            #expect(!FileManager.default.fileExists(
+                atPath: destURL.appendingPathComponent("disk.img").path
+            ))
         }
-
-        // The rollback in the catch block should have removed the partial clone.
-        #expect(
-            !FileManager.default.fileExists(atPath: destURL.path),
-            "Destination must be cleaned up after a clone failure"
-        )
-    }
-
-    @Test("Skips missing source files without crashing")
-    func skipsMissingFiles() throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        // Create a minimal bundle with NO disk.img or auxiliary.bin
-        let sourceURL = tempDir.appendingPathComponent("sparse.vm")
-        let source = try VirtualMachineBundle.create(at: sourceURL, spec: VirtualMachineSpecification())
-
-        // Only write machine-identifier.bin (required for clone to write new one)
-        try Data("fake-mid".utf8).write(
-            to: sourceURL.appendingPathComponent("machine-identifier.bin")
-        )
-
-        let destURL = tempDir.appendingPathComponent("clone.vm")
-        let clone = try CloneManager.clone(source: source, to: destURL)
-
-        // Clone should succeed, just without the missing files.
-        #expect(clone.spec == source.spec)
-        #expect(!FileManager.default.fileExists(
-            atPath: destURL.appendingPathComponent("disk.img").path
-        ))
     }
 }

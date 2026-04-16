@@ -5,14 +5,18 @@ import Foundation
 @testable import SpookApplication
 @testable import SpookCore
 
-@Suite("UInt64.gigabytes")
+@Suite("UInt64.gigabytes", .tags(.infrastructure))
 struct UInt64GigabytesTests {
 
-    @Test("gigabytes converts correctly")
-    func gigabytesConversion() {
-        #expect(UInt64.gigabytes(1) == 1_073_741_824)
-        #expect(UInt64.gigabytes(8) == 8_589_934_592)
-        #expect(UInt64.gigabytes(0) == 0)
+    @Test(
+        "Converts gigabytes to bytes correctly",
+        arguments: [
+            (UInt64(0), UInt64(0)),
+            (UInt64(1), UInt64(1_073_741_824)),
+            (UInt64(8), UInt64(8_589_934_592)),
+        ]
+    )
+    func gigabytesConversion(input: UInt64, expected: UInt64) {
+        #expect(UInt64.gigabytes(input) == expected)
     }
-
 }
