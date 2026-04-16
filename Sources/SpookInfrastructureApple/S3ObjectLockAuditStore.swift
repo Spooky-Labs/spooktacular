@@ -74,18 +74,24 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
     // MARK: - AuditSink
 
     public func record(_ entry: AuditRecord) async {
-        _ = try? await append(entry)
+        do {
+            _ = try await append(entry)
+        } catch {
+            Log.audit.error("S3ObjectLockAuditStore.record failed: \(error.localizedDescription, privacy: .public). Record dropped: \(entry.id, privacy: .public)")
+        }
     }
 
     // MARK: - ImmutableAuditStore
 
     public func append(_ record: AuditRecord) async throws -> UInt64 {
         let seq = sequenceNumber
-        sequenceNumber += 1
         pendingRecords.append(record)
         if pendingRecords.count >= batchSize {
             try await flushBatch()
         }
+        // Sequence advances only after a successful buffer append and
+        // optional flush — a throwing flush no longer skips a number.
+        sequenceNumber += 1
         return seq
     }
 

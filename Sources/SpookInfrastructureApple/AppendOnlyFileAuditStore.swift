@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SpookCore
 import SpookApplication
 
@@ -24,6 +25,12 @@ public actor AppendOnlyFileAuditStore: ImmutableAuditStore, AuditSink {
     private let filePath: String
     private let encoder: JSONEncoder
     private var sequenceNumber: UInt64 = 0
+    private let logger = Log.audit
+
+    /// `true` once `chflags(UF_APPEND)` was confirmed applied during
+    /// init. Exposed through ``isKernelAppendOnly`` so operators can
+    /// include the property in a readiness probe.
+    public let isKernelAppendOnly: Bool
 
     public init(path: String) throws {
         self.filePath = path
@@ -55,28 +62,57 @@ public actor AppendOnlyFileAuditStore: ImmutableAuditStore, AuditSink {
         enc.outputFormatting = [.sortedKeys]
         self.encoder = enc
 
-        // Set BSD append-only flag (UF_APPEND).
-        // After this, the file can only be appended to — modifications
-        // and deletions are blocked at the kernel level.
-        // Only root can remove this flag via `chflags nouchg <path>`.
+        // Set BSD append-only flag (UF_APPEND) and **verify** it
+        // stuck. Previously the result of `chflags` was discarded,
+        // so the store could advertise kernel-level append-only
+        // while running without it — a silent downgrade.
+        //
+        // After this, the file can only be appended to; modifications
+        // and deletions are blocked at the kernel level. Only root
+        // can remove this flag via `chflags nouchg <path>`.
         var sb = Darwin.stat()
+        var applied = false
         if Darwin.lstat(path, &sb) == 0 {
-            chflags(path, sb.st_flags | UInt32(UF_APPEND))
+            let rc = chflags(path, sb.st_flags | UInt32(UF_APPEND))
+            if rc == 0 {
+                // Re-stat to confirm the flag is present — chflags
+                // can return 0 on some filesystems that silently drop
+                // the request (APFS network mounts, certain ACLs).
+                var verify = Darwin.stat()
+                if Darwin.lstat(path, &verify) == 0,
+                   verify.st_flags & UInt32(UF_APPEND) != 0 {
+                    applied = true
+                }
+            }
+        }
+        self.isKernelAppendOnly = applied
+        if !applied {
+            throw AppendOnlyError.kernelFlagFailed(path)
         }
     }
 
-    // AuditSink conformance
+    // AuditSink conformance — errors surface through a typed log
+    // channel rather than being silently swallowed with `try?`.
+    // The audit port's own contract requires adapters to report
+    // failures; dropping them would hide gaps in the audit trail.
     public func record(_ entry: AuditRecord) async {
-        _ = try? await append(entry)
+        do {
+            _ = try await append(entry)
+        } catch {
+            logger.error("AppendOnlyFileAuditStore.record failed: \(error.localizedDescription, privacy: .public). Record dropped: \(entry.id, privacy: .public)")
+        }
     }
 
     // ImmutableAuditStore conformance
     public func append(_ record: AuditRecord) async throws -> UInt64 {
         let seq = sequenceNumber
-        sequenceNumber += 1
         var data = try encoder.encode(record)
         data.append(0x0A)
-        fileHandle.write(data)
+        try fileHandle.write(contentsOf: data)
+        // Sequence number advances only after the write commits —
+        // if the write throws, callers can retry safely without
+        // leaving a hole in the sequence.
+        sequenceNumber += 1
         return seq
     }
 
@@ -96,10 +132,14 @@ public actor AppendOnlyFileAuditStore: ImmutableAuditStore, AuditSink {
 
 public enum AppendOnlyError: Error, LocalizedError, Sendable {
     case cannotOpenFile(String)
+    case kernelFlagFailed(String)
 
     public var errorDescription: String? {
         switch self {
-        case .cannotOpenFile(let p): "Cannot open append-only audit file: \(p)"
+        case .cannotOpenFile(let p):
+            "Cannot open append-only audit file: \(p)"
+        case .kernelFlagFailed(let p):
+            "Could not set UF_APPEND on \(p). The filesystem or ACLs may not support BSD file flags — choose a different audit path or disable SPOOK_AUDIT_IMMUTABLE."
         }
     }
 }

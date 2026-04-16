@@ -72,4 +72,7 @@ public enum Log {
 
     /// Guest agent: host-side client communication with spooktacular-agent.
     public static let guestAgent = Logger(subsystem: subsystem, category: "guest-agent")
+
+    /// Audit persistence: file writes, S3 uploads, Merkle tree state.
+    public static let audit = Logger(subsystem: subsystem, category: "audit")
 }

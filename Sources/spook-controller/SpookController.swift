@@ -131,12 +131,29 @@ struct SpookController {
             }
         }
 
-        // Merkle tree tamper-evidence (auto in multi-tenant, or SPOOK_AUDIT_MERKLE=1)
+        // Merkle tree tamper-evidence (auto in multi-tenant, or SPOOK_AUDIT_MERKLE=1).
+        //
+        // The signing key path is mandatory — tree heads must
+        // verify across process restarts or the non-repudiation
+        // story collapses. Refuse to boot with Merkle enabled but
+        // no key path configured; a loud startup failure is
+        // strictly better than silently signing with an ephemeral
+        // key.
         let auditSink: any AuditSink
         if tenancyMode == .multiTenant || env["SPOOK_AUDIT_MERKLE"] == "1" {
-            let signingKey = Curve25519.Signing.PrivateKey()
+            guard let keyPath = env["SPOOK_AUDIT_SIGNING_KEY"] else {
+                logger.fault("Merkle audit requires SPOOK_AUDIT_SIGNING_KEY to point at a persistent signing key path. Aborting.")
+                exit(1)
+            }
+            let signingKey: Curve25519.Signing.PrivateKey
+            do {
+                signingKey = try AuditSinkFactory.loadOrCreateSigningKey(at: keyPath)
+            } catch {
+                logger.fault("Cannot load Merkle signing key at \(keyPath, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                exit(1)
+            }
             auditSink = MerkleAuditSink(wrapping: baseSink, signingKey: signingKey)
-            logger.notice("Audit: Merkle tree enabled (RFC 6962 tamper-evidence)")
+            logger.notice("Audit: Merkle tree enabled (RFC 6962 tamper-evidence), key=\(keyPath, privacy: .public)")
         } else {
             auditSink = baseSink
         }

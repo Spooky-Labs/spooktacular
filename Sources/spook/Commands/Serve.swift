@@ -200,7 +200,12 @@ extension Spook {
             }
             let auditSink: (any AuditSink)?
             if env["SPOOK_AUDIT_MERKLE"] == "1", let base = auditBase {
-                let key = CryptoKit.Curve25519.Signing.PrivateKey()
+                guard let keyPath = env["SPOOK_AUDIT_SIGNING_KEY"] else {
+                    print(Style.error("✗ SPOOK_AUDIT_MERKLE=1 requires SPOOK_AUDIT_SIGNING_KEY to point at a persistent key path."))
+                    print(Style.dim("  Without a stable key, signed tree heads don't verify across restarts."))
+                    throw ExitCode.failure
+                }
+                let key = try AuditSinkFactory.loadOrCreateSigningKey(at: keyPath)
                 auditSink = MerkleAuditSink(wrapping: base, signingKey: key)
             } else {
                 auditSink = auditBase

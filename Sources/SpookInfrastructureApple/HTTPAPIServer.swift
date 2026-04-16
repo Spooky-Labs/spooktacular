@@ -170,6 +170,17 @@ public actor HTTPAPIServer {
     /// through this sink. Defaults to `nil` for backward compatibility.
     private let auditSink: (any AuditSink)?
 
+    /// Optional federated identity verifier for JWT / SAML bearer
+    /// tokens.
+    ///
+    /// When set, the server interprets a Bearer that parses as a
+    /// JWT (three dot-separated base64url segments) as a federated
+    /// token, verifies it, and uses the resulting
+    /// ``FederatedIdentity/actorIdentity`` as the caller identity
+    /// in both authorization and audit records. When `nil`, all
+    /// requests map to the static-token identity.
+    private let identityVerifier: (any FederatedIdentityVerifier)?
+
     /// Dispatch source monitoring the TLS certificate file for changes.
     ///
     /// Retained here to keep the file-system event source alive for the
@@ -215,6 +226,7 @@ public actor HTTPAPIServer {
         tenantID: TenantID = .default,
         authService: (any AuthorizationService)? = nil,
         auditSink: (any AuditSink)? = nil,
+        identityVerifier: (any FederatedIdentityVerifier)? = nil,
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -240,6 +252,7 @@ public actor HTTPAPIServer {
         self.tenantID = tenantID
         self.authService = authService
         self.auditSink = auditSink
+        self.identityVerifier = identityVerifier
         self.insecureMode = insecureMode
         self.maxConcurrentConnections = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50
         self.maxRequestsPerMinute = Int(ProcessInfo.processInfo.environment["SPOOK_RATE_LIMIT"] ?? "") ?? 120
@@ -254,8 +267,22 @@ public actor HTTPAPIServer {
         if insecureMode {
             Log.httpAPI.warning("⚠️  SERVER RUNNING IN INSECURE MODE — no TLS, no required API token")
             Log.httpAPI.warning("⚠️  Do NOT expose this server to untrusted networks")
-        } else if tlsOptions == nil && self.apiToken == nil {
-            throw HTTPAPIServerError.missingAPIToken
+        } else {
+            // Production requires BOTH TLS and a bearer token.
+            //
+            // - TLS alone would be unauthenticated control-plane access.
+            // - A bearer token without TLS would transmit credentials
+            //   in plaintext on every request.
+            //
+            // The old "either/or" gate fell open on either half; this
+            // closes it. Operators who need cleartext must pass
+            // `insecureMode: true` explicitly and accept the warning.
+            guard tlsOptions != nil else {
+                throw HTTPAPIServerError.tlsRequired
+            }
+            guard self.apiToken != nil else {
+                throw HTTPAPIServerError.missingAPIToken
+            }
         }
     }
 
@@ -724,13 +751,64 @@ public actor HTTPAPIServer {
             return handleHealth()
         }
 
-        if let token = apiToken {
-            let header = request.headers["authorization"] ?? ""
-            guard Self.constantTimeEqual(header, "Bearer \(token)") else {
-                let response = HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
-                await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+        // Resolve caller identity.
+        //
+        // Two modes are supported:
+        //
+        //   1. Static bearer token — `Authorization: Bearer <SPOOK_API_TOKEN>`.
+        //      The caller identity is "bearer-token@<host>" so audits
+        //      distinguish token-auth from JWT-auth.
+        //   2. Federated JWT / SAML — the Bearer parses as a JWT and
+        //      resolves through the configured `identityVerifier`.
+        //      The caller identity is `FederatedIdentity.actorIdentity`
+        //      (issuer + subject), preserving the real user through
+        //      every downstream authorization and audit record.
+        //
+        // Unlike the previous "api-client" everywhere, downstream
+        // RBAC now sees a distinct principal per Okta/Azure AD/
+        // SAML user, which is the minimum needed for least-privilege
+        // enforcement and defensible audit trails.
+        let actorIdentity: String
+        let header = request.headers["authorization"] ?? ""
+        let bearer = header.hasPrefix("Bearer ") ? String(header.dropFirst("Bearer ".count)) : ""
+
+        if !bearer.isEmpty, let verifier = identityVerifier, Self.looksLikeJWT(bearer) {
+            // JWT path — verify, derive actor identity from the claims.
+            do {
+                let identity = try await verifier.verify(token: bearer)
+                actorIdentity = identity.actorIdentity
+            } catch {
+                let response = HTTPResponse.error(
+                    message: "Unauthorized: \(error.localizedDescription)",
+                    statusCode: 401
+                )
+                await emitAPIAudit(
+                    method: request.method,
+                    path: request.path,
+                    statusCode: response.statusCode,
+                    actorIdentity: "anonymous"
+                )
                 return response
             }
+        } else if let token = apiToken {
+            // Static-token path — constant-time compare against the
+            // configured shared secret.
+            guard Self.constantTimeEqual(header, "Bearer \(token)") else {
+                let response = HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
+                await emitAPIAudit(
+                    method: request.method,
+                    path: request.path,
+                    statusCode: response.statusCode,
+                    actorIdentity: "anonymous"
+                )
+                return response
+            }
+            actorIdentity = "bearer-token@\(self.host)"
+        } else {
+            // No token configured AND no verifier — insecure mode.
+            // `init` already blocks this combination unless
+            // `insecureMode == true`, so we accept as the host user.
+            actorIdentity = "insecure-mode@\(self.host)"
         }
 
         // RBAC enforcement: check resource-level permissions before dispatch.
@@ -738,7 +816,7 @@ public actor HTTPAPIServer {
             let resource = inferResource(from: request.path)
             let action = inferAction(from: request.method, path: request.path)
             let context = AuthorizationContext(
-                actorIdentity: "api-client",
+                actorIdentity: actorIdentity,
                 tenant: tenantID,
                 scope: .admin,
                 resource: resource,
@@ -749,7 +827,12 @@ public actor HTTPAPIServer {
                     message: "Forbidden. Your role does not have permission: \(resource):\(action)",
                     statusCode: 403
                 )
-                await emitAPIAudit(method: request.method, path: request.path, statusCode: 403)
+                await emitAPIAudit(
+                    method: request.method,
+                    path: request.path,
+                    statusCode: 403,
+                    actorIdentity: actorIdentity
+                )
                 return response
             }
         }
@@ -759,7 +842,10 @@ public actor HTTPAPIServer {
 
         if request.method == "GET" && request.path == "/metrics" {
             let response = await handleMetrics()
-            await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+            await emitAPIAudit(
+                method: request.method, path: request.path,
+                statusCode: response.statusCode, actorIdentity: actorIdentity
+            )
             return response
         }
 
@@ -768,7 +854,10 @@ public actor HTTPAPIServer {
               components[1] == "vms"
         else {
             let response = HTTPResponse.error(message: "Not found.", statusCode: 404)
-            await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+            await emitAPIAudit(
+                method: request.method, path: request.path,
+                statusCode: response.statusCode, actorIdentity: actorIdentity
+            )
             return response
         }
 
@@ -776,7 +865,10 @@ public actor HTTPAPIServer {
             let vmName = components[2]
             guard vmName.wholeMatch(of: Self.vmNamePattern) != nil else {
                 let response = HTTPResponse.error(message: "Invalid VM name.", statusCode: 400)
-                await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+                await emitAPIAudit(
+                    method: request.method, path: request.path,
+                    statusCode: response.statusCode, actorIdentity: actorIdentity
+                )
                 return response
             }
         }
@@ -794,7 +886,12 @@ public actor HTTPAPIServer {
         default: response = HTTPResponse.error(message: "Not found.", statusCode: 404)
         }
 
-        await emitAPIAudit(method: request.method, path: request.path, statusCode: response.statusCode)
+        await emitAPIAudit(
+            method: request.method,
+            path: request.path,
+            statusCode: response.statusCode,
+            actorIdentity: actorIdentity
+        )
         return response
     }
 
@@ -826,10 +923,23 @@ public actor HTTPAPIServer {
         }
     }
 
-    func emitAPIAudit(method: String, path: String, statusCode: Int) async {
+    /// Emits one audit record per API request.
+    ///
+    /// The `actorIdentity` is whatever `routeRequest` resolved from
+    /// the Bearer header — for JWTs that's the issuer+subject of
+    /// the verified federated identity; for static tokens it's
+    /// `"bearer-token@<host>"`. Crucially, it is NOT the legacy
+    /// hardcoded "api-client" that collapsed every caller into a
+    /// single synthetic admin.
+    func emitAPIAudit(
+        method: String,
+        path: String,
+        statusCode: Int,
+        actorIdentity: String
+    ) async {
         guard let sink = auditSink else { return }
         let record = AuditRecord(
-            actorIdentity: "api-client",
+            actorIdentity: actorIdentity,
             tenant: tenantID,
             scope: .admin,
             resource: path,
@@ -837,6 +947,20 @@ public actor HTTPAPIServer {
             outcome: statusCode < 400 ? .success : .failed
         )
         await sink.record(record)
+    }
+
+    /// Returns `true` when a Bearer value looks like a JWT (three
+    /// dot-separated base64url segments). The real verification
+    /// happens in the federated-identity verifier; this is only
+    /// a dispatch hint so a static `SPOOK_API_TOKEN` that happens
+    /// to contain dots isn't routed through OIDC.
+    static func looksLikeJWT(_ token: String) -> Bool {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return false }
+        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        return parts.allSatisfy { part in
+            !part.isEmpty && part.allSatisfy { allowed.contains($0) }
+        }
     }
 
     // MARK: - Handlers
@@ -1262,6 +1386,10 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
     /// unauthorized access to VM management endpoints.
     case missingAPIToken
 
+    /// TLS is required in production. Operators can bypass with
+    /// `insecureMode: true` but must accept the logged warning.
+    case tlsRequired
+
     /// The TLS certificate file could not be opened for monitoring.
     case certificateFileNotFound(String)
 
@@ -1277,6 +1405,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Invalid port number: \(port)."
         case .missingAPIToken:
             "No API token configured."
+        case .tlsRequired:
+            "TLS is required in production."
         case .certificateFileNotFound(let path):
             "TLS certificate file not found at '\(path)'."
         }
@@ -1293,7 +1423,9 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
         case .invalidPort:
             "Use a port number between 1 and 65535."
         case .missingAPIToken:
-            "Set the SPOOK_API_TOKEN environment variable, provide TLS certificates with --tls-cert and --tls-key, or use --insecure to bypass (not recommended for production)."
+            "Set the SPOOK_API_TOKEN environment variable. Production requires both TLS and a token — use --insecure to bypass (not recommended)."
+        case .tlsRequired:
+            "Provide TLS certificates with --tls-cert and --tls-key. Production requires both TLS and a token — use --insecure to bypass (not recommended)."
         case .certificateFileNotFound:
             "Ensure the certificate file path is correct and the file exists."
         }

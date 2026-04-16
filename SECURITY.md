@@ -60,9 +60,14 @@ These are **known limitations**, not bugs:
 
 ### Who should NOT use Spooktacular (yet)
 
-- Environments requiring SOC 2 Type II compliance for the VM management layer
+- Environments requiring FIPS 140-2 Level 2+ hardware-backed key custody **on virtualized deployments**. Apple Silicon hosts get Secure Enclave; CI runners inside VMs fall back to Keychain-backed software keys.
 - Deployments requiring federated identity beyond OIDC/SAML — certificate-based, OIDC, and SAML 2.0 identity are supported
-- Environments requiring cryptographically signed, tamper-proof audit logs
+
+Signed tree heads now persist across process restarts (set
+`SPOOK_AUDIT_SIGNING_KEY` to a path that survives restarts).
+Combined with `AppendOnlyFileAuditStore` (BSD `UF_APPEND`, kernel-
+verified on init) and `S3ObjectLockAuditStore` (WORM object lock),
+the audit chain supports SOC 2 Type II controls.
 
 ## Deployment Models
 

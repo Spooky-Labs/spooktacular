@@ -41,9 +41,17 @@ public actor JSONFileAuditSink: AuditSink {
     }
 
     public func record(_ entry: AuditRecord) async {
-        guard var data = try? encoder.encode(entry) else { return }
-        data.append(0x0A) // newline
-        fileHandle.write(data)
+        do {
+            var data = try encoder.encode(entry)
+            data.append(0x0A) // newline
+            try fileHandle.write(contentsOf: data)
+        } catch {
+            // Per the AuditSink contract, adapters must not swallow
+            // failures — gaps in the audit trail are visible operator
+            // concerns. Route through the audit log so they appear
+            // alongside other audit-related events.
+            Log.audit.error("JSONFileAuditSink.record failed: \(error.localizedDescription, privacy: .public). Record dropped: \(entry.id, privacy: .public)")
+        }
     }
 }
 

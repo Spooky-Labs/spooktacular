@@ -82,6 +82,7 @@ public struct SpooktacularConfig: Sendable, Codable {
                 filePath: env["SPOOK_AUDIT_FILE"],
                 immutablePath: env["SPOOK_AUDIT_IMMUTABLE_PATH"],
                 merkleEnabled: env["SPOOK_AUDIT_MERKLE"] == "1",
+                merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY"],
                 s3Bucket: env["SPOOK_AUDIT_S3_BUCKET"],
                 s3Region: env["SPOOK_AUDIT_S3_REGION"]
             ),
@@ -172,15 +173,30 @@ public struct AuditConfig: Sendable, Codable {
     public let filePath: String?
     public let immutablePath: String?
     public let merkleEnabled: Bool
+
+    /// Path to the persistent Ed25519 signing key used by
+    /// `MerkleAuditSink` to sign tree heads.
+    ///
+    /// Without a stable key, signed tree heads generated before a
+    /// restart can't be verified afterward — which nullifies the
+    /// non-repudiation story that an enterprise auditor depends on.
+    /// Populated by `SPOOK_AUDIT_SIGNING_KEY`. When `merkleEnabled`
+    /// is true and this is `nil`, the factory refuses to build a
+    /// Merkle sink so operators don't silently get ephemeral keys.
+    public let merkleSigningKeyPath: String?
+
     public let s3Bucket: String?
     public let s3Region: String?
 
     public init(filePath: String? = nil, immutablePath: String? = nil,
-                merkleEnabled: Bool = false, s3Bucket: String? = nil,
+                merkleEnabled: Bool = false,
+                merkleSigningKeyPath: String? = nil,
+                s3Bucket: String? = nil,
                 s3Region: String? = nil) {
         self.filePath = filePath
         self.immutablePath = immutablePath
         self.merkleEnabled = merkleEnabled
+        self.merkleSigningKeyPath = merkleSigningKeyPath
         self.s3Bucket = s3Bucket
         self.s3Region = s3Region
     }

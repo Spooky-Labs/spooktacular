@@ -188,7 +188,10 @@ struct HTTPAPIIntegrationTests {
             )
 
             // Emit an audit record for a successful request (status < 400).
-            await server.emitAPIAudit(method: "GET", path: "/v1/vms", statusCode: 200)
+            await server.emitAPIAudit(
+                method: "GET", path: "/v1/vms",
+                statusCode: 200, actorIdentity: "test-actor"
+            )
 
             let records = await sink.records
             #expect(records.count == 1, "Should emit exactly one audit record")
@@ -210,7 +213,10 @@ struct HTTPAPIIntegrationTests {
             )
 
             // Emit an audit record for a denied/failed request (status >= 400).
-            await server.emitAPIAudit(method: "DELETE", path: "/v1/vms/runner-1", statusCode: 403)
+            await server.emitAPIAudit(
+                method: "DELETE", path: "/v1/vms/runner-1",
+                statusCode: 403, actorIdentity: "test-actor"
+            )
 
             let records = await sink.records
             #expect(records.count == 1, "Should emit exactly one audit record")
@@ -231,13 +237,16 @@ struct HTTPAPIIntegrationTests {
                 insecureMode: true
             )
 
-            await server.emitAPIAudit(method: "POST", path: "/v1/vms/runner-1/start", statusCode: 200)
+            await server.emitAPIAudit(
+                method: "POST", path: "/v1/vms/runner-1/start",
+                statusCode: 200, actorIdentity: "alice@example.com"
+            )
 
             let records = await sink.records
             #expect(records.count == 1)
             let record = records[0]
-            #expect(record.actorIdentity == "api-client",
-                    "Actor should be 'api-client' as set by emitAPIAudit")
+            #expect(record.actorIdentity == "alice@example.com",
+                    "Actor identity is now propagated from the verified caller, not hardcoded")
             #expect(record.tenant == tenant,
                     "Tenant should match the server's configured tenantID")
             #expect(record.scope == .admin,

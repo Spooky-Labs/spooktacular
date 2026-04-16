@@ -108,17 +108,37 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             guard audMatch else { throw OIDCError.audienceMismatch }
         }
 
-        // 7. Validate expiration
-        let exp: Date?
-        if let expTimestamp = claims["exp"] as? TimeInterval {
-            exp = Date(timeIntervalSince1970: expTimestamp)
-            guard Date() < exp! else { throw OIDCError.tokenExpired }
-        } else {
-            exp = nil
+        // 7. Validate expiration.
+        //
+        // OIDC Core §2 requires `exp`. An IdP that omits it MUST be
+        // rejected — a token "that never expires" is an unbounded
+        // credential. 60s of clock skew is the RFC 7519 §4.1.4
+        // recommendation; any larger window would create a window
+        // where expired tokens still authenticate.
+        guard let expTimestamp = claims["exp"] as? TimeInterval else {
+            throw OIDCError.missingRequiredClaim("exp")
+        }
+        let exp = Date(timeIntervalSince1970: expTimestamp)
+        let clockSkew: TimeInterval = 60
+        guard Date() < exp.addingTimeInterval(clockSkew) else {
+            throw OIDCError.tokenExpired
         }
 
-        // 8. Extract identity
-        let sub = claims["sub"] as? String ?? ""
+        // Also reject tokens issued in the future beyond skew
+        // tolerance — that catches clock-manipulation attacks.
+        if let iatTimestamp = claims["iat"] as? TimeInterval {
+            let iat = Date(timeIntervalSince1970: iatTimestamp)
+            guard iat < Date().addingTimeInterval(clockSkew) else {
+                throw OIDCError.tokenIssuedInFuture
+            }
+        }
+
+        // 8. Extract identity. OIDC Core §5.1 requires `sub`. An
+        // empty string was previously accepted — that collapses all
+        // tokens without a subject to the same anonymous principal.
+        guard let sub = claims["sub"] as? String, !sub.isEmpty else {
+            throw OIDCError.missingRequiredClaim("sub")
+        }
         let name = claims["name"] as? String ?? claims["preferred_username"] as? String
         let email = claims["email"] as? String
         let groups: [String]
@@ -252,6 +272,13 @@ public enum OIDCError: Error, LocalizedError, Sendable {
     case malformedToken
     /// The token's `iss` claim does not match the configured provider.
     case issuerMismatch
+
+    /// A required OIDC claim (e.g. `exp`, `sub`) was absent.
+    case missingRequiredClaim(String)
+
+    /// The `iat` claim is in the future beyond the 60 s skew
+    /// tolerance. Indicates a clock-skew or replay attack.
+    case tokenIssuedInFuture
     /// The token's `aud` claim does not match the configured client.
     case audienceMismatch
     /// The token's `exp` claim is in the past.
@@ -267,6 +294,8 @@ public enum OIDCError: Error, LocalizedError, Sendable {
         switch self {
         case .malformedToken: "Malformed JWT token"
         case .issuerMismatch: "Token issuer does not match configured provider"
+        case .missingRequiredClaim(let claim): "Token is missing required claim '\(claim)'"
+        case .tokenIssuedInFuture: "Token iat is in the future beyond clock-skew tolerance"
         case .audienceMismatch: "Token audience does not match configured client"
         case .tokenExpired: "Token has expired"
         case .jwksFetchFailed: "Failed to fetch JWKS from identity provider"

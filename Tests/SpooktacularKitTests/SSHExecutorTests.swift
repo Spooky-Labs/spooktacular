@@ -13,15 +13,39 @@ struct SSHExecutorTests {
     @Suite("SSH options")
     struct SSHOptions {
 
-        @Test("options contain all required security-bypass flags", arguments: [
-            "StrictHostKeyChecking=no",
-            "UserKnownHostsFile=/dev/null",
+        @Test("default options enforce trust-on-first-use, not blind acceptance", arguments: [
+            "StrictHostKeyChecking=accept-new",
             "LogLevel=ERROR",
             "ConnectTimeout=",
         ])
-        func containsExpectedOption(expected: String) {
+        func defaultOptions(expected: String) {
             let joined = SSHExecutor.sshOptions.joined(separator: " ")
             #expect(joined.contains(expected))
+        }
+
+        @Test("default options do NOT include /dev/null known-hosts (blind trust)")
+        func defaultDoesNotBypassHostKey() {
+            let joined = SSHExecutor.sshOptions.joined(separator: " ")
+            #expect(!joined.contains("UserKnownHostsFile=/dev/null"),
+                    "Default must not use /dev/null — that's the MITM-friendly mode")
+            #expect(!joined.contains("StrictHostKeyChecking=no"),
+                    "Default must not disable strict host-key checking")
+        }
+
+        @Test(".acceptAny mode produces the legacy ephemeral-VM options")
+        func acceptAnyMode() {
+            let opts = SSHExecutor.sshOptions(trust: .acceptAny).joined(separator: " ")
+            #expect(opts.contains("StrictHostKeyChecking=no"))
+            #expect(opts.contains("UserKnownHostsFile=/dev/null"))
+        }
+
+        @Test(".strict mode enforces yes + known_hosts")
+        func strictMode() {
+            let opts = SSHExecutor.sshOptions(
+                trust: .strict(knownHostsPath: "/tmp/kh")
+            ).joined(separator: " ")
+            #expect(opts.contains("StrictHostKeyChecking=yes"))
+            #expect(opts.contains("UserKnownHostsFile=/tmp/kh"))
         }
     }
 

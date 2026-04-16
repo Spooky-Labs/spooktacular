@@ -34,15 +34,85 @@ import os
 /// All methods are `async` and safe to call from any context.
 public enum SSHExecutor {
 
-    /// Common SSH options that disable host key checking and
-    /// suppress warnings. These are appropriate for ephemeral
-    /// VMs where the host key changes on every clone.
-    public static let sshOptions: [String] = [
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "LogLevel=ERROR",
-        "-o", "ConnectTimeout=5",
-    ]
+    /// The SSH host-key trust model Spooktacular should apply.
+    ///
+    /// The control plane is used against both **ephemeral** VMs
+    /// (every clone has a fresh host key — trust-on-first-use is
+    /// appropriate) and **persistent** VMs (host keys are stable
+    /// and an enterprise auditor expects strict verification).
+    /// A single hard-coded policy can't serve both.
+    public enum HostKeyTrust: Sendable, Equatable {
+        /// Accept any host key. Only safe for freshly-cloned
+        /// ephemeral VMs that are destroyed after use. The mode
+        /// suppresses SSH's "man-in-the-middle" warning, which is
+        /// exactly what you don't want against a persistent VM.
+        case acceptAny
+
+        /// Record the host key on first connection, then require
+        /// it match on subsequent connections. Host keys are
+        /// written to the given path (use a per-VM file to avoid
+        /// cross-VM contamination).
+        case trustOnFirstUse(knownHostsPath: String)
+
+        /// Require a pre-populated known_hosts file. Rejects any
+        /// host whose key isn't already listed. The only mode
+        /// appropriate for enterprise deployments.
+        case strict(knownHostsPath: String)
+    }
+
+    /// The default host-key trust applied when callers don't pass
+    /// one. Can be overridden by setting
+    /// `SPOOK_SSH_HOST_KEY_TRUST=strict` /
+    /// `SPOOK_SSH_KNOWN_HOSTS=...` so operators don't have to
+    /// edit source to enforce it.
+    public static var defaultHostKeyTrust: HostKeyTrust {
+        let env = ProcessInfo.processInfo.environment
+        let mode = env["SPOOK_SSH_HOST_KEY_TRUST"]
+        let path = env["SPOOK_SSH_KNOWN_HOSTS"]
+            ?? NSString("~/.spooktacular/known_hosts").expandingTildeInPath
+
+        switch mode {
+        case "strict":  return .strict(knownHostsPath: path)
+        case "tofu":    return .trustOnFirstUse(knownHostsPath: path)
+        default:        return .trustOnFirstUse(knownHostsPath: path)   // safer default than accept-any
+        }
+    }
+
+    /// Common SSH options. Host-key policy is injected from the
+    /// caller via ``sshOptions(trust:)``; the raw array below
+    /// only carries non-trust flags (log level, connect timeout).
+    public static let sshOptions: [String] = sshOptions(trust: defaultHostKeyTrust)
+
+    /// Builds the full SSH option list for a given trust mode.
+    ///
+    /// Factored so callers that operate against ephemeral VMs
+    /// (CI clones) can pass ``HostKeyTrust/acceptAny`` locally
+    /// without mutating the global default — which previously
+    /// left ALL connections in a safe-for-ephemeral-only mode.
+    public static func sshOptions(trust: HostKeyTrust) -> [String] {
+        var opts: [String] = [
+            "-o", "LogLevel=ERROR",
+            "-o", "ConnectTimeout=5",
+        ]
+        switch trust {
+        case .acceptAny:
+            opts += [
+                "-o", "StrictHostKeyChecking=no",
+                "-o", "UserKnownHostsFile=/dev/null",
+            ]
+        case .trustOnFirstUse(let path):
+            opts += [
+                "-o", "StrictHostKeyChecking=accept-new",
+                "-o", "UserKnownHostsFile=\(path)",
+            ]
+        case .strict(let path):
+            opts += [
+                "-o", "StrictHostKeyChecking=yes",
+                "-o", "UserKnownHostsFile=\(path)",
+            ]
+        }
+        return opts
+    }
 
     // MARK: - Wait for SSH
 
