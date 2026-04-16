@@ -1,4 +1,5 @@
 import ArgumentParser
+import CryptoKit
 import Foundation
 import Network
 import Security
@@ -114,6 +115,42 @@ extension Spook {
                 tlsOptions = options
             }
 
+            // Wire enterprise stack from environment variables
+            let env = ProcessInfo.processInfo.environment
+
+            // RBAC
+            let authService: (any AuthorizationService)?
+            if env["SPOOK_RBAC_CONFIG"] != nil || !insecure {
+                let roleStore = try JSONRoleStore(configPath: env["SPOOK_RBAC_CONFIG"])
+                authService = RBACAuthorization(
+                    roleStore: roleStore,
+                    isolation: SingleTenantIsolation()
+                )
+            } else {
+                authService = nil
+            }
+
+            // Audit sink chain
+            var auditBase: (any AuditSink)?
+            if let auditPath = env["SPOOK_AUDIT_FILE"] {
+                auditBase = try JSONFileAuditSink(path: auditPath)
+            }
+            if let immutablePath = env["SPOOK_AUDIT_IMMUTABLE_PATH"] {
+                let immutable = try AppendOnlyFileAuditStore(path: immutablePath)
+                if let base = auditBase {
+                    auditBase = DualAuditSink(primary: base, secondary: immutable)
+                } else {
+                    auditBase = immutable
+                }
+            }
+            let auditSink: (any AuditSink)?
+            if env["SPOOK_AUDIT_MERKLE"] == "1", let base = auditBase {
+                let key = CryptoKit.Curve25519.Signing.PrivateKey()
+                auditSink = MerkleAuditSink(wrapping: base, signingKey: key)
+            } else {
+                auditSink = auditBase
+            }
+
             let server: HTTPAPIServer
             do {
                 server = try HTTPAPIServer(
@@ -122,6 +159,8 @@ extension Spook {
                     vmDirectory: SpooktacularPaths.vms,
                     spookPath: spookPath,
                     tlsOptions: tlsOptions,
+                    authService: authService,
+                    auditSink: auditSink,
                     insecureMode: insecure
                 )
             } catch let error as HTTPAPIServerError {
