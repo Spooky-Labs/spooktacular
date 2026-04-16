@@ -28,6 +28,16 @@
 - **Everything that needs a Mac** — CI/CD runners, iOS/macOS code signing, remote desktops, MDM profile signing, computer-using AI agents (iMessage, Final Cut Pro, Xcode).
 - **$0 forever** — MIT licensed. No sales calls. No per-core fees. Audit every line of [source code](https://github.com/Spooky-Labs/spooktacular).
 
+### Why not something else?
+
+| Tool | Strength | Where Spooktacular fits instead |
+|------|----------|-----------------------------------|
+| **[Tart](https://tart.run)** | Lightweight CLI for single-host VM workflows, great for local dev. | Spooktacular adds multi-tenant RBAC, OIDC/SAML SSO, a Kubernetes operator with `RunnerPool` CRDs, RFC 6962 Merkle audit, and WORM-backed logs for enterprise fleets. |
+| **[Multipass](https://canonical.com/multipass)** | Canonical's Ubuntu VM manager — Linux guests only. | macOS guests, signed-build CI, iOS simulators, Xcode toolchains — Multipass can't run any of these. |
+| **[UTM](https://mac.getutm.app)** | Excellent desktop GUI for exploring macOS/Linux guests. | UTM is for one-human-at-a-keyboard. Spooktacular is for a control plane with declarative pools, GitHub Actions/Jenkins/CircleCI webhooks, and headless runners. |
+| **[Anka](https://veertu.com/anka-build/)** | Commercial cluster manager for macOS CI. | Spooktacular is free and MIT, uses Apple's Virtualization.framework (no kernel extension), ships a first-class Kubernetes operator, and integrates with cert-manager + Prometheus out of the box. |
+| **[Orbstack](https://orbstack.dev)** | Fast macOS container + Linux VM runtime. | Complements Spooktacular — Orbstack for containers on the host, Spooktacular for a full macOS VM fleet. |
+
 ## Screenshots
 
 <div align="center">

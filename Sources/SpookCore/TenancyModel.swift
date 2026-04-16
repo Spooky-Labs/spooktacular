@@ -77,7 +77,7 @@ public struct RunnerGroupID: Hashable, Codable, Sendable, CustomStringConvertibl
 /// 4. No break-glass shell in multi-tenant mode by default.
 /// 5. No scheduler decision without tenant and host-pool filters.
 /// 6. No audit record without tenant and actor identity.
-public struct AuthorizationContext: Sendable {
+public struct AuthorizationContext: Sendable, Equatable {
     /// Who is making the request.
     public let actorIdentity: String
 
@@ -149,7 +149,7 @@ public enum AuthScope: String, Codable, Sendable, Comparable {
 /// In single-tenant mode, warm-pool reuse is allowed with scrub
 /// validation. In multi-tenant mode, cross-tenant reuse is forbidden
 /// and ephemeral mode is strongly recommended.
-public struct ReusePolicy: Sendable, Codable {
+public struct ReusePolicy: Sendable, Codable, Equatable {
     /// Whether warm-pool reuse is allowed at all.
     public let warmPoolAllowed: Bool
 
@@ -208,7 +208,7 @@ public struct ReusePolicy: Sendable, Codable {
 /// Every action — API call, VM lifecycle event, guest agent command,
 /// scheduler decision — produces an audit record. These are
 /// forwarded to the configured ``AuditSink``.
-public struct AuditRecord: Sendable, Codable {
+public struct AuditRecord: Sendable, Codable, Equatable {
     /// Unique ID for this audit entry.
     public let id: String
 

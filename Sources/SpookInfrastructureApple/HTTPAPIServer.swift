@@ -1080,7 +1080,7 @@ public actor HTTPAPIServer {
             logger.notice("[\(self.tenantID.description, privacy: .public)] Started VM '\(name, privacy: .public)' via API (PID \(process.processIdentifier), log: \(logFileURL.path, privacy: .public))")
             return HTTPResponse.ok(VMActionResponse(
                 name: name,
-                action: "start",
+                action: .start,
                 pid: Int(process.processIdentifier),
                 log: logFileURL.path
             ))
@@ -1120,7 +1120,7 @@ public actor HTTPAPIServer {
             logger.notice("[\(self.tenantID.description, privacy: .public)] Sent SIGTERM to VM '\(name, privacy: .public)' (PID \(pid))")
             return HTTPResponse.ok(VMActionResponse(
                 name: name,
-                action: "stop",
+                action: .stop,
                 pid: Int(pid),
                 log: nil
             ))
@@ -1228,13 +1228,13 @@ public actor HTTPAPIServer {
             memorySizeInGigabytes: spec.memorySizeInGigabytes,
             diskSizeInGigabytes: spec.diskSizeInGigabytes,
             displays: spec.displayCount,
-            network: spec.networkMode.serialized,
+            network: spec.networkMode,
             audio: spec.audioEnabled,
             microphone: spec.microphoneEnabled,
             macAddress: spec.macAddress?.rawValue,
             setupCompleted: metadata.setupCompleted,
-            id: metadata.id.uuidString,
-            createdAt: Self.iso8601Formatter.string(from: metadata.createdAt),
+            id: metadata.id,
+            createdAt: metadata.createdAt,
             path: bundle.url.path
         )
     }

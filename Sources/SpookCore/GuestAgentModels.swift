@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Returned by `GET /health`. Use this to verify the agent is
 /// running and to check version compatibility.
-public struct GuestHealthResponse: Codable, Sendable {
+public struct GuestHealthResponse: Codable, Sendable, Equatable {
     /// Always `"ok"` when the agent is healthy.
     public let status: String
     /// The agent's semantic version string.
@@ -20,7 +20,7 @@ public struct GuestHealthResponse: Codable, Sendable {
 /// Returned by `POST /api/v1/exec`. The ``exitCode`` follows
 /// standard UNIX conventions: 0 means success, non-zero means
 /// failure.
-public struct GuestExecResponse: Codable, Sendable {
+public struct GuestExecResponse: Codable, Sendable, Equatable {
     /// The process exit code (0 = success).
     public let exitCode: Int32
     /// Standard output captured from the process.
@@ -33,7 +33,7 @@ public struct GuestExecResponse: Codable, Sendable {
 ///
 /// Returned by `GET /api/v1/apps` (as an array) and
 /// `GET /api/v1/apps/frontmost` (single, optional).
-public struct GuestAppInfo: Codable, Sendable {
+public struct GuestAppInfo: Codable, Sendable, Equatable {
     /// The localized application name (e.g., "Safari").
     public let name: String
     /// The CFBundleIdentifier (e.g., `"com.apple.Safari"`).
@@ -47,7 +47,7 @@ public struct GuestAppInfo: Codable, Sendable {
 /// A file-system directory entry inside the guest.
 ///
 /// Returned by `GET /api/v1/fs?path=...` as an array of entries.
-public struct GuestFSEntry: Codable, Sendable {
+public struct GuestFSEntry: Codable, Sendable, Equatable {
     /// The file or directory name (not a full path).
     public let name: String
     /// `true` if this entry is a directory.
@@ -59,7 +59,7 @@ public struct GuestFSEntry: Codable, Sendable {
 /// Metadata about a file available for download from the guest.
 ///
 /// Returned by `GET /api/v1/files` as an array.
-public struct GuestFileInfo: Codable, Sendable {
+public struct GuestFileInfo: Codable, Sendable, Equatable {
     /// The file name.
     public let name: String
     /// The file contents, Base64-encoded.
@@ -69,7 +69,7 @@ public struct GuestFileInfo: Codable, Sendable {
 /// Information about a listening TCP port inside the guest.
 ///
 /// Returned by `GET /api/v1/ports` as an array.
-public struct GuestPortInfo: Codable, Sendable {
+public struct GuestPortInfo: Codable, Sendable, Equatable {
     /// The TCP port number.
     public let port: UInt16
     /// The process ID that owns the socket.
@@ -81,7 +81,7 @@ public struct GuestPortInfo: Codable, Sendable {
 // MARK: - Internal Request Bodies
 
 /// JSON body for `POST /api/v1/exec`.
-public struct GuestExecRequest: Codable, Sendable {
+public struct GuestExecRequest: Codable, Sendable, Equatable {
     public let command: String
     public let timeout: Int?
 
@@ -92,7 +92,7 @@ public struct GuestExecRequest: Codable, Sendable {
 }
 
 /// JSON body for `POST /api/v1/clipboard`.
-public struct GuestClipboardContent: Codable, Sendable {
+public struct GuestClipboardContent: Codable, Sendable, Equatable {
     public let text: String
 
     public init(text: String) {
@@ -102,7 +102,7 @@ public struct GuestClipboardContent: Codable, Sendable {
 
 /// JSON body for `POST /api/v1/apps/launch` and
 /// `POST /api/v1/apps/quit`.
-public struct GuestAppRequest: Codable, Sendable {
+public struct GuestAppRequest: Codable, Sendable, Equatable {
     public let bundleID: String
 
     public init(bundleID: String) {
@@ -111,7 +111,7 @@ public struct GuestAppRequest: Codable, Sendable {
 }
 
 /// JSON body for `POST /api/v1/files`.
-public struct GuestFilePayload: Codable, Sendable {
+public struct GuestFilePayload: Codable, Sendable, Equatable {
     public let name: String
     public let data: String
 

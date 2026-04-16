@@ -99,6 +99,22 @@ let package = Package(
         ),
 
         // ──────────────────────────────────────────────
+        // Examples — minimum-viable embedding programs that
+        // demonstrate the library API. Engineers reading the
+        // project as a reference start here.
+        // ──────────────────────────────────────────────
+        .executableTarget(
+            name: "VMLifecycle",
+            dependencies: ["SpookCore", "SpookApplication", "SpookInfrastructureApple"],
+            path: "Examples/VMLifecycle"
+        ),
+        .executableTarget(
+            name: "GuestAgentRPC",
+            dependencies: ["SpookCore", "SpookInfrastructureApple"],
+            path: "Examples/GuestAgentRPC"
+        ),
+
+        // ──────────────────────────────────────────────
         // Tests
         // ──────────────────────────────────────────────
         .testTarget(

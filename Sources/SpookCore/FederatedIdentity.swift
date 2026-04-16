@@ -12,7 +12,7 @@ import Foundation
 /// This is a domain value type — it depends only on Foundation and
 /// carries no framework imports. Infrastructure-layer verifiers
 /// (OIDC, SAML) create instances; the application layer consumes them.
-public struct FederatedIdentity: Sendable, Codable {
+public struct FederatedIdentity: Sendable, Codable, Equatable {
     /// The identity provider (e.g., "https://accounts.google.com", "okta.example.com").
     public let issuer: String
     /// The subject claim — unique user/service ID within the issuer.
@@ -53,6 +53,34 @@ public struct FederatedIdentity: Sendable, Codable {
     public var isExpired: Bool {
         guard let exp = expiresAt else { return false }
         return Date() > exp
+    }
+
+    /// Derives a ``FederatedIdentity`` from a SAML assertion.
+    ///
+    /// Prefers the `email` attribute when present, otherwise falls
+    /// back to ``SAMLAssertion/nameID`` if the NameID format indicates
+    /// an email address. Groups come from whichever of `groups`,
+    /// `role`, or `memberOf` the IdP returned.
+    ///
+    /// Per Swift API Design Guidelines, this is a failable-free
+    /// initializer on the destination type rather than a
+    /// `to{Target}()` method on the source.
+    public init(saml assertion: SAMLAssertion) {
+        let groups = assertion.attributes["groups"]
+            ?? assertion.attributes["role"]
+            ?? assertion.attributes["memberOf"]
+            ?? []
+        let email = assertion.attributes["email"]?.first
+            ?? (assertion.nameIDFormat?.contains("emailAddress") == true ? assertion.nameID : nil)
+        self.init(
+            issuer: assertion.issuer,
+            subject: assertion.nameID,
+            displayName: assertion.attributes["displayName"]?.first,
+            email: email,
+            groups: groups,
+            expiresAt: assertion.sessionExpiresAt,
+            claims: assertion.attributes.mapValues { $0.joined(separator: ",") }
+        )
     }
 }
 

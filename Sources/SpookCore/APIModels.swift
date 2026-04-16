@@ -4,23 +4,33 @@ import Foundation
 
 /// The status of a VM as reported by the API.
 ///
-/// Every VM resource in the API includes these fields. This struct
-/// is the single source of truth for JSON serialization -- both the
-/// CLI `--json` output and the HTTP API share the same shape.
-public struct VMStatus: Codable, Sendable {
+/// Every VM resource in the API includes these fields. This struct is
+/// the single source of truth for JSON serialization — both the CLI
+/// `--json` output and the HTTP API share the same shape.
+public struct VMStatus: Codable, Sendable, Equatable {
+
     public let name: String
     public let running: Bool
     public let cpu: Int
     public let memorySizeInGigabytes: UInt64
     public let diskSizeInGigabytes: UInt64
     public let displays: Int
-    public let network: String
+
+    /// Network mode as a typed enum. Serializes as its raw string.
+    public let network: NetworkMode
+
     public let audio: Bool
     public let microphone: Bool
     public let macAddress: String?
     public let setupCompleted: Bool
-    public let id: String
-    public let createdAt: String
+
+    /// Stable UUID assigned when the VM bundle was created.
+    public let id: UUID
+
+    /// When the VM bundle was created.
+    public let createdAt: Date
+
+    /// Absolute path to the VM bundle directory.
     public let path: String
 
     public init(
@@ -30,13 +40,13 @@ public struct VMStatus: Codable, Sendable {
         memorySizeInGigabytes: UInt64,
         diskSizeInGigabytes: UInt64,
         displays: Int,
-        network: String,
+        network: NetworkMode,
         audio: Bool,
         microphone: Bool,
         macAddress: String?,
         setupCompleted: Bool,
-        id: String,
-        createdAt: String,
+        id: UUID,
+        createdAt: Date,
         path: String
     ) {
         self.name = name
@@ -56,14 +66,25 @@ public struct VMStatus: Codable, Sendable {
     }
 }
 
-/// Response for start/stop actions.
-public struct VMActionResponse: Codable, Sendable {
+/// Actions a VM can be subject to via the lifecycle API.
+public enum VMAction: String, Codable, Sendable, CaseIterable, Equatable {
+    case start
+    case stop
+    case restart
+    case clone
+    case delete
+    case snapshot
+    case restore
+}
+
+/// Response for start/stop/clone/delete action requests.
+public struct VMActionResponse: Codable, Sendable, Equatable {
     public let name: String
-    public let action: String
+    public let action: VMAction
     public let pid: Int?
     public let log: String?
 
-    public init(name: String, action: String, pid: Int?, log: String?) {
+    public init(name: String, action: VMAction, pid: Int?, log: String?) {
         self.name = name
         self.action = action
         self.pid = pid
@@ -72,7 +93,7 @@ public struct VMActionResponse: Codable, Sendable {
 }
 
 /// Response for delete actions.
-public struct VMDeleteResponse: Codable, Sendable {
+public struct VMDeleteResponse: Codable, Sendable, Equatable {
     public let name: String
     public let deleted: Bool
 
@@ -83,7 +104,7 @@ public struct VMDeleteResponse: Codable, Sendable {
 }
 
 /// Response for IP resolution.
-public struct VMIPResponse: Codable, Sendable {
+public struct VMIPResponse: Codable, Sendable, Equatable {
     public let name: String
     public let ip: String
     public let mac: String
@@ -96,7 +117,7 @@ public struct VMIPResponse: Codable, Sendable {
 }
 
 /// Response for health check.
-public struct HealthResponse: Codable, Sendable {
+public struct HealthResponse: Codable, Sendable, Equatable {
     public let service: String
     public let version: String
 
@@ -107,7 +128,7 @@ public struct HealthResponse: Codable, Sendable {
 }
 
 /// Response for VM list.
-public struct VMListResponse: Codable, Sendable {
+public struct VMListResponse: Codable, Sendable, Equatable {
     public let vms: [VMStatus]
 
     public init(vms: [VMStatus]) {
