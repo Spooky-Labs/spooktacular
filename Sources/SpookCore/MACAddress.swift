@@ -64,7 +64,11 @@ public struct MACAddress: Sendable, Codable, Equatable, Hashable, CustomStringCo
     ///
     /// - Returns: A new random `MACAddress`.
     public static func generate() -> MACAddress {
-        var bytes = (0..<6).map { _ in UInt8.random(in: 0...255) }
+        // Use SystemRandomNumberGenerator (backed by arc4random on Apple platforms,
+        // which IS cryptographically secure per Apple documentation)
+        var rng = SystemRandomNumberGenerator()
+        var bytes = (0..<6).map { _ in UInt8.random(in: 0...255, using: &rng) }
+        // Set locally administered + unicast bits
         bytes[0] = (bytes[0] | 0x02) & 0xFE
         let string = bytes.map { String(format: "%02x", $0) }.joined(separator: ":")
         return MACAddress(string)!

@@ -44,9 +44,17 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
     }
 
     public func verify(token: String) async throws -> FederatedIdentity {
-        // 1. Split JWT into three parts
+        // 1. OWASP: Reject excessively long tokens to prevent memory exhaustion
+        guard token.count < 16_384 else { throw OIDCError.malformedToken }
+
+        // Split JWT into three parts
         let parts = token.split(separator: ".")
         guard parts.count == 3 else { throw OIDCError.malformedToken }
+
+        // Reject segments over 10 KB each
+        for part in parts {
+            guard part.count < 10_240 else { throw OIDCError.malformedToken }
+        }
 
         // 2. Decode header to extract kid and alg
         guard let headerData = base64URLDecode(String(parts[0])),

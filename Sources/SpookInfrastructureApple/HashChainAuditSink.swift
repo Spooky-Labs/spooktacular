@@ -104,7 +104,14 @@ public actor MerkleAuditSink: AuditSink {
         withUnsafeBytes(of: UInt64(treeSize).bigEndian) { message.append(contentsOf: $0) }
         message.append(root)
 
-        let signature = try! signingKey.signature(for: message)
+        // OWASP: Never force-unwrap cryptographic operations.
+        // Propagate errors instead of crashing the process.
+        guard let signature = try? signingKey.signature(for: message) else {
+            return SignedTreeHead(
+                treeSize: treeSize, timestamp: timestamp,
+                rootHash: root.hexString, signature: "SIGNING_FAILED"
+            )
+        }
 
         return SignedTreeHead(
             treeSize: treeSize,

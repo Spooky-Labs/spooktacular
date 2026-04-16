@@ -105,14 +105,29 @@ public struct FIPSKeyStore: Sendable {
     }
 
     /// Fallback: creates a software-backed key when Secure Enclave is unavailable.
+    ///
+    /// - Warning: Software keys are NOT FIPS 140-2 compliant. This fallback
+    ///   exists for CI/VM environments only. Production deployments should
+    ///   always use Apple Silicon with Secure Enclave.
     private static func createSoftwareKey(tag: String) throws -> Data {
         var error: Unmanaged<CFError>?
+        // OWASP: Apply access control even on software keys to prevent
+        // export by other processes running under the same user.
+        guard let access = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            [.privateKeyUsage],
+            &error
+        ) else {
+            throw FIPSError.accessControlFailed
+        }
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits as String: 256,
             kSecPrivateKeyAttrs as String: [
                 kSecAttrIsPermanent as String: true,
                 kSecAttrApplicationTag as String: tag.data(using: .utf8)!,
+                kSecAttrAccessControl as String: access,
             ] as [String: Any],
         ]
         guard let privateKey = SecKeyCreateRandomKey(attributes as CFDictionary, &error),
