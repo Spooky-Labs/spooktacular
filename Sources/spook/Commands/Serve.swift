@@ -169,6 +169,22 @@ extension Spook {
                 }
             }
 
+            // Distributed lock (for multi-instance coordination)
+            let lockDir = env["SPOOK_LOCK_DIR"]
+            if lockDir != nil || tenancyMode == .multiTenant {
+                let lock = FileDistributedLock(lockDir: lockDir)
+                if let lease = try? await lock.acquire(
+                    name: "spook-serve-\(port)",
+                    holder: ProcessInfo.processInfo.hostName,
+                    duration: 300
+                ) {
+                    print(Style.info("Acquired lock: \(lease.name)"))
+                } else {
+                    print(Style.error("Another spook serve instance holds the lock. Use a different port or wait."))
+                    throw ExitCode.failure
+                }
+            }
+
             // Audit sink chain
             var auditBase: (any AuditSink)?
             if let auditPath = env["SPOOK_AUDIT_FILE"] {
