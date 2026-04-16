@@ -37,6 +37,9 @@ public enum GuestAgentError: Error, Sendable, LocalizedError {
     /// The agent did not respond within the expected time.
     case timeout
 
+    /// Shell execution requires a break-glass token but none was configured.
+    case breakGlassTokenRequired
+
     public var errorDescription: String? {
         switch self {
         case .notConnected:
@@ -47,6 +50,8 @@ public enum GuestAgentError: Error, Sendable, LocalizedError {
             "The guest agent returned an unparseable response."
         case .timeout:
             "The guest agent did not respond in time."
+        case .breakGlassTokenRequired:
+            "Shell execution requires a break-glass token. Configure breakGlassToken on GuestAgentClient."
         }
     }
 
@@ -62,6 +67,9 @@ public enum GuestAgentError: Error, Sendable, LocalizedError {
         case .timeout:
             "The guest may be under heavy load. Retry the operation, "
             + "or check that spooktacular-agent is running inside the VM."
+        case .breakGlassTokenRequired:
+            "Configure a break-glass token when creating GuestAgentClient: "
+            + "GuestAgentClient(socketDevice: device, breakGlassToken: \"your-token\")"
         }
     }
 }

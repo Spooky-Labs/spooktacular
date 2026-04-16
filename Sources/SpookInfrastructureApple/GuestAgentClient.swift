@@ -134,6 +134,10 @@ public actor GuestAgentClient {
     /// - Returns: The exit code, stdout, and stderr from the command.
     /// - Throws: ``GuestAgentError`` if the connection or request fails.
     public func exec(_ command: String) async throws -> GuestExecResponse {
+        // Host-side enforcement: require break-glass token for shell operations
+        guard breakGlassToken != nil else {
+            throw GuestAgentError.breakGlassTokenRequired
+        }
         let body = GuestExecRequest(command: command, timeout: nil)
         return try await request(
             method: "POST", path: "/api/v1/exec",
