@@ -75,7 +75,7 @@ actor NodeManager {
     private let apiPort: UInt16
     private let scheme: String
     private let labelSelector: String
-    private let healthSession: URLSession
+    private let http: any HTTPClient
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "node-mgr")
 
     /// Creates a node manager.
@@ -104,7 +104,7 @@ actor NodeManager {
         self.apiPort = apiPort
         self.scheme = "https"
         self.labelSelector = labelSelector
-        self.healthSession = tlsProvider.configuredSession()
+        self.http = tlsProvider.makeHTTPClient()
     }
 
     /// Creates a development-only node manager without TLS.
@@ -121,7 +121,7 @@ actor NodeManager {
         self.apiPort = apiPort
         self.scheme = scheme
         self.labelSelector = labelSelector
-        self.healthSession = URLSession(configuration: .ephemeral)
+        self.http = URLSessionHTTPClient(session: URLSession(configuration: .ephemeral))
     }
 
     // MARK: - Discovery
@@ -158,11 +158,11 @@ actor NodeManager {
     func checkHealth() async {
         for (name, var endpoint) in nodes {
             let healthURL = endpoint.apiURL.appendingPathComponent("/health")
-            var request = URLRequest(url: healthURL)
-            request.timeoutInterval = 5
             do {
-                let (_, response) = try await healthSession.data(for: request)
-                endpoint.healthy = ((response as? HTTPURLResponse)?.statusCode).map { (200..<300).contains($0) } ?? false
+                let response = try await http.execute(
+                    DomainHTTPRequest(method: .get, url: healthURL, timeout: 5)
+                )
+                endpoint.healthy = response.isSuccess
             } catch {
                 endpoint.healthy = false
             }

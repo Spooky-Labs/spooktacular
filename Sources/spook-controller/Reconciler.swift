@@ -14,6 +14,7 @@ import FoundationNetworking
 import os
 import SpookCore
 import SpookApplication
+import SpookInfrastructureApple
 
 // MARK: - Reconciler
 
@@ -21,7 +22,7 @@ actor Reconciler {
 
     private let client: KubernetesClient
     private let nodeManager: NodeManager
-    private let session: URLSession
+    private let http: any HTTPClient
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "reconciler")
     private var inFlight: Set<String> = []
 
@@ -38,7 +39,7 @@ actor Reconciler {
     init(client: KubernetesClient, nodeManager: NodeManager, tlsProvider: any TLSIdentityProvider) {
         self.client = client
         self.nodeManager = nodeManager
-        self.session = tlsProvider.configuredSession()
+        self.http = tlsProvider.makeHTTPClient()
     }
 
     /// Creates a development-only reconciler without TLS.
@@ -48,7 +49,7 @@ actor Reconciler {
         precondition(insecure, "Use init(client:nodeManager:tlsProvider:) for production")
         self.client = client
         self.nodeManager = nodeManager
-        self.session = URLSession(configuration: .ephemeral)
+        self.http = URLSessionHTTPClient(session: URLSession(configuration: .ephemeral))
     }
 
     // MARK: - Main Loop
@@ -122,7 +123,7 @@ actor Reconciler {
 
         // Clone
         await setStatus(name: name, phase: .cloning, nodeName: nodeName)
-        let cloneResult = await callNodeAPI(endpoint: endpoint, method: "POST",
+        let cloneResult = await callNodeAPI(endpoint: endpoint, method: .post,
                                             path: "/v1/vms/\(name)/clone", body: ["source": vm.spec.baseImage])
         switch cloneResult {
         case .success: logger.info("Cloned '\(name, privacy: .public)' on \(nodeName, privacy: .public)")
@@ -134,7 +135,7 @@ actor Reconciler {
 
         // Start
         await setStatus(name: name, phase: .starting, nodeName: nodeName)
-        let startResult = await callNodeAPI(endpoint: endpoint, method: "POST",
+        let startResult = await callNodeAPI(endpoint: endpoint, method: .post,
                                             path: "/v1/vms/\(name)/start", body: nil)
         switch startResult {
         case .success, .conflict:
@@ -207,14 +208,14 @@ actor Reconciler {
         }
 
         // --- Stop the VM ---
-        if case .success = await callNodeAPI(endpoint: endpoint, method: "POST",
+        if case .success = await callNodeAPI(endpoint: endpoint, method: .post,
                                              path: "/v1/vms/\(name)/stop", body: nil) {
             logger.info("Stopped '\(name, privacy: .public)' on \(nodeName, privacy: .public)")
             try? await Task.sleep(for: .seconds(2))
         }
 
         // --- Delete the VM ---
-        let result = await callNodeAPI(endpoint: endpoint, method: "DELETE",
+        let result = await callNodeAPI(endpoint: endpoint, method: .delete,
                                        path: "/v1/vms/\(name)", body: nil)
         switch result {
         case .success:
@@ -271,7 +272,7 @@ actor Reconciler {
     // MARK: - IP Resolution
 
     private func resolveIP(name: String, endpoint: NodeEndpoint, nodeName: String) async {
-        if case .success(let data) = await callNodeAPI(endpoint: endpoint, method: "GET",
+        if case .success(let data) = await callNodeAPI(endpoint: endpoint, method: .get,
                                                        path: "/v1/vms/\(name)/ip", body: nil),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let inner = json["data"] as? [String: Any],
@@ -297,27 +298,27 @@ actor Reconciler {
 
     private enum NodeAPIResult { case success(Data), conflict, failure(String) }
 
-    private func callNodeAPI(endpoint: NodeEndpoint, method: String,
+    private func callNodeAPI(endpoint: NodeEndpoint, method: DomainHTTPRequest.Method,
                              path: String, body: [String: String]?) async -> NodeAPIResult {
         let url = endpoint.apiURL.appendingPathComponent(path)
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.timeoutInterval = 30
+        var headers: [String: String] = [:]
         if let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"], !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            headers["Authorization"] = "Bearer \(token)"
         }
+        var bodyData: Data?
         if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            headers["Content-Type"] = "application/json"
+            bodyData = try? JSONSerialization.data(withJSONObject: body)
         }
 
         do {
-            let (data, response) = try await session.data(for: request)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            switch code {
-            case 200..<300: return .success(data)
+            let response = try await http.execute(DomainHTTPRequest(
+                method: method, url: url, headers: headers, body: bodyData, timeout: 30
+            ))
+            switch response.statusCode {
+            case 200..<300: return .success(response.body)
             case 409:       return .conflict
-            default:        return .failure(extractError(from: data) ?? "HTTP \(code)")
+            default:        return .failure(extractError(from: response.body) ?? "HTTP \(response.statusCode)")
             }
         } catch {
             return .failure(error.localizedDescription)

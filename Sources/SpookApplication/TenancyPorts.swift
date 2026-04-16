@@ -33,18 +33,6 @@ public protocol TenantIsolationPolicy: Sendable {
     func breakGlassAllowed(for tenant: TenantID) -> Bool
 }
 
-// MARK: - Audit Sink
-
-/// Receives structured audit records and forwards them to storage.
-///
-/// Implementations may write to os.Logger, forward to a SIEM,
-/// append to a file, or publish to an event stream. The key contract:
-/// every control-plane action produces exactly one audit record.
-public protocol AuditSink: Sendable {
-    /// Records an audit event.
-    func record(_ entry: AuditRecord) async
-}
-
 // MARK: - Default Implementations
 
 /// Single-tenant authorization with optional RBAC.

@@ -82,9 +82,15 @@ final class VZScreenReader: ScreenReader {
             guard let candidate = observation.topCandidates(1).first else {
                 return nil
             }
+            let bbox = observation.boundingBox
             return SpooktacularKit.RecognizedText(
                 text: candidate.string,
-                boundingBox: observation.boundingBox,
+                boundingBox: NormalizedRect(
+                    x: Double(bbox.origin.x),
+                    y: Double(bbox.origin.y),
+                    width: Double(bbox.width),
+                    height: Double(bbox.height)
+                ),
                 confidence: candidate.confidence
             )
         }

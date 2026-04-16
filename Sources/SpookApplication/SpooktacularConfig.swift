@@ -1,4 +1,5 @@
 import Foundation
+import SpookCore
 
 /// Strongly-typed configuration for Spooktacular deployments.
 ///

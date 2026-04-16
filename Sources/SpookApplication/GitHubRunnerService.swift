@@ -105,7 +105,7 @@ public actor GitHubRunnerService {
     /// - Throws: ``GitHubServiceError`` on failure.
     public func createRegistrationToken(scope: String) async throws -> String {
         let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners/registration-token")!
-        let (data, _) = try await request(url: url, method: "POST")
+        let (data, _) = try await request(url: url, method: .post)
         let response = try JSONDecoder().decode(RegistrationTokenResponse.self, from: data)
         log.info("Created registration token for \(scope)")
         return response.token
@@ -119,7 +119,7 @@ public actor GitHubRunnerService {
     /// - Throws: ``GitHubServiceError`` on failure.
     public func removeRunner(runnerId: Int, scope: String) async throws {
         let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners/\(runnerId)")!
-        let (_, _) = try await request(url: url, method: "DELETE")
+        let (_, _) = try await request(url: url, method: .delete)
         log.info("Removed runner \(runnerId) from \(scope)")
     }
 
@@ -130,7 +130,7 @@ public actor GitHubRunnerService {
     /// - Throws: ``GitHubServiceError`` on failure.
     public func listRunners(scope: String) async throws -> [RunnerSummary] {
         let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners")!
-        let (data, _) = try await request(url: url, method: "GET")
+        let (data, _) = try await request(url: url, method: .get)
         let response = try JSONDecoder().decode(RunnerListResponse.self, from: data)
         log.info("Listed \(response.runners.count) runners for \(scope)")
         return response.runners
@@ -142,25 +142,27 @@ public actor GitHubRunnerService {
     ///
     /// - Parameters:
     ///   - url: The fully qualified API URL.
-    ///   - method: The HTTP method (e.g., `"GET"`, `"POST"`, `"DELETE"`).
+    ///   - method: The HTTP method.
     /// - Returns: A tuple of the response body data and the HTTP response.
-    /// - Throws: ``GitHubServiceError`` on non-success status codes or invalid responses.
-    private func request(url: URL, method: String) async throws -> (Data, HTTPURLResponse) {
-        var urlRequest = URLRequest(url: url)
-        urlRequest.httpMethod = method
-
+    /// - Throws: ``GitHubServiceError`` on non-success status codes.
+    private func request(url: URL, method: DomainHTTPRequest.Method) async throws -> (Data, DomainHTTPResponse) {
         let bearerToken = try await auth.token()
-        urlRequest.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        urlRequest.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        urlRequest.setValue(Self.apiVersion, forHTTPHeaderField: "X-GitHub-Api-Version")
+        let request = DomainHTTPRequest(
+            method: method,
+            url: url,
+            headers: [
+                "Authorization": "Bearer \(bearerToken)",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": Self.apiVersion,
+            ]
+        )
+        let response = try await http.execute(request)
 
-        let (data, httpResponse) = try await http.execute(urlRequest)
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "<unreadable>"
-            throw GitHubServiceError.apiError(statusCode: httpResponse.statusCode, body: body)
+        guard response.isSuccess else {
+            let body = String(data: response.body, encoding: .utf8) ?? "<unreadable>"
+            throw GitHubServiceError.apiError(statusCode: response.statusCode, body: body)
         }
 
-        return (data, httpResponse)
+        return (response.body, response)
     }
 }

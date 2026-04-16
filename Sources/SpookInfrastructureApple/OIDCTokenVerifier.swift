@@ -168,18 +168,16 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
     private func fetchJWKS() async throws -> [[String: Any]] {
         // 1. Fetch .well-known/openid-configuration
         let configURL = URL(string: "\(config.issuerURL)/.well-known/openid-configuration")!
-        let configReq = URLRequest(url: configURL)
-        let (configData, _) = try await http.execute(configReq)
-        guard let configJSON = try? JSONSerialization.jsonObject(with: configData) as? [String: Any],
+        let configResponse = try await http.execute(DomainHTTPRequest(method: .get, url: configURL))
+        guard let configJSON = try? JSONSerialization.jsonObject(with: configResponse.body) as? [String: Any],
               let jwksURI = configJSON["jwks_uri"] as? String,
               let jwksURL = URL(string: jwksURI) else {
             throw OIDCError.jwksFetchFailed
         }
 
         // 2. Fetch JWKS
-        let jwksReq = URLRequest(url: jwksURL)
-        let (jwksData, _) = try await http.execute(jwksReq)
-        guard let jwksJSON = try? JSONSerialization.jsonObject(with: jwksData) as? [String: Any],
+        let jwksResponse = try await http.execute(DomainHTTPRequest(method: .get, url: jwksURL))
+        guard let jwksJSON = try? JSONSerialization.jsonObject(with: jwksResponse.body) as? [String: Any],
               let keys = jwksJSON["keys"] as? [[String: Any]] else {
             throw OIDCError.jwksFetchFailed
         }

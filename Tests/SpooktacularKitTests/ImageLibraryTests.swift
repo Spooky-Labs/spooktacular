@@ -6,6 +6,7 @@ import Foundation
 @testable import SpookCore
 
 @Suite("ImageLibrary", .tags(.infrastructure))
+@MainActor
 struct ImageLibraryTests {
 
     // MARK: - IPSW

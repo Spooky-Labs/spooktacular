@@ -59,10 +59,12 @@ public enum ImageSource: Sendable, Codable, Equatable {
 /// library.addIPSW(at: ipswURL, name: "macOS 15.4")
 /// let images = library.images
 /// ```
-/// - Important: This class is not thread-safe. Access it only
-///   from `@MainActor` (as `AppState` does) or a single serial
-///   context.
-public final class ImageLibrary: @unchecked Sendable {
+/// All access is main-actor-isolated. The `@MainActor` annotation is
+/// not a suggestion — mutating `images` off the main actor is a data
+/// race. Consumers driving the library from a background task must
+/// `await MainActor.run { ... }` or mark their callsite `@MainActor`.
+@MainActor
+public final class ImageLibrary: Sendable {
 
     /// The directory where images and metadata are stored.
     public let directory: URL

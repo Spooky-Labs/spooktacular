@@ -1,4 +1,41 @@
+// No imports — stdlib only. Deliberately avoids importing Foundation
+// so ``NormalizedRect`` stays a pure value type with no dependency on
+// CoreGraphics `CGRect` (which the adapter layer converts from/to).
 import Foundation
+
+/// A rectangle in normalized coordinates (0…1 on both axes).
+///
+/// Used by ``RecognizedText`` to describe OCR bounding boxes in a
+/// framework-independent form. Vision framework's coordinate
+/// convention is origin-bottom-left — callers converting to view
+/// coordinates must flip the y axis as `viewY = 1 - midY`.
+public struct NormalizedRect: Sendable, Equatable, Hashable {
+
+    /// X coordinate of the origin corner in the 0…1 range.
+    public let x: Double
+
+    /// Y coordinate of the origin corner in the 0…1 range.
+    public let y: Double
+
+    /// Width in the 0…1 range.
+    public let width: Double
+
+    /// Height in the 0…1 range.
+    public let height: Double
+
+    public init(x: Double, y: Double, width: Double, height: Double) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+
+    /// X coordinate of the centre of the rectangle.
+    public var midX: Double { x + width / 2 }
+
+    /// Y coordinate of the centre of the rectangle.
+    public var midY: Double { y + height / 2 }
+}
 
 /// Reads text from a virtual machine's display.
 ///
@@ -75,7 +112,7 @@ public struct RecognizedText: Sendable {
     ///
     /// To convert to view coordinates (top-left origin), flip the
     /// y-axis: `viewY = 1.0 - boundingBox.midY`.
-    public let boundingBox: CGRect
+    public let boundingBox: NormalizedRect
 
     /// Recognition confidence (0--1).
     ///
@@ -89,7 +126,7 @@ public struct RecognizedText: Sendable {
     ///   - text: The recognized string.
     ///   - boundingBox: Normalized bounding box (0--1, bottom-left origin).
     ///   - confidence: Recognition confidence (0--1).
-    public init(text: String, boundingBox: CGRect, confidence: Float) {
+    public init(text: String, boundingBox: NormalizedRect, confidence: Float) {
         self.text = text
         self.boundingBox = boundingBox
         self.confidence = confidence

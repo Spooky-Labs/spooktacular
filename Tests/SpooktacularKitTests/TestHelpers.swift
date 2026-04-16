@@ -105,13 +105,14 @@ actor CollectingAuditSink: AuditSink {
 struct MockHTTPClient: HTTPClient, Sendable {
     var responseData: Data = Data()
     var statusCode: Int = 200
+    var responseHeaders: [String: String] = [:]
 
-    func execute(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let response = HTTPURLResponse(
-            url: request.url!, statusCode: statusCode,
-            httpVersion: nil, headerFields: nil
-        )!
-        return (responseData, response)
+    func execute(_ request: DomainHTTPRequest) async throws -> DomainHTTPResponse {
+        DomainHTTPResponse(
+            statusCode: statusCode,
+            headers: responseHeaders,
+            body: responseData
+        )
     }
 }
 

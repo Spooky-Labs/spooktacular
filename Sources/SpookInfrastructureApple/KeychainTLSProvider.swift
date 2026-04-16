@@ -73,11 +73,13 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
 
     // MARK: - TLSIdentityProvider
 
-    /// Returns a `URLSession` whose delegate handles mTLS challenges.
-    public func configuredSession() -> URLSession {
+    /// Returns an ``HTTPClient`` wired to a `URLSession` whose delegate
+    /// handles mTLS challenges with anchor-pinned server trust.
+    public func makeHTTPClient() -> any HTTPClient {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
-        return URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        return URLSessionHTTPClient(session: session)
     }
 
     // MARK: - URLSessionDelegate

@@ -103,7 +103,15 @@ public final class VirtualMachine: NSObject, Sendable {
 
     /// The underlying Virtualization framework VM.
     ///
-    /// Access only from the main actor.
+    /// Exposed **solely** so a `VZVirtualMachineView` (SwiftUI/AppKit)
+    /// can bind its `virtualMachine` property for display. Call
+    /// Virtualization APIs directly at your own risk — the lifecycle,
+    /// state, and thread-safety contracts live on ``VirtualMachine``
+    /// itself, and bypassing them produces subtle concurrency bugs.
+    ///
+    /// For vsock host-to-guest communication, call
+    /// ``makeGuestAgentClient(readOnlyToken:runnerToken:breakGlassToken:)``
+    /// instead of reaching into `vzVM.socketDevices`.
     public private(set) var vzVM: VZVirtualMachine?
 
     /// The current state of the virtual machine.
@@ -192,6 +200,37 @@ public final class VirtualMachine: NSObject, Sendable {
     // binding satisfies the compiler's sendability check for the
     // `await` suspension point without introducing a data race --
     // the value never escapes the main actor's execution context.
+
+    // MARK: - Guest Agent Factory
+
+    /// Creates a ``GuestAgentClient`` targeting the first vsock device
+    /// attached to this VM.
+    ///
+    /// This is the supported entry point for host-to-guest vsock calls —
+    /// callers should not read `vzVM.socketDevices` directly. Returns
+    /// `nil` if the VM is not yet created (i.e. `vzVM == nil`) or has
+    /// no vsock device in its configuration.
+    ///
+    /// - Parameters:
+    ///   - readOnlyToken: Bearer token for port 9470 (read-only).
+    ///   - runnerToken: Bearer token for port 9471 (runner operations).
+    ///   - breakGlassToken: Bearer token for port 9472 (break-glass exec).
+    public func makeGuestAgentClient(
+        readOnlyToken: String? = nil,
+        runnerToken: String? = nil,
+        breakGlassToken: String? = nil
+    ) -> GuestAgentClient? {
+        guard let vzVM,
+              let socketDevice = vzVM.socketDevices.first as? VZVirtioSocketDevice else {
+            return nil
+        }
+        return GuestAgentClient(
+            socketDevice: socketDevice,
+            readOnlyToken: readOnlyToken,
+            runnerToken: runnerToken,
+            breakGlassToken: breakGlassToken
+        )
+    }
 
     /// Starts the virtual machine.
     ///

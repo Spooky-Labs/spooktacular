@@ -69,8 +69,7 @@ let package = Package(
         .target(
             name: "SpooktacularKit",
             dependencies: ["SpookCore", "SpookApplication", "SpookInfrastructureApple"],
-            path: "Sources/SpooktacularKit",
-            exclude: ["Entities", "Interfaces", "UseCases", "Infrastructure"]
+            path: "Sources/SpooktacularKit"
         ),
 
         // ──────────────────────────────────────────────
