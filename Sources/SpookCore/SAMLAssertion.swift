@@ -59,13 +59,42 @@ public struct SAMLProviderConfig: Sendable, Codable {
     /// Map SAML groups/roles to tenant IDs
     public let groupTenantMapping: [String: String]
 
+    /// Expected Audience value for AudienceRestriction validation (OWASP).
+    public let audience: String?
+    /// Expected Destination/Recipient URL for response validation (OWASP).
+    public let destination: String?
+
     public init(entityID: String, ssoURL: String, certificate: String,
                 groupScopeMapping: [String: AuthScope] = [:],
-                groupTenantMapping: [String: String] = [:]) {
+                groupTenantMapping: [String: String] = [:],
+                audience: String? = nil, destination: String? = nil) {
         self.entityID = entityID
         self.ssoURL = ssoURL
         self.certificate = certificate
         self.groupScopeMapping = groupScopeMapping
         self.groupTenantMapping = groupTenantMapping
+        self.audience = audience
+        self.destination = destination
+    }
+}
+
+/// SAML assertion conditions parsed from the XML.
+///
+/// Per OWASP SAML Security Cheat Sheet:
+/// - Validate NotBefore and NotOnOrAfter
+/// - Validate AudienceRestriction
+/// - Validate Destination/Recipient
+public struct SAMLConditions: Sendable {
+    public let notBefore: Date?
+    public let notOnOrAfter: Date?
+    public let audiences: [String]
+    public let destination: String?
+
+    public init(notBefore: Date? = nil, notOnOrAfter: Date? = nil,
+                audiences: [String] = [], destination: String? = nil) {
+        self.notBefore = notBefore
+        self.notOnOrAfter = notOnOrAfter
+        self.audiences = audiences
+        self.destination = destination
     }
 }

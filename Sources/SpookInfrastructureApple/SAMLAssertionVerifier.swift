@@ -25,28 +25,91 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         self.idpCertificate = cert
     }
 
+    /// Verifies a SAML Response following OWASP SAML Security Cheat Sheet:
+    /// 1. Decode and parse XML (XMLParser, not regex)
+    /// 2. Validate issuer matches configured IdP
+    /// 3. Validate NotBefore / NotOnOrAfter conditions
+    /// 4. Validate Audience restriction (if configured)
+    /// 5. Validate Destination / Recipient (if configured)
+    /// 6. Verify XML signature (RSA-SHA256)
+    /// 7. Extract identity claims
+    ///
+    /// References:
+    /// - [OWASP SAML Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/SAML_Security_Cheat_Sheet.html)
+    /// - [SAML 2.0 Core §2.5](http://docs.oasis-open.org/security/saml/v2.0/saml-core-2.0-os.pdf)
     public func verify(token: String) async throws -> FederatedIdentity {
         guard let responseData = Data(base64Encoded: token),
               let responseXML = String(data: responseData, encoding: .utf8) else {
             throw SAMLError.malformedResponse
         }
 
-        let assertion = try parseAssertion(from: responseXML)
+        let (assertion, conditions) = try parseAssertionWithConditions(from: responseXML)
 
+        // 1. Issuer validation (OWASP: validate issuer)
         guard assertion.issuer == config.entityID else {
             throw SAMLError.issuerMismatch
         }
 
-        guard !assertion.isExpired else {
+        // 2. NotBefore / NotOnOrAfter (OWASP: "Validate NotBefore and NotOnOrAfter")
+        let now = Date()
+        if let notBefore = conditions.notBefore, now < notBefore {
+            throw SAMLError.conditionNotYetValid
+        }
+        if let notOnOrAfter = conditions.notOnOrAfter, now >= notOnOrAfter {
+            throw SAMLError.assertionExpired
+        }
+        if assertion.isExpired {
             throw SAMLError.assertionExpired
         }
 
+        // 3. Audience restriction (OWASP: validate AudienceRestriction)
+        if let expectedAudience = config.audience {
+            guard conditions.audiences.contains(expectedAudience) else {
+                throw SAMLError.audienceMismatch
+            }
+        }
+
+        // 4. Destination validation (OWASP: "Validate Recipient attribute")
+        if let expectedDestination = config.destination {
+            guard conditions.destination == expectedDestination else {
+                throw SAMLError.destinationMismatch
+            }
+        }
+
+        // 5. Verify XML signature
         try verifySignature(xml: responseXML)
 
+        // 6. Convert to FederatedIdentity
         return assertion.toFederatedIdentity()
     }
 
     // MARK: - XMLParser-Based Parsing
+
+    /// Parses a SAML assertion and conditions using Apple's XMLParser.
+    /// Returns both the assertion and OWASP-required conditions.
+    private func parseAssertionWithConditions(from xml: String) throws -> (SAMLAssertion, SAMLConditions) {
+        let (assertion, conditions) = try parseAssertionInternal(from: xml)
+        return (assertion, conditions)
+    }
+
+    private func parseAssertionInternal(from xml: String) throws -> (SAMLAssertion, SAMLConditions) {
+        let assertion = try parseAssertion(from: xml)
+        // Re-parse to get conditions (delegate already captured them)
+        guard let data = xml.data(using: .utf8) else { throw SAMLError.malformedResponse }
+        let delegate = SAMLXMLParserDelegate()
+        let parser = XMLParser(data: data)
+        parser.delegate = delegate
+        parser.shouldResolveExternalEntities = false
+        _ = parser.parse()
+        let fmt = ISO8601DateFormatter()
+        let conditions = SAMLConditions(
+            notBefore: delegate.notBefore.flatMap { fmt.date(from: $0) },
+            notOnOrAfter: delegate.notOnOrAfter.flatMap { fmt.date(from: $0) },
+            audiences: delegate.audiences,
+            destination: delegate.destination
+        )
+        return (assertion, conditions)
+    }
 
     /// Parses a SAML assertion using Apple's XMLParser (not regex).
     private func parseAssertion(from xml: String) throws -> SAMLAssertion {
@@ -146,12 +209,18 @@ private final class SAMLXMLParserDelegate: NSObject, XMLParserDelegate {
     var nameIDFormat: String?
     var sessionNotOnOrAfter: String?
     var attributes: [String: [String]] = [:]
+    // OWASP conditions
+    var notBefore: String?
+    var notOnOrAfter: String?
+    var audiences: [String] = []
+    var destination: String?
 
     private var currentElement: String?
     private var currentText = ""
     private var currentAttributeName: String?
     private var currentAttributeValues: [String] = []
     private var inAttributeValue = false
+    private var inAudienceRestriction = false
 
     func parser(_ parser: XMLParser, didStartElement elementName: String,
                 namespaceURI: String?, qualifiedName qName: String?,
@@ -165,6 +234,13 @@ private final class SAMLXMLParserDelegate: NSObject, XMLParserDelegate {
             nameIDFormat = attributes["Format"]
         case "AuthnStatement":
             sessionNotOnOrAfter = attributes["SessionNotOnOrAfter"]
+        case "Conditions":
+            notBefore = attributes["NotBefore"]
+            notOnOrAfter = attributes["NotOnOrAfter"]
+        case "AudienceRestriction":
+            inAudienceRestriction = true
+        case "Response":
+            destination = attributes["Destination"]
         case "Attribute":
             currentAttributeName = attributes["Name"]
             currentAttributeValues = []
@@ -189,6 +265,10 @@ private final class SAMLXMLParserDelegate: NSObject, XMLParserDelegate {
             if issuer == nil { issuer = text }
         case "NameID":
             if nameID == nil { nameID = text }
+        case "Audience":
+            if inAudienceRestriction && !text.isEmpty { audiences.append(text) }
+        case "AudienceRestriction":
+            inAudienceRestriction = false
         case "AttributeValue":
             if !text.isEmpty { currentAttributeValues.append(text) }
             inAttributeValue = false
@@ -239,6 +319,9 @@ public enum SAMLError: Error, LocalizedError, Sendable {
     case malformedResponse
     case issuerMismatch
     case assertionExpired
+    case conditionNotYetValid
+    case audienceMismatch
+    case destinationMismatch
     case signatureVerificationFailed
 
     public var errorDescription: String? {
@@ -246,7 +329,10 @@ public enum SAMLError: Error, LocalizedError, Sendable {
         case .invalidCertificate: "Invalid IdP X.509 certificate"
         case .malformedResponse: "Malformed SAML Response"
         case .issuerMismatch: "SAML assertion issuer does not match configured IdP"
-        case .assertionExpired: "SAML assertion has expired"
+        case .assertionExpired: "SAML assertion has expired (NotOnOrAfter)"
+        case .conditionNotYetValid: "SAML assertion is not yet valid (NotBefore)"
+        case .audienceMismatch: "SAML AudienceRestriction does not match configured audience"
+        case .destinationMismatch: "SAML Response Destination does not match configured endpoint"
         case .signatureVerificationFailed: "SAML XML signature verification failed"
         }
     }
