@@ -104,7 +104,10 @@ public struct SpooktacularConfig: Sendable, Codable {
                 // and code stay in sync during the transition.
                 s3RetentionDays: (env["SPOOK_AUDIT_S3_RETENTION_DAYS"] ?? env["SPOOK_AUDIT_S3_LOCK_DAYS"])
                     .flatMap(Int.init),
-                s3BatchSize: env["SPOOK_AUDIT_S3_BATCH_SIZE"].flatMap(Int.init)
+                s3BatchSize: env["SPOOK_AUDIT_S3_BATCH_SIZE"].flatMap(Int.init),
+                webhookURL: env["SPOOK_AUDIT_WEBHOOK_URL"],
+                webhookHMACKeyHex: env["SPOOK_AUDIT_WEBHOOK_HMAC_KEY_HEX"],
+                webhookExtraHeaders: env["SPOOK_AUDIT_WEBHOOK_HEADERS"].flatMap(parseHeaders)
             ),
             server: ServerConfig(
                 host: env["SPOOK_HOST"] ?? "127.0.0.1",
@@ -114,6 +117,22 @@ public struct SpooktacularConfig: Sendable, Codable {
                 insecure: env["SPOOK_INSECURE_CONTROLLER"] == "1"
             )
         )
+    }
+
+    /// Parses `Header1: val1; Header2: val2` — the env-var shape
+    /// for webhook extra headers. Silently ignores malformed
+    /// entries.
+    private static func parseHeaders(_ raw: String) -> [String: String] {
+        var result: [String: String] = [:]
+        for entry in raw.split(separator: ";") {
+            let parts = entry.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2 else { continue }
+            let name = parts[0].trimmingCharacters(in: .whitespaces)
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty && !value.isEmpty else { continue }
+            result[name] = value
+        }
+        return result
     }
 
     /// Loads configuration from a JSON file.
@@ -235,6 +254,22 @@ public struct AuditConfig: Sendable, Codable {
     /// of records lost on crash. Defaults to 100.
     public let s3BatchSize: Int?
 
+    /// SIEM webhook URL for live audit forwarding (Splunk HEC,
+    /// Datadog Logs, CloudWatch, or any HTTPS ingest). When set,
+    /// records are teed to the webhook alongside the primary
+    /// (local JSONL) sink so SIEM outages never cause audit
+    /// loss — the primary remains authoritative.
+    public let webhookURL: String?
+
+    /// Hex-encoded HMAC-SHA256 key for signing webhook request
+    /// bodies. Shared with the SIEM out-of-band. When nil, no
+    /// signature header is emitted.
+    public let webhookHMACKeyHex: String?
+
+    /// Extra headers to attach to every webhook request. Typical
+    /// values: `Authorization: Splunk <token>`, `DD-API-KEY: ...`.
+    public let webhookExtraHeaders: [String: String]?
+
     public init(filePath: String? = nil, immutablePath: String? = nil,
                 merkleEnabled: Bool = false,
                 merkleSigningKeyLabel: String? = nil,
@@ -243,7 +278,10 @@ public struct AuditConfig: Sendable, Codable {
                 s3Region: String? = nil,
                 s3Prefix: String? = nil,
                 s3RetentionDays: Int? = nil,
-                s3BatchSize: Int? = nil) {
+                s3BatchSize: Int? = nil,
+                webhookURL: String? = nil,
+                webhookHMACKeyHex: String? = nil,
+                webhookExtraHeaders: [String: String]? = nil) {
         self.filePath = filePath
         self.immutablePath = immutablePath
         self.merkleEnabled = merkleEnabled
@@ -254,6 +292,9 @@ public struct AuditConfig: Sendable, Codable {
         self.s3Prefix = s3Prefix
         self.s3RetentionDays = s3RetentionDays
         self.s3BatchSize = s3BatchSize
+        self.webhookURL = webhookURL
+        self.webhookHMACKeyHex = webhookHMACKeyHex
+        self.webhookExtraHeaders = webhookExtraHeaders
     }
 }
 

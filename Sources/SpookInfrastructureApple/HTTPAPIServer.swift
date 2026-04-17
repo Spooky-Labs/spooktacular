@@ -1008,7 +1008,12 @@ public actor HTTPAPIServer {
         case ("POST", 2):   response = handleCreateVM(request)
         case ("GET", 3):    response = handleGetVM(name: components[2])
         case ("DELETE", 3): response = handleDeleteVM(name: components[2])
-        case ("POST", 4) where components[3] == "clone": response = handleCloneVM(name: components[2], request: request)
+        case ("POST", 4) where components[3] == "clone":
+            if let denial = await evaluateTenantQuota(forCreating: components[2]) {
+                response = denial
+            } else {
+                response = handleCloneVM(name: components[2], request: request)
+            }
         case ("POST", 4) where components[3] == "start": response = handleStartVM(name: components[2])
         case ("POST", 4) where components[3] == "stop":  response = handleStopVM(name: components[2])
         case ("GET", 4)  where components[3] == "ip":    response = await handleGetIP(name: components[2])
@@ -1047,6 +1052,51 @@ public actor HTTPAPIServer {
             "\(context, privacy: .public) [\(id, privacy: .public)]: \(error.localizedDescription, privacy: .public)"
         )
         return response
+    }
+
+    /// Evaluates the tenant's ``TenantQuota`` before a VM is
+    /// created or cloned. Returns `nil` when the request is
+    /// permitted; returns a 403 response when the quota is
+    /// exceeded.
+    ///
+    /// Current usage is counted as the number of VM bundles in
+    /// the server's `vmDirectory`. Per-server scoping is the
+    /// MVP — for multi-instance deployments a distributed
+    /// counter would be required. The ceiling check is still
+    /// materially useful: it prevents a single operator from
+    /// creating unbounded VMs on one host.
+    ///
+    /// Absent tenant registry or absent quota → no-op (returns
+    /// `nil`). Single-tenant deployments without a registry
+    /// retain their prior unbounded behavior.
+    private func evaluateTenantQuota(forCreating vmName: String) async -> HTTPResponse? {
+        guard let registry = tenantRegistry else { return nil }
+        guard let tenant = await registry.tenant(id: tenantID.rawValue),
+              let quota = tenant.quota else {
+            return nil
+        }
+        // Count bundles currently on disk as the tenant's usage.
+        let fm = FileManager.default
+        let existing: Int
+        if let contents = try? fm.contentsOfDirectory(
+            at: vmDirectory, includingPropertiesForKeys: nil
+        ) {
+            existing = contents.filter { $0.pathExtension == "vm" }.count
+        } else {
+            existing = 0
+        }
+        let usage = TenantUsage(activeVMs: existing)
+        let request = ResourceRequest()
+        let decision = quota.evaluate(usage: usage, request: request)
+        guard case let .denied(reason) = decision else { return nil }
+
+        Log.httpAPI.warning(
+            "Tenant quota denied: tenant=\(self.tenantID.rawValue, privacy: .public) vm=\(vmName, privacy: .public) reason=\(reason, privacy: .public)"
+        )
+        return HTTPResponse.error(
+            message: "Tenant quota exceeded for '\(tenantID.rawValue)': \(reason).",
+            statusCode: 403
+        )
     }
 
     /// Maps an API path to a resource type for RBAC evaluation.
