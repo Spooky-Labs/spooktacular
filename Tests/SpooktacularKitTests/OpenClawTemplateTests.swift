@@ -48,7 +48,9 @@ struct OpenClawTemplateTests {
 
             let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
             let permissions = try #require(attrs[.posixPermissions] as? Int)
-            #expect(permissions == 0o755)
+            // Owner-only (0o700). The provisioning script may embed
+            // secrets; no other local user should be able to read it.
+            #expect(permissions == 0o700)
 
             let fileContent = try String(contentsOf: url, encoding: .utf8)
             #expect(fileContent == OpenClawTemplate.scriptContent())

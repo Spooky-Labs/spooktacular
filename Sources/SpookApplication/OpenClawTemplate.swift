@@ -39,7 +39,7 @@ public enum OpenClawTemplate {
     ///   a temporary directory.
     /// - Throws: An error if the script cannot be written to disk.
     public static func generate() throws -> URL {
-        let url = try ScriptFile.writeToTempDirectory(
+        let url = try ScriptFile.writeToCache(
             script: scriptContent(), fileName: "openclaw-setup.sh"
         )
         return url

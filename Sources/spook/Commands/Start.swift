@@ -128,7 +128,7 @@ extension Spook {
                             script: scriptURL,
                             bundle: bundle
                         )
-                        let watcherScript = try ScriptFile.writeToTempDirectory(
+                        let watcherScript = try ScriptFile.writeToCache(
                             script: SharedFolderProvisioner.watcherInstallScript(),
                             fileName: "install-watcher.sh"
                         )

@@ -168,6 +168,16 @@ extension Spook {
         )
         var githubTokenFile: String?
 
+        @Option(
+            name: .customLong("github-token-keychain"),
+            help: """
+                Keychain account name under service `com.spooktacular.github`. \
+                Store with: `security add-generic-password -s com.spooktacular.github -a <account> -w <token> -U`. \
+                The token never touches disk in plaintext and never appears in `ps` output.
+                """
+        )
+        var githubTokenKeychain: String?
+
         @Flag(
             help: """
                 Configure as an OpenClaw AI agent. Installs Node.js \
@@ -318,9 +328,10 @@ extension Spook {
                     }
                     let token: String
                     do {
-                        token = try Self.resolveGitHubToken(
+                        token = try GitHubTokenResolver.resolve(
                             flagValue: githubToken,
-                            filePath: githubTokenFile
+                            filePath: githubTokenFile,
+                            keychainAccount: githubTokenKeychain
                         )
                     } catch {
                         print(Style.error("✗ \(error.localizedDescription)"))
@@ -541,81 +552,9 @@ extension Spook {
 
         // MARK: - GitHub token resolution
 
-        /// Resolves the runner-registration token from one of three
-        /// sources, in priority order:
-        ///
-        /// 1. `--github-token-file <path>` — token read from file,
-        ///    trimmed of whitespace. Does not land in `ps` output.
-        /// 2. `SPOOK_GITHUB_TOKEN` environment variable — visible to
-        ///    the launching shell only, not propagated to
-        ///    subprocesses by default.
-        /// 3. `--github-token <value>` — CLI flag, visible in `ps`,
-        ///    shell history, and `launchctl print`. The caller gets
-        ///    a warning when this path is taken.
-        ///
-        /// Throws `GitHubTokenError.missing` when none of the three
-        /// sources produced a value, with a recovery hint pointing
-        /// the operator at the file-based path.
-        static func resolveGitHubToken(
-            flagValue: String?,
-            filePath: String?
-        ) throws -> String {
-            if let filePath {
-                let raw: String
-                do {
-                    raw = try String(contentsOf: URL(filePath: filePath), encoding: .utf8)
-                } catch {
-                    throw GitHubTokenError.unreadableFile(path: filePath, underlying: error)
-                }
-                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !trimmed.isEmpty else {
-                    throw GitHubTokenError.emptyFile(path: filePath)
-                }
-                return trimmed
-            }
-            if let env = ProcessInfo.processInfo.environment["SPOOK_GITHUB_TOKEN"],
-               !env.isEmpty {
-                return env
-            }
-            if let flagValue, !flagValue.isEmpty {
-                return flagValue
-            }
-            throw GitHubTokenError.missing
-        }
     }
 }
 
-// MARK: - GitHub token errors
-
-/// Diagnostics for `Create.resolveGitHubToken` — every case carries
-/// a recovery hint so the CLI can render an actionable message.
-enum GitHubTokenError: Error, LocalizedError {
-    case missing
-    case emptyFile(path: String)
-    case unreadableFile(path: String, underlying: any Error)
-
-    var errorDescription: String? {
-        switch self {
-        case .missing:
-            "No GitHub runner registration token supplied."
-        case .emptyFile(let path):
-            "GitHub token file at '\(path)' is empty."
-        case .unreadableFile(let path, let err):
-            "Cannot read GitHub token file at '\(path)': \(err.localizedDescription)"
-        }
-    }
-
-    var recoverySuggestion: String? {
-        switch self {
-        case .missing:
-            "Provide --github-token-file <path>, set SPOOK_GITHUB_TOKEN, or (development only) pass --github-token <value>."
-        case .emptyFile:
-            "Write the token to the file with trailing newline stripped, then chmod 600."
-        case .unreadableFile:
-            "Check the file exists and the daemon user can read it: `ls -l <path>`."
-        }
-    }
-}
 
 // MARK: - ArgumentParser Conformance
 
