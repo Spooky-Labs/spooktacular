@@ -126,8 +126,8 @@ N/A — no passwords, no reset flow; break-glass is the emergency-access path, c
 
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
-| V2.10.1 | No unchanging credentials | PASS | Break-glass rotates per incident; mTLS certs + API tokens rotate per `SECURITY.md §Credential Rotation` |
-| V2.10.2 | Service creds protected | PASS | Keychain-resident with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` |
+| V2.10.1 | No unchanging credentials | PASS | Break-glass rotates per incident; mTLS certs + API tokens rotate per `SECURITY.md §Credential Rotation`; host-to-agent auth is per-request P-256 signatures with a nonce cache — **no shared static token exists**. Each host has its own SEP-bound key; each ticket carries a fresh nonce. |
+| V2.10.2 | Service creds protected | PASS | SEP-bound private keys (non-exportable) for host identity and break-glass signing; Keychain-resident with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` for remaining tokens |
 | V2.10.3 | No unencrypted transmission | PASS | mTLS TLS 1.3 in production; `HTTPAPIServer.init` refuses to start without TLS unless `--insecure` is explicit |
 | V2.10.4 | No disclosure in logs | PASS | `.private` privacy on every token / ticket in OSLog |
 
@@ -461,6 +461,7 @@ N/A — no SOAP, no GraphQL.
 | HTTP security headers on every response | V14.4.2–7 | Remediated (commit `eca57d6aa`) |
 | Break-glass signing key generated inside Secure Enclave (hardware-bound, non-exportable, AAL3) | V2.7.1 | Remediated (`BreakGlassSigningKeyStore` with `SecureEnclave.P256.Signing.PrivateKey`) |
 | Merkle audit signing key generated inside Secure Enclave (non-exportable; STH forgery requires hardware, not just process compromise) | V7.2.2 | Remediated (`AuditSinkFactory.loadOrCreateSEPSigningKey` + `MerkleAuditSink` takes `any P256Signer`) |
+| Host-to-agent auth swapped from shared static tokens to per-request P-256 signatures (nonce-replay-protected; body-hash-bound) | V2.10.1 | Remediated (`AgentSignatureVerifier` + `GuestAgentClient.sign`) |
 | Per-operator trust allowlist (non-repudiation via cryptographic attribution) | V2.7.5 | Remediated (`SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` + multi-key verifier) |
 | Per-action MFA on admin CLI commands | V4.3.1 | Remediated (`AdminPresenceGate`) |
 | Federated admin tokens require stepped-up `acr` | V2.7.4 | Remediated (`OIDCTokenVerifier.insufficientACR`) |

@@ -110,7 +110,7 @@ public final class VirtualMachine: NSObject, Sendable {
     /// itself, and bypassing them produces subtle concurrency bugs.
     ///
     /// For vsock host-to-guest communication, call
-    /// ``makeGuestAgentClient(readOnlyToken:runnerToken:breakGlassToken:)``
+    /// ``makeGuestAgentClient(hostSigner:breakGlassToken:)``
     /// instead of reaching into `vzVM.socketDevices`.
     public private(set) var vzVM: VZVirtualMachine?
 
@@ -212,12 +212,14 @@ public final class VirtualMachine: NSObject, Sendable {
     /// no vsock device in its configuration.
     ///
     /// - Parameters:
-    ///   - readOnlyToken: Bearer token for port 9470 (read-only).
-    ///   - runnerToken: Bearer token for port 9471 (runner operations).
-    ///   - breakGlassToken: Bearer token for port 9472 (break-glass exec).
+    ///   - hostSigner: SEP-bound (or software) P-256 signer that
+    ///     attests this host's identity on readonly / runner
+    ///     channels. `nil` → no-auth mode (works only when the
+    ///     agent is also running without a trust allowlist).
+    ///   - breakGlassToken: Bearer credential for port 9472,
+    ///     typically a `bgt:`-prefixed ticket.
     public func makeGuestAgentClient(
-        readOnlyToken: String? = nil,
-        runnerToken: String? = nil,
+        hostSigner: (any P256Signer)? = nil,
         breakGlassToken: String? = nil
     ) -> GuestAgentClient? {
         guard let vzVM,
@@ -226,8 +228,7 @@ public final class VirtualMachine: NSObject, Sendable {
         }
         return GuestAgentClient(
             socketDevice: socketDevice,
-            readOnlyToken: readOnlyToken,
-            runnerToken: runnerToken,
+            hostSigner: hostSigner,
             breakGlassToken: breakGlassToken
         )
     }

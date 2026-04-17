@@ -1,4 +1,5 @@
 @preconcurrency import Virtualization
+import CryptoKit
 import Foundation
 import SpookCore
 import SpookApplication
@@ -62,34 +63,41 @@ public actor GuestAgentClient {
         return encoder
     }()
 
-    /// Creates a client for the given VirtIO socket device.
-    ///
-    /// - Parameter socketDevice: The `VZVirtioSocketDevice` from a
-    ///   running `VZVirtualMachine`. Obtain it via
-    ///   `vm.socketDevices.first as? VZVirtioSocketDevice`.
-    /// Bearer tokens for each capability tier. The client includes
-    /// the appropriate token in the Authorization header based on
-    /// which vsock port the request targets.
-    private let readOnlyToken: String?
-    private let runnerToken: String?
+    /// Per-request P-256 signer that attests this host's identity
+    /// to the guest agent on readonly (9470) and runner (9471)
+    /// channels. When non-`nil`, every non-exec request carries
+    /// `X-Spook-Timestamp`, `X-Spook-Nonce`, and `X-Spook-Signature`
+    /// headers signed over a canonical representation of the
+    /// request. Production deployments pass a SEP-bound signer
+    /// (see `AuditSinkFactory.loadOrCreateSEPSigningKey` style
+    /// helpers); tests pass a software `P256.Signing.PrivateKey`.
+    private let hostSigner: (any P256Signer)?
+
+    /// Bearer credential used on the break-glass channel (port
+    /// 9472). Typically a `bgt:`-prefixed ticket minted via
+    /// `spook break-glass issue`; the wire form is unchanged
+    /// from the legacy static-token path so ticket passthrough
+    /// works without special-casing.
     private let breakGlassToken: String?
 
-    /// Creates a client with optional per-tier authentication tokens.
+    /// Creates a client with optional host-identity signer and
+    /// break-glass ticket.
     ///
     /// - Parameters:
     ///   - socketDevice: The `VZVirtioSocketDevice` from a running VM.
-    ///   - readOnlyToken: Token for read-only operations (port 9470).
-    ///   - runnerToken: Token for runner operations (port 9471).
-    ///   - breakGlassToken: Token for break-glass exec (port 9472).
+    ///   - hostSigner: Host-identity P-256 signer for readonly /
+    ///     runner channels. `nil` → no-auth mode (only works
+    ///     when the agent itself is running without a trust
+    ///     allowlist, e.g., a local GUI-launched VM).
+    ///   - breakGlassToken: Bearer credential for the break-glass
+    ///     channel (typically a `bgt:` ticket).
     public init(
         socketDevice: VZVirtioSocketDevice,
-        readOnlyToken: String? = nil,
-        runnerToken: String? = nil,
+        hostSigner: (any P256Signer)? = nil,
         breakGlassToken: String? = nil
     ) {
         self.socketDevice = socketDevice
-        self.readOnlyToken = readOnlyToken
-        self.runnerToken = runnerToken
+        self.hostSigner = hostSigner
         self.breakGlassToken = breakGlassToken
     }
 
@@ -260,15 +268,39 @@ public actor GuestAgentClient {
         return readOnlyPort
     }
 
-    /// Returns the Bearer token for the given vsock port.
-    private func tokenForPort(_ port: UInt32) -> String? {
-        switch port {
-        case breakGlassPort: return breakGlassToken
-        case runnerPort: return runnerToken
-        case readOnlyPort: return readOnlyToken
-        default: return nil
-        }
+    /// Returns the break-glass ticket for the given vsock port.
+    /// Only port 9472 receives a Bearer header; readonly and
+    /// runner channels authenticate via signed requests instead.
+    private func breakGlassTokenFor(port: UInt32) -> String? {
+        port == breakGlassPort ? breakGlassToken : nil
     }
+
+    /// Produces the `X-Spook-*` headers that sign this request.
+    /// Nil on the break-glass channel (tickets authenticate
+    /// there) and when no host signer is configured.
+    private func sign(method: String, path: String, body: Data, port: UInt32) throws -> [(String, String)]? {
+        guard port != breakGlassPort, let signer = hostSigner else { return nil }
+
+        let timestamp = Self.iso8601Formatter.string(from: Date())
+        let nonce = UUID().uuidString
+        let bodyHash = SHA256.hash(data: body)
+            .map { String(format: "%02x", $0) }.joined()
+        let canonical = "\(method.uppercased())\n\(path)\n\(bodyHash)\n\(timestamp)\n\(nonce)"
+        let signature = try signer.signature(for: Data(canonical.utf8))
+        return [
+            ("X-Spook-Timestamp", timestamp),
+            ("X-Spook-Nonce", nonce),
+            ("X-Spook-Signature", signature.base64EncodedString())
+        ]
+    }
+
+    /// Shared ISO-8601 formatter for request timestamps. Seconds
+    /// precision matches the verifier's acceptance format.
+    nonisolated(unsafe) private static let iso8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
 
     // MARK: - Internal Transport
 
@@ -386,9 +418,17 @@ public actor GuestAgentClient {
         httpRequest += "Host: localhost\r\n"
         httpRequest += "Connection: close\r\n"
 
-        // Include the appropriate Bearer token for this channel.
-        if let token = tokenForPort(port) {
+        // Break-glass channel: forward the Bearer ticket as-is.
+        if let token = breakGlassTokenFor(port: port) {
             httpRequest += "Authorization: Bearer \(token)\r\n"
+        }
+
+        // Readonly + runner channels: sign the request.
+        let bodyForSig = body ?? Data()
+        if let sigHeaders = try sign(method: method, path: path, body: bodyForSig, port: port) {
+            for (name, value) in sigHeaders {
+                httpRequest += "\(name): \(value)\r\n"
+            }
         }
 
         if let body {

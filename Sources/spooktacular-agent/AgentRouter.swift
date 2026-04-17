@@ -223,43 +223,42 @@ private enum AuthTier: String {
 
 /// Routes an ``AgentHTTPRequest`` to the appropriate handler.
 ///
-/// When any token is configured the router enforces Bearer-token
-/// authentication with three-tier scope-based authorization:
+/// The router enforces two-layer authorization:
 ///
-/// - **Break-glass token**: Grants access to all endpoints including exec.
-/// - **Runner token**: Grants access to read-only and mutation endpoints,
-///   but NOT exec. Exec returns 403 Forbidden.
-/// - **Read-only token**: Grants access to read-only endpoints only.
-///   Mutation and exec endpoints return 403 Forbidden.
+/// 1. **Channel scope gate** (transport-layer isolation). Each
+///    vsock port has a maximum scope; requests exceeding the
+///    channel's scope are rejected 403 regardless of any
+///    credential presented.
+/// 2. **Credential check** — one of three paths:
+///    - `bgt:`-prefixed break-glass ticket → ticket verifier;
+///      on success, tier = `.breakGlass`.
+///    - `X-Spook-Signature` headers → signature verifier against
+///      the trusted host-key allowlist; on success, tier is
+///      derived from the channel (readonly channel → readonly
+///      tier, runner channel → runner tier). The break-glass
+///      channel refuses signature-authenticated requests — its
+///      sole credential is the operator-minted ticket.
+///    - `/health` is exempt (liveness probes).
 ///
-/// If no token is configured the agent runs in legacy mode
-/// (no auth, warning already logged at startup).
-///
-/// Before token authentication, the router enforces a **channel scope**
-/// check. Each vsock port has a maximum scope; if the endpoint's scope
-/// exceeds the channel's scope, the request is rejected with 403
-/// regardless of the token presented. This provides physical isolation
-/// between capability tiers at the transport layer.
-///
-/// After dispatching every request the router emits an audit-level log
-/// entry via `os.Logger` at `.notice` so it appears in Console.app.
-/// The log includes the resolved authorization tier.
+/// Ticket failure does NOT fall through to the signature path
+/// — letting a malformed/expired/consumed ticket "try again as
+/// a signed request" would give an attacker two shots under
+/// different credential types.
 ///
 /// - Parameters:
 ///   - request: The parsed HTTP request.
-///   - channelScope: The maximum ``EndpointScope`` allowed on this vsock
-///     channel. Defaults to `.breakGlass` for backward compatibility.
-///   - adminToken: The break-glass Bearer token, — required.
-///     Internally referred to as `breakGlassToken` to convey intent.
-///   - runnerToken: The runner Bearer token, or `nil` if not configured.
-///   - readonlyToken: The read-only Bearer token, or `nil` if not configured.
+///   - channelScope: The maximum ``EndpointScope`` allowed on
+///     this vsock channel.
+///   - signatureVerifier: Host-identity signature verifier used
+///     on readonly + runner channels. `nil` → no-auth mode
+///     (legacy; only valid when the agent was started without
+///     a host-key trust dir).
+///   - ticketVerifier: Break-glass ticket verifier.
 /// - Returns: A complete HTTP/1.1 response as raw bytes.
 func routeRequest(
     _ request: AgentHTTPRequest,
     channelScope: EndpointScope = .breakGlass,
-    adminToken breakGlassToken: String? = nil,
-    runnerToken: String? = nil,
-    readonlyToken: String? = nil,
+    signatureVerifier: AgentSignatureVerifier? = nil,
     ticketVerifier: BreakGlassTicketVerifier? = nil
 ) -> Data {
 
@@ -274,25 +273,26 @@ func routeRequest(
         return response
     }
 
+    // --- Liveness-probe exemption ---
+    //
+    // /health is the only unauthenticated endpoint so K8s / ALB
+    // health checkers don't need signing credentials. It returns
+    // fixed JSON with no capability beyond "agent is alive."
+    if request.method == "GET" && request.path == "/health" {
+        let response = handleHealth()
+        emitAuditLog(method: request.method, path: request.path, statusCode: 200, tier: nil)
+        return response
+    }
+
     // --- Auth gate ---
-    //
-    // Two credential paths converge on the same `authTier`:
-    //   1. `bgt:`-prefixed break-glass ticket (OWASP-aligned,
-    //      time-limited, single-use, Ed25519-signed)
-    //   2. static Bearer token from the Keychain (runner /
-    //      readonly / long-lived break-glass)
-    //
-    // Ticket failure does NOT fall through to the static path —
-    // letting a malformed/expired/consumed ticket "try again as
-    // a static token" would give an attacker two shots under
-    // different credential types.
-    let hasAnyToken = breakGlassToken != nil || runnerToken != nil || readonlyToken != nil
     var authTier: AuthTier?
 
     let rawAuth = request.headers["authorization"] ?? ""
     let rawBearer = rawAuth.hasPrefix("Bearer ")
         ? String(rawAuth.dropFirst("Bearer ".count))
         : ""
+
+    let hasSignatureHeaders = request.headers["x-spook-signature"] != nil
 
     if rawBearer.hasPrefix(BreakGlassTicket.wirePrefix) {
         guard let verifier = ticketVerifier else {
@@ -312,44 +312,57 @@ func routeRequest(
             emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
             return response
         }
-    } else if hasAnyToken {
-        let authHeader = request.headers["authorization"] ?? ""
-
-        // Determine which token was presented.
-        //
-        // `==` on Swift `String` is short-circuiting and leaks the
-        // byte-position of the first mismatch through timing —
-        // classic oracle for recovering the break-glass token a
-        // character at a time. `constantTimeEqual` below XOR-folds
-        // every byte regardless of match state, so the comparison
-        // time depends only on the length.
-        let isBreakGlass = breakGlassToken.map {
-            constantTimeEqual(authHeader, "Bearer \($0)")
-        } ?? false
-        let isRunner = runnerToken.map {
-            constantTimeEqual(authHeader, "Bearer \($0)")
-        } ?? false
-        let isReadOnly = readonlyToken.map {
-            constantTimeEqual(authHeader, "Bearer \($0)")
-        } ?? false
-
-        if isBreakGlass {
-            authTier = .breakGlass
-        } else if isRunner {
-            authTier = .runner
-        } else if isReadOnly {
-            authTier = .readonly
-        } else {
+    } else if hasSignatureHeaders {
+        // Break-glass channel refuses signature-auth — its only
+        // credential is the operator-minted ticket. This keeps
+        // automated systems (which hold long-lived host keys)
+        // out of the exec path structurally.
+        if channelScope == .breakGlass {
+            let response = errorResponse(
+                message: "Break-glass channel requires an operator-minted ticket, not a signed request.",
+                statusCode: 401
+            )
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return response
+        }
+        guard let verifier = signatureVerifier, verifier.hasTrustedKeys else {
             let response = errorResponse(message: "Unauthorized.", statusCode: 401)
             emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
             return response
         }
+        do {
+            _ = try verifier.verify(
+                method: request.method,
+                path: request.path,
+                headers: request.headers,
+                body: request.body ?? Data()
+            )
+        } catch {
+            log.warning("Signed request rejected: \(error.localizedDescription, privacy: .public)")
+            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return response
+        }
+        // Tier follows channel scope.
+        switch channelScope {
+        case .readonly:   authTier = .readonly
+        case .runner:     authTier = .runner
+        case .breakGlass: authTier = .runner   // unreachable; break-glass was refused above
+        }
+    } else if signatureVerifier == nil && ticketVerifier == nil {
+        // Legacy no-auth mode — only if neither verifier was
+        // configured. On the break-glass channel, still require
+        // a ticket even in no-auth mode (defence in depth on
+        // the exec path).
+        if channelScope == .breakGlass {
+            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return response
+        }
+        authTier = channelScope == .runner ? .runner : .readonly
     } else {
-        // No static tokens configured AND no ticket presented —
-        // the agent should have refused to start without any
-        // credential source. Reject as a safety net.
-        let response = errorResponse(message: "No authentication configured. Agent misconfigured.", statusCode: 500)
-        emitAuditLog(method: request.method, path: request.path, statusCode: 500, tier: nil)
+        let response = errorResponse(message: "Unauthorized.", statusCode: 401)
+        emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
         return response
     }
 

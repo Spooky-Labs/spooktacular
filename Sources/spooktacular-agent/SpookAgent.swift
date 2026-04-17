@@ -67,146 +67,71 @@ private let runnerPort: UInt32 = 9471
 /// authorization at the token layer as well.
 private let breakGlassPort: UInt32 = 9472
 
-/// Path to the shared-folder token file used for agent authentication.
-///
-/// The file may contain up to three lines:
-/// - Line 1: Admin (break-glass) token — full access including exec
-/// - Line 2 (optional): Runner token — mutation except exec
-/// - Line 3 (optional): Read-only token (health, list apps, list ports, etc.)
-private let tokenFilePath = "/Volumes/My Shared Files/.agent-token"
-
-/// Environment variable name for the admin (break-glass) agent authentication token.
-private let tokenEnvVar = "SPOOK_AGENT_TOKEN"
-
-/// Environment variable name for the runner agent authentication token.
-private let runnerTokenEnvVar = "SPOOK_AGENT_RUNNER_TOKEN"
-
-/// Environment variable name for the read-only agent authentication token.
-private let readonlyTokenEnvVar = "SPOOK_AGENT_READONLY_TOKEN"
-
 /// Logger for the guest agent.
 private let log = Logger(subsystem: "com.spooktacular.agent", category: "agent")
 
-// MARK: - Token Loading
+// MARK: - Host trust loading
 
-/// Tokens loaded from file or environment.
-struct AgentTokens {
-    /// Admin (break-glass) token — grants access to all endpoints including exec.
-    /// Required — agent refuses to start without this token.
-    let admin: String?
-    /// Runner token — grants mutation access (launch/quit apps, clipboard, files)
-    /// but NOT exec. `nil` means no runner token configured.
-    let runner: String?
-    /// Read-only token — grants access to GET endpoints only.
-    /// `nil` means no read-only token configured.
-    let readOnly: String?
-}
-
-/// Loads agent authentication tokens with the following priority:
+/// Loads the operator-provisioned allowlist of host public keys
+/// from `SPOOK_HOST_PUBLIC_KEYS_DIR`.
 ///
-/// Token loading priority:
-/// 1. macOS Keychain (service: "com.spooktacular.agent")
-/// 2. Token file at `/Volumes/My Shared Files/.agent-token`
-/// 3. Environment variables (`SPOOK_AGENT_TOKEN`, etc.)
+/// Every `.pem` / `.pub` file in the directory is treated as a
+/// PEM-SPKI P-256 public key that authorizes one host identity.
+/// A successful signature from any of these keys is accepted on
+/// the readonly + runner channels.
 ///
-/// The first source that provides an admin token wins; lower-priority
-/// sources are not consulted. Runner and read-only tokens are loaded
-/// from the same source as the admin token.
+/// Onboarding a new controller: drop its `.pem` into the dir
+/// and SIGHUP / restart the agent.
+/// Offboarding: delete its `.pem` and restart.
 ///
-/// If no admin token is found from any source, the agent runs in legacy
-/// mode (no authentication) and a warning is logged.
-///
-/// - Returns: The loaded tokens.
-private func loadTokens() -> AgentTokens {
-    var admin: String?
-    var runner: String?
-    var readOnly: String?
-
-    // Priority 1: Keychain (most secure)
-    admin = keychainLoad(account: "admin-token")
-    runner = keychainLoad(account: "runner-token")
-    readOnly = keychainLoad(account: "readonly-token")
-
-    if admin != nil {
-        log.notice("Loaded tokens from Keychain")
-        return AgentTokens(admin: admin, runner: runner, readOnly: readOnly)
-    }
-
-    // Priority 2: Token file (legacy, less secure)
-    if let fileContents = try? String(contentsOfFile: tokenFilePath, encoding: .utf8) {
-        let lines = fileContents.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
-
-        if let first = lines.first, !first.isEmpty {
-            admin = first
-            log.notice("Loaded admin token from \(tokenFilePath, privacy: .public)")
-        }
-        if lines.count >= 2 {
-            runner = lines[1]
-            log.notice("Loaded runner token from \(tokenFilePath, privacy: .public)")
-        }
-        if lines.count >= 3 {
-            readOnly = lines[2]
-            log.notice("Loaded read-only token from \(tokenFilePath, privacy: .public)")
-        }
-    }
-
-    // Priority 3: Environment variables
-    if let envToken = ProcessInfo.processInfo.environment[tokenEnvVar] {
-        let trimmed = envToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            admin = trimmed
-            log.notice("Loaded admin token from \(tokenEnvVar, privacy: .public)")
-        }
-    }
-
-    if let envRunner = ProcessInfo.processInfo.environment[runnerTokenEnvVar] {
-        let trimmed = envRunner.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            runner = trimmed
-            log.notice("Loaded runner token from \(runnerTokenEnvVar, privacy: .public)")
-        }
-    }
-
-    if let envReadonly = ProcessInfo.processInfo.environment[readonlyTokenEnvVar] {
-        let trimmed = envReadonly.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            readOnly = trimmed
-            log.notice("Loaded read-only token from \(readonlyTokenEnvVar, privacy: .public)")
-        }
-    }
-
-    if admin == nil {
-        log.fault("No admin token found. The agent requires at least a break-glass token. Set \(tokenEnvVar, privacy: .public), store in Keychain, or place at \(tokenFilePath, privacy: .public).")
-        exit(1)
-    }
-
-    return AgentTokens(admin: admin, runner: runner, readOnly: readOnly)
-}
-
-/// Loads a token from the macOS Keychain.
-///
-/// Queries the Keychain for a generic password item under the
-/// `com.spooktacular.agent` service with the given account name.
-///
-/// - Parameter account: The Keychain account name (e.g. `"admin-token"`).
-/// - Returns: The token string, or `nil` if not found.
-private func keychainLoad(account: String) -> String? {
-    let query: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: "com.spooktacular.agent",
-        kSecAttrAccount as String: account,
-        kSecReturnData as String: true,
-        kSecMatchLimit as String: kSecMatchLimitOne,
-    ]
-    var result: AnyObject?
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
-    guard status == errSecSuccess, let data = result as? Data,
-          let token = String(data: data, encoding: .utf8) else {
+/// Returns `nil` if the dir is unset, missing, or contains no
+/// valid PEMs — the caller treats `nil` as "signature path
+/// disabled" and falls back to legacy no-auth mode (with a
+/// loud warning).
+private func loadSignatureVerifier() -> AgentSignatureVerifier? {
+    let env = ProcessInfo.processInfo.environment
+    guard let dir = env["SPOOK_HOST_PUBLIC_KEYS_DIR"] else {
         return nil
     }
-    return token.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    let fm = FileManager.default
+    var isDir: ObjCBool = false
+    guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue else {
+        log.fault("SPOOK_HOST_PUBLIC_KEYS_DIR at '\(dir, privacy: .public)' is not a directory — signature path disabled")
+        return nil
+    }
+
+    let names: [String]
+    do {
+        names = try fm.contentsOfDirectory(atPath: dir)
+    } catch {
+        log.fault("Cannot enumerate \(dir, privacy: .public): \(error.localizedDescription, privacy: .public) — signature path disabled")
+        return nil
+    }
+
+    var keys: [P256.Signing.PublicKey] = []
+    for name in names where name.hasSuffix(".pem") || name.hasSuffix(".pub") {
+        let path = (dir as NSString).appendingPathComponent(name)
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+            log.error("Unreadable host key file: \(name, privacy: .public) — skipping")
+            continue
+        }
+        do {
+            let key = try P256.Signing.PublicKey(pemRepresentation: text)
+            keys.append(key)
+        } catch {
+            log.error("Malformed PEM in \(name, privacy: .public): \(error.localizedDescription, privacy: .public) — skipping")
+            continue
+        }
+    }
+
+    guard !keys.isEmpty else {
+        log.fault("SPOOK_HOST_PUBLIC_KEYS_DIR at '\(dir, privacy: .public)' has no valid PEM files — signature path disabled")
+        return nil
+    }
+
+    log.info("Host signature verifier ready: \(keys.count, privacy: .public) trusted host key(s) loaded")
+    return AgentSignatureVerifier(trustedKeys: keys)
 }
 
 // MARK: - Entry Point
@@ -228,22 +153,33 @@ enum SpookAgent {
             return
         }
 
-        let tokens = loadTokens()
-
-        // Load the OWASP-aligned break-glass ticket verifier if
-        // the operator configured one. Both env vars must be
-        // present; missing either means "no ticket path" rather
-        // than a half-active configuration.
+        // Load the host-identity signature verifier + the
+        // OWASP-aligned break-glass ticket verifier. Either can
+        // be absent; the agent refuses to start if BOTH are
+        // absent unless `SPOOK_AGENT_ALLOW_NO_AUTH=1` is set
+        // (legacy local-dev escape hatch).
+        AgentHTTPServer.signatureVerifier = loadSignatureVerifier()
         AgentHTTPServer.ticketVerifier = loadTicketVerifier()
 
-        log.notice("spooktacular-agent starting: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort), tickets=\(AgentHTTPServer.ticketVerifier != nil ? "enabled" : "disabled")")
+        let env = ProcessInfo.processInfo.environment
+        let noAuthEscape = env["SPOOK_AGENT_ALLOW_NO_AUTH"] == "1"
+
+        if AgentHTTPServer.signatureVerifier == nil && AgentHTTPServer.ticketVerifier == nil {
+            if noAuthEscape {
+                log.fault("Agent starting in NO-AUTH legacy mode (SPOOK_AGENT_ALLOW_NO_AUTH=1). All non-break-glass requests are unauthenticated. DO NOT USE IN PRODUCTION.")
+            } else {
+                log.fault("Agent refuses to start: neither SPOOK_HOST_PUBLIC_KEYS_DIR (host signature trust) nor SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR (break-glass tickets) is configured. Set at least one, or explicitly opt in to the legacy no-auth mode with SPOOK_AGENT_ALLOW_NO_AUTH=1.")
+                exit(1)
+            }
+        }
+
+        log.notice(
+            "spooktacular-agent starting: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort), signatures=\(AgentHTTPServer.signatureVerifier != nil ? "enabled" : "disabled"), tickets=\(AgentHTTPServer.ticketVerifier != nil ? "enabled" : "disabled")"
+        )
         AgentHTTPServer.listenAll(
             readonlyPort: readonlyPort,
             runnerPort: runnerPort,
-            breakGlassPort: breakGlassPort,
-            adminToken: tokens.admin,
-            runnerToken: tokens.runner,
-            readonlyToken: tokens.readOnly
+            breakGlassPort: breakGlassPort
         )
     }
 

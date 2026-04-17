@@ -50,30 +50,23 @@ enum AgentHTTPServer {
         var svm_cid: UInt32
     }
 
-    /// The admin (break-glass) authentication token, — required.
+    /// Host-identity signature verifier. Enforces per-request
+    /// P-256 signatures against the operator-provisioned trust
+    /// allowlist on readonly + runner channels. `nil` → legacy
+    /// no-auth mode (only valid when started without a trust
+    /// dir; logged as a warning at startup).
     ///
-    /// Set exactly once before the accept loop begins and never mutated
-    /// afterward, so concurrent reads from connection-handler queues are safe.
-    nonisolated(unsafe) private static var adminToken: String?
-
-    /// The runner authentication token, or `nil` if not configured.
-    ///
-    /// When a request presents this token, mutation endpoints (except exec)
-    /// are permitted. Exec returns 403 Forbidden.
-    nonisolated(unsafe) private static var runnerToken: String?
-
-    /// The read-only authentication token, or `nil` if not configured.
-    ///
-    /// When a request presents this token, only read-only (basic scope)
-    /// endpoints are permitted. Mutation and admin endpoints return 403 Forbidden.
-    nonisolated(unsafe) private static var readonlyToken: String?
+    /// Set exactly once before the accept loop begins and never
+    /// mutated afterward so concurrent reads from
+    /// connection-handler queues are safe.
+    nonisolated(unsafe) static var signatureVerifier: AgentSignatureVerifier?
 
     /// The OWASP-aligned break-glass ticket verifier, or `nil` if
     /// the agent is running without ticket support.
     ///
     /// When non-`nil`, authorization headers starting with the
-    /// `bgt:` prefix go through single-use Ed25519 ticket
-    /// verification instead of the static-token path. See
+    /// `bgt:` prefix go through single-use P-256 ticket
+    /// verification on the break-glass channel. See
     /// ``BreakGlassTicketVerifier`` for the threat model.
     nonisolated(unsafe) static var ticketVerifier: BreakGlassTicketVerifier?
 
@@ -97,22 +90,17 @@ enum AgentHTTPServer {
     ///   - readonlyPort: The vsock port for the read-only channel (default: 9470).
     ///   - runnerPort: The vsock port for the runner channel (default: 9471).
     ///   - breakGlassPort: The vsock port for the break-glass channel (default: 9472).
-    ///   - adminToken: The admin (break-glass) token, — required.
-    ///   - runnerToken: The runner token, or `nil` if not configured.
-    ///   - readonlyToken: The read-only token, or `nil` if not configured.
     /// - Returns: Never returns; loops until the process is terminated.
+    ///
+    /// Before calling this, set ``signatureVerifier`` and /or
+    /// ``ticketVerifier``. At least one must be configured unless
+    /// the agent is deliberately running in legacy no-auth mode
+    /// (a warning should be logged at startup in that case).
     static func listenAll(
         readonlyPort: UInt32 = 9470,
         runnerPort: UInt32 = 9471,
-        breakGlassPort: UInt32 = 9472,
-        adminToken: String? = nil,
-        runnerToken: String? = nil,
-        readonlyToken: String? = nil
+        breakGlassPort: UInt32 = 9472
     ) -> Never {
-        self.adminToken = adminToken
-        self.runnerToken = runnerToken
-        self.readonlyToken = readonlyToken
-
         log.notice("Starting multi-channel vsock listeners: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort)")
 
         // Start read-only and runner listeners on background queues.
@@ -134,27 +122,17 @@ enum AgentHTTPServer {
     /// background queue for HTTP parsing and routing.
     ///
     /// This is the legacy single-port entry point. For multi-channel
-    /// isolation, prefer ``listenAll(readonlyPort:runnerPort:breakGlassPort:adminToken:runnerToken:readonlyToken:)``.
+    /// isolation, prefer ``listenAll(readonlyPort:runnerPort:breakGlassPort:)``.
     ///
     /// - Parameters:
     ///   - port: The vsock port to listen on (default: 9470).
     ///   - channelScope: The maximum ``EndpointScope`` allowed on this channel.
     ///     Defaults to `.breakGlass` for backward compatibility.
-    ///   - adminToken: The admin (break-glass) token, — required.
-    ///   - runnerToken: The runner token, or `nil` if not configured.
-    ///   - readonlyToken: The read-only token, or `nil` if not configured.
     /// - Returns: Never returns; loops until the process is terminated.
     static func listen(
         port: UInt32 = 9470,
-        channelScope: EndpointScope = .breakGlass,
-        adminToken: String? = nil,
-        runnerToken: String? = nil,
-        readonlyToken: String? = nil
+        channelScope: EndpointScope = .breakGlass
     ) -> Never {
-        self.adminToken = adminToken
-        self.runnerToken = runnerToken
-        self.readonlyToken = readonlyToken
-
         acceptLoop(port: port, channelScope: channelScope)
     }
 
@@ -239,7 +217,7 @@ enum AgentHTTPServer {
     /// - Parameters:
     ///   - fd: The accepted client file descriptor.
     ///   - channelScope: The maximum ``EndpointScope`` for this connection's
-    ///     vsock channel. Passed through to ``routeRequest(_:channelScope:adminToken:runnerToken:readonlyToken:)``
+    ///     vsock channel. Passed through to ``routeRequest(_:channelScope:signatureVerifier:ticketVerifier:)``
     ///     so endpoints exceeding the channel scope are rejected with 403.
     private static func handleConnection(_ fd: Int32, channelScope: EndpointScope = .breakGlass) {
         defer { close(fd) }
@@ -265,9 +243,7 @@ enum AgentHTTPServer {
         let response = routeRequest(
             request,
             channelScope: channelScope,
-            adminToken: adminToken,
-            runnerToken: runnerToken,
-            readonlyToken: readonlyToken,
+            signatureVerifier: signatureVerifier,
             ticketVerifier: ticketVerifier
         )
         writeAll(fd: fd, data: response)

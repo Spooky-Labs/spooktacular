@@ -36,7 +36,7 @@ struct GuestAgentRPCExample {
         let vm = try await MainActor.run { try VirtualMachine(bundle: bundle) }
 
         guard let client = await vm.makeGuestAgentClient(
-            runnerToken: ProcessInfo.processInfo.environment["SPOOK_RUNNER_TOKEN"]
+            breakGlassToken: ProcessInfo.processInfo.environment["SPOOK_BREAKGLASS_TICKET"]
         ) else {
             print("error: VM '\(vmName)' has no VirtIO socket device.")
             exit(EXIT_FAILURE)
