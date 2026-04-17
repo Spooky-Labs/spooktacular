@@ -20,6 +20,19 @@ defaults:
   run:
     shell: bash
 
+# `pull-requests: write` and `issues: write` let Danger post
+# inline review comments on the PR — without these, the default
+# `GITHUB_TOKEN` on pull_request events is read-only and Danger
+# fails with "Resource not accessible by integration".
+# `contents: read` is the default but we list it explicitly so
+# the `permissions` block fully describes the workflow's
+# GitHub API scope (least-privilege is a reference-architecture
+# posture, not a cut-and-paste default).
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 # Fastlane requires a UTF-8 locale on CI —
 # https://docs.fastlane.tools/best-practices/continuous-integration/
 env:
