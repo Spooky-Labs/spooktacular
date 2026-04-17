@@ -288,29 +288,67 @@ Report times + remediation to the `docs/THREAT_MODEL.md` §9 external-validation
 
 On fleets where multiple business units share the same Spooktacular deployment, the default reconciler scales each runner pool independently — the first pool to ask for a VM wins. Under heavy load that produces "one tenant took everything" starvation.
 
-Plug `FairScheduler` in to enforce weighted max-min fair-share allocation:
+`spook-controller` activates weighted max-min fair-share scheduling when **both** environment variables are set:
 
-```swift
-// Three BUs sharing an EC2 Mac fleet of 20 slots
-let scheduler = FairScheduler(policies: [
-    .init(tenant: TenantID("platform"), weight: 3, minGuaranteed: 4),
-    .init(tenant: TenantID("mobile"),   weight: 2, minGuaranteed: 2),
-    .init(tenant: TenantID("data"),     weight: 1, minGuaranteed: 1),
-])
+- `SPOOK_SCHEDULER_POLICY` — path to a JSON policy file
+- `SPOOK_FLEET_CAPACITY` — integer total of VM slots across the fleet (typically `hostCount * 2` for Apple Silicon's 2-VM kernel limit)
 
-// Ask the scheduler how to split each reconciliation cycle
-let alloc = scheduler.allocate(
-    demand: [
-        TenantID("platform"): 15,
-        TenantID("mobile"):   10,
-        TenantID("data"):      8,
-    ],
-    capacity: 20
-)
-// → platform: 10, mobile: 6, data: 4 — weighted + no starvation
+Either unset → the reconciler falls through to independent per-pool scaling (the documented single-team posture).
+
+### Policy file format
+
+`/etc/spooktacular/scheduler.json`:
+
+```json
+[
+  {"tenant": "platform", "weight": 3, "minGuaranteed": 4},
+  {"tenant": "mobile",   "weight": 2, "minGuaranteed": 2, "maxCap": 20},
+  {"tenant": "data",     "weight": 1, "minGuaranteed": 1}
+]
 ```
 
-Properties: deterministic, work-conserving, monotone. Tests in `FairSchedulerTests` pin the contract. Wiring into `RunnerPoolReconciler` is a one-call replacement for the current per-pool `min(...,max(...))` clamp.
+Each entry:
+
+- `tenant` — matches the `spooktacular.app/tenant` label on a `RunnerPool` CRD.
+- `weight` — integer share used when demand exceeds capacity. `3:2:1` gives platform 3× mobile's share, 6× data's.
+- `minGuaranteed` — minimum slots this tenant always gets (even under pressure). Prevents starvation of critical tenants.
+- `maxCap` — optional hard ceiling; a tenant that demands more is capped here even if the fleet has room.
+
+### Controller env vars
+
+Add to `spook-controller`'s Deployment spec:
+
+```yaml
+env:
+  - name: SPOOK_SCHEDULER_POLICY
+    value: /etc/spooktacular/scheduler.json
+  - name: SPOOK_FLEET_CAPACITY
+    value: "40"   # 20 EC2 Mac hosts × 2 VMs each
+```
+
+At startup the controller logs:
+
+```
+RunnerPoolReconciler starting
+Fair-share scheduler active: 3 policies, fleet capacity 40
+```
+
+During reconciliation, pools whose tenant is under pressure see their effective `maxRunners` clamped with a log line:
+
+```
+Fair-share: pool 'mobile-android' maxRunners clamped 30 → 12
+```
+
+The pool's own `minRunners` floor is always honored — the scheduler ensures the sum of all tenants' minimums fits in fleet capacity, so fair-share only ever reduces max, never min.
+
+### Properties
+
+- **Deterministic** — same inputs → same outputs, no wall-clock dependence.
+- **Work-conserving** — never leaves capacity idle when any tenant has unmet demand.
+- **Monotone** — adding capacity never reduces anyone's allocation; adding demand never reduces anyone else's.
+- **No starvation** — `minGuaranteed` + the max-min algorithm mean even the lowest-weight tenant gets their floor.
+
+16 tests in `FairSchedulerTests` pin the algorithm: weighted splits, minimums, caps, pool-level proportional breakdown, determinism, work-conservation, and the "sum never exceeds capacity" invariant across a sweep of capacities.
 
 ## Common pitfalls
 

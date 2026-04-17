@@ -217,6 +217,20 @@ struct SpookController {
             reconciler = Reconciler(client: client, nodeManager: nodeManager, insecure: true)
         }
         let poolManager = RunnerPoolManager()
+
+        // Fair-share scheduler — activated when the operator
+        // sets both SPOOK_SCHEDULER_POLICY (path to a JSON
+        // policy file) and SPOOK_FLEET_CAPACITY (total VM
+        // slots). Either unset → fall through to per-pool
+        // independent scaling, which is the documented
+        // single-tenant / single-team posture.
+        let (fairScheduler, fleetCapacity) = Self.loadFairScheduler(env: env)
+        if let fairScheduler {
+            logger.notice(
+                "Fair-share scheduler active: \(fairScheduler.policies.count) policies, fleet capacity \(fleetCapacity)"
+            )
+        }
+
         let poolReconciler = RunnerPoolReconciler(
             client: client,
             manager: poolManager,
@@ -225,7 +239,9 @@ struct SpookController {
             authService: authService,
             isolation: isolation,
             reusePolicy: reusePolicy,
-            auditSink: auditSink
+            auditSink: auditSink,
+            fairScheduler: fairScheduler,
+            fleetCapacity: fleetCapacity
         )
         let shutdownSignal = ShutdownSignal()
         let leaderElection = LeaderElection(client: client, leaseName: "spook-controller")
@@ -255,6 +271,66 @@ struct SpookController {
         }
 
         logger.notice("spook-controller stopped")
+    }
+
+    // MARK: - Fair-share configuration
+
+    /// Loads the FairScheduler + fleet capacity from the
+    /// environment. Both env vars must be present for the
+    /// scheduler to be active — silently enabling fair-share on
+    /// half-configured hosts would reshape scheduling behavior
+    /// in ways operators didn't opt into.
+    ///
+    /// `SPOOK_SCHEDULER_POLICY` points at a JSON file shaped like:
+    ///
+    /// ```json
+    /// [
+    ///   {"tenant": "platform", "weight": 3, "minGuaranteed": 4},
+    ///   {"tenant": "mobile",   "weight": 2, "minGuaranteed": 2, "maxCap": 20},
+    ///   {"tenant": "data",     "weight": 1, "minGuaranteed": 1}
+    /// ]
+    /// ```
+    ///
+    /// `SPOOK_FLEET_CAPACITY` is the integer total of VM slots
+    /// across the fleet. For Apple Silicon EC2 Mac hosts with
+    /// the kernel's 2-VM limit, this is `hostCount * 2`.
+    static func loadFairScheduler(
+        env: [String: String]
+    ) -> (FairScheduler?, Int) {
+        guard let policyPath = env["SPOOK_SCHEDULER_POLICY"],
+              !policyPath.isEmpty,
+              let capacityRaw = env["SPOOK_FLEET_CAPACITY"],
+              let capacity = Int(capacityRaw),
+              capacity > 0
+        else {
+            return (nil, 0)
+        }
+
+        struct PolicyFile: Decodable {
+            let tenant: String
+            let weight: Int
+            let minGuaranteed: Int?
+            let maxCap: Int?
+        }
+
+        guard let data = try? Data(contentsOf: URL(filePath: policyPath)),
+              let entries = try? JSONDecoder().decode([PolicyFile].self, from: data)
+        else {
+            logger.fault(
+                "SPOOK_SCHEDULER_POLICY at '\(policyPath, privacy: .public)' missing or malformed — fair-share disabled"
+            )
+            return (nil, 0)
+        }
+
+        let policies = entries.map { entry in
+            TenantSchedulingPolicy(
+                tenant: TenantID(entry.tenant),
+                weight: entry.weight,
+                minGuaranteed: entry.minGuaranteed ?? 0,
+                maxCap: entry.maxCap
+            )
+        }
+        return (FairScheduler(policies: policies), capacity)
     }
 }
 

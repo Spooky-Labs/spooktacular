@@ -135,6 +135,22 @@ actor RunnerPoolReconciler {
     /// Structured audit sink for control-plane actions.
     private let auditSink: any AuditSink
 
+    /// Optional fair-share scheduler. When set (plus a positive
+    /// `fleetCapacity`), the reconciler computes a per-pool
+    /// effective `maxRunners` before per-pool reconciliation
+    /// clamps a tenant's combined pool allocation to its fair
+    /// share of the fleet. `nil` → current per-pool behavior is
+    /// preserved for backward compatibility with deployments
+    /// that don't configure `SPOOK_SCHEDULER_POLICY`.
+    private let fairScheduler: FairScheduler?
+
+    /// Total fleet capacity in VM slots. Used by the fair
+    /// scheduler to clamp aggregate allocation. Zero disables
+    /// fair-share even if `fairScheduler` is set — avoids
+    /// dividing by zero on a brand-new cluster whose node
+    /// inventory hasn't propagated yet.
+    private let fleetCapacity: Int
+
     init(
         client: KubernetesClient,
         manager: RunnerPoolManager,
@@ -144,7 +160,9 @@ actor RunnerPoolReconciler {
         isolation: any TenantIsolationPolicy = SingleTenantIsolation(),
         reusePolicy: ReusePolicy = .singleTenant,
         githubService: GitHubRunnerService? = nil,
-        auditSink: any AuditSink = OSLogAuditSink()
+        auditSink: any AuditSink = OSLogAuditSink(),
+        fairScheduler: FairScheduler? = nil,
+        fleetCapacity: Int = 0
     ) {
         self.client = client
         self.manager = manager
@@ -155,6 +173,8 @@ actor RunnerPoolReconciler {
         self.reusePolicy = reusePolicy
         self.githubService = githubService
         self.auditSink = auditSink
+        self.fairScheduler = fairScheduler
+        self.fleetCapacity = fleetCapacity
         // Share the client's CA-pinned session so every reconciler
         // request inherits fail-closed TLS verification against the
         // in-cluster service-account CA bundle.
@@ -183,10 +203,16 @@ actor RunnerPoolReconciler {
                 let list = try await listRunnerPools()
                 logger.info("Listed \(list.items.count) RunnerPool resource(s)")
 
+                // Fair-share pre-pass: compute a per-pool effective
+                // `maxRunners` that respects the tenant's fair share
+                // of the fleet. `nil` map means "no scheduler
+                // configured" → preserve the original per-pool spec.
+                let effectiveMax = fairShareAllocation(for: list.items)
+
                 // Reconstruct state from CRD status on startup (crash-safe).
                 for pool in list.items {
                     await reconstructState(from: pool)
-                    await reconcilePool(pool)
+                    await reconcilePool(pool, effectiveMaxRunners: effectiveMax[pool.metadata.name])
                 }
 
                 guard let rv = list.metadata.resourceVersion else {
@@ -199,7 +225,21 @@ actor RunnerPoolReconciler {
                 for try await event in watchRunnerPools(resourceVersion: rv) {
                     switch event.type {
                     case "ADDED", "MODIFIED":
-                        await reconcilePool(event.object)
+                        // Per-event reconciliation needs the full
+                        // fleet picture to compute fair share — one
+                        // pool's MODIFY can shift capacity away from
+                        // another. Re-list here so the allocation
+                        // map covers every current pool. Under
+                        // heavy event churn this is more work than
+                        // the prior "reconcile-in-isolation" path,
+                        // but it's the only way to preserve the
+                        // fair-share invariant across watch events.
+                        let currentList = (try? await listRunnerPools())?.items ?? [event.object]
+                        let allocation = fairShareAllocation(for: currentList)
+                        await reconcilePool(
+                            event.object,
+                            effectiveMaxRunners: allocation[event.object.metadata.name]
+                        )
                     case "DELETED":
                         await handlePoolDeleted(event.object)
                     case "BOOKMARK":
@@ -271,7 +311,7 @@ actor RunnerPoolReconciler {
 
     /// Reconciles a single RunnerPool: reads spec, builds desired/current
     /// state, calls ``RunnerPoolManager``, and executes returned actions.
-    private func reconcilePool(_ pool: RunnerPool) async {
+    private func reconcilePool(_ pool: RunnerPool, effectiveMaxRunners: Int? = nil) async {
         let poolName = pool.metadata.name
         guard !inFlight.contains(poolName) else { return }
         inFlight.insert(poolName)
@@ -279,11 +319,27 @@ actor RunnerPoolReconciler {
 
         logger.info("Reconciling RunnerPool '\(poolName, privacy: .public)'")
 
-        // Build desired state from the CRD spec.
+        // Build desired state from the CRD spec, clamping
+        // `maxRunners` to the fair-share cap when the scheduler
+        // produced one. The pool's own `minRunners` floor is still
+        // honored — the scheduler ensured the total of all minimums
+        // fits in fleet capacity, so this clamp only ever reduces
+        // the max, never the min.
         let mode = PoolMode(rawValue: pool.spec.mode) ?? .ephemeral
+        let clampedMax: Int
+        if let cap = effectiveMaxRunners {
+            clampedMax = max(pool.spec.minRunners, min(pool.spec.maxRunners, cap))
+            if clampedMax < pool.spec.maxRunners {
+                logger.info(
+                    "Fair-share: pool '\(poolName, privacy: .public)' maxRunners clamped \(pool.spec.maxRunners) → \(clampedMax)"
+                )
+            }
+        } else {
+            clampedMax = pool.spec.maxRunners
+        }
         let desired = PoolDesiredState(
             minRunners: pool.spec.minRunners,
-            maxRunners: pool.spec.maxRunners,
+            maxRunners: clampedMax,
             sourceVM: pool.spec.sourceVM,
             mode: mode,
             preWarm: pool.spec.preWarm ?? false
@@ -942,6 +998,42 @@ actor RunnerPoolReconciler {
         } catch {
             logger.error("Failed to update RunnerPool '\(poolName, privacy: .public)' status: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    // MARK: - Fair-share allocation
+
+    /// Computes a per-pool effective `maxRunners` that respects
+    /// the tenant's fair share of the fleet. Returns an empty
+    /// map when fair-share is not configured, signalling callers
+    /// to fall through to the pool's raw `maxRunners`.
+    ///
+    /// Algorithm:
+    ///
+    /// 1. Group pools by tenant (via the `spooktacular.app/tenant`
+    ///    label). Unlabeled pools go to `TenantID.default`.
+    /// 2. Sum each tenant's aggregate `maxRunners` demand.
+    /// 3. Ask `FairScheduler.allocate` to split `fleetCapacity`
+    ///    across tenants, honoring weight / minGuaranteed / maxCap.
+    /// 4. Distribute each tenant's allocation across their pools
+    ///    proportionally to each pool's share of the tenant's
+    ///    total demand. A tenant with two pools demanding 10 and
+    ///    5 slots, given 9 from the scheduler, sees 6 and 3.
+    ///
+    /// Returns: poolName → effective max. An absent entry means
+    /// "no constraint" and the pool runs at its own
+    /// `spec.maxRunners` like it always has.
+    private func fairShareAllocation(for pools: [RunnerPool]) -> [String: Int] {
+        guard let scheduler = fairScheduler, fleetCapacity > 0, !pools.isEmpty else {
+            return [:]
+        }
+        let demand = pools.map { pool in
+            FairScheduler.PoolDemand(
+                poolName: pool.metadata.name,
+                tenant: tenantIDFromPool(pool),
+                demand: pool.spec.maxRunners
+            )
+        }
+        return scheduler.allocatePools(demand, capacity: fleetCapacity)
     }
 
     // MARK: - Tenant Resolution

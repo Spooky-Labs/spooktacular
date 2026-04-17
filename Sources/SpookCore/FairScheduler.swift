@@ -119,6 +119,84 @@ public struct FairScheduler: Sendable {
         self.policies = map
     }
 
+    /// A runner pool's input to per-pool allocation — the
+    /// caller-visible identifier, its owning tenant, and the
+    /// demand (typically `pool.spec.maxRunners`).
+    ///
+    /// The pure shape makes the allocator testable without
+    /// dragging in the Kubernetes CRD types the reconciler
+    /// works with.
+    public struct PoolDemand: Sendable, Equatable {
+        public let poolName: String
+        public let tenant: TenantID
+        public let demand: Int
+        public init(poolName: String, tenant: TenantID, demand: Int) {
+            self.poolName = poolName
+            self.tenant = tenant
+            self.demand = demand
+        }
+    }
+
+    /// Allocates `capacity` slots across a list of runner pools,
+    /// first splitting fairly between tenants and then splitting
+    /// each tenant's share across their pools proportionally to
+    /// each pool's demand.
+    ///
+    /// Returns a `poolName → allocatedSlots` dict. Pools not in
+    /// the input are absent from the output, which callers read
+    /// as "no fair-share constraint — use the pool's raw spec."
+    ///
+    /// The two-stage split is what makes fair-share work for the
+    /// runner-pool shape: a tenant with two pools, one demanding
+    /// 10 and one demanding 5, given 9 from the tenant-level
+    /// scheduler, gets 6 and 3 — not 4.5 / 4.5, and not 5 / 5
+    /// (which would over-allocate). Largest pool absorbs the
+    /// rounding crumb so the sum stays exactly equal to the
+    /// tenant's allocation.
+    public func allocatePools(
+        _ pools: [PoolDemand],
+        capacity: Int
+    ) -> [String: Int] {
+        guard capacity > 0, !pools.isEmpty else { return [:] }
+
+        // Group by tenant.
+        var byTenant: [TenantID: [PoolDemand]] = [:]
+        for pool in pools {
+            byTenant[pool.tenant, default: []].append(pool)
+        }
+
+        // Step 1: tenant-level allocation.
+        let demand = byTenant.mapValues { pools in pools.reduce(0) { $0 + $1.demand } }
+        let tenantAllocation = allocate(demand: demand, capacity: capacity)
+
+        // Step 2: split each tenant's allocation across their pools.
+        var result: [String: Int] = [:]
+        for (tenant, tenantPools) in byTenant {
+            let tenantShare = tenantAllocation[tenant] ?? 0
+            let totalDemand = tenantPools.reduce(0) { $0 + $1.demand }
+            guard totalDemand > 0 else { continue }
+
+            // Largest-demand pool absorbs the rounding crumb so
+            // the sum matches the tenant's share exactly.
+            let sorted = tenantPools.sorted { lhs, rhs in
+                if lhs.demand != rhs.demand { return lhs.demand > rhs.demand }
+                return lhs.poolName < rhs.poolName
+            }
+            var distributed = 0
+            for (i, pool) in sorted.enumerated() {
+                if i == sorted.count - 1 {
+                    result[pool.poolName] = max(0, tenantShare - distributed)
+                } else {
+                    let share = (tenantShare * pool.demand) / totalDemand
+                    result[pool.poolName] = share
+                    distributed += share
+                }
+            }
+        }
+
+        return result
+    }
+
     /// Allocates `capacity` slots across the tenants in `demand`,
     /// honoring weights, minimums, and caps.
     ///

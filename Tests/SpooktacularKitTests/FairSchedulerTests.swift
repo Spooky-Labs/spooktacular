@@ -168,6 +168,96 @@ struct FairSchedulerTests {
         let policy = TenantSchedulingPolicy(tenant: TenantID("a"), weight: 1)
         #expect(policy.weight == 1)
     }
+
+    // MARK: - Pool-level allocation (wired from RunnerPoolReconciler)
+
+    @Test("allocatePools splits a tenant's share across their pools by demand")
+    func poolAllocationSplitsByDemand() {
+        let s = FairScheduler(policies: [
+            .init(tenant: TenantID("platform"), weight: 3),
+            .init(tenant: TenantID("mobile"),   weight: 1),
+        ])
+        // platform has two pools (demand 10 and 5), mobile has one.
+        // Fleet capacity 12; weighted 3:1 → platform 9, mobile 3.
+        // platform's 9 splits 10:5 → 6:3 (largest-first).
+        let alloc = s.allocatePools([
+            .init(poolName: "platform-a", tenant: TenantID("platform"), demand: 10),
+            .init(poolName: "platform-b", tenant: TenantID("platform"), demand: 5),
+            .init(poolName: "mobile-a",   tenant: TenantID("mobile"),   demand: 20),
+        ], capacity: 12)
+        #expect(alloc["platform-a"] == 6)
+        #expect(alloc["platform-b"] == 3)
+        #expect(alloc["mobile-a"] == 3)
+    }
+
+    @Test("allocatePools returns empty on zero capacity")
+    func poolAllocationZeroCapacity() {
+        let s = FairScheduler(policies: [.init(tenant: TenantID("a"), weight: 1)])
+        let alloc = s.allocatePools(
+            [.init(poolName: "a1", tenant: TenantID("a"), demand: 5)],
+            capacity: 0
+        )
+        #expect(alloc.isEmpty)
+    }
+
+    @Test("allocatePools returns empty on no input pools")
+    func poolAllocationNoPools() {
+        let s = FairScheduler(policies: [])
+        let alloc = s.allocatePools([], capacity: 10)
+        #expect(alloc.isEmpty)
+    }
+
+    @Test("allocatePools preserves exact tenant-level sums (no rounding drift)")
+    func poolAllocationSumsExact() {
+        let s = FairScheduler(policies: [
+            .init(tenant: TenantID("a"), weight: 7),
+            .init(tenant: TenantID("b"), weight: 5),
+            .init(tenant: TenantID("c"), weight: 2),
+        ])
+        let input: [FairScheduler.PoolDemand] = [
+            .init(poolName: "a1", tenant: TenantID("a"), demand: 11),
+            .init(poolName: "a2", tenant: TenantID("a"), demand: 7),
+            .init(poolName: "a3", tenant: TenantID("a"), demand: 3),
+            .init(poolName: "b1", tenant: TenantID("b"), demand: 4),
+            .init(poolName: "b2", tenant: TenantID("b"), demand: 13),
+            .init(poolName: "c1", tenant: TenantID("c"), demand: 9),
+        ]
+        let alloc = s.allocatePools(input, capacity: 17)
+        // Sum of all per-pool allocations must not exceed capacity.
+        let total = alloc.values.reduce(0, +)
+        #expect(total <= 17)
+
+        // Per tenant, the pool-level split must sum to the tenant-level share.
+        let tenantAlloc = s.allocate(
+            demand: [
+                TenantID("a"): 21, TenantID("b"): 17, TenantID("c"): 9,
+            ],
+            capacity: 17
+        )
+        for tenant in ["a", "b", "c"] {
+            let perTenantSum = input
+                .filter { $0.tenant == TenantID(tenant) }
+                .reduce(0) { $0 + (alloc[$1.poolName] ?? 0) }
+            #expect(perTenantSum == tenantAlloc[TenantID(tenant)] ?? 0,
+                    "tenant \(tenant) pool sum \(perTenantSum) != tenant share \(tenantAlloc[TenantID(tenant)] ?? 0)")
+        }
+    }
+
+    @Test("allocatePools: single-tenant single-pool with full capacity → pool == min(demand, capacity)")
+    func poolAllocationSingleTenantPool() {
+        let s = FairScheduler(policies: [.init(tenant: TenantID("solo"), weight: 1)])
+        let capped = s.allocatePools(
+            [.init(poolName: "only", tenant: TenantID("solo"), demand: 100)],
+            capacity: 20
+        )
+        #expect(capped["only"] == 20)
+
+        let underDemand = s.allocatePools(
+            [.init(poolName: "only", tenant: TenantID("solo"), demand: 5)],
+            capacity: 20
+        )
+        #expect(underDemand["only"] == 5)
+    }
 }
 
 // MARK: - Tag
