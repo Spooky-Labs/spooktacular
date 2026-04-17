@@ -230,7 +230,7 @@ extension Spook.Service {
                 probe.standardError = FileHandle.nullDevice
 
                 var isLoaded = false
-                if let _ = try? probe.run() {
+                if (try? probe.run()) != nil {
                     probe.waitUntilExit()
                     isLoaded = probe.terminationStatus == 0
                 }

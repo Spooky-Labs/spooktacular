@@ -43,7 +43,7 @@ struct FairSchedulerTests {
     @Test("minGuaranteed prevents starvation of low-weight tenants")
     func minGuaranteedHonored() {
         let s = FairScheduler(policies: [
-            .init(tenant: TenantID("hog"),     weight: 10),
+            .init(tenant: TenantID("hog"), weight: 10),
             .init(tenant: TenantID("security"), weight: 1, minGuaranteed: 2),
         ])
         let alloc = s.allocate(
@@ -223,7 +223,7 @@ struct FairSchedulerTests {
     func poolAllocationSplitsByDemand() {
         let s = FairScheduler(policies: [
             .init(tenant: TenantID("platform"), weight: 3),
-            .init(tenant: TenantID("mobile"),   weight: 1),
+            .init(tenant: TenantID("mobile"), weight: 1),
         ])
         // platform has two pools (demand 10 and 5), mobile has one.
         // Fleet capacity 12; weighted 3:1 → platform 9, mobile 3.
@@ -231,7 +231,7 @@ struct FairSchedulerTests {
         let alloc = s.allocatePools([
             .init(poolName: "platform-a", tenant: TenantID("platform"), demand: 10),
             .init(poolName: "platform-b", tenant: TenantID("platform"), demand: 5),
-            .init(poolName: "mobile-a",   tenant: TenantID("mobile"),   demand: 20),
+            .init(poolName: "mobile-a", tenant: TenantID("mobile"), demand: 20),
         ], capacity: 12)
         #expect(alloc["platform-a"] == 6)
         #expect(alloc["platform-b"] == 3)

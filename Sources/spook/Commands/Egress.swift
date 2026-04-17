@@ -209,7 +209,7 @@ private func parseRule(_ raw: String) throws -> EgressRule {
     // Now split on ':' — but only if the last colon is followed
     // by digits (to avoid eating IPv6 addresses).
     var destination = destAndPorts
-    var ports: [Int]? = nil
+    var ports: [Int]?
     if let colonIndex = destAndPorts.lastIndex(of: ":") {
         let after = destAndPorts[destAndPorts.index(after: colonIndex)...]
         if after.allSatisfy({ $0.isNumber || $0 == "," }) {

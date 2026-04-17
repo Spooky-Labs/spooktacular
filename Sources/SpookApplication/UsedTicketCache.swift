@@ -160,7 +160,7 @@ public final class UsedTicketCache: @unchecked Sendable {
 /// the backend's single-writer guarantee. Operators who need
 /// N-use tickets must either mint N distinct JTIs or stick
 /// with the per-agent cache.
-public actor FleetUsedTicketCache: Sendable {
+public actor FleetUsedTicketCache {
     private let singleton: any FleetSingleton
 
     public init(singleton: any FleetSingleton) {

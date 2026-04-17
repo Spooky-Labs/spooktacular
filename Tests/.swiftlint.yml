@@ -48,6 +48,18 @@ disabled_rules:
   - trailing_comma
   - implicitly_unwrapped_optional
   - nesting
+  # Tests often use a loop with a single `if` for readability
+  # ("for each fixture: if broken, fail") — collapsing to a
+  # `where` clause obscures the test's narrative structure.
+  - for_where
+  # Tests routinely write `"…".data(using: .utf8)!` because
+  # the test author knows the literal is valid UTF-8. Rewriting
+  # to `Data("…".utf8)` is fine but the rule fires on hundreds
+  # of test-fixture literals that add no quality signal.
+  - non_optional_string_data_conversion
+  # `generic <E: Error>` type names like `E` are idiomatic in
+  # test helpers that need a short generic witness.
+  - type_name
 
 custom_rules:
   plaintext_secret:

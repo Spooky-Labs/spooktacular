@@ -423,15 +423,73 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # Lint — Validate metadata
+  # Lint — SwiftLint + App Store metadata
   # ──────────────────────────────────────────────────
 
-  desc "Validate App Store metadata"
+  desc "Run SwiftLint (strict) against Sources/ and Tests/"
+  #
+  # Thin wrapper around fastlane's built-in `swiftlint` action
+  # (https://docs.fastlane.tools/actions/swiftlint) so CI and a
+  # contributor's laptop share one entry point and the SwiftLint
+  # version used is the one in Homebrew on the runner.
+  #
+  # No `config_file:` — SwiftLint auto-discovers
+  # `.swiftlint.yml` at the repo root and the nested
+  # `Tests/.swiftlint.yml` (which relaxes a handful of rules that
+  # don't carry quality signal in test code). Passing
+  # `config_file:` would disable that discovery per the SwiftLint
+  # README.
   lane :lint do
+    swiftlint(
+      mode: :lint,
+      strict: true,
+      raise_if_swiftlint_error: true
+    )
+  end
+
+  desc "Validate App Store metadata (description, release notes, keywords, …)"
+  #
+  # Runs before `:promote` so deliver doesn't reject the push on
+  # a trailing whitespace or the word \"Android\". The underlying
+  # `precheck` / `check_app_store_metadata` action hits App
+  # Store Connect to pull current live metadata for the diff, so
+  # it needs an authenticated API key — we feed it the same
+  # ``get_api_key`` helper every publish lane uses.
+  #
+  # Skipped locally when ASC credentials aren't set; CI always
+  # has them.
+  lane :lint_metadata do
+    unless ENV["APPLE_API_KEY_ID"] && ENV["APPLE_API_ISSUER_ID"] && ENV["APPLE_API_KEY_P8"]
+      UI.important("APPLE_API_* env vars unset — skipping App Store metadata precheck. CI will run it.")
+      next
+    end
+    api_key = get_api_key
     check_app_store_metadata(
+      api_key: api_key,
       default_rule_level: :error,
       negative_apple_sentiment: true,
       placeholder_text: true
+    )
+  end
+
+  desc "Run Danger against the current pull request (PR hygiene + strict SwiftLint on changed files)"
+  #
+  # Named `pr_review` to avoid shadowing the built-in `danger`
+  # action (fastlane refuses a lane whose name matches an
+  # action's name). Wraps fastlane's `danger` action — which
+  # auto-uses `bundle exec` when a Gemfile is present — with the
+  # Dangerfile at the repo root and the danger-swiftlint gem.
+  #
+  # Invoked from `.github/workflows/ci.yml` only on
+  # pull_request events so the strict force-unwrap rule runs on
+  # the contributor's diff and never on push-to-main (which has
+  # no PR context for Danger to read).
+  lane :pr_review do
+    danger(
+      github_api_token: ENV["GITHUB_TOKEN"] || ENV["DANGER_GITHUB_API_TOKEN"],
+      fail_on_errors: true,
+      new_comment: false,
+      remove_previous_comments: true
     )
   end
 

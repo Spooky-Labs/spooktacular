@@ -67,6 +67,11 @@ enum AgentHTTPServer {
     nonisolated(unsafe) private static var connectionLock = os_unfair_lock()
 
     /// VirtIO socket address structure matching the kernel's `struct sockaddr_vm`.
+    ///
+    /// Name preserved verbatim from `<sys/vsock.h>` so the
+    /// memory layout (checked by the subsequent `bind(2)`
+    /// call) is unambiguously paired with the kernel's ABI.
+    // swiftlint:disable:next type_name
     private struct sockaddr_vm {
         var svm_len: UInt8
         var svm_family: UInt8

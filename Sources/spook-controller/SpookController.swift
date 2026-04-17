@@ -19,7 +19,6 @@
 
 import Foundation
 import CryptoKit
-import CryptoKit
 import os
 import SpookCore
 import SpookApplication

@@ -21,4 +21,3 @@ public protocol FederatedIdentityVerifier: Sendable {
     /// - Throws: If the token is malformed, expired, or fails signature validation.
     func verify(token: String) async throws -> FederatedIdentity
 }
-

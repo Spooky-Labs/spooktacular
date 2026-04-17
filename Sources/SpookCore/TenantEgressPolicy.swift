@@ -75,6 +75,12 @@ public struct TenantEgressPolicy: Sendable, Codable, Equatable {
 /// denies outbound traffic from the tenant's VM.
 public struct EgressRule: Sendable, Codable, Equatable {
 
+    // The trailing underscore is deliberate — `Protocol` is a
+    // Swift keyword, and this enum is the *network* protocol in
+    // a pf(8) rule. Renaming to `NetworkProtocol` would read
+    // fine at the declaration site but hurt the call-site noun
+    // (`rule.proto: .tcp` is clearer than `rule.networkProto`).
+    // swiftlint:disable:next type_name
     public enum Protocol_: String, Sendable, Codable {
         case tcp, udp, any
     }
@@ -216,7 +222,7 @@ public enum TenantEgressPolicyPF {
             ai_protocol: 0, ai_addrlen: 0, ai_canonname: nil,
             ai_addr: nil, ai_next: nil
         )
-        var result: UnsafeMutablePointer<addrinfo>? = nil
+        var result: UnsafeMutablePointer<addrinfo>?
         let status = hostname.withCString { ptr in
             getaddrinfo(ptr, nil, &hints, &result)
         }

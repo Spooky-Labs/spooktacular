@@ -279,8 +279,7 @@ public struct FairScheduler: Sendable {
         }
         if anyWouldStarve
             && remaining >= initiallyHungry.count
-            && !initiallyHungry.isEmpty
-        {
+            && !initiallyHungry.isEmpty {
             for tenant in initiallyHungry.keys {
                 allocation[tenant] = (allocation[tenant] ?? 0) + 1
             }

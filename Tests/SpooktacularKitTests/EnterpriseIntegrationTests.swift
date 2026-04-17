@@ -136,5 +136,3 @@ struct EnterpriseIntegrationTests {
         #expect(!active.isExpired)
     }
 }
-
-

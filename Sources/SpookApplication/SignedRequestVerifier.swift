@@ -208,10 +208,8 @@ public final class SignedRequestVerifier: @unchecked Sendable {
         let canonical = "\(method.uppercased())\n\(path)\n\(bodyHashHex)\n\(timestamp)\n\(nonce)"
         let canonicalData = Data(canonical.utf8)
 
-        for key in trustedKeys {
-            if key.isValidSignature(ecdsa, for: canonicalData) {
-                return key
-            }
+        for key in trustedKeys where key.isValidSignature(ecdsa, for: canonicalData) {
+            return key
         }
 
         // Signature didn't verify. Release the nonce so the same

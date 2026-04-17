@@ -297,8 +297,7 @@ public enum DiskInjector {
                        from: infoData, format: nil
                    ) as? [String: Any],
                    let mountPoint = infoPlist["MountPoint"] as? String,
-                   !mountPoint.isEmpty
-                {
+                   !mountPoint.isEmpty {
                     Log.provision.info(
                         "Mounted data volume at \(mountPoint, privacy: .public)"
                     )
