@@ -114,11 +114,39 @@ public enum BundleProtection {
 
     /// Applies an explicit protection class. Used by the
     /// migration path (`spook bundle protect <name>`) and tests.
+    ///
+    /// Verifies the class landed by reading it back immediately.
+    /// Without this check a `setAttributes` call that returns
+    /// success but is silently downgraded by the filesystem (tmpfs
+    /// mounts used in CI don't honor protection classes, for
+    /// example) would leave the operator believing they have
+    /// CUFUA when the on-disk attribute is still `.none`.
+    ///
+    /// - Throws: ``BundleProtectionError/applyVerificationFailed(path:expected:actual:)``
+    ///   when the read-back reports a different class than was
+    ///   written; rethrows any underlying `FileManager` error from
+    ///   the write or read.
     public static func apply(_ protection: FileProtectionType, to url: URL) throws {
+        // `.none` is a one-way floor: Data Protection classes can be
+        // strengthened but not downgraded (FileVault volumes retain
+        // their inherited class regardless of what we request).
+        // Writing `.none` is a no-op on every volume we ship to, so
+        // skipping both the `setAttributes` call and the verify keeps
+        // the migration path idempotent without perturbing the
+        // already-stronger on-disk state.
+        guard protection != .none else { return }
         try FileManager.default.setAttributes(
             [.protectionKey: protection],
             ofItemAtPath: url.path
         )
+        let actual = try current(at: url)
+        guard actual == protection else {
+            throw BundleProtectionError.applyVerificationFailed(
+                path: url.path,
+                expected: protection,
+                actual: actual
+            )
+        }
     }
 
     /// Reads the current protection class of a path. Returns
@@ -227,6 +255,34 @@ public enum BundleProtection {
         return false
         #endif
     }()
+}
+
+// MARK: - Errors
+
+/// Errors raised by ``BundleProtection`` operations.
+public enum BundleProtectionError: Error, Sendable, Equatable, LocalizedError {
+
+    /// `FileManager.setAttributes` succeeded but a read-back of the
+    /// protection class returned a different value — a silent
+    /// downgrade by the filesystem or a permission quirk.
+    ///
+    /// - Parameters:
+    ///   - path: The bundle-directory path.
+    ///   - expected: The class we asked for.
+    ///   - actual: The class that actually made it to disk.
+    case applyVerificationFailed(path: String, expected: FileProtectionType, actual: FileProtectionType)
+
+    public var errorDescription: String? {
+        switch self {
+        case .applyVerificationFailed(let path, let expected, let actual):
+            "Protection class read-back mismatch for '\(path)': expected '\(expected.displayName)', got '\(actual.displayName)'."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        "Check that FileVault is enabled and the volume supports data protection attributes. "
+        + "`spook doctor --strict` surfaces this as a warning before the bundle is used."
+    }
 }
 
 // MARK: - Display + ordering

@@ -13,7 +13,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 14+](https://img.shields.io/badge/macOS-14+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-424_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-822_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Download](https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Get Started](#-summon-your-first-vm)
 
@@ -260,7 +260,7 @@ Spooktacular supports **single-tenant** and **multi-tenant** deployment modes:
 
 **Production checklist** — follow [`docs/DEPLOYMENT_HARDENING.md`](docs/DEPLOYMENT_HARDENING.md) for the 18-item pre-flight, the reference LaunchDaemon plist, and verification commands. Run `spook doctor --strict` to verify every control at runtime, or `spook security-controls` to print an audit-ready inventory of every shipped control with OWASP / NIST / ASVS citations + code + test references.
 
-See [`SECURITY.md`](SECURITY.md) for the full security model, [`docs/OWASP_ASVS_AUDIT.md`](docs/OWASP_ASVS_AUDIT.md) for the ASVS Level 2 compliance audit (108 pass / 0 fail), [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for STRIDE per asset, [`docs/DATA_AT_REST.md`](docs/DATA_AT_REST.md) for the VM bundle protection plan (OWASP ASVS V6.1.1 / V6.4.1 / V14.2.6), [`docs/EC2_MAC_DEPLOYMENT.md`](docs/EC2_MAC_DEPLOYMENT.md) for the EC2 Mac operator profile, and [`docs/observability/`](docs/observability/) for Prometheus + Grafana kit.
+See [`SECURITY.md`](SECURITY.md) for the full security model, [`docs/OWASP_ASVS_AUDIT.md`](docs/OWASP_ASVS_AUDIT.md) for the ASVS Level 2 compliance audit (140 pass / 0 fail), [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for STRIDE per asset, [`docs/DATA_AT_REST.md`](docs/DATA_AT_REST.md) for the VM bundle protection plan (OWASP ASVS V6.1.1 / V6.4.1 / V14.2.6), [`docs/EC2_MAC_DEPLOYMENT.md`](docs/EC2_MAC_DEPLOYMENT.md) for the EC2 Mac operator profile, and [`docs/observability/`](docs/observability/) for Prometheus + Grafana kit.
 
 ## Audit & SIEM
 
@@ -296,7 +296,7 @@ Every release ships with:
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 424 tests
+swift test               # Run 822 tests
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -304,7 +304,7 @@ swift test               # Run 424 tests
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | 424 tests + release build + .app bundle |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | 822 tests + SwiftLint (strict) + DocC (warnings-as-errors) + Xcode project build + UI tests + release build + .app bundle |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [Docs](https://github.com/Spooky-Labs/spooktacular/actions/workflows/docs.yml) | Push to main | DocC generation + GitHub Pages deploy |
@@ -318,7 +318,7 @@ We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welco
 1. Fork the repo
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure `swift test` passes (360+ tests)
+4. Ensure `swift test` passes (822 tests)
 5. Open a PR using our [PR template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ## License

@@ -36,6 +36,7 @@ struct Spook: AsyncParsableCommand {
             Incident.self,
             SignRequest.self,
             SecurityControls.self,
+            SpookAudit.self,
         ],
         defaultSubcommand: List.self
     )

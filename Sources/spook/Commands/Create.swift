@@ -15,11 +15,18 @@ extension Spook {
                 macOS from an Apple IPSW restore image. The VM is stored as a \
                 bundle directory at ~/.spooktacular/vms/<name>.vm/.
 
+                EXIT CODES:
+                  0   VM created successfully
+                  1   Network failure, IPSW unreachable, or VM already exists
+                  2   Insufficient disk space on the host volume
+                  3   Invalid input (bad name, unsupported host, ipsw not found)
+
                 EXAMPLES:
                   spook create my-vm
                   spook create runner --cpu 8 --memory 16 --disk 100
                   spook create dev --user-data ~/setup.sh --provision disk-inject
                   spook create ci --from-ipsw ~/Downloads/macOS.ipsw
+                  spook create my-vm --json   # machine-parsable success payload
 
                 USER DATA:
                   Use --user-data to specify a shell script that runs automatically \
@@ -222,15 +229,30 @@ extension Spook {
         )
         var skipSetup: Bool = false
 
+        @Flag(
+            help: "Print a machine-readable JSON result to stdout on success."
+        )
+        var json: Bool = false
+
         @MainActor
         func run() async throws {
             try SpooktacularPaths.ensureDirectories()
 
+            let startedAt = Date()
+
             let bundleURL = try SpooktacularPaths.bundleURL(for: name)
             guard !FileManager.default.fileExists(atPath: bundleURL.path) else {
-                print(Style.error("✗ VM '\(name)' already exists."))
-                print(Style.dim("  Choose a different name, or delete the existing VM with 'spook delete \(name)'."))
-                throw ExitCode.failure
+                if json {
+                    printJSONError(
+                        code: "bundle-exists",
+                        message: "VM '\(name)' already exists.",
+                        hint: "Choose a different name, or delete the existing VM with 'spook delete \(name)'."
+                    )
+                } else {
+                    print(Style.error("✗ VM '\(name)' already exists."))
+                    print(Style.dim("  Choose a different name, or delete the existing VM with 'spook delete \(name)'."))
+                }
+                throw ExitCode(CLIExit.generalFailure)
             }
 
             let effectiveNetwork = bridgedInterface.map { NetworkMode.bridged(interface: $0) }
@@ -266,25 +288,38 @@ extension Spook {
 
                 let ipswURL: URL
                 if fromIpsw == "latest" {
-                    print(Style.info("Downloading IPSW (this may take a while)..."))
+                    if !json { print(Style.info("Downloading IPSW (this may take a while)...")) }
                     ipswURL = try await manager.downloadIPSW(
                         from: restoreImage
-                    ) { fraction in
-                        let percentage = Int(fraction * 100)
-                        print("\r  Progress: \(percentage)%", terminator: "")
+                    ) { snapshot in
+                        // Only render terminal progress when stdout
+                        // is a TTY and we're not in JSON mode —
+                        // keeps pipelines clean.
+                        guard !json else { return }
+                        let percentage = Int(snapshot.fraction * 100)
+                        let label = snapshot.resumed ? "Resuming" : "Progress"
+                        print("\r  \(label): \(percentage)%", terminator: "")
                         fflush(stdout)
                     }
-                    print()
+                    if !json { print() }
                 } else {
                     ipswURL = URL(filePath: fromIpsw)
                     guard FileManager.default.fileExists(atPath: ipswURL.path) else {
-                        print(Style.error("✗ IPSW file not found at '\(fromIpsw)'."))
-                        print(Style.dim("  Verify the file path exists, or use '--from-ipsw latest' to download automatically."))
-                        throw ExitCode.failure
+                        if json {
+                            printJSONError(
+                                code: "ipsw-not-found",
+                                message: "IPSW file not found at '\(fromIpsw)'.",
+                                hint: "Verify the file path exists, or use '--from-ipsw latest' to download automatically."
+                            )
+                        } else {
+                            print(Style.error("✗ IPSW file not found at '\(fromIpsw)'."))
+                            print(Style.dim("  Verify the file path exists, or use '--from-ipsw latest' to download automatically."))
+                        }
+                        throw ExitCode(CLIExit.validation)
                     }
                 }
 
-                print(Style.info("Creating VM bundle '\(name)'..."))
+                if !json { print(Style.info("Creating VM bundle '\(name)'...")) }
                 let bundle = try manager.createBundle(
                     named: name,
                     in: SpooktacularPaths.vms,
@@ -292,16 +327,17 @@ extension Spook {
                     spec: spec
                 )
 
-                print(Style.info("Installing macOS (10-20 minutes)..."))
+                if !json { print(Style.info("Installing macOS (10-20 minutes)...")) }
                 try await manager.install(
                     bundle: bundle,
                     from: ipswURL
                 ) { fraction in
+                    guard !json else { return }
                     let percentage = Int(fraction * 100)
                     print("\r  Installing: \(percentage)%", terminator: "")
                     fflush(stdout)
                 }
-                print()
+                if !json { print() }
 
                 let macOSMajor = version.majorVersion
                 if !skipSetup && SetupAutomation.isSupported(macOSVersion: macOSMajor) {
@@ -379,7 +415,16 @@ extension Spook {
                     var consumedScript = false
                     defer {
                         if ownsScript && consumedScript {
-                            ScriptFile.cleanup(scriptURL: script)
+                            // Best-effort in a defer: surface the
+                            // failure through the CLI logger but
+                            // don't propagate (defer has no throw
+                            // channel). The script's 0o700 perms
+                            // already gate read access.
+                            do {
+                                try ScriptFile.cleanup(scriptURL: script)
+                            } catch {
+                                Log.provision.error("Script cleanup failed: \(error.localizedDescription, privacy: .public)")
+                            }
                         }
                     }
 
@@ -410,32 +455,111 @@ extension Spook {
                     case .agent, .sharedFolder:
                         print(Style.error("✗ \(provision.label) provisioning is not yet available (planned for a future release)."))
                         print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
-                        throw ExitCode.failure
+                        throw ExitCode(CLIExit.validation)
                     }
                 }
                 if ephemeral {
                     print(Style.yellow("⟳ Ephemeral mode: VM auto-destroys after main process exits"))
                 }
 
-                print()
-                print(Style.success("✓ VM '\(name)' created successfully."))
-                Style.field("Bundle", Style.dim(bundleURL.path))
-                Style.field("CPU", "\(spec.cpuCount) cores")
-                Style.field("Memory", "\(memory) GB")
-                Style.field("Disk", "\(disk) GB")
-                Style.field("MAC", macAddress.rawValue)
-                print()
-                print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
+                let elapsed = Date().timeIntervalSince(startedAt)
+
+                if json {
+                    struct CreateResult: Encodable {
+                        let name: String
+                        let path: String
+                        let id: String
+                        let metadata: Metadata
+                        let elapsedSeconds: Double
+
+                        struct Metadata: Encodable {
+                            let cpuCount: Int
+                            let memorySizeInGigabytes: UInt64
+                            let diskSizeInGigabytes: UInt64
+                            let displayCount: Int
+                            let networkMode: String
+                            let macAddress: String?
+                        }
+                    }
+                    let payload = CreateResult(
+                        name: name,
+                        path: bundleURL.path,
+                        id: bundle.metadata.id.uuidString,
+                        metadata: .init(
+                            cpuCount: spec.cpuCount,
+                            memorySizeInGigabytes: spec.memorySizeInGigabytes,
+                            diskSizeInGigabytes: spec.diskSizeInGigabytes,
+                            displayCount: spec.displayCount,
+                            networkMode: spec.networkMode.serialized,
+                            macAddress: macAddress.rawValue
+                        ),
+                        elapsedSeconds: elapsed
+                    )
+                    printJSON(payload)
+                } else {
+                    print()
+                    print(Style.success("✓ VM '\(name)' created successfully."))
+                    Style.field("Bundle", Style.dim(bundleURL.path))
+                    Style.field("CPU", "\(spec.cpuCount) cores")
+                    Style.field("Memory", "\(memory) GB")
+                    Style.field("Disk", "\(disk) GB")
+                    Style.field("MAC", macAddress.rawValue)
+                    Style.field("Elapsed", formatElapsed(elapsed))
+                    print()
+                    print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
+                }
 
             } catch {
-                print(Style.error("✗ \(error.localizedDescription)"))
-                if let localizedError = error as? LocalizedError,
-                   let recovery = localizedError.recoverySuggestion {
-                    print(Style.dim("  \(recovery)"))
+                if json {
+                    printJSONError(
+                        code: classifyErrorCode(error),
+                        message: error.localizedDescription,
+                        hint: (error as? LocalizedError)?.recoverySuggestion
+                    )
+                } else {
+                    print(Style.error("✗ \(error.localizedDescription)"))
+                    if let localizedError = error as? LocalizedError,
+                       let recovery = localizedError.recoverySuggestion {
+                        print(Style.dim("  \(recovery)"))
+                    }
                 }
                 try? FileManager.default.removeItem(at: bundleURL)
-                throw ExitCode.failure
+                throw ExitCode(classifyExitCode(error))
             }
+        }
+
+        // MARK: - Error Classification
+
+        /// Maps known error types to stable `--json` error codes.
+        private func classifyErrorCode(_ error: Error) -> String {
+            if error is CancellationError { return "cancelled" }
+            if let restore = error as? RestoreImageError {
+                switch restore {
+                case .unsupportedHost:          return "unsupported-host"
+                case .unsupportedHardwareModel: return "unsupported-hardware"
+                case .incompatibleHost:         return "incompatible-host"
+                case .downloadFailed:           return "download-failed"
+                }
+            }
+            return "create-failed"
+        }
+
+        /// Maps known error types to the documented exit code table
+        /// so shell scripts can branch on failure mode.
+        private func classifyExitCode(_ error: Error) -> Int32 {
+            if let restore = error as? RestoreImageError {
+                switch restore {
+                case .unsupportedHost, .unsupportedHardwareModel, .incompatibleHost:
+                    return CLIExit.validation
+                case .downloadFailed:
+                    return CLIExit.generalFailure
+                }
+            }
+            let ns = error as NSError
+            if ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError {
+                return CLIExit.diskSpace
+            }
+            return CLIExit.generalFailure
         }
 
         // MARK: - Auto-Provisioning
@@ -532,7 +656,7 @@ extension Spook {
             do {
                 let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
                 let screenReader = VZScreenReader(vmView: driver.vmView)
-                let steps = SetupAutomation.sequence(for: macOSVersion)
+                let steps = try SetupAutomation.sequence(for: macOSVersion)
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
                 print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
                 try await SetupAutomationExecutor.run(

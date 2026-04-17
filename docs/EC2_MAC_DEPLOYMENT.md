@@ -59,6 +59,21 @@ Minimal policy:
 
 Attach to an instance profile and assign to the EC2 Mac's `IamInstanceProfile`. Spooktacular's hand-rolled SigV4 picks up the credentials automatically via IMDSv2 — no `aws configure` needed.
 
+### Operator-side IAM
+
+Beyond the instance-level policy above, running the Terraform module in `deploy/ec2-mac/terraform` with `enable_license_manager = true` and `enable_asg = true` requires these additional permissions on the operator's deploy principal:
+
+| Service | Actions | Why |
+|---------|---------|-----|
+| `autoscaling` | `Create*`, `Update*`, `Delete*`, `PutLifecycleHook`, `CompleteLifecycleAction` | Manage the ASG + drain hook |
+| `license-manager` | `CreateLicenseConfiguration`, `UpdateLicenseConfiguration`, `DeleteLicenseConfiguration` | Enforce Apple EULA host cap |
+| `resource-groups` | `CreateGroup`, `UpdateGroup`, `DeleteGroup` | Host Resource Group for auto-allocation |
+| `ssm` | `CreateDocument`, `UpdateDocument`, `CreateAssociation`, `StartAutomationExecution` | Install + drain runbooks |
+| `events` | `PutRule`, `PutTargets`, `DeleteRule` | EventBridge → SSM Automation on terminate |
+| `cloudwatch` | `PutMetricAlarm`, `DeleteAlarms` | Fleet health alarms |
+| `sns` | `CreateTopic`, `Subscribe`, `DeleteTopic` | Alert + lifecycle notification topics |
+| `iam` | `CreateRole`, `PutRolePolicy`, `AttachRolePolicy`, `PassRole` | Roles for the ASG, EventBridge, and SSM Automation |
+
 ## 2. AWS infrastructure
 
 ### DynamoDB Global Table
@@ -248,9 +263,77 @@ Production controls (--strict)
 
 Every `✓` is a control an auditor can walk straight to. Any `✗` on a production host is a ship-blocker.
 
-## 6. 24-hour minimum allocation + drill cadence
+## 6. Dedicated-Host → Kubernetes-Node mapping
 
-EC2 Mac dedicated hosts enforce a 24-hour minimum allocation. Spooktacular's `spook serve` doesn't fight this — but it DOES need a graceful drain path so hosts can be released when their 24h window is up.
+Each EC2 Mac Dedicated Host surfaces in Kubernetes as exactly **one** Node. The kubelet runs on the EC2 Mac instance itself; the two VM slots are managed as Spooktacular `MacOSVM` custom resources scheduled onto that Node by the controller.
+
+Label every Mac Node with this canonical set so the controller's scheduler and the fair-share scheduler (§7) can filter correctly:
+
+| Label | Value | Purpose |
+|-------|-------|---------|
+| `spooktacular.app/role` | `mac-host` | Identifies the Node as a Spooktacular Mac host |
+| `spooktacular.app/capacity` | `2` | Apple-EULA kernel cap — never more than 2 VMs per host |
+| `topology.kubernetes.io/zone` | `<az>` | Matches the Dedicated Host's AZ (e.g., `us-east-1a`) |
+| `topology.kubernetes.io/region` | `<region>` | AWS region |
+| `node.kubernetes.io/instance-type` | `mac2.metal` | Kubelet auto-populates this from IMDS |
+
+### kubeadm join example
+
+Run this on the EC2 Mac after `bootstrap.sh` finishes, before any VMs start:
+
+```bash
+sudo kubeadm join \
+  --token "${KUBEADM_TOKEN}" \
+  --discovery-token-ca-cert-hash "sha256:${CA_HASH}" \
+  --node-name "$(hostname -s)" \
+  "${CONTROL_PLANE_ENDPOINT}:6443" \
+  --node-labels "spooktacular.app/role=mac-host,spooktacular.app/capacity=2,topology.kubernetes.io/zone=$(curl -sS -H 'X-aws-ec2-metadata-token: $(curl -sS -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token)' http://169.254.169.254/latest/meta-data/placement/availability-zone)"
+```
+
+Verify the controller sees the Node labels:
+
+```bash
+kubectl get nodes -l spooktacular.app/role=mac-host \
+  -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone,CAPACITY:.metadata.labels.spooktacular\\.app/capacity
+```
+
+The controller's `RunnerPoolReconciler` filters Nodes on the `spooktacular.app/role=mac-host` label before placing `MacOSVM` objects. If a Node is cordoned (`kubectl cordon`), the reconciler skips it and any in-flight VM requests for that Node are re-queued to another host.
+
+## 7. 24-hour minimum allocation + drill cadence
+
+EC2 Mac dedicated hosts enforce a 24-hour minimum allocation — the single biggest operational constraint of the platform. Spooktacular's `spook serve` doesn't fight this — but it DOES need a graceful drain path so hosts can be released when their 24h window is up.
+
+### The constraint
+
+AWS allocates Dedicated Hosts in 24-hour increments. Once allocated, you are billed for the full 24-hour window even if you:
+
+- terminate the instance after 5 minutes,
+- release the host immediately,
+- put the host into `available` state without any running instances.
+
+You cannot scale **down** a Mac fleet faster than 24 hours after the last host allocation.
+
+### Implications for auto-scaling
+
+The ASG's `termination_policies = ["OldestInstance"]` and the `drain-on-terminate` lifecycle hook in `lifecycle.tf` are both 24-hour-aware in a specific way: the ASG can scale up at any time, but the drain hook is the **only** way to get a clean host release. Scaling down before the 24h minimum just destroys an instance — you still pay for the host.
+
+The controller should therefore:
+
+1. Never scale **below** `license_count × 0.5` to avoid a 24h trough in which you lack capacity to re-scale.
+2. Prefer reuse of in-service hosts (VM scrub-and-reset) over host replacement.
+3. Batch scale-down events to host-release cadence — daily at a known low-traffic window, not reactively to every queue drop.
+
+### Cost model example
+
+A single `mac2.metal` Dedicated Host runs ~$1.08/hour on-demand. Concrete impact of the 24h rule at three scales:
+
+| Fleet pattern | Naive cost (no 24h awareness) | Actual cost (24h enforced) | Waste |
+|---------------|-------------------------------|----------------------------|-------|
+| 1 host, 2h workload | $2.16 | $25.92 | $23.76 / run (92%) |
+| 10 hosts, steady 8h/day | $86.40/day | $259.20/day | $172.80/day (66%) |
+| 10 hosts, 24h-aware batching | $86.40/day | $86.40/day | $0 |
+
+With Savings Plans (up to 44% off), the "actual" column drops proportionally, but the **waste ratio** stays the same until you align workload duration with 24h windows.
 
 ### Drain sequence
 
@@ -284,7 +367,7 @@ Every quarter, rehearse each of these against a non-prod fleet and log the time-
 
 Report times + remediation to the `docs/THREAT_MODEL.md` §9 external-validation checklist.
 
-## 7. Tenant-aware fair scheduling
+## 8. Tenant-aware fair scheduling
 
 On fleets where multiple business units share the same Spooktacular deployment, the default reconciler scales each runner pool independently — the first pool to ask for a VM wins. Under heavy load that produces "one tenant took everything" starvation.
 

@@ -77,14 +77,34 @@ public struct ResourceRequest: Sendable {
 extension TenantQuota {
     /// Checks whether the tenant can allocate the requested resources.
     ///
-    /// Returns a `QuotaDecision` with either `.allowed` or `.denied`
-    /// with a human-readable reason.
+    /// - Parameters:
+    ///   - usage: Currently observed usage (committed VMs + cores
+    ///     + memory).
+    ///   - request: Incoming VM's resource ask.
+    ///   - pending: In-flight allocations that are NOT yet visible
+    ///     in `usage` — e.g., admission requests the scheduler
+    ///     has reserved but whose VM bundle isn't on disk yet. A
+    ///     quota check that sees only `usage` would let two
+    ///     concurrent creations each see "one slot left" and both
+    ///     succeed (the `TOCTOU` race the original `evaluate(...)`
+    ///     signature silently admitted). Callers who want the
+    ///     atomic admission guarantee use a
+    ///     `PendingAllocationReserver` to turn the read-modify-
+    ///     write into a single serialized step — the reserver
+    ///     passes its pending count through this parameter so the
+    ///     decision reflects `committed + pending + 1`.
+    ///
+    /// - Returns: `QuotaDecision` — `.allowed` or `.denied` with
+    ///   a human-readable reason.
     public func evaluate(
         usage: TenantUsage,
-        request: ResourceRequest
+        request: ResourceRequest,
+        pending: Int = 0
     ) -> QuotaDecision {
-        if usage.activeVMs + 1 > maxVMs {
-            return .denied("VM limit exceeded: \(usage.activeVMs)/\(maxVMs) VMs in use")
+        precondition(pending >= 0, "pending must be non-negative")
+        if usage.activeVMs + pending + 1 > maxVMs {
+            let reservedNote = pending > 0 ? " (+ \(pending) pending)" : ""
+            return .denied("VM limit exceeded: \(usage.activeVMs)\(reservedNote)/\(maxVMs) VMs in use")
         }
         if usage.cpuCores + request.cpuCores > maxCPUCores {
             return .denied("CPU quota exceeded: \(usage.cpuCores + request.cpuCores) cores requested, \(maxCPUCores) allowed")

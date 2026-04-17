@@ -51,8 +51,28 @@ public struct Role: Sendable, Codable, Hashable {
         allows(Permission(resource: resource, action: action))
     }
 
-    public static func == (lhs: Role, rhs: Role) -> Bool { lhs.id == rhs.id && lhs.tenant == rhs.tenant }
-    public func hash(into hasher: inout Hasher) { hasher.combine(id); hasher.combine(tenant) }
+    /// Role equality requires identifier, tenant, **and** the
+    /// granted permission set to match.
+    ///
+    /// A role's identity isn't just its name: two JSON role stores
+    /// claiming to serve `"ci-operator"` but with divergent
+    /// permissions are not the same role, and hashing them as
+    /// equal would let a stale ConfigMap shadow a freshly-loaded
+    /// one without any diff visible to the authorization code.
+    public static func == (lhs: Role, rhs: Role) -> Bool {
+        lhs.id == rhs.id
+            && lhs.tenant == rhs.tenant
+            && lhs.permissions == rhs.permissions
+    }
+
+    /// Hash combines identity and the permission `Set` so equal
+    /// roles consistently hash to the same bucket and diverging
+    /// permissions produce diverging hashes.
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(tenant)
+        hasher.combine(permissions)
+    }
 }
 
 /// Assigns a role to an actor within a tenant.

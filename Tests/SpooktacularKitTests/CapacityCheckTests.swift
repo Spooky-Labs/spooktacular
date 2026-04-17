@@ -191,4 +191,56 @@ struct CapacityCheckTests {
             #expect(a != c)
         }
     }
+
+    // MARK: - Memory Capacity
+
+    @Suite("Memory capacity", .tags(.infrastructure))
+    struct MemoryCapacity {
+
+        @Test("ensureMemoryCapacity subtracts overhead before comparing")
+        func overheadIsSubtracted() {
+            // 16 GiB host, 14 GiB request, 2 GiB overhead:
+            // available = 14 GiB, request = 14 GiB → pass.
+            let host: UInt64 = 16 * 1024 * 1024 * 1024
+            let request: UInt64 = 14 * 1024 * 1024 * 1024
+            #expect(throws: Never.self) {
+                try CapacityCheck.ensureMemoryCapacity(
+                    requestedBytes: request,
+                    hostMemoryBytes: host
+                )
+            }
+        }
+
+        @Test("ensureMemoryCapacity rejects a request that exceeds host minus overhead")
+        func rejectsRequestAboveLimit() {
+            let host: UInt64 = 16 * 1024 * 1024 * 1024
+            let request: UInt64 = 15 * 1024 * 1024 * 1024
+            do {
+                try CapacityCheck.ensureMemoryCapacity(
+                    requestedBytes: request,
+                    hostMemoryBytes: host
+                )
+                Issue.record("Expected CapacityError.insufficientMemory")
+            } catch let CapacityError.insufficientMemory(requested, available) {
+                #expect(requested == request)
+                #expect(available == host - CapacityCheck.defaultHostMemoryOverheadBytes)
+            } catch {
+                Issue.record("Unexpected error type: \(error)")
+            }
+        }
+
+        @Test("ensureMemoryCapacity never underflows when overhead exceeds host memory")
+        func handlesUnderflowSafely() {
+            // 1 GiB host, 4 GiB request, default 2 GiB overhead:
+            // overhead > host → available clamps to 0 → deny.
+            let host: UInt64 = 1 * 1024 * 1024 * 1024
+            let request: UInt64 = 4 * 1024 * 1024 * 1024
+            #expect(throws: CapacityError.self) {
+                try CapacityCheck.ensureMemoryCapacity(
+                    requestedBytes: request,
+                    hostMemoryBytes: host
+                )
+            }
+        }
+    }
 }

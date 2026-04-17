@@ -204,13 +204,67 @@ struct RunnerStateMachineTests {
             #expect(effects.contains { if case .updateStatus(.failed) = $0 { true } else { false } })
         }
 
-        @Test("invalid events are ignored and return empty effects")
-        func invalidEventsIgnored() {
+        @Test("recycleComplete with empty sourceVM fails validation instead of re-cloning")
+        func recycleValidationFailsWithEmptySource() {
+            var machine = makeRecyclingMachine()
+            machine.sourceVM = ""  // simulate a race where sourceVM was cleared
+            let effects = machine.transition(event: .recycleComplete)
+            #expect(machine.state == .failed)
+            #expect(effects.contains { effect in
+                if case .recycleValidationFailed(let reason) = effect {
+                    return reason == "sourceVM-empty"
+                }
+                return false
+            }, "Missing sourceVM must surface a recycleValidationFailed, not a silent empty clone")
+            #expect(effects.contains { if case .deleteVM = $0 { true } else { false } })
+            #expect(effects.contains { if case .updateStatus(.failed) = $0 { true } else { false } })
+            #expect(!effects.contains { if case .cloneVM = $0 { true } else { false } },
+                    "Validation failure must NOT trigger a clone with an empty source")
+        }
+
+        @Test("recycleComplete emits auditRecycleComplete with the sourceVM")
+        func recycleCompleteEmitsAudit() {
+            var machine = makeReadyMachine()
+            machine.runnerId = 4242
+            _ = machine.transition(event: .jobStarted(jobId: "job-audit"))
+            _ = machine.transition(event: .jobCompleted)
+            _ = machine.transition(event: .drainComplete)
+            #expect(machine.state == .recycling)
+            // drainComplete clears runnerId by contract (runner is
+            // deregistered before recycling begins), so audit captures
+            // nil for the prior runner but the source VM remains.
+            let effects = machine.transition(event: .recycleComplete)
+            #expect(machine.state == .cloning)
+            #expect(effects.contains { effect in
+                if case .auditRecycleComplete(_, let src) = effect {
+                    return src == "base-image"
+                }
+                return false
+            }, "recycleComplete must emit auditRecycleComplete with the source VM")
+        }
+
+        @Test("invalid events do not change state but surface a logProtocolViolation side effect")
+        func invalidEventsProduceProtocolViolation() {
             var machine = RunnerStateMachine(maxRetries: 3)
             #expect(machine.state == .requested)
             let effects = machine.transition(event: .cloneSucceeded)
             #expect(machine.state == .requested)
-            #expect(effects.isEmpty)
+            #expect(effects.count == 1, "Invalid transitions must not silently drop events")
+            guard case .logProtocolViolation(let state, let event) = effects[0] else {
+                Issue.record("Expected logProtocolViolation, got \(effects[0])")
+                return
+            }
+            #expect(state == .requested)
+            #expect(event == "cloneSucceeded")
+        }
+
+        @Test("deleted state remains terminal and produces no side effects")
+        func deletedStaysSilent() {
+            var machine = makeFailedMachine(retryCount: 3, maxRetries: 3)
+            _ = machine.transition(event: .retryRequested)
+            #expect(machine.state == .deleted)
+            let effects = machine.transition(event: .cloneSucceeded)
+            #expect(effects.isEmpty, "deleted is terminal; stale events must not cascade")
         }
     }
 

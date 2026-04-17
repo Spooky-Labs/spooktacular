@@ -5,10 +5,10 @@ import Foundation
 /// `DistributedLease` is the value type returned by distributed-lock
 /// implementations (``KubernetesLeaseLock`` in cluster deployments,
 /// ``FileDistributedLock`` for single-host). It carries the claim
-/// (`holder`), its lifetime (`acquiredAt` / `expiresAt`), and a
-/// `version` for optimistic concurrency — callers renewing or
-/// releasing a lease MUST pass the version they observed, and the
-/// implementation bumps it on every write.
+/// (`holder`), its lifetime (`acquiredAt` / `expiresAt`), a
+/// `version` for optimistic concurrency, and a `renewalCount`
+/// that bounds how many times a single claim can be extended
+/// before the lock service refuses further renewals.
 ///
 /// ## Lifecycle
 ///
@@ -19,7 +19,21 @@ import Foundation
 ///    true; otherwise another holder may take over.
 /// 4. Caller calls `release(...)` to drop the lease explicitly, or
 ///    simply stops renewing and lets it expire.
+///
+/// ## Renewal bound
+///
+/// `renewalCount` is incremented on every successful renew. A
+/// lease that renews more than ``DistributedLease/maxRenewals``
+/// times must be rejected by the backing service — a controller
+/// that holds the same lease for hours on end is either a bug or
+/// a liveness failure, and either way we want the lock to fall
+/// through to another controller rather than silently extending.
 public struct DistributedLease: Sendable, Codable, Equatable {
+
+    /// The hard upper bound on lease renewals. Reaching this
+    /// count forces release: a controller that has not handed
+    /// off in 100 renewal cycles is almost certainly wedged.
+    public static let maxRenewals: Int = 100
 
     /// Resource name this lease gates (e.g., `"capacity-check-host-01"`).
     public let name: String
@@ -39,18 +53,28 @@ public struct DistributedLease: Sendable, Codable, Equatable {
     /// renew, or release, and bump it on every successful write.
     public let version: Int
 
+    /// Number of times this lease has been renewed since the
+    /// original acquire. Starts at `0` on a fresh acquire and is
+    /// incremented by `DistributedLockService.renew(...)`
+    /// implementations. A renew that would push this past
+    /// ``DistributedLease/maxRenewals`` must throw rather than
+    /// silently continue.
+    public let renewalCount: Int
+
     public init(
         name: String,
         holder: String,
         acquiredAt: Date = Date(),
         duration: TimeInterval = 15,
-        version: Int = 0
+        version: Int = 0,
+        renewalCount: Int = 0
     ) {
         self.name = name
         self.holder = holder
         self.acquiredAt = acquiredAt
         self.expiresAt = acquiredAt.addingTimeInterval(duration)
         self.version = version
+        self.renewalCount = renewalCount
     }
 
     /// True when the current wall-clock time is past ``expiresAt``.

@@ -4,6 +4,13 @@ on:
   push:
     tags: ["v*"]
 
+# Every `run:` step re-asserts `set -Eeuo pipefail` so a failed
+# intermediate (fastlane ran, notarization did not staple, etc.)
+# cannot silently pass under GitHub's default shell flags.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   release:
     name: Notarize & Publish
@@ -18,6 +25,7 @@ jobs:
       APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      GH_RUN_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -25,31 +33,55 @@ jobs:
 
       # 1. Tests — verify nothing broke between merge and tag
       - name: Run tests
-        run: swift test --parallel
+        run: |
+          set -Eeuo pipefail
+          swift test --parallel
 
       # 2. Install Fastlane via Bundler (Gemfile at project root)
       - name: Install dependencies
-        run: bundle install
+        run: |
+          set -Eeuo pipefail
+          bundle install
 
       # 3. Sign
       - name: Sync code signing
-        run: bundle exec fastlane signing
+        run: |
+          set -Eeuo pipefail
+          bundle exec fastlane signing
 
       # 4. Build with version from tag
       - name: Build signed .app
         run: |
+          set -Eeuo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           MARKETING_VERSION="$VERSION" \
-          BUILD_NUMBER="${{ github.run_number }}" \
+          BUILD_NUMBER="$GH_RUN_NUMBER" \
           bundle exec fastlane build
 
       # 5. Notarize via Fastlane (wraps notarytool, handles stapling)
       - name: Notarize .app
-        run: bundle exec fastlane notarize_app
+        run: |
+          set -Eeuo pipefail
+          bundle exec fastlane notarize_app
+
+      # 5a. Post-notarization verification. `bundle exec fastlane
+      #     notarize_app` swallows stapler non-zero exits as a
+      #     warning; this step reasserts the invariants an auditor
+      #     actually cares about — the bundle is signed with a
+      #     Developer ID Application cert AND the notarization
+      #     ticket is stapled in. Either check failing aborts the
+      #     release before the GitHub Release is created.
+      - name: Verify signature + stapled ticket
+        run: |
+          set -Eeuo pipefail
+          codesign -v --verbose=4 Spooktacular.app
+          xcrun stapler validate Spooktacular.app
 
       # 6. Create notarized zip for GitHub Release
       - name: Create notarized zip
-        run: ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
+        run: |
+          set -Eeuo pipefail
+          ditto -c -k --sequesterRsrc --keepParent Spooktacular.app Spooktacular.app.zip
 
       # 7. Attest build provenance
       - name: Attest build provenance
@@ -57,26 +89,49 @@ jobs:
         with:
           subject-path: Spooktacular.app.zip
 
+      # 7a. SBOM generated BEFORE publish so downstream scanners
+      #     see the SBOM attached at the same revision as the
+      #     signed zip. Previously SBOM was in sbom.yml triggered
+      #     by `release.published` — which attached the SBOM to
+      #     the release AFTER consumers had already started
+      #     pulling the binary. Vulnerability scanners missed the
+      #     first hours of distribution because no SBOM was
+      #     present at the moment the binary became available.
+      - name: Generate SBOM (SPDX) pre-publish
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          artifact-name: spooktacular-sbom.spdx.json
+          output-file: spooktacular-sbom.spdx.json
+
       # 8. Package .pkg for App Store
       - name: Package .pkg
-        run: bundle exec fastlane package
+        run: |
+          set -Eeuo pipefail
+          bundle exec fastlane package
 
-      # 9. GitHub Release with notarized zip
+      # 9. GitHub Release — SBOM attached in the SAME call as the
+      #    signed zip so the two never drift.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -Eeuo pipefail
           gh release create "$GITHUB_REF_NAME" \
             --title "Spooktacular $GITHUB_REF_NAME" \
             --generate-notes \
-            Spooktacular.app.zip
+            Spooktacular.app.zip \
+            spooktacular-sbom.spdx.json
 
-      # 10. Submit to TestFlight. This step fails the workflow if the
-      #     upload fails — previously masked with continue-on-error,
-      #     which silently suppressed real upload problems during
-      #     releases.
+      # 10. Submit to TestFlight. This step fails the workflow if
+      #     the upload fails — previously masked with
+      #     continue-on-error, which silently suppressed real
+      #     upload problems during releases.
       - name: Submit to TestFlight
         run: |
+          set -Eeuo pipefail
+          # `fastlane run` exits non-zero on upload failure; the
+          # surrounding `pipefail` ensures a failure in a piped
+          # chain still aborts the step.
           bundle exec fastlane run upload_to_testflight \
             pkg:"$PWD/Spooktacular.pkg" \
             app_platform:"osx" \

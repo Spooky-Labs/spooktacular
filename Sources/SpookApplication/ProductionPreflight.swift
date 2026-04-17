@@ -40,16 +40,25 @@ public struct ProductionPreflight: Sendable {
     public let hasAuthorizationService: Bool
     public let hasAuditSink: Bool
 
+    /// Whether a fleet-wide ``DistributedLockService`` is wired.
+    /// Multi-tenant deployments MUST have one — nonce replay
+    /// protection, quota admission, and runner-pool reconciliation
+    /// all devolve into per-process races without it, which in
+    /// multi-tenant gets tagged as a tenant-isolation break.
+    public let hasDistributedLockService: Bool
+
     public init(
         tenancyMode: TenancyMode,
         insecure: Bool,
         hasAuthorizationService: Bool,
-        hasAuditSink: Bool
+        hasAuditSink: Bool,
+        hasDistributedLockService: Bool = false
     ) {
         self.tenancyMode = tenancyMode
         self.insecure = insecure
         self.hasAuthorizationService = hasAuthorizationService
         self.hasAuditSink = hasAuditSink
+        self.hasDistributedLockService = hasDistributedLockService
     }
 
     /// Throws the first precondition violation encountered.
@@ -88,6 +97,16 @@ public struct ProductionPreflight: Sendable {
         if !insecure && !hasAuditSink {
             throw ProductionPreflightError.productionRequiresAudit
         }
+        // Fleet-wide coordination is required in multi-tenant
+        // mode. Without a distributed lock backend the per-process
+        // replay cache, quota reservation, and pool reconciler
+        // all race across controllers — a "multi-tenant"
+        // deployment that accepts two concurrent creations from
+        // the same tenant because the host-A controller couldn't
+        // see host-B's reservation is not multi-tenant at all.
+        if tenancyMode == .multiTenant && !hasDistributedLockService {
+            throw ProductionPreflightError.multiTenantRequiresDistributedLock
+        }
     }
 }
 
@@ -107,6 +126,12 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
     /// Any non-insecure production boot with no configured `AuditSink`.
     case productionRequiresAudit
 
+    /// Multi-tenant mode with no configured
+    /// ``DistributedLockService``. The coordination primitives
+    /// (replay cache, quota reservation, pool reconciler) all
+    /// devolve to per-process races without a fleet-wide lock.
+    case multiTenantRequiresDistributedLock
+
     public var errorDescription: String? {
         switch self {
         case .insecureModeInMultiTenant:
@@ -115,6 +140,8 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
             "Refusing to start: multi-tenant mode requires a configured AuthorizationService (RBAC)."
         case .productionRequiresAudit:
             "Refusing to start: production deployments require an audit sink. No SPOOK_AUDIT_FILE / SPOOK_AUDIT_IMMUTABLE_PATH / SPOOK_AUDIT_MERKLE was configured."
+        case .multiTenantRequiresDistributedLock:
+            "Refusing to start: multi-tenant mode requires a DistributedLockService. None of SPOOK_DYNAMO_TABLE / SPOOK_K8S_API / SPOOK_LOCK_DIR was configured."
         }
     }
 
@@ -126,6 +153,8 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
             "Provide SPOOK_RBAC_CONFIG pointing at a JSONRoleStore file, or drop back to SPOOK_TENANCY_MODE=single-tenant."
         case .productionRequiresAudit:
             "Set at minimum SPOOK_AUDIT_FILE. For SOC 2 Type II, combine with SPOOK_AUDIT_IMMUTABLE_PATH, SPOOK_AUDIT_MERKLE=1 + SPOOK_AUDIT_SIGNING_KEY, and SPOOK_AUDIT_S3_BUCKET (Object Lock). Operators who genuinely need to run without audit must pass --insecure explicitly."
+        case .multiTenantRequiresDistributedLock:
+            "Set SPOOK_DYNAMO_TABLE (cross-region) or SPOOK_K8S_API (single-cluster) to select a distributed backend. SPOOK_LOCK_DIR on a shared NFS mount is acceptable only on a single-host deployment and is not valid with SPOOK_TENANCY_MODE=multi-tenant."
         }
     }
 }

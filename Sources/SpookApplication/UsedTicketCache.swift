@@ -13,28 +13,33 @@ import SpookCore
 /// the same JTI becomes the textbook race that the lock turns
 /// into one success + N-1 failures.
 ///
-/// ## Scope
+/// ## Scope: per-agent vs fleet-wide
 ///
-/// The cache is **per-agent-process**. A ticket consumed on one
-/// guest agent does NOT prevent the same ticket from being
-/// consumed on a different agent in the same fleet. That's a
-/// deliberate design choice:
+/// **Per-agent (``UsedTicketCache``)** — a ticket consumed on
+/// one guest agent does NOT prevent the same ticket from being
+/// consumed on a different agent in the same fleet. Acceptable
+/// when break-glass tickets are scoped to a single agent, which
+/// was the original single-host assumption.
+///
+/// **Fleet-wide (``FleetUsedTicketCache``)** — a ticket
+/// consumed on ANY host marks it consumed everywhere. This is
+/// the required topology for multi-tenant deployments where a
+/// ticket can be presented to any of N controllers or agents:
 ///
 /// - Break-glass tickets are scoped to a single `tenant` at
 ///   issuance time. A ticket for tenant A can never be replayed
 ///   against tenant B's agents regardless of the cache topology.
-/// - Cross-agent replay within a tenant would require the
-///   operator to have minted the ticket knowing there were
-///   multiple agents handling that tenant's traffic — which is
-///   the operator's intent in that case.
-/// - A shared cache (Redis, DynamoDB) would add a runtime
-///   dependency + consistency failure mode for an edge case
-///   operators have never asked for.
+/// - Cross-agent replay within a tenant is the specific threat
+///   the fleet-wide cache closes: a ticket minted with `max_uses=1`
+///   must truly be used once, not once-per-agent.
 ///
-/// If cross-agent single-use becomes a real requirement, the
-/// cache's `tryConsume(...)` surface is the right plug-in point
-/// for a distributed implementation — the rest of the verifier
-/// doesn't care.
+/// ## Operator responsibility
+///
+/// Choose per-agent when running single-host OR when every
+/// ticket is scoped to exactly one agent in a multi-tenant
+/// deployment (rare). Choose fleet-wide in every other case.
+/// ``ProductionPreflight`` enforces the multi-tenant
+/// requirement at startup.
 ///
 /// ## Memory bound
 ///
@@ -135,5 +140,50 @@ public final class UsedTicketCache: @unchecked Sendable {
             return
         }
         entries.removeValue(forKey: oldest.key)
+    }
+}
+
+// MARK: - Fleet-wide variant
+
+/// Fleet-wide used-ticket denylist built on a ``FleetSingleton``.
+///
+/// Delegates the atomicity claim to the backend (DynamoDB
+/// conditional write, etc.), which is the only layer that can
+/// honour "consumed once globally" across multiple agents or
+/// controllers. Unlike ``UsedTicketCache``, this variant is
+/// async — callers must be on an async path.
+///
+/// The `maxUses` knob that the per-agent cache supports is
+/// intentionally absent here: a `FleetSingleton` mark is
+/// binary (consumed / not), and encoding a multi-use counter
+/// would require a read-modify-write that defeats the point of
+/// the backend's single-writer guarantee. Operators who need
+/// N-use tickets must either mint N distinct JTIs or stick
+/// with the per-agent cache.
+public actor FleetUsedTicketCache: Sendable {
+    private let singleton: any FleetSingleton
+
+    public init(singleton: any FleetSingleton) {
+        self.singleton = singleton
+    }
+
+    /// Atomically consumes a ticket once, fleet-wide.
+    ///
+    /// - Parameters:
+    ///   - jti: Unique ticket identifier.
+    ///   - expiresAt: When the ticket naturally expires — the
+    ///     backend uses this to set its TTL so expired entries
+    ///     auto-evict.
+    /// - Returns: `true` on first consume, `false` when another
+    ///   host (or this one) already consumed the ticket.
+    public func tryConsume(jti: String, expiresAt: Date) async throws -> Bool {
+        let now = Date()
+        guard expiresAt > now else { return false }
+        let ttl = expiresAt.timeIntervalSince(now)
+        let outcome = try await singleton.mark(id: "jti:\(jti)", ttl: ttl)
+        switch outcome {
+        case .freshMark: return true
+        case .alreadyConsumed: return false
+        }
     }
 }

@@ -89,10 +89,11 @@ public enum VirtualMachineState: String, Sendable, Codable {
 /// }
 /// ```
 ///
-/// - Important: macOS guests do not respond to
-///   `VZVirtualMachine.requestStop()`. Use ``stop(graceful:)``
-///   with `graceful: false`, or send a shutdown command via SSH
-///   or the vsock channel before stopping.
+/// - Important: Prefer ``stopGracefully(timeout:)`` over
+///   ``stopImmediately()``. Force-stopping the Virtualization
+///   framework VM is equivalent to pulling the power cord and can
+///   corrupt the guest filesystem. The ``stop(graceful:)`` shim
+///   always grants a grace window — see its DocC.
 @MainActor
 public final class VirtualMachine: NSObject, Sendable {
 
@@ -141,9 +142,22 @@ public final class VirtualMachine: NSObject, Sendable {
     public let stateStream: AsyncStream<VirtualMachineState>
     private let stateContinuation: AsyncStream<VirtualMachineState>.Continuation
 
-    /// The maximum time (in seconds) to wait for a graceful stop
+    /// Default maximum time (in seconds) to wait for a graceful stop
     /// before escalating to a force-stop.
-    private static let gracefulStopTimeout: Int = 30
+    ///
+    /// macOS guests take measurable time to finish shutting down
+    /// (LaunchDaemon teardown, filesystem sync, FileVault unmount).
+    /// 30s is generous for a runner template with no user sessions;
+    /// larger VMs — Xcode caches, Mac Pro simulators — benefit from
+    /// a longer timeout passed via the initializer.
+    public static let defaultGracefulStopTimeout: Int = 30
+
+    /// The configured maximum time (in seconds) to wait for a graceful
+    /// stop before escalating to a force-stop.
+    ///
+    /// Defaults to ``defaultGracefulStopTimeout``. Override via the
+    /// ``init(bundle:gracefulStopTimeout:)`` initializer.
+    public let gracefulStopTimeout: Int
 
     // MARK: - Initialization
 
@@ -154,14 +168,25 @@ public final class VirtualMachine: NSObject, Sendable {
     /// and creates the underlying `VZVirtualMachine`. The VM is
     /// created in the ``VirtualMachineState/stopped`` state.
     ///
-    /// - Parameter bundle: A VM bundle with a valid disk image
-    ///   and platform artifacts (hardware model, machine identifier,
-    ///   auxiliary storage).
+    /// - Parameters:
+    ///   - bundle: A VM bundle with a valid disk image and platform
+    ///     artifacts (hardware model, machine identifier, auxiliary
+    ///     storage).
+    ///   - gracefulStopTimeout: Maximum seconds to wait for
+    ///     ``stopGracefully(timeout:)`` to observe ``VirtualMachineState/stopped``
+    ///     before escalating to a force-stop. Defaults to
+    ///     ``defaultGracefulStopTimeout`` (30s). Large VMs with many
+    ///     LaunchDaemons or mounted FileVault volumes may benefit from
+    ///     60–120s.
     /// - Throws: ``VirtualMachineBundleError`` if platform artifacts are
     ///   missing or invalid, or `VZError` if the configuration
     ///   fails validation.
-    public init(bundle: VirtualMachineBundle) throws {
+    public init(
+        bundle: VirtualMachineBundle,
+        gracefulStopTimeout: Int = VirtualMachine.defaultGracefulStopTimeout
+    ) throws {
         self.bundle = bundle
+        self.gracefulStopTimeout = gracefulStopTimeout
 
         let (stream, continuation) = AsyncStream<VirtualMachineState>.makeStream()
         self.stateStream = stream
@@ -263,69 +288,154 @@ public final class VirtualMachine: NSObject, Sendable {
         updateState(.running)
     }
 
+    /// The short "panic" timeout used by ``stop(graceful:)`` when the
+    /// caller passes `graceful: false` — we still attempt one graceful
+    /// shutdown before force-stopping, because force-stop can corrupt
+    /// the guest filesystem. If the caller genuinely wants to force-stop
+    /// with zero grace period (e.g. the guest is known-dead), call
+    /// ``stopImmediately()`` directly.
+    ///
+    /// See: <https://developer.apple.com/documentation/virtualization/vzvirtualmachine/stop(completionhandler:)>
+    public static let forcedStopGraceWindow: Int = 5
+
+    /// Stops the virtual machine gracefully, escalating to a force-stop
+    /// after a timeout if the guest ignores the request.
+    ///
+    /// Sends `VZVirtualMachine.requestStop()` (equivalent to pressing
+    /// the power button on real hardware) and waits for the VM to
+    /// observe ``VirtualMachineState/stopped``. If the stream does not
+    /// yield `.stopped` within `timeout` seconds, escalates to
+    /// ``VZVirtualMachine/stop(completionHandler:)`` — analogous to
+    /// holding the power button.
+    ///
+    /// This is the **preferred** shutdown path. It gives the guest a
+    /// chance to flush caches, stop LaunchDaemons, and unmount
+    /// filesystems — preventing corruption.
+    ///
+    /// - Parameter timeout: Seconds to wait for graceful shutdown
+    ///   before escalating. Defaults to ``gracefulStopTimeout``
+    ///   (configured via ``init(bundle:gracefulStopTimeout:)``).
+    ///
+    /// - Note: macOS guests generally honor `requestStop` via the
+    ///   Virtualization framework's synthetic power-button event.
+    ///   Older guests (pre-14) may require a prior SSH / vsock
+    ///   `shutdown -h now` — see ``GuestAgentClient`` for the vsock
+    ///   path.
+    ///
+    /// - SeeAlso: <https://developer.apple.com/documentation/virtualization/vzvirtualmachine/requeststop()>
+    public func stopGracefully(timeout: Int? = nil) async throws {
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard vm.canRequestStop else {
+            throw VirtualMachineLifecycleError.invalidTransition(
+                from: state, to: .stopped,
+                reason: "VM cannot request a graceful stop in its current state"
+            )
+        }
+
+        let effectiveTimeout = timeout ?? gracefulStopTimeout
+        Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)' (timeout \(effectiveTimeout)s)")
+        try vm.requestStop()
+
+        // Wait for the state-change stream to yield `.stopped`, or
+        // time out after `effectiveTimeout` seconds. Racing two
+        // async paths is cheaper than polling — no main-actor hops,
+        // no 60× cache-busting Task.detached awakenings.
+        let stream = stateStream
+        let stopped = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await state in stream where state == .stopped {
+                    return true
+                }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(effectiveTimeout))
+                return false
+            }
+            defer { group.cancelAll() }
+            return await group.next() ?? false
+        }
+
+        if !stopped {
+            Log.vm.warning("Graceful stop timed out after \(effectiveTimeout)s for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
+            try await forceStop(vm: vm, reason: "graceful timeout")
+        }
+    }
+
+    /// Force-stops the virtual machine **without** attempting a
+    /// graceful shutdown first.
+    ///
+    /// Analogous to pulling the power cord. Use only when the guest
+    /// is known to be wedged (kernel panic, vsock unreachable,
+    /// `stopGracefully` has already escalated and failed).
+    ///
+    /// - Warning: Force-stopping may cause filesystem corruption in
+    ///   the guest. The guest's APFS journal will replay on next
+    ///   boot, but in-flight writes may be lost and FileVault-encrypted
+    ///   volumes may require repair. **Prefer ``stopGracefully(timeout:)``.**
+    ///
+    /// - SeeAlso: <https://developer.apple.com/documentation/virtualization/vzvirtualmachine/stop(completionhandler:)>
+    public func stopImmediately() async throws {
+        guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
+        guard vm.canStop else {
+            throw VirtualMachineLifecycleError.invalidTransition(
+                from: state, to: .stopped,
+                reason: "VM cannot be force-stopped in its current state"
+            )
+        }
+        try await forceStop(vm: vm, reason: "caller requested stopImmediately")
+    }
+
     /// Stops the virtual machine.
     ///
-    /// - Parameter graceful: If `true`, sends a stop request
-    ///   that the guest can handle gracefully. macOS guests
-    ///   typically **do not** respond to this — use SSH or
-    ///   vsock to trigger `shutdown -h now` before calling
-    ///   this method. If `false`, forcefully terminates the VM.
+    /// - Parameter graceful: If `true`, requests a graceful stop and
+    ///   waits up to ``gracefulStopTimeout`` seconds before escalating
+    ///   to a force-stop. If `false`, the method still attempts a
+    ///   graceful shutdown first — with a short ``forcedStopGraceWindow``
+    ///   window — before force-stopping. This protects callers from
+    ///   inadvertently corrupting the guest filesystem.
+    ///
+    ///   To skip the grace window entirely (when the guest is known
+    ///   to be wedged), call ``stopImmediately()`` directly.
     ///
     /// - Important: Force-stopping a VM may cause filesystem
     ///   corruption in the guest. Always attempt a graceful
-    ///   shutdown first.
+    ///   shutdown first; this method does so automatically.
+    ///
+    /// - SeeAlso: <https://developer.apple.com/documentation/virtualization/vzvirtualmachine/stop(completionhandler:)>
     public func stop(graceful: Bool = false) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
 
-        if graceful {
-            guard vm.canRequestStop else {
-                throw VirtualMachineLifecycleError.invalidTransition(
-                    from: state, to: .stopped,
-                    reason: "VM cannot request a graceful stop in its current state"
-                )
-            }
-            Log.vm.info("Requesting graceful stop for '\(self.bundle.url.lastPathComponent, privacy: .public)'")
-            try vm.requestStop()
-
-            // Wait for the state-change stream to yield `.stopped`, or
-            // time out after `gracefulStopTimeout` seconds. Racing two
-            // async paths is cheaper than polling — no main-actor hops,
-            // no 60× cache-busting Task.detached awakenings.
-            let stream = stateStream
-            let timeout = Self.gracefulStopTimeout
-            let stopped = await withTaskGroup(of: Bool.self) { group in
-                group.addTask {
-                    for await state in stream where state == .stopped {
-                        return true
-                    }
-                    return false
-                }
-                group.addTask {
-                    try? await Task.sleep(for: .seconds(timeout))
-                    return false
-                }
-                defer { group.cancelAll() }
-                return await group.next() ?? false
-            }
-
-            if !stopped {
-                Log.vm.warning("Graceful stop timed out after \(Self.gracefulStopTimeout)s for '\(self.bundle.url.lastPathComponent, privacy: .public)' — escalating to force-stop")
-                nonisolated(unsafe) let unsafeVM = vm
-                try await unsafeVM.stop()
-                Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' force-stopped after graceful timeout")
-            }
-        } else {
-            guard vm.canStop else {
-                throw VirtualMachineLifecycleError.invalidTransition(
-                    from: state, to: .stopped,
-                    reason: "VM cannot be force-stopped in its current state"
-                )
-            }
-            Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
-            nonisolated(unsafe) let unsafeVM = vm
-            try await unsafeVM.stop()
-            Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' stopped")
+        // If the VM cannot accept a graceful stop request (e.g.
+        // it already crashed), fall straight through to the raw
+        // `VZVirtualMachine.stop()` path. Otherwise, grant a grace
+        // window sized by the caller's intent.
+        if !vm.canRequestStop {
+            Log.vm.info("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' cannot accept graceful stop — proceeding directly to force-stop")
+            try await stopImmediately()
+            return
         }
+
+        if graceful {
+            try await stopGracefully(timeout: gracefulStopTimeout)
+        } else {
+            // Even the "force-stop" path grants the guest a short
+            // grace window — skipping it risks corruption. Callers
+            // who know the guest is wedged should call
+            // `stopImmediately()` explicitly.
+            try await stopGracefully(timeout: Self.forcedStopGraceWindow)
+        }
+    }
+
+    /// Issues the raw `VZVirtualMachine.stop()` call and logs the escalation.
+    ///
+    /// Shared between ``stopGracefully(timeout:)`` (on timeout) and
+    /// ``stopImmediately()`` (direct).
+    private func forceStop(vm: VZVirtualMachine, reason: String) async throws {
+        Log.vm.info("Force-stopping VM '\(self.bundle.url.lastPathComponent, privacy: .public)' (\(reason, privacy: .public))")
+        nonisolated(unsafe) let unsafeVM = vm
+        try await unsafeVM.stop()
+        Log.vm.notice("VM '\(self.bundle.url.lastPathComponent, privacy: .public)' stopped")
     }
 
     /// Pauses the virtual machine.

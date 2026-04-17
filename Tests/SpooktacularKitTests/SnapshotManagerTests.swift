@@ -122,6 +122,46 @@ struct SnapshotManagerTests {
                 return false
             }
         }
+
+        @Test("Does not leave .in-progress directories behind on success")
+        func saveCleansStagingOnSuccess() throws {
+            let (bundle, _tmp) = try setup()
+            try SnapshotManager.save(bundle: bundle, label: "atomic")
+
+            let savedStates = bundle.url.appendingPathComponent("SavedStates")
+            let entries = try FileManager.default.contentsOfDirectory(
+                at: savedStates, includingPropertiesForKeys: nil
+            )
+            let leftover = entries.filter { $0.lastPathComponent.hasSuffix(".in-progress") }
+            #expect(leftover.isEmpty, "No .in-progress staging directories should remain")
+        }
+
+        @Test("A pre-existing .in-progress directory is overwritten, not left in place")
+        func saveClearsStaleStaging() throws {
+            // If a previous crash left a stale `.in-progress` dir behind,
+            // the next save MUST reclaim it — otherwise the operator is
+            // stuck with a failing snapshot path until they manually
+            // `rm -rf`. Simulate the stale dir and verify save recovers.
+            let (bundle, _tmp) = try setup()
+            let savedStates = bundle.url.appendingPathComponent("SavedStates")
+            try FileManager.default.createDirectory(at: savedStates, withIntermediateDirectories: true)
+            let stale = savedStates.appendingPathComponent("stale.in-progress")
+            try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+            try Data("junk".utf8).write(to: stale.appendingPathComponent("garbage"))
+
+            try SnapshotManager.save(bundle: bundle, label: "stale")
+
+            // The final snapshot must exist.
+            #expect(FileManager.default.fileExists(
+                atPath: savedStates.appendingPathComponent("stale").path
+            ))
+            // No `.in-progress` directory must remain.
+            let entries = try FileManager.default.contentsOfDirectory(
+                at: savedStates, includingPropertiesForKeys: nil
+            )
+            let leftover = entries.filter { $0.lastPathComponent.hasSuffix(".in-progress") }
+            #expect(leftover.isEmpty, "Stale .in-progress must be reclaimed")
+        }
     }
 
     // MARK: - Restore

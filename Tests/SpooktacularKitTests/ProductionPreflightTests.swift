@@ -95,7 +95,34 @@ struct ProductionPreflightTests {
             tenancyMode: .multiTenant,
             insecure: false,
             hasAuthorizationService: true,
-            hasAuditSink: true
+            hasAuditSink: true,
+            hasDistributedLockService: true
+        )
+        try p.validate()
+    }
+
+    @Test("multi-tenant without a DistributedLockService is rejected")
+    func multiTenantRequiresDistributedLock() {
+        let p = ProductionPreflight(
+            tenancyMode: .multiTenant,
+            insecure: false,
+            hasAuthorizationService: true,
+            hasAuditSink: true,
+            hasDistributedLockService: false
+        )
+        #expect(throws: ProductionPreflightError.multiTenantRequiresDistributedLock) {
+            try p.validate()
+        }
+    }
+
+    @Test("single-tenant does not require a DistributedLockService")
+    func singleTenantWithoutLockPasses() throws {
+        let p = ProductionPreflight(
+            tenancyMode: .singleTenant,
+            insecure: false,
+            hasAuthorizationService: true,
+            hasAuditSink: true,
+            hasDistributedLockService: false
         )
         try p.validate()
     }
@@ -106,6 +133,7 @@ struct ProductionPreflightTests {
             .insecureModeInMultiTenant,
             .multiTenantRequiresAuthorization,
             .productionRequiresAudit,
+            .multiTenantRequiresDistributedLock,
         ]
         for err in cases {
             #expect(err.errorDescription?.isEmpty == false,

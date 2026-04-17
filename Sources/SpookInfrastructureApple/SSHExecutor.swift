@@ -209,6 +209,20 @@ public enum SSHExecutor {
     /// user gets a fully interactive terminal. The method blocks
     /// until the SSH process exits.
     ///
+    /// ## Shell safety
+    ///
+    /// `arguments` is passed to `Foundation.Process.arguments`,
+    /// which executes the binary via `posix_spawn(2)` — a syscall
+    /// that **does not invoke a shell**. Metacharacters such as
+    /// `;`, `&&`, backticks, or `$(...)` therefore land inside
+    /// `ssh`'s argv[n] verbatim; they do not expand or split. A
+    /// hostile argument like `"; rm -rf ~"` becomes a single OpenSSH
+    /// command word, not host-side shell invocation.
+    ///
+    /// Callers are still responsible for validating any remote
+    /// command they append — once a string crosses the SSH boundary
+    /// it IS shelled out on the remote side. The host side is safe.
+    ///
     /// Use this for `spook ssh` and `spook exec`, where the user
     /// interacts directly with the remote shell.
     ///

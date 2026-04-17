@@ -76,4 +76,32 @@ struct GitHubRunnerTemplateTests {
         // Token should be wrapped in single quotes with escaping
         #expect(!dangerous.contains("tok'en"))
     }
+
+    @Test("single-quoted labels are escaped individually")
+    func labelWithSingleQuoteDoesNotBreakQuoting() {
+        // The historic bug: labels were joined THEN escaped, which
+        // let a single-quote in one label break out of the outer
+        // quoting and let shell code leak in.
+        let script = GitHubRunnerTemplate.scriptContent(
+            repo: "o/r",
+            token: "t",
+            labels: ["foo'bar", "baz"]
+        )
+        // The bad label must be POSIX-escaped as `foo'\''bar`
+        // inside the single-quoted --labels argument.
+        #expect(script.contains("foo'\\''bar,baz"))
+        // And there must NEVER be an unescaped single-quote that
+        // closes the --labels argument prematurely.
+        #expect(!script.contains("'foo'bar"))
+    }
+
+    @Test("empty labels array omits the --labels flag")
+    func emptyLabels() {
+        let script = GitHubRunnerTemplate.scriptContent(
+            repo: "o/r",
+            token: "t",
+            labels: []
+        )
+        #expect(!script.contains("--labels"))
+    }
 }

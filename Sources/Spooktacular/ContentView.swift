@@ -10,9 +10,11 @@ struct ContentView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openWindow) private var openWindow
 
     @State private var searchText = ""
     @State private var showInspector = false
+    @State private var didRestoreWorkspaces = false
 
     var body: some View {
         @Bindable var state = appState
@@ -39,16 +41,38 @@ struct ContentView: View {
         ) {
             Button("OK", role: .cancel) {
                 appState.errorMessage = nil
+                appState.errorSuggestedAction = nil
             }
         } message: {
-            if let message = appState.errorMessage {
-                Text(message)
+            VStack(alignment: .leading, spacing: 4) {
+                if let message = appState.errorMessage {
+                    Text(message)
+                }
+                if let hint = appState.errorSuggestedAction {
+                    Text(hint).font(.caption)
+                }
             }
         }
         .onAppear {
             appState.loadVMs()
+            restorePreviouslyOpenWorkspaces()
         }
         .toolbarApplyingGlassContainer()
+    }
+
+    /// Re-opens workspace windows that were open at last quit.
+    ///
+    /// Guarded by a `@State` flag so re-appearing the library
+    /// window does not re-open duplicates. ``AppState`` handles
+    /// the case where a VM was deleted while closed — its
+    /// ``AppState/restorableWorkspaceNames()`` silently skips
+    /// missing entries.
+    private func restorePreviouslyOpenWorkspaces() {
+        guard !didRestoreWorkspaces else { return }
+        didRestoreWorkspaces = true
+        for name in appState.restorableWorkspaceNames() {
+            openWindow(id: "workspace", value: name)
+        }
     }
 
     @ViewBuilder

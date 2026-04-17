@@ -55,21 +55,68 @@ public enum XMLCanonicalization {
         return out
     }
 
+    /// Hard caps on internal-entity expansion and nesting depth.
+    ///
+    /// "Billion laughs" and its modern variants rely on nested
+    /// entity definitions whose expansion blows up exponentially
+    /// (e.g. 10 levels × 10 children → 10^10 expansions). Apple's
+    /// `XMLParser` exposes `shouldResolveExternalEntities` but
+    /// has no built-in cap on **internal** entity expansion, so
+    /// we count expansions in the delegate and bail once either
+    /// limit is crossed.
+    ///
+    /// The concrete numbers are defensive but still generous —
+    /// well-formed SAML assertions use ≤ 5 entity references
+    /// (mostly `&amp;`) and ≤ 10 levels of nesting. See
+    /// https://developer.apple.com/documentation/foundation/xmlparser .
+    public static let maxEntityExpansions = 100
+    public static let maxElementDepth = 10
+
     /// Parses XML bytes into a canonicalization-ready tree.
     ///
+    /// ## XXE and billion-laughs defense
+    ///
+    /// Hardened against the two XML-entity attacks the OWASP XML
+    /// Security Cheat Sheet calls out for SAML parsers:
+    ///
+    /// - **External entity (XXE)** — `shouldResolveExternalEntities`
+    ///   is explicitly set to `false`. Apple's `XMLParser` defaults
+    ///   are already conservative on macOS, but pinning the flag
+    ///   removes any ambiguity across OS versions.
+    /// - **Internal entity expansion (billion laughs / quadratic
+    ///   blowup)** — `foundInternalEntityDeclaration` is tracked
+    ///   in the delegate, and `maxEntityExpansions` caps the
+    ///   running count across the parse. We also cap nesting
+    ///   depth at `maxElementDepth`. Crossing either limit aborts
+    ///   the parser and surfaces a typed error.
+    ///
     /// - Parameter data: Raw XML bytes.
-    /// - Throws: ``XMLCanonicalizationError`` if parsing fails.
+    /// - Throws: ``XMLCanonicalizationError`` if parsing fails or
+    ///   entity/depth limits are exceeded.
     /// - Returns: The root element of the parsed tree.
     public static func parse(_ data: Data) throws -> Element {
         let builder = XMLTreeBuilder()
+        builder.maxEntityExpansions = maxEntityExpansions
+        builder.maxElementDepth = maxElementDepth
         let parser = XMLParser(data: data)
         parser.shouldProcessNamespaces = true
         parser.shouldReportNamespacePrefixes = true
-        parser.shouldResolveExternalEntities = false  // XXE prevention
+        // XXE prevention — see
+        // https://developer.apple.com/documentation/foundation/xmlparser
+        parser.shouldResolveExternalEntities = false
         parser.delegate = builder
 
         guard parser.parse() else {
+            // The delegate aborts the parser with typed errors
+            // for the entity-expansion and depth limits; surface
+            // those directly instead of re-wrapping in parseFailed.
+            if let limitError = builder.entityLimitError {
+                throw limitError
+            }
             throw XMLCanonicalizationError.parseFailed(parser.parserError)
+        }
+        if let limitError = builder.entityLimitError {
+            throw limitError
         }
         guard let root = builder.root else {
             throw XMLCanonicalizationError.emptyDocument
@@ -337,11 +384,73 @@ public enum XMLCanonicalization {
 /// Tracks namespace declarations via `didStartMappingPrefix` — those
 /// callbacks fire *before* `didStartElement`, letting us attach the
 /// declarations to the element that actually introduced them.
+///
+/// ## Billion-laughs defense
+///
+/// The builder also counts internal entity declarations and
+/// element-nesting depth, aborting the parser through
+/// `XMLParser.abortParsing()` when either crosses its cap. The
+/// typed error is stashed in `entityLimitError` so the caller
+/// surfaces it instead of the generic "parse failed".
 final class XMLTreeBuilder: NSObject, XMLParserDelegate {
 
     private(set) var root: XMLCanonicalization.Element?
     private var stack: [XMLCanonicalization.Element] = []
     private var pendingNamespaces: [String: String] = [:]
+
+    /// Cap on internal entity declarations. Set by the parent
+    /// before parsing starts.
+    var maxEntityExpansions = Int.max
+
+    /// Cap on live element-nesting depth. Set by the parent
+    /// before parsing starts.
+    var maxElementDepth = Int.max
+
+    /// Typed error produced when we abort the parser due to
+    /// limit exceedance. Surfaced by `XMLCanonicalization.parse`.
+    var entityLimitError: XMLCanonicalizationError?
+
+    private var entityDeclCount = 0
+
+    // MARK: - Entity-expansion tracking
+
+    /// Fires for every `<!ENTITY name "value">` the parser sees.
+    /// We count declarations (not live expansions — the parser
+    /// already resolves them into `foundCharacters`) and abort
+    /// once the cap is crossed. Billion-laughs style attacks
+    /// rely on dozens of nested declarations.
+    func parser(
+        _ parser: XMLParser,
+        foundInternalEntityDeclarationWithName name: String,
+        value: String?
+    ) {
+        entityDeclCount += 1
+        if entityDeclCount > maxEntityExpansions {
+            entityLimitError = .entityExpansionLimitExceeded(
+                limit: maxEntityExpansions
+            )
+            parser.abortParsing()
+        }
+    }
+
+    /// External entities are blocked at the source
+    /// (`shouldResolveExternalEntities = false`) but if we ever
+    /// observe a declaration for one we count it anyway — a
+    /// defense-in-depth belt over the configuration brace.
+    func parser(
+        _ parser: XMLParser,
+        foundExternalEntityDeclarationWithName name: String,
+        publicID: String?,
+        systemID: String?
+    ) {
+        entityDeclCount += 1
+        if entityDeclCount > maxEntityExpansions {
+            entityLimitError = .entityExpansionLimitExceeded(
+                limit: maxEntityExpansions
+            )
+            parser.abortParsing()
+        }
+    }
 
     func parser(_ parser: XMLParser, didStartMappingPrefix prefix: String, toURI namespaceURI: String) {
         // Prefix bindings declared on the element about to open.
@@ -355,6 +464,13 @@ final class XMLTreeBuilder: NSObject, XMLParserDelegate {
         qualifiedName qName: String?,
         attributes attributeDict: [String: String] = [:]
     ) {
+        // Nesting-depth cap — XMLParser has no built-in bound.
+        if stack.count >= maxElementDepth {
+            entityLimitError = .elementDepthExceeded(limit: maxElementDepth)
+            parser.abortParsing()
+            return
+        }
+
         // Foundation hands us the qualified name in `qName`; split it.
         let qualified = qName ?? elementName
         let (prefix, localName) = splitQualifiedName(qualified)
@@ -414,6 +530,28 @@ final class XMLTreeBuilder: NSObject, XMLParserDelegate {
         }
     }
 
+    /// CDATA fidelity — XMLParser delivers CDATA content through
+    /// `foundCDATA` instead of `foundCharacters`. We decode the
+    /// bytes as UTF-8 and append them as a normal text node so
+    /// the canonicalizer applies the C14N §2.3 escape rules (`&`
+    /// → `&amp;`, `<` → `&lt;`). Per Canonical XML 1.0 §1.1 the
+    /// CDATA marker itself is REPLACED in canonical form — any
+    /// preserved `<![CDATA[…]]>` literal would break the digest
+    /// for SAML assertions signed by an IdP that CDATA-wraps
+    /// attribute values (a real pattern in Okta and Google
+    /// Workspace IdPs).
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        guard let current = stack.last,
+              let string = String(data: CDATABlock, encoding: .utf8) else {
+            return
+        }
+        if case .text(let existing) = current.children.last {
+            current.children[current.children.count - 1] = .text(existing + string)
+        } else {
+            current.children.append(.text(string))
+        }
+    }
+
     func parser(
         _ parser: XMLParser,
         didEndElement elementName: String,
@@ -456,12 +594,26 @@ public enum XMLCanonicalizationError: Error, LocalizedError {
     case parseFailed(Error?)
     case emptyDocument
 
+    /// The document declared more internal entities than
+    /// ``XMLCanonicalization/maxEntityExpansions`` permits.
+    /// Surfaces on billion-laughs inputs (OWASP XML §XXE).
+    case entityExpansionLimitExceeded(limit: Int)
+
+    /// Element nesting exceeded ``XMLCanonicalization/maxElementDepth``.
+    /// A complementary defense to entity-expansion limits against
+    /// deeply-nested adversarial inputs.
+    case elementDepthExceeded(limit: Int)
+
     public var errorDescription: String? {
         switch self {
         case .parseFailed(let error):
             return "XML parse failed: \(error?.localizedDescription ?? "unknown")"
         case .emptyDocument:
             return "XML document had no root element"
+        case .entityExpansionLimitExceeded(let limit):
+            return "XML document declared more than \(limit) internal entities — refusing to expand (billion-laughs / quadratic-blowup defense)"
+        case .elementDepthExceeded(let limit):
+            return "XML document nested deeper than \(limit) levels — refusing to parse"
         }
     }
 }

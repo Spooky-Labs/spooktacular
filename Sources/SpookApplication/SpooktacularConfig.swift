@@ -67,7 +67,8 @@ public struct SpooktacularConfig: Sendable, Codable {
         self.server = server
     }
 
-    /// Loads configuration from environment variables.
+    /// Loads configuration from environment variables, failing
+    /// loudly when values are unparseable.
     ///
     /// Canonical names are `SPOOK_`-prefixed. Historical un-prefixed
     /// aliases (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`) are
@@ -75,14 +76,42 @@ public struct SpooktacularConfig: Sendable, Codable {
     /// but the prefixed form wins when both are set. A future
     /// release may drop the un-prefixed aliases; today's operators
     /// should migrate to `SPOOK_TLS_*_PATH`.
-    public static func fromEnvironment() -> SpooktacularConfig {
+    ///
+    /// Unknown enum values (e.g. `SPOOK_TENANCY_MODE=triple-tenant`)
+    /// and non-numeric values where integers are expected throw
+    /// ``ConfigParseError`` instead of silently collapsing to a
+    /// default. Every resolved value is logged at `.info` on startup
+    /// so operators can diff the running process's config against
+    /// what they thought they set.
+    ///
+    /// - Parameter logger: Receives a single `.info` line on success
+    ///   summarizing the resolved config. Default is silent; callers
+    ///   at the composition root should inject an ``OSLogProvider``
+    ///   with category `"config"` so the line appears in Console.app.
+    /// - Throws: ``ConfigParseError`` on unparseable input.
+    public static func fromEnvironment(
+        logger: any LogProvider = SilentLogProvider()
+    ) throws -> SpooktacularConfig {
         let env = ProcessInfo.processInfo.environment
         // `SPOOK_` wins, fall back to legacy un-prefixed name.
         func tlsPath(_ prefixed: String, _ legacy: String) -> String? {
             env[prefixed] ?? env[legacy]
         }
-        return SpooktacularConfig(
-            tenancyMode: env["SPOOK_TENANCY_MODE"] == "multi-tenant" ? .multiTenant : .singleTenant,
+
+        let tenancyMode = try parseTenancyMode(env["SPOOK_TENANCY_MODE"])
+        let port = try parseUInt16(env["SPOOK_PORT"], name: "SPOOK_PORT", default: 8484)
+        let maxConns = try parseInt(env["SPOOK_MAX_CONNECTIONS"], name: "SPOOK_MAX_CONNECTIONS", default: 50)
+        let rateLimit = try parseInt(env["SPOOK_RATE_LIMIT"], name: "SPOOK_RATE_LIMIT", default: 120)
+        let retentionDays = try parseOptionalInt(
+            env["SPOOK_AUDIT_S3_RETENTION_DAYS"] ?? env["SPOOK_AUDIT_S3_LOCK_DAYS"],
+            name: "SPOOK_AUDIT_S3_RETENTION_DAYS"
+        )
+        let batchSize = try parseOptionalInt(
+            env["SPOOK_AUDIT_S3_BATCH_SIZE"], name: "SPOOK_AUDIT_S3_BATCH_SIZE"
+        )
+
+        let config = SpooktacularConfig(
+            tenancyMode: tenancyMode,
             rbac: RBACConfig(configPath: env["SPOOK_RBAC_CONFIG"]),
             tls: TLSConfig(
                 certPath: tlsPath("SPOOK_TLS_CERT_PATH", "TLS_CERT_PATH"),
@@ -98,25 +127,64 @@ public struct SpooktacularConfig: Sendable, Codable {
                 s3Bucket: env["SPOOK_AUDIT_S3_BUCKET"],
                 s3Region: env["SPOOK_AUDIT_S3_REGION"],
                 s3Prefix: env["SPOOK_AUDIT_S3_PREFIX"],
-                // `SPOOK_AUDIT_S3_RETENTION_DAYS` is the canonical
-                // name; the hardening doc previously mentioned
-                // `SPOOK_AUDIT_S3_LOCK_DAYS` — accept both so docs
-                // and code stay in sync during the transition.
-                s3RetentionDays: (env["SPOOK_AUDIT_S3_RETENTION_DAYS"] ?? env["SPOOK_AUDIT_S3_LOCK_DAYS"])
-                    .flatMap(Int.init),
-                s3BatchSize: env["SPOOK_AUDIT_S3_BATCH_SIZE"].flatMap(Int.init),
+                s3RetentionDays: retentionDays,
+                s3BatchSize: batchSize,
                 webhookURL: env["SPOOK_AUDIT_WEBHOOK_URL"],
                 webhookHMACKeyHex: env["SPOOK_AUDIT_WEBHOOK_HMAC_KEY_HEX"],
                 webhookExtraHeaders: env["SPOOK_AUDIT_WEBHOOK_HEADERS"].flatMap(parseHeaders)
             ),
             server: ServerConfig(
                 host: env["SPOOK_HOST"] ?? "127.0.0.1",
-                port: UInt16(env["SPOOK_PORT"] ?? "") ?? 8484,
-                maxConnections: Int(env["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50,
-                rateLimit: Int(env["SPOOK_RATE_LIMIT"] ?? "") ?? 120,
+                port: port,
+                maxConnections: maxConns,
+                rateLimit: rateLimit,
                 insecure: env["SPOOK_INSECURE_CONTROLLER"] == "1"
             )
         )
+        logger.info(
+            "config resolved tenancy=\(config.tenancyMode.rawValue) host=\(config.server.host) port=\(config.server.port) maxConns=\(config.server.maxConnections) rateLimit=\(config.server.rateLimit) insecure=\(config.server.insecure) tls=\(config.tls?.certPath != nil) merkle=\(config.audit.merkleEnabled) s3Bucket=\(config.audit.s3Bucket ?? "-")"
+        )
+        return config
+    }
+
+    // MARK: - Parsers
+
+    private static func parseTenancyMode(_ raw: String?) throws -> TenancyMode {
+        guard let raw else { return .singleTenant }
+        switch raw {
+        case "multi-tenant":   return .multiTenant
+        case "single-tenant":  return .singleTenant
+        default:
+            throw ConfigParseError.invalidValue(
+                name: "SPOOK_TENANCY_MODE",
+                raw: raw,
+                expected: "single-tenant | multi-tenant"
+            )
+        }
+    }
+
+    private static func parseUInt16(_ raw: String?, name: String, default fallback: UInt16) throws -> UInt16 {
+        guard let raw, !raw.isEmpty else { return fallback }
+        guard let parsed = UInt16(raw) else {
+            throw ConfigParseError.invalidValue(name: name, raw: raw, expected: "UInt16 0...65535")
+        }
+        return parsed
+    }
+
+    private static func parseInt(_ raw: String?, name: String, default fallback: Int) throws -> Int {
+        guard let raw, !raw.isEmpty else { return fallback }
+        guard let parsed = Int(raw) else {
+            throw ConfigParseError.invalidValue(name: name, raw: raw, expected: "Int")
+        }
+        return parsed
+    }
+
+    private static func parseOptionalInt(_ raw: String?, name: String) throws -> Int? {
+        guard let raw, !raw.isEmpty else { return nil }
+        guard let parsed = Int(raw) else {
+            throw ConfigParseError.invalidValue(name: name, raw: raw, expected: "Int")
+        }
+        return parsed
     }
 
     /// Parses `Header1: val1; Header2: val2` — the env-var shape
@@ -139,6 +207,35 @@ public struct SpooktacularConfig: Sendable, Codable {
     public static func load(from path: String) throws -> SpooktacularConfig {
         let data = try Data(contentsOf: URL(filePath: path))
         return try JSONDecoder().decode(SpooktacularConfig.self, from: data)
+    }
+}
+
+/// Errors raised by ``SpooktacularConfig/fromEnvironment()`` when an
+/// environment variable holds a value that cannot be parsed into the
+/// expected Swift type. Previously, unknown enum values or
+/// non-numeric integer strings silently collapsed to defaults; that
+/// behavior hid deployment misconfiguration until long after startup.
+public enum ConfigParseError: Error, Sendable, Equatable, LocalizedError {
+
+    /// An environment variable contained a value that does not
+    /// match the expected shape.
+    ///
+    /// - Parameters:
+    ///   - name: The environment variable name.
+    ///   - raw: The literal value that was rejected.
+    ///   - expected: Human-readable description of accepted forms.
+    case invalidValue(name: String, raw: String, expected: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidValue(let name, let raw, let expected):
+            "Environment variable \(name)='\(raw)' is not a valid \(expected)."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        "Fix the environment variable value or unset it to fall back to the default. "
+        + "See SPOOKTACULAR_CONFIG.md for the allowed set of values."
     }
 }
 

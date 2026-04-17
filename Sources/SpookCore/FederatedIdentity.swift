@@ -49,10 +49,17 @@ public struct FederatedIdentity: Sendable, Codable, Equatable {
     /// A string suitable for use as ``AuthorizationContext/actorIdentity``.
     public var actorIdentity: String { "\(issuer)/\(subject)" }
 
-    /// Whether the token has expired.
-    public var isExpired: Bool {
+    /// Whether the token has expired, evaluated against `now`.
+    ///
+    /// Injectable `now` matches the ``BreakGlassTicket/isExpired(now:clockSkew:)``
+    /// style — callers can pass a fixed reference date for
+    /// deterministic tests and tests can simulate skew without
+    /// waiting wall-clock. Tokens without an `expiresAt` are
+    /// considered non-expiring (e.g. service-account identities
+    /// derived from static config).
+    public func isExpired(now: Date = Date()) -> Bool {
         guard let exp = expiresAt else { return false }
-        return Date() > exp
+        return now > exp
     }
 
     /// Derives a ``FederatedIdentity`` from a SAML assertion.
@@ -95,8 +102,18 @@ public struct OIDCProviderConfig: Sendable, Codable {
     public let issuerURL: String
     /// The OAuth 2.0 client ID registered with the provider.
     public let clientID: String
-    /// Expected audience claim. When non-nil, tokens must contain this value.
-    public let audience: String?
+    /// Expected audience claim. **Required** — tokens must
+    /// contain this value in their `aud` claim or be rejected.
+    ///
+    /// OIDC Core §3.1.3.7 requires audience validation; shared-
+    /// issuer IdPs (GitHub Actions, Azure AD multi-tenant,
+    /// Google) make audience the only thing separating a token
+    /// minted for service A from a token minted for service B.
+    /// A `nil`-audience code path therefore invites cross-client
+    /// confusion every time, so the field is now non-optional.
+    /// Callers that previously used `clientID` as the audience
+    /// should pass `audience: clientID` explicitly.
+    public let audience: String
     /// Map OIDC groups to Spooktacular scopes.
     public let groupScopeMapping: [String: AuthScope]
     /// Map OIDC groups to tenant IDs.
@@ -156,7 +173,7 @@ public struct OIDCProviderConfig: Sendable, Codable {
     public init(
         issuerURL: String,
         clientID: String,
-        audience: String? = nil,
+        audience: String,
         groupScopeMapping: [String: AuthScope] = [:],
         groupTenantMapping: [String: String] = [:],
         staticJWKSPath: String? = nil,

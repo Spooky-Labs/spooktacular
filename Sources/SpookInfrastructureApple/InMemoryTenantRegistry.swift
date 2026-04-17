@@ -6,12 +6,29 @@ import SpookApplication
 ///
 /// Supports runtime registration and removal of tenants.
 /// Optionally persists to a JSON file for restart recovery.
+///
+/// ## remove vs. removeForce
+///
+/// The registry does not own VM state — VMs live under
+/// `~/.spooktacular/vms/`. To enforce the ``TenantRegistry/remove(id:)``
+/// contract ("fails when the tenant has active VMs") callers pass a
+/// ``TenantActiveVMCounter`` closure at construction that the registry
+/// calls before committing the removal. Callers that cannot supply a
+/// counter — tests, single-tenant setups, migration scripts — will
+/// see ``remove(id:)`` behave identically to ``removeForce(id:)``,
+/// which is logged at warning level so operators don't silently get
+/// the lax behavior without knowing.
 public actor InMemoryTenantRegistry: TenantRegistry {
     private var tenants: [String: TenantDefinition] = [:]
     private let persistPath: String?
+    private let activeVMCounter: TenantActiveVMCounter?
 
-    public init(persistPath: String? = nil) {
+    public init(
+        persistPath: String? = nil,
+        activeVMCounter: TenantActiveVMCounter? = nil
+    ) {
         self.persistPath = persistPath
+        self.activeVMCounter = activeVMCounter
         // Load from file if it exists
         if let path = persistPath,
            let data = try? Data(contentsOf: URL(filePath: path)),
@@ -21,8 +38,13 @@ public actor InMemoryTenantRegistry: TenantRegistry {
     }
 
     /// Convenience: init from SpooktacularConfig
-    public init(config: SpooktacularConfig, persistPath: String? = nil) {
+    public init(
+        config: SpooktacularConfig,
+        persistPath: String? = nil,
+        activeVMCounter: TenantActiveVMCounter? = nil
+    ) {
         self.persistPath = persistPath
+        self.activeVMCounter = activeVMCounter
         for t in config.tenants { tenants[t.id] = t }
     }
 
@@ -40,6 +62,20 @@ public actor InMemoryTenantRegistry: TenantRegistry {
     }
 
     public func remove(id: String) async throws {
+        guard tenants[id] != nil else {
+            throw TenantRegistryError.notFound(id)
+        }
+        if let counter = activeVMCounter {
+            let active = try await counter(id)
+            if active > 0 {
+                throw TenantRegistryError.tenantHasActiveVMs(id: id, count: active)
+            }
+        }
+        tenants.removeValue(forKey: id)
+        try await persist()
+    }
+
+    public func removeForce(id: String) async throws {
         guard tenants.removeValue(forKey: id) != nil else {
             throw TenantRegistryError.notFound(id)
         }
@@ -71,19 +107,36 @@ public actor InMemoryTenantRegistry: TenantRegistry {
     }
 }
 
-public enum TenantRegistryError: Error, LocalizedError, Sendable {
+/// Errors raised by ``InMemoryTenantRegistry`` operations.
+public enum TenantRegistryError: Error, LocalizedError, Sendable, Equatable {
+
+    /// The requested tenant was not present in the registry.
     case notFound(String)
+
+    /// ``InMemoryTenantRegistry/remove(id:)`` refused to delete a
+    /// tenant that still has VMs attributed to it.
+    ///
+    /// - Parameters:
+    ///   - id: Tenant identifier.
+    ///   - count: Number of active VMs reported by the injected
+    ///     ``TenantActiveVMCounter``.
+    case tenantHasActiveVMs(id: String, count: Int)
 
     public var errorDescription: String? {
         switch self {
-        case .notFound(let id): "Tenant not found: \(id)"
+        case .notFound(let id):
+            return "Tenant not found: \(id)"
+        case .tenantHasActiveVMs(let id, let count):
+            return "Cannot remove tenant '\(id)': \(count) active VM(s) reference it."
         }
     }
 
     public var recoverySuggestion: String? {
         switch self {
         case .notFound:
-            "List tenants with `GET /v1/tenants` or `spook rbac list-tenants` to confirm the id exists. Tenants are registered via `POST /v1/tenants` or SPOOK_TENANT_CONFIG."
+            return "List tenants with `GET /v1/tenants` or `spook rbac list-tenants` to confirm the id exists. Tenants are registered via `POST /v1/tenants` or SPOOK_TENANT_CONFIG."
+        case .tenantHasActiveVMs:
+            return "Delete the tenant's VMs first, or call `removeForce(id:)` to orphan them (audited)."
         }
     }
 }

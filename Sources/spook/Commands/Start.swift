@@ -136,7 +136,13 @@ extension Spook {
                         // VM's disk image — once injected, the host-side
                         // copy is no longer needed and becomes just
                         // another potential on-disk secret surface.
-                        defer { ScriptFile.cleanup(scriptURL: watcherScript) }
+                        defer {
+                            do {
+                                try ScriptFile.cleanup(scriptURL: watcherScript)
+                            } catch {
+                                print(Style.dim("Watcher script cleanup failed: \(error.localizedDescription)"))
+                            }
+                        }
                         try DiskInjector.inject(script: watcherScript, into: bundle)
                     }
                     print(Style.success("✓ Script placed in shared folder. Watcher daemon injected."))

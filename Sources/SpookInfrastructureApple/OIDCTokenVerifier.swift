@@ -174,7 +174,45 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             throw OIDCError.unsupportedAlgorithm(header.alg)
         }
 
-        // 4. Verify cryptographic signature against JWKS
+        // 4. **iss-before-key** — decode the payload WITHOUT
+        // signature verification, read `iss`, reject on
+        // mismatch, THEN verify the signature against the key
+        // set selected by iss.
+        //
+        // Without this step, a token signed by IdP-A but carrying
+        // `iss = IdP-B` in its payload could verify against
+        // IdP-A's keyset (the signature is valid, the alg matches)
+        // and the downstream authorization layer would then trust
+        // it as an IdP-B-issued identity. Classic cross-IdP
+        // confusion — defended here by **gating the JWKS lookup
+        // on the configured issuer first**.
+        //
+        // We do the unverified decode in a local do/catch so a
+        // malformed payload surfaces as `malformedToken`, never
+        // an optional-fallthrough into the authenticated path.
+        guard let payloadData = base64URLDecode(String(parts[1])) else {
+            throw OIDCError.malformedToken
+        }
+        let claims: JWTClaims
+        do {
+            claims = try Self.decoder.decode(JWTClaims.self, from: payloadData)
+        } catch {
+            if case let DecodingError.keyNotFound(key, _)? = error as? DecodingError {
+                throw OIDCError.missingRequiredClaim(key.stringValue)
+            }
+            throw OIDCError.malformedToken
+        }
+
+        // Pre-signature issuer gate. A mismatched `iss` short-
+        // circuits before we even consult the JWKS for `config.issuerURL`.
+        guard claims.iss == config.issuerURL else {
+            throw OIDCError.issuerMismatch
+        }
+
+        // 5. Fetch the JWKS **for our configured issuer** and
+        // select a key by kid. Because step 4 already rejected
+        // a mismatched `iss`, the JWKS we select here is always
+        // the one matching the claimed issuer.
         let keys = try await getJWKS()
         guard let matchingKey = keys.first(where: { $0.kid == header.kid }) else {
             throw OIDCError.signatureVerificationFailed
@@ -187,40 +225,16 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
 
         try verifyRS256(signedInput: signedInput, signature: signatureData, jwk: matchingKey)
 
-        // 5. Decode payload claims via the typed struct.
-        guard let payloadData = base64URLDecode(String(parts[1])) else {
-            throw OIDCError.malformedToken
-        }
-        let claims: JWTClaims
-        do {
-            claims = try Self.decoder.decode(JWTClaims.self, from: payloadData)
-        } catch {
-            // A decode failure here is usually a missing required
-            // claim — `iss`, `sub`, or `exp`. Surface the specific
-            // claim when the decoder told us which one, otherwise
-            // fall back to `malformedToken` so the caller sees a
-            // consistent taxonomy.
-            if case let DecodingError.keyNotFound(key, _)? = error as? DecodingError {
-                throw OIDCError.missingRequiredClaim(key.stringValue)
-            }
-            throw OIDCError.malformedToken
-        }
-
-        // 6. Validate issuer
-        guard claims.iss == config.issuerURL else { throw OIDCError.issuerMismatch }
-
-        // 7. Validate audience — unconditional.
-        //
-        // OIDC Core §3.1.3.7 requires audience validation. Fall
-        // back to `config.clientID` so shared-issuer IdPs (GitHub
-        // Actions, Azure AD multi-tenant) can't cross-verify for
-        // unrelated clients.
-        let expectedAud = config.audience ?? config.clientID
-        guard claims.aud.contains(expectedAud) else {
+        // 6. Validate audience. `config.audience` is now
+        // non-optional (see `OIDCProviderConfig.audience`): the
+        // old `?? clientID` fallback invited cross-client
+        // confusion on shared-issuer IdPs. OIDC Core §3.1.3.7
+        // requires audience validation.
+        guard claims.aud.contains(config.audience) else {
             throw OIDCError.audienceMismatch
         }
 
-        // 8. Validate temporal claims: exp (required), iat, nbf.
+        // 7. Validate temporal claims: exp (required), iat, nbf.
         // `exp` is required by the type; iat / nbf are optional.
         // 60s skew applies symmetrically to all three.
         let exp = Date(timeIntervalSince1970: claims.exp)

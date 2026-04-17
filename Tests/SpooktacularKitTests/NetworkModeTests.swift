@@ -52,4 +52,37 @@ struct NetworkModeTests {
         let decoded = try VirtualMachineBundle.decoder.decode(NetworkMode.self, from: data)
         #expect(decoded == (raw == "nat" ? .nat : .isolated))
     }
+
+    // MARK: - Throwing init
+
+    @Test("NetworkMode(serialized:) parses accepted strings",
+          arguments: [
+              ("nat", NetworkMode.nat),
+              ("isolated", NetworkMode.isolated),
+              ("bridged:en0", NetworkMode.bridged(interface: "en0")),
+              ("bridged:bridge100", NetworkMode.bridged(interface: "bridge100")),
+          ] as [(String, NetworkMode)])
+    func initSerializedAccepts(input: String, expected: NetworkMode) throws {
+        let parsed = try NetworkMode(serialized: input)
+        #expect(parsed == expected)
+    }
+
+    @Test("NetworkMode(serialized:) throws with an actionable reason",
+          arguments: [
+              "host-only",    // wrong enum name
+              "",             // empty
+              "bridged:",     // missing interface
+              "bridge:en0",   // wrong prefix
+          ])
+    func initSerializedThrows(input: String) {
+        do {
+            _ = try NetworkMode(serialized: input)
+            Issue.record("Expected NetworkMode(serialized: '\(input)') to throw")
+        } catch let NetworkModeError.invalidFormat(raw, reason) {
+            #expect(raw == input)
+            #expect(!reason.isEmpty, "Error must name the accepted forms")
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+    }
 }

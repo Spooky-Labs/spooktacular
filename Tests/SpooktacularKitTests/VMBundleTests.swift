@@ -81,11 +81,63 @@ struct VirtualMachineBundleTests {
             #expect(modified.networkMode == original.networkMode)
         }
 
-        @Test("with(macAddress: .some(nil)) clears MAC address")
+        @Test("with(macAddress: .clear) clears MAC address")
         func withClearsMACAddress() {
             let original = VirtualMachineSpecification(macAddress: MACAddress("aa:bb:cc:dd:ee:ff"))
-            let cleared = original.with(macAddress: .some(nil))
+            let cleared = original.with(macAddress: .clear)
             #expect(cleared.macAddress == nil)
+        }
+
+        @Test("with(macAddress: .set(...)) updates the MAC address")
+        func withSetsMACAddress() throws {
+            let original = VirtualMachineSpecification()
+            let address = try #require(MACAddress("aa:bb:cc:dd:ee:ff"))
+            let updated = original.with(macAddress: .set(address))
+            #expect(updated.macAddress == address)
+        }
+
+        @Test("with(macAddress: .omit) preserves the existing MAC address")
+        func withOmitPreservesMACAddress() throws {
+            let address = try #require(MACAddress("aa:bb:cc:dd:ee:ff"))
+            let original = VirtualMachineSpecification(macAddress: address)
+            let unchanged = original.with(cpuCount: 8)
+            #expect(unchanged.macAddress == address)
+        }
+    }
+
+    // MARK: - Spec validation
+
+    @Suite("Specification validation", .tags(.lifecycle))
+    struct SpecValidationTests {
+
+        @Test("Default spec passes validation")
+        func defaultPasses() {
+            let spec = VirtualMachineSpecification()
+            #expect(throws: Never.self) { try spec.validate() }
+        }
+
+        @Test("Memory below 1 GiB fails validation")
+        func memoryTooLow() {
+            let spec = VirtualMachineSpecification(memorySizeInBytes: 500 * 1024 * 1024)
+            #expect(throws: VirtualMachineSpecificationError.self) {
+                try spec.validate()
+            }
+        }
+
+        @Test("Memory at or above 1 TiB fails validation (catches unit bugs)")
+        func memoryTooHigh() {
+            let spec = VirtualMachineSpecification(memorySizeInBytes: 2 * (1 << 40))
+            #expect(throws: VirtualMachineSpecificationError.self) {
+                try spec.validate()
+            }
+        }
+
+        @Test("Disk below 1 GiB fails validation")
+        func diskTooSmall() {
+            let spec = VirtualMachineSpecification(diskSizeInBytes: 100 * 1024 * 1024)
+            #expect(throws: VirtualMachineSpecificationError.self) {
+                try spec.validate()
+            }
         }
     }
 

@@ -77,16 +77,25 @@ extension Spook {
                     acc[String(parts[0])] = String(parts[1])
                 }
 
-                let binding = VMIAMBinding(
-                    vmName: vm,
-                    tenant: TenantID(tenant),
-                    roleArn: role,
-                    audience: audience,
-                    maxTTLSeconds: ttlSeconds,
-                    additionalClaims: additional,
-                    createdAt: Date(),
-                    createdBy: operatorIdentity()
-                )
+                let binding: VMIAMBinding
+                do {
+                    binding = try VMIAMBinding(
+                        vmName: vm,
+                        tenant: TenantID(tenant),
+                        roleArn: role,
+                        audience: audience,
+                        maxTTLSeconds: ttlSeconds,
+                        additionalClaims: additional,
+                        createdAt: Date(),
+                        createdBy: operatorIdentity()
+                    )
+                } catch let err as IAMBindingError {
+                    print(Style.error("✗ \(err.errorDescription ?? "Invalid IAM binding.")"))
+                    if let hint = err.recoverySuggestion {
+                        print(Style.dim("  \(hint)"))
+                    }
+                    throw ExitCode.failure
+                }
 
                 let store = try JSONVMIAMBindingStore(
                     configPath: ProcessInfo.processInfo.environment["SPOOK_IAM_BINDINGS_CONFIG"]

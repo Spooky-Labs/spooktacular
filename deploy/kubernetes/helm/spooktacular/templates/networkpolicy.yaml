@@ -1,0 +1,126 @@
+{{- if .Values.networkPolicy.enabled }}
+# =============================================================================
+# NetworkPolicy — controller pod ingress + egress lockdown
+# =============================================================================
+#
+# Applies the principle of least network privilege. The controller only needs:
+#
+#   Ingress:
+#     - Prometheus scrapes (Service port `metrics`) — optional, guarded by
+#       .Values.networkPolicy.allowPrometheusScrape
+#     - kubelet probes (from the node's pod CIDR) — via
+#       .Values.networkPolicy.allowKubeletProbes
+#     - Admission webhook requests from the API server (Service port `webhook`)
+#
+#   Egress:
+#     - DNS (UDP/TCP 53 to kube-system)
+#     - Kubernetes API server (HTTPS)
+#     - Mac nodes (spook-serve HTTPS port)
+#
+# All other ingress and egress is denied. This protects against a
+# compromised controller attempting to exfiltrate data or pivot within
+# the cluster.
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "spooktacular.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # ----------------------------------------------------------------------
+    # Admission webhook and management API — reached through the
+    # controller's Service from the kube-apiserver (which runs in the
+    # kube-system / kube-apiserver namespaces depending on distro).
+    # ----------------------------------------------------------------------
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: webhook
+        - protocol: TCP
+          port: http
+    {{- if .Values.metrics.enabled }}
+    # ----------------------------------------------------------------------
+    # Prometheus scrape target. Narrow to the Prometheus namespace when
+    # known; otherwise allow any namespace (configurable).
+    # ----------------------------------------------------------------------
+    - from:
+        {{- if .Values.networkPolicy.prometheusNamespace }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.networkPolicy.prometheusNamespace | quote }}
+        {{- else }}
+        - namespaceSelector: {}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: metrics
+    {{- end }}
+    # ----------------------------------------------------------------------
+    # kubelet liveness / readiness probes originate from the node's
+    # private address space. Accepting from the full node CIDR is the
+    # standard shape; operators who know their CIDR can tighten it.
+    # ----------------------------------------------------------------------
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: health
+  egress:
+    # ----------------------------------------------------------------------
+    # DNS — allow UDP and TCP 53 to kube-dns / CoreDNS in kube-system.
+    # ----------------------------------------------------------------------
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # ----------------------------------------------------------------------
+    # Kubernetes API server — HTTPS egress. The API server's cluster IP
+    # varies; use the `kubernetes.default` service label.
+    # ----------------------------------------------------------------------
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # ----------------------------------------------------------------------
+    # Mac nodes — HTTPS to `spook serve` on the configured port.
+    # Selector-based egress selects pods labeled as Mac hosts inside
+    # the cluster; IP-based is supplied for nodes reachable only by IP.
+    # ----------------------------------------------------------------------
+    {{- with .Values.networkPolicy.macNodePort }}
+    - to:
+        - ipBlock:
+            cidr: {{ $.Values.networkPolicy.macNodeCIDR | default "0.0.0.0/0" | quote }}
+      ports:
+        - protocol: TCP
+          port: {{ . }}
+    {{- end }}
+
+    {{- with .Values.networkPolicy.additionalEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

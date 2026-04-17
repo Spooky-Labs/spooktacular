@@ -44,18 +44,38 @@ enum AgentHTTPParser {
         case invalidEncoding
         /// The request line is missing or malformed.
         case malformedRequestLine
+        /// A header line could not be parsed.
+        case malformedHeader
+        /// Two or more `Content-Length` headers were present.
+        case duplicateContentLength
+        /// The request-line method or path contained non-ASCII bytes.
+        case nonASCIIMethodOrPath
+        /// A header used a non-CRLF line terminator.
+        case nonCRLFLineEndings
     }
+
+    /// Marker sequence terminating the header block.
+    private static let crlfCRLF = Data([0x0d, 0x0a, 0x0d, 0x0a])
 
     /// Parses raw TCP data into an ``AgentHTTPRequest``.
     ///
-    /// The parser splits the data on the `\r\n\r\n` header/body boundary,
-    /// extracts the request line and headers, then reads the body using
-    /// the `Content-Length` header if present.
+    /// Strict HTTP/1.1 parsing:
+    /// - `\r\n\r\n` header/body separator only (a bare `\n\n` is rejected).
+    /// - Request line and headers must be ASCII (RFC 7230 §3).
+    /// - Duplicate `Content-Length` → `duplicateContentLength` error.
+    /// - Header values are trimmed of leading/trailing whitespace.
     ///
     /// - Parameter data: Raw bytes received from the socket.
     /// - Returns: A fully parsed ``AgentHTTPRequest``.
     /// - Throws: ``ParseError`` if the data cannot be parsed.
     static func parse(_ data: Data) throws -> AgentHTTPRequest {
+        // Require CRLF framing on the byte level BEFORE converting
+        // to a String; `String.components(separatedBy:)` is lenient
+        // about line endings and would quietly accept LF-only input.
+        guard data.range(of: crlfCRLF) != nil else {
+            throw ParseError.nonCRLFLineEndings
+        }
+
         guard let string = String(data: data, encoding: .utf8) else {
             throw ParseError.invalidEncoding
         }
@@ -80,6 +100,13 @@ enum AgentHTTPParser {
         let method = String(tokens[0])
         let rawURI = String(tokens[1])
 
+        // RFC 7230 §3.1.1 restricts the request-line to ASCII. Non-
+        // ASCII bytes in the method or URI should be %-encoded at
+        // the client; we reject rather than interpret.
+        guard method.allSatisfy({ $0.isASCII }), rawURI.allSatisfy({ $0.isASCII }) else {
+            throw ParseError.nonASCIIMethodOrPath
+        }
+
         // Split path and query string
         let path: String
         var query: [String: String] = [:]
@@ -97,15 +124,31 @@ enum AgentHTTPParser {
             path = rawURI
         }
 
-        // Parse headers
+        // Parse headers — strict mode.
+        // - Every header line MUST have a colon.
+        // - Values are trimmed of leading/trailing whitespace
+        //   (including tabs) per RFC 7230 §3.2.4.
+        // - Duplicate `Content-Length` is a framing-smuggling
+        //   precursor and must be rejected.
         var headers: [String: String] = [:]
-        for line in lines {
-            guard let colon = line.firstIndex(of: ":") else { continue }
+        var contentLengthSeen = false
+        for line in lines where !line.isEmpty {
+            guard let colon = line.firstIndex(of: ":") else {
+                throw ParseError.malformedHeader
+            }
             let key = line[line.startIndex..<colon]
                 .trimmingCharacters(in: .whitespaces)
                 .lowercased()
             let value = line[line.index(after: colon)...]
                 .trimmingCharacters(in: .whitespaces)
+
+            if key == "content-length" {
+                guard !contentLengthSeen else {
+                    throw ParseError.duplicateContentLength
+                }
+                contentLengthSeen = true
+            }
+
             headers[key] = value
         }
 

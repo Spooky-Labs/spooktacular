@@ -1,0 +1,163 @@
+#
+# Prometheus scrape configuration — Spooktacular controller + fleet.
+# ==============================================================================
+#
+# This is the complete, production-hardened scrape config for a Spooktacular
+# deployment. Two jobs:
+#
+#   1. `spook-controller` — a single Kubernetes deployment that reconciles
+#      RunnerPool / MacOSVM CRDs. Scraped over HTTPS with mTLS; the scrape
+#      target is discovered via Kubernetes endpoints.
+#
+#   2. `spooktacular-fleet` — every `spook serve` running on an EC2 Mac host.
+#      Scraped over HTTPS with mTLS + bearer token; targets come from a
+#      file-SD refreshed by Terraform outputs, or from EC2 SD when the
+#      controller runs outside Kubernetes.
+#
+# The scrape interval matches the alert evaluation interval (15s). If you
+# scrape more aggressively, bump `datapoints_to_alarm` on the alarms in
+# `cloudwatch.tf`.
+#
+# TLS settings assume the spook-ca trust chain lives at `/etc/prometheus/certs/`.
+# The bearer token is the per-Prometheus API token minted via
+# `spook admin api-token issue --role prometheus-scrape`.
+# ==============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    cluster: spooktacular-prod
+    environment: production
+
+rule_files:
+  - /etc/prometheus/rules.d/alerts.yml
+  - /etc/prometheus/rules.d/recording.yml
+
+alerting:
+  alertmanagers:
+    - scheme: https
+      static_configs:
+        - targets: ["alertmanager.monitoring.svc.cluster.local:9093"]
+
+# ------------------------------------------------------------------------------
+# Job 1: Spook controller (Kubernetes service)
+# ------------------------------------------------------------------------------
+#
+# The controller exposes /metrics on its management port (8484 by default).
+# Discover it via Kubernetes endpoints and filter down to the controller pod.
+
+scrape_configs:
+  - job_name: spook-controller
+    scheme: https
+    metrics_path: /metrics
+
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names: [spooktacular-system]
+
+    tls_config:
+      cert_file: /etc/prometheus/certs/client.crt
+      key_file: /etc/prometheus/certs/client.key
+      ca_file: /etc/prometheus/certs/ca.crt
+      # Must match the CN of the controller's serving cert
+      server_name: spook-controller.spooktacular-system.svc
+      insecure_skip_verify: false
+
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/spook-controller-token
+
+    relabel_configs:
+      # Keep only the controller's metrics endpoint
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: spook-controller
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+      # Promote the pod name to a first-class label
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      # Drop high-cardinality default labels we don't use
+      - action: labeldrop
+        regex: __meta_kubernetes_pod_label_.*
+
+    metric_relabel_configs:
+      # Drop noisy per-path metrics we never alert on
+      - source_labels: [__name__, path]
+        regex: spooktacular_api_requests_total;/healthz
+        action: drop
+
+# ------------------------------------------------------------------------------
+# Job 2: EC2 Mac fleet — every `spook serve` on a dedicated host
+# ------------------------------------------------------------------------------
+
+  - job_name: spooktacular-fleet
+    scheme: https
+    metrics_path: /metrics
+
+    # Option A: file-SD driven by Terraform `asg_target_list` output.
+    # Option B (uncomment): EC2 SD with the Spooktacular tag filter.
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/spooktacular-fleet.json
+        refresh_interval: 1m
+
+    # ec2_sd_configs:
+    #   - region: us-east-1
+    #     port: 8484
+    #     filters:
+    #       - name: tag:Role
+    #         values: [spooktacular-host]
+    #       - name: instance-state-name
+    #         values: [running]
+
+    tls_config:
+      cert_file: /etc/prometheus/certs/client.crt
+      key_file: /etc/prometheus/certs/client.key
+      ca_file: /etc/prometheus/certs/ca.crt
+      # server_name is set per-target via relabeling (SNI -> instance hostname)
+      insecure_skip_verify: false
+
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/spook-api-token
+
+    relabel_configs:
+      # EC2 SD: promote the Name tag to the host label
+      - source_labels: [__meta_ec2_tag_Name]
+        target_label: host
+      - source_labels: [__meta_ec2_instance_id]
+        target_label: instance_id
+      - source_labels: [__meta_ec2_availability_zone]
+        target_label: zone
+      - source_labels: [__meta_ec2_private_dns_name]
+        target_label: __tmp_dns
+      # Set the SNI to the private DNS name so mTLS verifies correctly
+      - source_labels: [__tmp_dns]
+        target_label: __param_server_name
+      - action: labeldrop
+        regex: __meta_ec2_tag_.*
+
+      # File-SD path: the targets file already includes `host` + `zone` labels
+      - source_labels: [__address__]
+        regex: ([^:]+):.*
+        target_label: host
+        replacement: ${1}
+        # No-op when host already set by file-SD
+
+    metric_relabel_configs:
+      # Drop health-probe request metrics — high volume, low signal
+      - source_labels: [__name__, path]
+        regex: spooktacular_api_requests_total;/health(z)?
+        action: drop
+      # Normalize hostname — strip ".compute.internal" for readable labels
+      - source_labels: [host]
+        regex: (.+?)\.compute\.internal
+        target_label: host
+        replacement: ${1}

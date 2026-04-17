@@ -96,7 +96,7 @@ actor InMemoryRoleStore: RoleStore {
 /// Collects audit records in memory for verification.
 actor CollectingAuditSink: AuditSink {
     var records: [AuditRecord] = []
-    func record(_ entry: AuditRecord) async { records.append(entry) }
+    func record(_ entry: AuditRecord) async throws { records.append(entry) }
 }
 
 // MARK: - Shared Mock: HTTP Client

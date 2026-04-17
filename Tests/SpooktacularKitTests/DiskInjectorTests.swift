@@ -46,6 +46,31 @@ struct DiskInjectorTests {
             #expect(runAtLoad == true)
         }
 
+        @Test(
+            "xmlEscape converts all five XML predefined entities",
+            arguments: [
+                ("fine", "fine"),
+                ("A & B", "A &amp; B"),
+                ("<tag>", "&lt;tag&gt;"),
+                ("it's", "it&apos;s"),
+                ("\"quoted\"", "&quot;quoted&quot;"),
+                ("a&b<c>\"d\"'e'", "a&amp;b&lt;c&gt;&quot;d&quot;&apos;e&apos;"),
+            ] as [(String, String)]
+        )
+        func xmlEscape(input: String, expected: String) {
+            #expect(DiskInjector.xmlEscape(input) == expected)
+        }
+
+        @Test("xmlEscape preserves ordering so '&' isn't double-escaped")
+        func xmlEscapeDoesNotDoubleEscape() {
+            // A naive implementation that escapes `<` before `&`
+            // would turn `<` into `&lt;` and then `&` → `&amp;` on
+            // the `&` in `&lt;`, yielding `&amp;lt;`. The correct
+            // ordering escapes `&` first.
+            #expect(DiskInjector.xmlEscape("<") == "&lt;")
+            #expect(DiskInjector.xmlEscape("&<") == "&amp;&lt;")
+        }
+
         @Test("ProgramArguments are correct")
         func plistHasCorrectProgramArguments() throws {
             let dict = try parsedPlist()
@@ -147,12 +172,12 @@ struct DiskInjectorTests {
                 == DiskInjectorError.mountFailed(reason: "x")
             )
             #expect(
-                DiskInjectorError.processFailed(command: "a", exitCode: 1)
-                == DiskInjectorError.processFailed(command: "a", exitCode: 1)
+                DiskInjectorError.processFailed(command: "a", stderr: "", exitCode: 1)
+                == DiskInjectorError.processFailed(command: "a", stderr: "", exitCode: 1)
             )
             #expect(
-                DiskInjectorError.processFailed(command: "a", exitCode: 1)
-                != DiskInjectorError.processFailed(command: "a", exitCode: 2)
+                DiskInjectorError.processFailed(command: "a", stderr: "", exitCode: 1)
+                != DiskInjectorError.processFailed(command: "a", stderr: "", exitCode: 2)
             )
         }
     }

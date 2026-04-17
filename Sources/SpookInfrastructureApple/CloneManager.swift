@@ -1,6 +1,7 @@
 import Foundation
 import SpookCore
 import SpookApplication
+import CryptoKit
 import os
 @preconcurrency import Virtualization
 
@@ -95,8 +96,24 @@ public enum CloneManager {
 
             Log.clone.debug("Generating new VZMacMachineIdentifier for clone")
             let newIdentifier = VZMacMachineIdentifier()
-            try newIdentifier.dataRepresentation.write(
-                to: destination.appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
+            let destIdentifierURL = destination.appendingPathComponent(
+                VirtualMachineBundle.machineIdentifierFileName
+            )
+            try newIdentifier.dataRepresentation.write(to: destIdentifierURL)
+
+            // Verify the new identifier landed on disk with non-zero
+            // bytes AND is not a byte-for-byte twin of the source's
+            // identifier. Without this check, a silent write failure
+            // (permission issue, full disk, FS race) could leave the
+            // clone pointing at the source's identifier — reuse of
+            // `VZMacMachineIdentifier` across VMs is undefined
+            // behavior per Apple's docs and presents cross-VM
+            // identity collisions at boot.
+            try Self.verifyMachineIdentifier(
+                at: destIdentifierURL,
+                differsFromSourceAt: source.url.appendingPathComponent(
+                    VirtualMachineBundle.machineIdentifierFileName
+                )
             )
 
             let spec = source.spec
@@ -127,6 +144,87 @@ public enum CloneManager {
             Log.clone.error("Clone failed, cleaning up: \(error.localizedDescription, privacy: .public)")
             try? fileManager.removeItem(at: destination)
             throw error
+        }
+    }
+
+    /// Reads the freshly-written clone identifier back from disk and
+    /// asserts it is non-empty and distinct from the source VM's
+    /// identifier. Uses SHA-256 over the raw bytes so the comparison
+    /// surfaces on any single-byte difference.
+    ///
+    /// See Apple docs:
+    /// - [`VZMacMachineIdentifier`](https://developer.apple.com/documentation/virtualization/vzmacmachineidentifier)
+    /// - [`SHA256`](https://developer.apple.com/documentation/cryptokit/sha256)
+    ///
+    /// - Parameters:
+    ///   - cloneURL: URL to the clone's `machine-identifier.bin`.
+    ///   - sourceURL: URL to the source's `machine-identifier.bin`.
+    /// - Throws: ``CloneManagerError/identifierNotWritten`` when the
+    ///   clone file is missing or empty;
+    ///   ``CloneManagerError/identifierMatchesSource`` when the clone
+    ///   SHA-256 equals the source's.
+    static func verifyMachineIdentifier(
+        at cloneURL: URL,
+        differsFromSourceAt sourceURL: URL
+    ) throws {
+        let cloneData = try Data(contentsOf: cloneURL)
+        guard !cloneData.isEmpty else {
+            throw CloneManagerError.identifierNotWritten(path: cloneURL.path)
+        }
+        // If the source doesn't have an identifier file (fresh IPSW
+        // install case, or test fixture without an identifier on
+        // source), we only assert the clone bytes are present.
+        guard let sourceData = try? Data(contentsOf: sourceURL),
+              !sourceData.isEmpty else {
+            return
+        }
+        let cloneHash = SHA256.hash(data: cloneData)
+        let sourceHash = SHA256.hash(data: sourceData)
+        guard cloneHash != sourceHash else {
+            throw CloneManagerError.identifierMatchesSource
+        }
+    }
+}
+
+// MARK: - Errors
+
+/// Errors raised by ``CloneManager`` during clone-side verification.
+///
+/// These are returned after the APFS clonefile / identifier write path
+/// to fail the clone loudly when the write didn't actually produce a
+/// distinct VM identity.
+public enum CloneManagerError: Error, Sendable, Equatable, LocalizedError {
+
+    /// The freshly-written `machine-identifier.bin` is missing or empty.
+    ///
+    /// - Parameter path: Absolute path that was expected to contain
+    ///   the new identifier bytes.
+    case identifierNotWritten(path: String)
+
+    /// The new identifier's SHA-256 equals the source's, which would
+    /// produce two VMs with the same `VZMacMachineIdentifier` — an
+    /// Apple-documented undefined-behavior scenario.
+    case identifierMatchesSource
+
+    public var errorDescription: String? {
+        switch self {
+        case .identifierNotWritten(let path):
+            "Clone verification failed: machine-identifier.bin at '\(path)' is missing or empty."
+        case .identifierMatchesSource:
+            "Clone verification failed: the new VM identifier is byte-identical to the source. "
+            + "Reusing a VZMacMachineIdentifier across VMs is undefined behavior."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .identifierNotWritten:
+            "Delete the partial clone directory and retry. Verify the host has free disk space "
+            + "and that the destination volume is writable."
+        case .identifierMatchesSource:
+            "Delete the clone and retry. If the error persists, report a bug at "
+            + "https://github.com/spookylabs/spooktacular/issues — the Virtualization framework "
+            + "may have regressed VZMacMachineIdentifier randomness."
         }
     }
 }

@@ -147,7 +147,7 @@ struct HTTPAPIIntegrationTests {
     @Suite("Rate Limiting")
     struct RateLimiting {
 
-        @Test("exceeding rate limit returns 429")
+        @Test("exceeding read rate limit returns 429")
         func rateLimitExceeded() async throws {
             let tmpDir = TempDirectory()
             let server = try HTTPAPIServer(
@@ -157,15 +157,15 @@ struct HTTPAPIIntegrationTests {
                 insecureMode: true
             )
 
-            // The default maxRequestsPerMinute is 120 (or SPOOK_RATE_LIMIT env).
+            // The default read bucket is 120 (SPOOK_RATE_LIMIT / SPOOK_READ_RATE_LIMIT).
             let ip = "10.0.0.1"
             let limit = 120
             for i in 0..<limit {
-                let allowed = await server.checkRateLimit(clientIP: ip)
+                let allowed = await server.checkRateLimit(clientIP: ip, method: "GET")
                 #expect(allowed, "Request \(i + 1) of \(limit) should be within limit")
             }
             // The next request should be rate-limited.
-            let blocked = await server.checkRateLimit(clientIP: ip)
+            let blocked = await server.checkRateLimit(clientIP: ip, method: "GET")
             #expect(!blocked, "Request \(limit + 1) should be rate-limited (429)")
         }
     }

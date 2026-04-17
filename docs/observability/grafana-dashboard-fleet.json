@@ -1,0 +1,182 @@
+{
+  "title": "Spooktacular — Fleet",
+  "uid": "spooktacular-fleet-v2",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["spooktacular", "fleet", "ec2-mac"],
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "type": "query",
+        "label": "Host",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(spooktacular_running_vms, host)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*"
+      },
+      {
+        "name": "zone",
+        "type": "query",
+        "label": "Zone",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(spooktacular_running_vms, zone)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Capacity",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "VMs running (fleet)",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(spooktacular_running_vms{host=~\"$host\",zone=~\"$zone\"})", "refId": "A" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "VMs per host (avg)",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "avg(spooktacular_running_vms{host=~\"$host\",zone=~\"$zone\"})", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "orange", "value": 1.5 },
+              { "color": "red",    "value": 1.9 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Pool size (fleet max)",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(spooktacular_max_vms{host=~\"$host\",zone=~\"$zone\"})", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Scale events (1h)",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(increase(spooktacular_scale_events_total{host=~\"$host\",zone=~\"$zone\"}[1h]))", "refId": "A" }
+      ]
+    },
+
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Throughput",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Jobs completed / started (rate 5m)",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(spooktacular_jobs_started_total{host=~\"$host\",zone=~\"$zone\"}[5m]))",   "refId": "A", "legendFormat": "started" },
+        { "expr": "sum(rate(spooktacular_jobs_completed_total{host=~\"$host\",zone=~\"$zone\"}[5m]))", "refId": "B", "legendFormat": "completed" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Clone / start / stop / delete (rate 5m)",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(spooktacular_clones_total{host=~\"$host\",zone=~\"$zone\"}[5m]))",  "refId": "A", "legendFormat": "clone" },
+        { "expr": "sum(rate(spooktacular_starts_total{host=~\"$host\",zone=~\"$zone\"}[5m]))",  "refId": "B", "legendFormat": "start" },
+        { "expr": "sum(rate(spooktacular_stops_total{host=~\"$host\",zone=~\"$zone\"}[5m]))",   "refId": "C", "legendFormat": "stop" },
+        { "expr": "sum(rate(spooktacular_deletes_total{host=~\"$host\",zone=~\"$zone\"}[5m]))", "refId": "D", "legendFormat": "delete" }
+      ]
+    },
+
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Audit pipeline",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 1 }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Audit volume (events/s)",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(spooktacular_audit_writes_total{host=~\"$host\",zone=~\"$zone\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "writes"
+        },
+        {
+          "expr": "sum(rate(spooktacular_audit_exports_total{host=~\"$host\",zone=~\"$zone\"}[5m]))",
+          "refId": "B",
+          "legendFormat": "S3 exports"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Audit export failures (per 5m)",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(spooktacular_audit_export_failures_total{host=~\"$host\",zone=~\"$zone\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "failures"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red",   "value": 1 }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

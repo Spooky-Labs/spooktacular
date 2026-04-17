@@ -40,6 +40,12 @@ spec:
     - port: metrics
       path: /metrics
       interval: {{ .Values.metrics.serviceMonitor.interval | default "30s" }}
+      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout | default "10s" }}
       scheme: http
       honorLabels: true
+      metricRelabelings:
+        # Propagate release info for downstream Grafana dashboards.
+        - sourceLabels: [__name__]
+          regex: "spooktacular_.*"
+          action: keep
 {{- end }}

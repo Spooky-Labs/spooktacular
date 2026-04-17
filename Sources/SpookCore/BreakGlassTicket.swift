@@ -126,7 +126,7 @@ public struct BreakGlassTicket: Sendable, Codable, Equatable {
     }
 
     /// True when `now` is past `expiresAt + clockSkew`. Callers
-    /// should also check `!isNotYetValid(...)` for pre-activation
+    /// should also check `!isFutureIssued(...)` for pre-activation
     /// attempts.
     public func isExpired(now: Date = Date(), clockSkew: TimeInterval = 60) -> Bool {
         now > expiresAt.addingTimeInterval(clockSkew)
@@ -134,8 +134,14 @@ public struct BreakGlassTicket: Sendable, Codable, Equatable {
 
     /// True when `issuedAt` is in the future beyond the skew
     /// tolerance — indicates a clock-skew or replay-before-issue
-    /// attack.
-    public func isNotYetValid(now: Date = Date(), clockSkew: TimeInterval = 60) -> Bool {
+    /// attack. Symmetrically named alongside ``isExpired(now:clockSkew:)``:
+    /// one asks "past end" and one asks "issued in the future."
+    ///
+    /// The verification condition is
+    /// `issuedAt > now + clockSkew` — i.e., reject when the
+    /// minting host's clock ran more than `clockSkew` seconds
+    /// ahead of the verifying host's clock.
+    public func isFutureIssued(now: Date = Date(), clockSkew: TimeInterval = 60) -> Bool {
         issuedAt > now.addingTimeInterval(clockSkew)
     }
 }

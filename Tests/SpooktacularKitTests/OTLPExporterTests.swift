@@ -59,4 +59,40 @@ struct OTLPExporterTests {
         let json = String(data: data, encoding: .utf8)!
         #expect(json.contains("\"9999999999\""))
     }
+
+    @Test("Exporter increments MetricsCollector.recordOTLPFailure on transport failure")
+    func recordsFailureMetric() async throws {
+        // Point the exporter at an unroutable address so the POST
+        // fails synchronously without a collector needing to be up.
+        // `127.0.0.1:1` is an unused-by-convention port.
+        let endpoint = try #require(URL(string: "http://127.0.0.1:1/v1/traces"))
+        let metrics = MetricsCollector()
+        let exporter = OTLPHTTPJSONExporter(
+            config: .init(
+                endpoint: endpoint,
+                requestTimeout: 0.5,
+                maxBatchSize: 1,   // flush immediately
+                maxBatchInterval: 0.0,
+                maxRetries: 0
+            ),
+            metrics: metrics
+        )
+        let span = OTelSpan(
+            traceId: OTelSpan.newTraceID(),
+            spanId: OTelSpan.newSpanID(),
+            name: "test",
+            startTime: Date(),
+            endTime: Date()
+        )
+        await exporter.export(spans: [span])
+        // Drain any pending retry attempts.
+        await exporter.flush()
+
+        let text = await metrics.prometheusText()
+        // The exact count depends on retry fan-out, but at least
+        // one failure must have been recorded for the first attempt.
+        #expect(text.contains("spooktacular_otlp_export_failures_total") &&
+                !text.contains("spooktacular_otlp_export_failures_total 0"),
+                "Expected at least one recorded OTLP failure; got:\n\(text)")
+    }
 }

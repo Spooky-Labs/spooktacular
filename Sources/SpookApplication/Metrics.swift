@@ -74,6 +74,25 @@ public actor MetricsCollector {
     /// Total number of API errors returned.
     private var apiErrorsTotal: Int = 0
 
+    /// Total OTLP span export failures observed by the OTLP exporter.
+    ///
+    /// Incremented once per failed HTTP POST (each retry counts) so
+    /// a Prometheus alert can fire on `rate(spooktacular_otlp_export_failures_total[5m]) > 0`.
+    private var otlpExportFailuresTotal: Int = 0
+
+    /// Per-path cardinality ceiling for the ``apiRequestsTotal``
+    /// counter. Requests beyond the ceiling are bucketed under
+    /// ``Self/overflowPathBucket`` so a misbehaving caller that
+    /// hammers unique paths (e.g. `/v1/vms/<uuid>`) cannot grow the
+    /// dictionary without bound and drive Prometheus' cardinality
+    /// through the roof.
+    private let apiRequestsCardinalityLimit: Int
+
+    /// Bucket name used for overflow API-request paths. Operators
+    /// can still see aggregate traffic in that bucket without being
+    /// able to pivot by the unbounded attacker-chosen path.
+    public static let overflowPathBucket = "OTHER"
+
     // MARK: - Summaries (simplified: count + sum)
 
     /// Recorded durations for clone operations, in seconds.
@@ -103,11 +122,22 @@ public actor MetricsCollector {
 
     /// Creates a metrics collector with the given signpost provider.
     ///
-    /// - Parameter signpost: The provider used to emit lifecycle tracing
-    ///   intervals. Defaults to ``SilentSignpostProvider`` which discards
-    ///   all signpost data.
-    public init(signpost: any SignpostProvider = SilentSignpostProvider()) {
+    /// - Parameters:
+    ///   - signpost: The provider used to emit lifecycle tracing
+    ///     intervals. Defaults to ``SilentSignpostProvider`` which
+    ///     discards all signpost data.
+    ///   - apiRequestsCardinalityLimit: Upper bound on the number of
+    ///     distinct `METHOD /path` keys tracked by
+    ///     ``apiRequestsTotal``. Paths beyond the limit are bucketed
+    ///     as ``overflowPathBucket``. Defaults to 100 — enough for
+    ///     the usual canonical Spooktacular HTTP API surface, not
+    ///     enough for an adversary to flood Prometheus.
+    public init(
+        signpost: any SignpostProvider = SilentSignpostProvider(),
+        apiRequestsCardinalityLimit: Int = 100
+    ) {
         self.signpost = signpost
+        self.apiRequestsCardinalityLimit = max(1, apiRequestsCardinalityLimit)
     }
 
     // MARK: - Recording Events
@@ -145,17 +175,42 @@ public actor MetricsCollector {
 
     /// Records an incoming API request.
     ///
+    /// Once the internal cardinality ceiling is reached, additional
+    /// path values collapse into ``overflowPathBucket`` — this bounds
+    /// Prometheus label cardinality so an adversary that forges
+    /// unique paths (e.g. `GET /v1/vms/<new-uuid>`) cannot blow up
+    /// the scrape payload or the metrics store.
+    ///
     /// - Parameters:
     ///   - method: The HTTP method (e.g., `"GET"`, `"POST"`).
     ///   - path: The request path (e.g., `"/v1/vms"`).
     public func recordAPIRequest(method: String, path: String) {
-        let key = "\(method) \(path)"
+        let candidate = "\(method) \(path)"
+        let key: String
+        if apiRequestsTotal[candidate] != nil {
+            key = candidate
+        } else if apiRequestsTotal.count < apiRequestsCardinalityLimit {
+            key = candidate
+        } else {
+            key = "\(method) \(Self.overflowPathBucket)"
+        }
         apiRequestsTotal[key, default: 0] += 1
     }
 
     /// Records an API error response (4xx or 5xx).
     public func recordAPIError() {
         apiErrorsTotal += 1
+    }
+
+    /// Records a failed OTLP span-export POST.
+    ///
+    /// Called from ``OTLPHTTPJSONExporter`` on every transport or
+    /// non-2xx failure, including retries. Exposed as
+    /// `spooktacular_otlp_export_failures_total` so operators can
+    /// alert on collector outages (e.g. `rate(...[5m]) > 0`).
+    public func recordOTLPFailure() {
+        otlpExportFailuresTotal += 1
+        signpost.event("otlp-export-failure")
     }
 
     /// Updates the current running VM count gauge.
@@ -300,6 +355,11 @@ public actor MetricsCollector {
         lines.append("spooktacular_api_errors_total \(apiErrorsTotal)")
         lines.append("")
 
+        lines.append("# HELP spooktacular_otlp_export_failures_total Total OTLP span export failures")
+        lines.append("# TYPE spooktacular_otlp_export_failures_total counter")
+        lines.append("spooktacular_otlp_export_failures_total \(otlpExportFailuresTotal)")
+        lines.append("")
+
         // --- Summaries ---
 
         appendSummary(
@@ -358,7 +418,17 @@ public actor MetricsCollector {
 
     // MARK: - Private Helpers
 
-    /// Appends a Prometheus summary metric (count + sum) to the output lines.
+    /// Appends a Prometheus summary metric to the output lines.
+    ///
+    /// Emits `<name>_count`, `<name>_sum`, and — when at least one
+    /// sample has been recorded — the p50, p90, and p99 quantiles
+    /// using the `quantile` label documented in the
+    /// [Prometheus summary exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/#histograms-and-summaries).
+    ///
+    /// Quantiles are computed by sorting the in-memory sample array;
+    /// the O(n log n) cost is paid only when the scrape endpoint is
+    /// hit, not on every record, and the arrays stay small in the
+    /// steady state.
     ///
     /// - Parameters:
     ///   - lines: The output line buffer to append to.
@@ -373,9 +443,34 @@ public actor MetricsCollector {
     ) {
         lines.append("# HELP \(name) \(help)")
         lines.append("# TYPE \(name) summary")
+        if !values.isEmpty {
+            let sorted = values.sorted()
+            for (quantile, value) in [
+                (0.5, Self.quantile(sorted: sorted, p: 0.5)),
+                (0.9, Self.quantile(sorted: sorted, p: 0.9)),
+                (0.99, Self.quantile(sorted: sorted, p: 0.99)),
+            ] {
+                lines.append("\(name){quantile=\"\(quantile)\"} \(formatDouble(value))")
+            }
+        }
         lines.append("\(name)_count \(values.count)")
         lines.append("\(name)_sum \(formatDouble(values.reduce(0, +)))")
         lines.append("")
+    }
+
+    /// Computes the `p`-quantile of a sorted sample array using
+    /// nearest-rank interpolation (Prometheus convention). The
+    /// caller MUST pass a pre-sorted array; for an empty array the
+    /// method returns `0`.
+    internal static func quantile(sorted: [Double], p: Double) -> Double {
+        guard !sorted.isEmpty else { return 0 }
+        let clamped = min(max(p, 0), 1)
+        let rank = clamped * Double(sorted.count - 1)
+        let lower = Int(rank.rounded(.down))
+        let upper = Int(rank.rounded(.up))
+        if lower == upper { return sorted[lower] }
+        let weight = rank - Double(lower)
+        return sorted[lower] * (1 - weight) + sorted[upper] * weight
     }
 
     /// Formats a `Double` for Prometheus output.

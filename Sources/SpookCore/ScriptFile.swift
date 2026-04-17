@@ -1,5 +1,39 @@
 import Foundation
 
+/// An error raised by ``ScriptFile/cleanup(scriptURL:log:)`` when
+/// the backing directory could not be removed.
+///
+/// Callers that prefer best-effort semantics may swallow this error
+/// (e.g. within a `defer`), but the method no longer swallows it on
+/// their behalf: a bundle-protection or permission error that leaves
+/// a registration-token script on disk is exactly the kind of silent
+/// failure the codebase is auditing away.
+public enum ScriptFileError: Error, Sendable, Equatable, LocalizedError {
+
+    /// Removal of the per-invocation cache directory failed.
+    ///
+    /// - Parameters:
+    ///   - path: The absolute path that could not be removed.
+    ///   - description: The underlying `FileManager` error description.
+    case cleanupFailed(path: String, description: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .cleanupFailed(let path, let description):
+            "Failed to remove script cache directory '\(path)': \(description)."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .cleanupFailed:
+            "Verify the process owner has write permission to the cache "
+            + "directory. The script may still be on disk and should be "
+            + "removed manually to avoid leaving registration tokens around."
+        }
+    }
+}
+
 /// Writes executable shell scripts to per-user cache directories
 /// with owner-only permissions.
 ///
@@ -40,20 +74,57 @@ public enum ScriptFile {
     /// files the caller wrote alongside them are all unlinked in
     /// one call.
     ///
+    /// A missing directory (already cleaned, never existed) is NOT
+    /// an error: that's the expected steady-state result of being
+    /// called twice. Any other failure — permission denied, volume
+    /// disappeared, I/O error — throws ``ScriptFileError/cleanupFailed(path:description:)``
+    /// so the caller can log, increment a metric, or surface in an
+    /// audit record. A silent `try?` would leave a registration
+    /// token on disk indefinitely; the defensive contract here is
+    /// "if cleanup didn't happen, the caller is told."
+    ///
     /// Intended to be called from a `defer` immediately after the
-    /// VM consumes the script. Silent on failure: a missing dir
-    /// (already cleaned, never existed, removed by another
-    /// process) is not an error — we're best-effort, not an
-    /// audit surface.
+    /// VM consumes the script. Callers that truly want best-effort
+    /// may catch and discard the error themselves — the decision
+    /// lives with the caller, not the implementation.
     ///
     /// The host-side window the script lives on disk shrinks from
     /// "process lifetime" to "provisioning run duration" — which,
     /// combined with the 1-hour single-use TTL on GitHub
     /// registration tokens, makes exfiltration-after-the-fact
     /// worthless.
-    public static func cleanup(scriptURL: URL) {
+    ///
+    /// - Parameters:
+    ///   - scriptURL: The URL returned by ``writeToCache(script:fileName:)``.
+    ///   - log: A ``LogProvider`` that captures error-level entries.
+    ///     Defaults to ``SilentLogProvider`` for callers that are
+    ///     fine with just the thrown error.
+    /// - Throws: ``ScriptFileError/cleanupFailed(path:description:)``
+    ///   when the directory exists but cannot be removed.
+    public static func cleanup(
+        scriptURL: URL,
+        log: any LogProvider = SilentLogProvider()
+    ) throws {
+        let fm = FileManager.default
         let dir = scriptURL.deletingLastPathComponent()
-        try? FileManager.default.removeItem(at: dir)
+        // Idempotent no-op: nothing was written (e.g. the caller
+        // aborted before `writeToCache`) or cleanup already ran.
+        // We key on `scriptURL` — not the containing dir — because
+        // the dir may be a shared root (e.g. `/tmp`) whose
+        // existence says nothing about whether we own anything in
+        // it.
+        guard fm.fileExists(atPath: scriptURL.path) else { return }
+        do {
+            try fm.removeItem(at: dir)
+        } catch {
+            log.error(
+                "ScriptFile cleanup failed for \(dir.path): \(error.localizedDescription)"
+            )
+            throw ScriptFileError.cleanupFailed(
+                path: dir.path,
+                description: error.localizedDescription
+            )
+        }
     }
 
     /// Writes a shell script to a per-user cache directory with

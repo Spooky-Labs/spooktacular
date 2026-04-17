@@ -52,7 +52,7 @@ public struct RunnerStateMachine: Sendable, Codable {
     // MARK: - Side Effect
 
     /// Commands the reconciler must execute after a transition.
-    public enum SideEffect: Sendable {
+    public enum SideEffect: Sendable, Equatable {
         case cloneVM(source: String)
         case startVM
         case stopVM
@@ -63,6 +63,35 @@ public struct RunnerStateMachine: Sendable, Codable {
         case scheduleTimeout(seconds: Int)
         case cancelTimeout
         case createReplacement
+
+        /// An event was received that the state machine has no
+        /// transition for from the current state.
+        ///
+        /// Previously these events were silently dropped — which is
+        /// the exact antipattern flagged in the silent-failure sweep:
+        /// a stuck runner produces no alert, no metric, no audit
+        /// trail. Surface every protocol violation as a side effect
+        /// the reconciler can log and emit a metric for.
+        ///
+        /// - Parameters:
+        ///   - state: The state the machine was in when the event arrived.
+        ///   - event: A human-readable description of the invalid event.
+        case logProtocolViolation(state: State, event: String)
+
+        /// Recycling completed with a non-empty ``sourceVM`` and the
+        /// prior runner ID (if any) — the reconciler must record this
+        /// so auditors can trace a runner's full clone-to-recycle
+        /// lineage instead of seeing an orphan ``cloneVM`` effect.
+        case auditRecycleComplete(priorRunnerId: Int?, sourceVM: String)
+
+        /// Recycling transitioned into `.failed` because the state
+        /// machine could not safely re-clone (e.g. ``sourceVM``
+        /// empty). Recorded so the reconciler can page instead of
+        /// silently dropping a VM back into a half-state.
+        ///
+        /// - Parameter reason: A machine-readable tag describing why
+        ///   validation failed. Short enough for a Prometheus label.
+        case recycleValidationFailed(reason: String)
     }
 
     // MARK: - Properties
@@ -101,11 +130,16 @@ public struct RunnerStateMachine: Sendable, Codable {
 
     /// Processes an event and returns the side effects the caller must execute.
     ///
-    /// If the event is not valid for the current state, the state is unchanged
-    /// and an empty array is returned.
+    /// If the event is not valid for the current state, the state is
+    /// unchanged and the method returns a single
+    /// ``SideEffect/logProtocolViolation(state:event:)`` entry. The
+    /// reconciler is expected to log this at `.warning` and increment
+    /// a protocol-violation metric; previously invalid events were
+    /// silently dropped, which masked real bugs in the controller.
     ///
     /// - Parameter event: The event to process.
     /// - Returns: An array of side effects to execute, in order.
+    ///   Never empty for any non-``State/deleted`` state.
     public mutating func transition(event: Event) -> [SideEffect] {
         switch state {
         case .requested:
@@ -127,7 +161,39 @@ public struct RunnerStateMachine: Sendable, Codable {
         case .failed:
             return transitionFromFailed(event: event)
         case .deleted:
+            // Terminal state. No side effect — ``deleted`` must stay
+            // an attractor to avoid zombie runners. Violations after
+            // deletion are expected (controllers race; stale events
+            // arrive) so we don't surface them as warnings.
             return []
+        }
+    }
+
+    /// Builds a single-entry array recording the invalid event + the
+    /// state it arrived in. Kept private and out-of-line so the
+    /// per-state handlers stay focused on valid transitions.
+    private func protocolViolation(for event: Event) -> [SideEffect] {
+        [.logProtocolViolation(state: state, event: Self.describe(event))]
+    }
+
+    private static func describe(_ event: Event) -> String {
+        switch event {
+        case .nodeAvailable:         return "nodeAvailable"
+        case .cloneSucceeded:        return "cloneSucceeded"
+        case .cloneFailed:           return "cloneFailed"
+        case .healthCheckPassed:     return "healthCheckPassed"
+        case .bootFailed:            return "bootFailed"
+        case .runnerRegistered:      return "runnerRegistered"
+        case .registrationFailed:    return "registrationFailed"
+        case .jobStarted(let id):    return "jobStarted(\(id))"
+        case .jobCompleted:          return "jobCompleted"
+        case .runnerExited:          return "runnerExited"
+        case .vmStopped:             return "vmStopped"
+        case .drainComplete:         return "drainComplete"
+        case .recycleComplete:       return "recycleComplete"
+        case .recycleFailed:         return "recycleFailed"
+        case .timeout:               return "timeout"
+        case .retryRequested:        return "retryRequested"
         }
     }
 
@@ -142,7 +208,7 @@ public struct RunnerStateMachine: Sendable, Codable {
             state = .failed
             return [.updateStatus(.failed)]
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
@@ -158,7 +224,7 @@ public struct RunnerStateMachine: Sendable, Codable {
             state = .failed
             return [.cancelTimeout, .deleteVM, .updateStatus(.failed)]
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
@@ -174,7 +240,7 @@ public struct RunnerStateMachine: Sendable, Codable {
             state = .failed
             return [.cancelTimeout, .stopVM, .deleteVM, .updateStatus(.failed)]
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
@@ -190,7 +256,7 @@ public struct RunnerStateMachine: Sendable, Codable {
             state = .failed
             return [.cancelTimeout, .stopVM, .deleteVM, .updateStatus(.failed)]
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
@@ -210,7 +276,7 @@ public struct RunnerStateMachine: Sendable, Codable {
             effects.append(.updateStatus(.failed))
             return effects
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
@@ -235,7 +301,7 @@ public struct RunnerStateMachine: Sendable, Codable {
             effects.append(.updateStatus(.failed))
             return effects
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
@@ -261,15 +327,34 @@ public struct RunnerStateMachine: Sendable, Codable {
             effects.append(.scheduleTimeout(seconds: 120))
             return effects
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
     private mutating func transitionFromRecycling(event: Event) -> [SideEffect] {
         switch event {
         case .recycleComplete:
+            // Guard the recycle→cloning transition: without a
+            // ``sourceVM`` we'd emit `cloneVM(source: "")` and leave
+            // the controller to fail mid-clone without an audit
+            // record. Fail loudly into `.failed` instead.
+            let priorRunner = runnerId
+            guard !sourceVM.isEmpty else {
+                state = .failed
+                return [
+                    .cancelTimeout,
+                    .recycleValidationFailed(reason: "sourceVM-empty"),
+                    .deleteVM,
+                    .updateStatus(.failed),
+                ]
+            }
             state = .cloning
-            return [.cancelTimeout, .cloneVM(source: sourceVM), .scheduleTimeout(seconds: 120)]
+            return [
+                .cancelTimeout,
+                .auditRecycleComplete(priorRunnerId: priorRunner, sourceVM: sourceVM),
+                .cloneVM(source: sourceVM),
+                .scheduleTimeout(seconds: 120),
+            ]
         case .recycleFailed:
             state = .failed
             return [.cancelTimeout, .deleteVM, .updateStatus(.failed)]
@@ -277,7 +362,7 @@ public struct RunnerStateMachine: Sendable, Codable {
             state = .failed
             return [.cancelTimeout, .deleteVM, .updateStatus(.failed)]
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 
@@ -293,7 +378,7 @@ public struct RunnerStateMachine: Sendable, Codable {
                 return [.createReplacement, .updateStatus(.deleted)]
             }
         default:
-            return []
+            return protocolViolation(for: event)
         }
     }
 

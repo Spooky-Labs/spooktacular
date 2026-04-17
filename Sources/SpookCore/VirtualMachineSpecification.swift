@@ -245,11 +245,16 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     /// fields overridden.
     ///
     /// Fields you omit (or pass `nil` for) retain their current
-    /// values. This avoids the fragile full-init pattern when only
-    /// one or two fields need to change.
+    /// values. The ``macAddress`` field uses ``MacAddressOverride``
+    /// rather than a double-optional — `MACAddress??` is syntactically
+    /// valid Swift but produces call sites where `.some(nil)` (clear)
+    /// and `.none` (keep) are effectively indistinguishable to a
+    /// reader.
     ///
     /// ```swift
-    /// let updated = spec.with(cpuCount: 8, memorySizeInBytes: 16 * 1024 * 1024 * 1024)
+    /// let stable = spec.with(macAddress: .set(MACAddress("aa:bb:cc:dd:ee:ff")!))
+    /// let cleared = spec.with(macAddress: .clear)
+    /// let same    = spec.with(cpuCount: 8)            // macAddress unchanged
     /// ```
     ///
     /// - Parameters:
@@ -261,7 +266,8 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     ///   - audioEnabled: Attach audio output device.
     ///   - microphoneEnabled: Attach microphone input.
     ///   - sharedFolders: Host directories to share.
-    ///   - macAddress: Explicit MAC address.
+    ///   - macAddress: Explicit MAC address override directive.
+    ///     Defaults to ``MacAddressOverride/omit``.
     ///   - autoResizeDisplay: Resize guest display to match host.
     ///   - clipboardSharingEnabled: Share clipboard.
     /// - Returns: A new specification with the overridden values.
@@ -274,7 +280,7 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         audioEnabled: Bool? = nil,
         microphoneEnabled: Bool? = nil,
         sharedFolders: [SharedFolder]? = nil,
-        macAddress: MACAddress?? = nil,
+        macAddress: MacAddressOverride = .omit,
         autoResizeDisplay: Bool? = nil,
         clipboardSharingEnabled: Bool? = nil
     ) -> VirtualMachineSpecification {
@@ -287,10 +293,55 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
             audioEnabled: audioEnabled ?? self.audioEnabled,
             microphoneEnabled: microphoneEnabled ?? self.microphoneEnabled,
             sharedFolders: sharedFolders ?? self.sharedFolders,
-            macAddress: macAddress ?? self.macAddress,
+            macAddress: macAddress.resolved(from: self.macAddress),
             autoResizeDisplay: autoResizeDisplay ?? self.autoResizeDisplay,
             clipboardSharingEnabled: clipboardSharingEnabled ?? self.clipboardSharingEnabled
         )
+    }
+
+    /// Validates the specification against the documented hardware
+    /// bounds before the bundle layer writes `config.json` to disk.
+    ///
+    /// Checked invariants:
+    /// - CPU count is at least ``minimumCPUCount`` (4).
+    /// - Memory is at least 1 GiB and strictly less than 1 TiB.
+    /// - Disk size is at least 1 GiB.
+    /// - Display count is 1 or 2.
+    ///
+    /// - Throws: ``VirtualMachineSpecificationError`` describing the
+    ///   first bound the spec violates.
+    public func validate() throws {
+        guard cpuCount >= Self.minimumCPUCount else {
+            throw VirtualMachineSpecificationError.cpuCountTooLow(
+                provided: cpuCount,
+                minimum: Self.minimumCPUCount
+            )
+        }
+        let oneGiB: UInt64 = 1 << 30
+        let oneTiB: UInt64 = 1 << 40
+        guard memorySizeInBytes >= oneGiB else {
+            throw VirtualMachineSpecificationError.memoryTooLow(
+                provided: memorySizeInBytes,
+                minimum: oneGiB
+            )
+        }
+        guard memorySizeInBytes < oneTiB else {
+            throw VirtualMachineSpecificationError.memoryTooHigh(
+                provided: memorySizeInBytes,
+                maximum: oneTiB
+            )
+        }
+        guard diskSizeInBytes >= oneGiB else {
+            throw VirtualMachineSpecificationError.diskTooSmall(
+                provided: diskSizeInBytes,
+                minimum: oneGiB
+            )
+        }
+        guard (1...2).contains(displayCount) else {
+            throw VirtualMachineSpecificationError.displayCountOutOfRange(
+                provided: displayCount
+            )
+        }
     }
 
     // MARK: - Convenience Properties
@@ -303,6 +354,81 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     /// The disk size in whole gigabytes (GiB).
     public var diskSizeInGigabytes: UInt64 {
         diskSizeInBytes / (1024 * 1024 * 1024)
+    }
+}
+
+// MARK: - MacAddressOverride
+
+/// Explicit, three-way directive for the `macAddress` field in
+/// ``VirtualMachineSpecification/with(cpuCount:memorySizeInBytes:diskSizeInBytes:displayCount:networkMode:audioEnabled:microphoneEnabled:sharedFolders:macAddress:autoResizeDisplay:clipboardSharingEnabled:)``.
+///
+/// Replaces `MACAddress??`, where `.some(nil)` (clear) and `.none`
+/// (keep) were syntactically distinct but visually ambiguous at the
+/// call site. Every override action now has its own named case.
+public enum MacAddressOverride: Sendable, Equatable {
+
+    /// Retain the current MAC address value. The default — matches
+    /// "I didn't pass anything for this field."
+    case omit
+
+    /// Set the MAC address explicitly.
+    ///
+    /// - Parameter address: The explicit ``MACAddress`` to apply.
+    case set(MACAddress)
+
+    /// Clear the MAC address so the Virtualization framework
+    /// auto-generates one on VM start.
+    case clear
+
+    /// Resolves the override against the current value from the
+    /// owning spec, returning the new effective value.
+    func resolved(from current: MACAddress?) -> MACAddress? {
+        switch self {
+        case .omit:              return current
+        case .set(let address):  return address
+        case .clear:             return nil
+        }
+    }
+}
+
+// MARK: - Specification errors
+
+/// Errors raised by ``VirtualMachineSpecification/validate()`` when
+/// a spec violates a documented hardware bound.
+public enum VirtualMachineSpecificationError: Error, Sendable, Equatable, LocalizedError {
+
+    /// CPU count is below the documented minimum.
+    case cpuCountTooLow(provided: Int, minimum: Int)
+
+    /// Memory is below 1 GiB.
+    case memoryTooLow(provided: UInt64, minimum: UInt64)
+
+    /// Memory equals or exceeds 1 TiB — likely a byte/GB unit bug.
+    case memoryTooHigh(provided: UInt64, maximum: UInt64)
+
+    /// Disk size is below 1 GiB.
+    case diskTooSmall(provided: UInt64, minimum: UInt64)
+
+    /// Display count is not 1 or 2.
+    case displayCountOutOfRange(provided: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .cpuCountTooLow(let p, let m):
+            "CPU count \(p) is below the minimum \(m) for macOS guests."
+        case .memoryTooLow(let p, let m):
+            "Memory \(p) bytes is below the minimum \(m) bytes (1 GiB)."
+        case .memoryTooHigh(let p, let m):
+            "Memory \(p) bytes is at or above \(m) bytes (1 TiB) — likely a unit conversion bug."
+        case .diskTooSmall(let p, let m):
+            "Disk size \(p) bytes is below the minimum \(m) bytes (1 GiB)."
+        case .displayCountOutOfRange(let p):
+            "Display count \(p) is not in the accepted range 1...2."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        "Adjust the spec and retry. See VirtualMachineSpecification docs for the accepted ranges."
     }
 }
 

@@ -22,19 +22,41 @@ struct SetupAutomationTests {
             "Supported versions return true and produce a non-empty sequence",
             arguments: [15, 26]
         )
-        func supportedVersions(version: Int) {
+        func supportedVersions(version: Int) throws {
             #expect(SetupAutomation.isSupported(macOSVersion: version))
-            let steps = SetupAutomation.sequence(for: version)
+            let steps = try SetupAutomation.sequence(for: version)
             #expect(!steps.isEmpty)
         }
 
         @Test(
-            "Unsupported versions return false and produce an empty sequence",
+            "Unsupported versions return false and throw with the requested + supported set",
             arguments: [10, 11, 12, 13, 14, 16, 25, 27, 99]
         )
         func unsupportedVersions(version: Int) {
             #expect(!SetupAutomation.isSupported(macOSVersion: version))
-            #expect(SetupAutomation.sequence(for: version).isEmpty)
+            #expect(throws: SetupAutomationError.unsupportedVersion(
+                requested: version,
+                supported: SetupAutomation.supportedVersions
+            )) {
+                _ = try SetupAutomation.sequence(for: version)
+            }
+        }
+
+        @Test("Unsupported version error message names the requested major + lists supported versions")
+        func unsupportedVersionErrorIsActionable() {
+            let err = SetupAutomationError.unsupportedVersion(
+                requested: 42,
+                supported: SetupAutomation.supportedVersions
+            )
+            let description = try? #require(err.errorDescription)
+            #expect(description?.contains("42") == true,
+                    "Error must name the requested macOS version")
+            for version in SetupAutomation.supportedVersions {
+                #expect(description?.contains(String(version)) == true,
+                        "Error must list supported version \(version)")
+            }
+            #expect(err.recoverySuggestion?.isEmpty == false,
+                    "Error must provide an actionable recovery suggestion")
         }
     }
 
@@ -47,9 +69,9 @@ struct SetupAutomationTests {
             "Sequence starts with a wait for VM boot (delay >= 30s)",
             arguments: [15, 26]
         )
-        func sequenceStartsWithWait(version: Int) {
-            let steps = SetupAutomation.sequence(for: version)
-            let first = try! #require(steps.first, "Sequence must not be empty")
+        func sequenceStartsWithWait(version: Int) throws {
+            let steps = try SetupAutomation.sequence(for: version)
+            let first = try #require(steps.first, "Sequence must not be empty")
             #expect(first.delay >= 30)
         }
 
@@ -57,8 +79,8 @@ struct SetupAutomationTests {
             "Sequence ends with SSH enablement",
             arguments: [15, 26]
         )
-        func sequenceEndsWithSSH(version: Int) {
-            let lastSteps = SetupAutomation.sequence(for: version).suffix(10)
+        func sequenceEndsWithSSH(version: Int) throws {
+            let lastSteps = try SetupAutomation.sequence(for: version).suffix(10)
             let containsSSHCommand = lastSteps.contains { step in
                 if case .text(let text) = step.action {
                     return text.contains("setremotelogin")
@@ -72,8 +94,8 @@ struct SetupAutomationTests {
             "Sequence contains exactly 2 VoiceOver toggles (Option+F5)",
             arguments: [15, 26]
         )
-        func voiceOverToggles(version: Int) {
-            let steps = SetupAutomation.sequence(for: version)
+        func voiceOverToggles(version: Int) throws {
+            let steps = try SetupAutomation.sequence(for: version)
             let toggles = steps.filter { step in
                 if case .shortcut(.f5, modifiers: let mods) = step.action {
                     return mods.contains(.option)
@@ -84,14 +106,14 @@ struct SetupAutomationTests {
         }
 
         @Test("Sequoia sequence has at least 50 steps")
-        func sequoiaStepCount() {
-            let steps = SetupAutomation.sequence(for: 15)
+        func sequoiaStepCount() throws {
+            let steps = try SetupAutomation.sequence(for: 15)
             #expect(steps.count >= 50)
         }
 
         @Test("Sequence opens Terminal via Spotlight and selects English")
-        func spotlightAndLanguage() {
-            let steps = SetupAutomation.sequence(for: 15)
+        func spotlightAndLanguage() throws {
+            let steps = try SetupAutomation.sequence(for: 15)
             let hasSpotlight = steps.contains { step in
                 if case .shortcut(.space, modifiers: let mods) = step.action {
                     return mods.contains(.option)
@@ -112,8 +134,8 @@ struct SetupAutomationTests {
         }
 
         @Test("Sequence sets timezone to UTC")
-        func sequenceSetsUTC() {
-            let steps = SetupAutomation.sequence(for: 15)
+        func sequenceSetsUTC() throws {
+            let steps = try SetupAutomation.sequence(for: 15)
             let hasUTC = steps.contains { step in
                 if case .text(let text) = step.action { return text == "UTC" }
                 return false
@@ -128,8 +150,8 @@ struct SetupAutomationTests {
     struct CredentialsTests {
 
         @Test("Default credentials use admin/admin (at least 5 occurrences)")
-        func defaultCredentials() {
-            let steps = SetupAutomation.sequence(for: 15)
+        func defaultCredentials() throws {
+            let steps = try SetupAutomation.sequence(for: 15)
             let textSteps = steps.compactMap { step -> String? in
                 if case .text(let text) = step.action { return text }
                 return nil
@@ -142,8 +164,8 @@ struct SetupAutomationTests {
         }
 
         @Test("Custom username appears at least twice in the sequence")
-        func customUsername() {
-            let steps = SetupAutomation.sequence(for: 15, username: "runner", password: "secret123")
+        func customUsername() throws {
+            let steps = try SetupAutomation.sequence(for: 15, username: "runner", password: "secret123")
             let textSteps = steps.compactMap { step -> String? in
                 if case .text(let text) = step.action { return text }
                 return nil
@@ -153,8 +175,8 @@ struct SetupAutomationTests {
         }
 
         @Test("Custom password appears at least 3 times in the sequence")
-        func customPassword() {
-            let steps = SetupAutomation.sequence(for: 15, username: "runner", password: "secret123")
+        func customPassword() throws {
+            let steps = try SetupAutomation.sequence(for: 15, username: "runner", password: "secret123")
             let textSteps = steps.compactMap { step -> String? in
                 if case .text(let text) = step.action { return text }
                 return nil
@@ -167,8 +189,8 @@ struct SetupAutomationTests {
         }
 
         @Test("Custom credentials fully replace 'admin'")
-        func customCredentialsReplaceDefaults() {
-            let steps = SetupAutomation.sequence(for: 15, username: "ci", password: "build")
+        func customCredentialsReplaceDefaults() throws {
+            let steps = try SetupAutomation.sequence(for: 15, username: "ci", password: "build")
             let textSteps = steps.compactMap { step -> String? in
                 if case .text(let text) = step.action { return text }
                 return nil

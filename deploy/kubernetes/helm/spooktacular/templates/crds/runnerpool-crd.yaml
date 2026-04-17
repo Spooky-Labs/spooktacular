@@ -273,6 +273,43 @@ spec:
               type: object
               description: Observed state of the runner pool.
               properties:
+                observedGeneration:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                conditions:
+                  type: array
+                  description: Standard `meta/v1.Condition` entries.
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    required: [type, status, lastTransitionTime, reason, message]
+                    properties:
+                      type:
+                        type: string
+                        maxLength: 316
+                        pattern: "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$"
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                        pattern: "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$"
+                      message:
+                        type: string
+                        maxLength: 32768
+                activeRunners:
+                  type: integer
                 readyRunners:
                   type: integer
                   description: Number of runners currently ready for jobs.
@@ -285,6 +322,16 @@ spec:
                 totalRunners:
                   type: integer
                   description: Total runner count (ready + busy + pending).
+                desiredRunners:
+                  type: integer
+                runners:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      state: { type: string }
+                      retryCount: { type: integer }
                 phase:
                   type: string
                   description: >-
@@ -314,25 +361,37 @@ spec:
           type: integer
           jsonPath: .status.readyRunners
 
+        - name: Desired
+          type: integer
+          jsonPath: .status.desiredRunners
+
         - name: Busy
           type: integer
           jsonPath: .status.busyRunners
+          priority: 1
 
         - name: Min
           type: integer
           jsonPath: .spec.minRunners
+          priority: 1
 
         - name: Max
           type: integer
           jsonPath: .spec.maxRunners
+          priority: 1
 
         - name: Mode
           type: string
           jsonPath: .spec.mode
+          priority: 1
 
         - name: Phase
           type: string
           jsonPath: .status.phase
+
+        - name: Available
+          type: string
+          jsonPath: .status.conditions[?(@.type=="PoolReady")].status
 
         - name: Age
           type: date

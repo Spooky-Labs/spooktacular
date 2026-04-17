@@ -27,6 +27,7 @@ struct OIDCACRTests {
         let config = OIDCProviderConfig(
             issuerURL: "https://idp.example.com",
             clientID: "spook-control-plane",
+            audience: "spook-control-plane",
             requiredACRValues: [
                 "http://schemas.openid.net/pape/policies/2007/06/multi-factor",
                 "urn:mace:incommon:iap:silver"
@@ -42,7 +43,8 @@ struct OIDCACRTests {
     func requiredACRValuesDefaultsToNil() {
         let config = OIDCProviderConfig(
             issuerURL: "https://idp.example.com",
-            clientID: "spook-control-plane"
+            clientID: "spook-control-plane",
+            audience: "spook-control-plane"
         )
         #expect(config.requiredACRValues == nil)
     }

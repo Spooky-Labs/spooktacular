@@ -120,8 +120,12 @@ terraform apply
 Terraform will:
 1. Allocate a Dedicated Host (`mac2.metal`)
 2. Launch an EC2 Mac instance with the macOS AMI
-3. Run `bootstrap.sh` as user-data to install and configure Spooktacular
-4. Output the instance IP and SSH command
+3. Register the `SpooktacularInstall` SSM document from `ssm/install-spooktacular.yaml`
+4. Run `bootstrap.sh` as user-data to install and configure Spooktacular
+5. Create CloudWatch alarms for host utilization, API errors, audit export failures, TLS expiry, and ASG capacity gaps
+6. (Optional, `enable_license_manager = true`) Create a License Manager license configuration and Host Resource Group
+7. (Optional, `enable_asg = true`) Provision a launch template, ASG, and drain-on-terminate lifecycle hook
+8. Output the instance IP and SSH command
 
 After apply completes, wait 5-10 minutes for user-data to finish, then
 validate:

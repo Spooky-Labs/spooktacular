@@ -55,6 +55,33 @@ struct TenantQuotaTests {
             let request = ResourceRequest(cpuCores: 100, memoryGB: 100)
             #expect(quota.evaluate(usage: usage, request: request).isAllowed)
         }
+
+        @Test("pending in-flight allocations count toward the VM cap")
+        func pendingReservationsAreCounted() {
+            // The original bug: two concurrent creations each saw
+            // activeVMs=1, maxVMs=2, and both passed. With
+            // `pending` reflecting the in-flight reservation, the
+            // second caller sees 1 + 1 + 1 > 2 and is denied.
+            let quota = TenantQuota(maxVMs: 2, maxCPUCores: 16, maxMemoryGB: 32)
+            let usage = TenantUsage(activeVMs: 1)
+            let request = ResourceRequest()
+            let decision = quota.evaluate(usage: usage, request: request, pending: 1)
+            #expect(!decision.isAllowed)
+            if case .denied(let reason) = decision {
+                #expect(reason.contains("pending"))
+            }
+        }
+
+        @Test("pending=0 is equivalent to the old behaviour")
+        func pendingZeroPreservesBehaviour() {
+            let quota = TenantQuota(maxVMs: 2, maxCPUCores: 16, maxMemoryGB: 32)
+            let usage = TenantUsage(activeVMs: 1)
+            let request = ResourceRequest()
+            let noPending = quota.evaluate(usage: usage, request: request, pending: 0)
+            let implicitDefault = quota.evaluate(usage: usage, request: request)
+            #expect(noPending == implicitDefault)
+            #expect(noPending.isAllowed)
+        }
     }
 
     // MARK: - Defaults

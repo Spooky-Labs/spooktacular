@@ -160,6 +160,54 @@ struct FairSchedulerTests {
         #expect(total == 9, "work-conserving: should have used all 9 slots, got \(total)")
     }
 
+    @Test("weights [100,100,1] capacity 3 → every tenant gets at least 1 slot")
+    func lowWeightTenantNotStarved() {
+        // The starvation bug: when the weighted split floors to
+        // zero for the low-weight tenant, the old code `break`ed
+        // after a single round-robin pass, sometimes leaving the
+        // low-weight tenant at 0 even though there was unmet
+        // demand + capacity. With the `continue` fix, every
+        // tenant with unmet demand gets at least one slot.
+        let s = FairScheduler(policies: [
+            .init(tenant: TenantID("a"), weight: 100),
+            .init(tenant: TenantID("b"), weight: 100),
+            .init(tenant: TenantID("c"), weight: 1),
+        ])
+        let alloc = s.allocate(
+            demand: [TenantID("a"): 10, TenantID("b"): 10, TenantID("c"): 10],
+            capacity: 3
+        )
+        #expect(alloc[TenantID("a")] ?? 0 >= 1, "tenant a starved")
+        #expect(alloc[TenantID("b")] ?? 0 >= 1, "tenant b starved")
+        #expect(alloc[TenantID("c")] ?? 0 >= 1, "tenant c starved — the specific bug this test pins")
+        #expect(alloc.values.reduce(0, +) == 3)
+    }
+
+    @Test("property: no tenant with unmet demand is starved at capacity ≥ tenants")
+    func noStarvationProperty() {
+        // Sweep a small parameter space to exercise the
+        // round-robin fallback under varied weights. The
+        // property: at capacity ≥ tenants, no demanding tenant
+        // ends up at 0.
+        let weightCombos: [[Int]] = [
+            [1, 1, 1], [1, 2, 3], [10, 10, 1], [1, 1, 100],
+            [5, 3, 1], [100, 1, 1], [1, 100, 1], [2, 2, 2],
+        ]
+        for weights in weightCombos {
+            let s = FairScheduler(policies: weights.enumerated().map { i, w in
+                .init(tenant: TenantID("t\(i)"), weight: w)
+            })
+            let demand: [TenantID: Int] = Dictionary(
+                uniqueKeysWithValues: weights.indices.map { (TenantID("t\($0)"), 10) }
+            )
+            let alloc = s.allocate(demand: demand, capacity: weights.count)
+            for i in weights.indices {
+                let got = alloc[TenantID("t\(i)")] ?? 0
+                #expect(got >= 1, "weights=\(weights): tenant t\(i) starved at \(got)")
+            }
+        }
+    }
+
     @Test("precondition: weight must be positive")
     func negativeWeightTrapsPrecondition() {
         // Can't easily test preconditionFailure in unit tests

@@ -16,6 +16,16 @@ import Foundation
 /// ``KeychainTLSProvider`` is the adapter. ``NodeManager`` depends on
 /// this protocol, not on `URLSession`, `Security`, or `SecIdentity`
 /// directly — keeping the domain layer free of infrastructure types.
+///
+/// ## Anchor pinning
+///
+/// Callers that need explicit-anchor pinning depend on the
+/// ``PinnedTLSIdentityProvider`` refinement declared in the
+/// Infrastructure layer — pinning references `SecCertificate`,
+/// which is Security-framework territory that the domain layer
+/// cannot (per Clean Architecture) import. The refinement lives
+/// alongside ``KeychainTLSProvider`` in
+/// ``SpookInfrastructureApple``.
 public protocol TLSIdentityProvider: Sendable {
 
     /// Returns an ``HTTPClient`` pre-configured with client-certificate

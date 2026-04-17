@@ -24,19 +24,33 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: bundle install
+        run: |
+          set -Eeuo pipefail
+          bundle install
 
       - name: Sync code signing
-        run: bundle exec fastlane signing
+        run: |
+          set -Eeuo pipefail
+          bundle exec fastlane signing
 
       - name: Build signed .app
-        run: BUILD_NUMBER="${{ github.run_number }}" bundle exec fastlane build
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -Eeuo pipefail
+          bundle exec fastlane build
 
       - name: Package .pkg
-        run: bundle exec fastlane package
+        run: |
+          set -Eeuo pipefail
+          bundle exec fastlane package
 
       - name: Upload to TestFlight
         run: |
+          set -Eeuo pipefail
+          # Explicit pipefail + exit-on-error so a fastlane
+          # upload failure aborts the workflow instead of
+          # publishing a silently broken beta.
           bundle exec fastlane run upload_to_testflight \
             pkg:"$PWD/Spooktacular.pkg" \
             app_platform:"osx" \

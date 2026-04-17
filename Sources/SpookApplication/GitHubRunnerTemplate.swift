@@ -67,6 +67,12 @@ public enum GitHubRunnerTemplate {
     ///
     /// Extracted as a separate method for testability.
     ///
+    /// Each label is individually POSIX-shell-escaped before being
+    /// joined on a comma and wrapped as a single quoted argument.
+    /// A previous implementation joined first then escaped the whole
+    /// string, which let a single-quote inside one label break out
+    /// of the surrounding quoting — a classic metacharacter bug.
+    ///
     /// - Parameters:
     ///   - repo: The GitHub repository in `owner/repo` format.
     ///   - token: The runner registration token.
@@ -91,9 +97,15 @@ public enum GitHubRunnerTemplate {
         ]
 
         if !labels.isEmpty {
-            let safeLabels = labels.joined(separator: ",")
-                .replacingOccurrences(of: "'", with: "'\\''")
-            configFlags.append("--labels '\(safeLabels)'")
+            // Escape each label *individually* first, then join on a
+            // comma, then wrap the whole thing in outer single quotes.
+            // `foo'bar` must become `foo'\''bar`; joining raw labels
+            // and escaping only once lets `foo'bar,baz` slip through
+            // as two quoted segments, breaking the argument.
+            let escapedLabels = labels
+                .map { $0.replacingOccurrences(of: "'", with: "'\\''") }
+                .joined(separator: ",")
+            configFlags.append("--labels '\(escapedLabels)'")
         }
 
         if ephemeral {

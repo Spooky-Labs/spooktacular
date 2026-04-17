@@ -13,7 +13,7 @@ public actor OSLogAuditSink: AuditSink {
 
     public init() {}
 
-    public func record(_ entry: AuditRecord) async {
+    public func record(_ entry: AuditRecord) async throws {
         logger.notice("""
             AUDIT: \(entry.action, privacy: .public) \
             resource=\(entry.resource, privacy: .public) \

@@ -133,6 +133,11 @@ struct VMLaunchView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
             .glassCard(cornerRadius: 12)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text("Hardware summary"))
+            .accessibilityValue(
+                Text("\(bundle.spec.cpuCount) cores, \(bundle.spec.memorySizeInGigabytes) gigabytes RAM, \(bundle.spec.diskSizeInGigabytes) gigabytes disk, \(bundle.spec.displayCount) display")
+            )
 
             Button {
                 Task { await appState.startVM(name) }

@@ -22,18 +22,26 @@ controller:
     tag: ""  # Defaults to appVersion from Chart.yaml if empty.
     pullPolicy: IfNotPresent
 
-  # Number of controller replicas. Only one replica is active at a time
-  # (leader election is used when replicas > 1).
-  replicas: 1
+  # Number of controller replicas. Defaults to 2 so a voluntary
+  # disruption (node drain, upgrade) doesn't take the admission
+  # webhook offline. Leader election keeps only one replica active
+  # at a time.
+  replicas: 2
 
   # Resource requests and limits for the controller pod.
+  #
+  # Tuning rule of thumb: add +10m CPU and +5Mi memory per 100 VMs
+  # actively managed by the controller. The defaults below are sized
+  # for a ~200-VM fleet with comfortable headroom; under-allocating
+  # requests causes the scheduler to pack the controller onto hot
+  # nodes and risk OOMKill during reconcile storms.
   resources:
     requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
       cpu: 500m
       memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
 
   # Node selector for the controller pod. The controller runs on Linux.
   nodeSelector:
@@ -164,12 +172,70 @@ metrics:
   grafana:
     enabled: false
 
+  # Default alert rules bundled as a PrometheusRule CRD.
+  prometheusRule:
+    enabled: false
+    # Namespace for the PrometheusRule (defaults to release namespace).
+    namespace: ""
+    # Extra labels to assist Prometheus `ruleSelector` matchers.
+    additionalLabels: {}
+    # Seconds remaining below which SpooktacularTLSCertExpiringSoon fires.
+    # Default: 7 days.
+    tlsExpirySecondsThreshold: 604800
+    # Additional PromQL rules appended after the defaults.
+    additionalRules: []
+
+# -----------------------------------------------------------------------------
+# Admission Webhook
+# -----------------------------------------------------------------------------
+# Ships a `ValidatingWebhookConfiguration` that enforces cross-tenant
+# isolation and the 2-VM-per-host Apple Silicon limit. Fail-closed
+# (failurePolicy=Fail) is the secure default: if the webhook is
+# unreachable, CREATE/UPDATE on MacOSVM and RunnerPool is rejected.
+admissionWebhook:
+  enabled: true
+  # Port inside the controller pod where the admission HTTPS server listens.
+  port: 9443
+  # Webhook request timeout (seconds). Must be <= 30.
+  timeoutSeconds: 5
+  # "Fail" = reject if webhook unreachable. "Ignore" = silently allow (less
+  # secure, only for migration scenarios).
+  failurePolicy: Fail
+
+# -----------------------------------------------------------------------------
+# NetworkPolicy
+# -----------------------------------------------------------------------------
+# Restricts controller pod ingress/egress to the minimum required for:
+#   - Admission webhook from kube-apiserver
+#   - Prometheus scrape
+#   - Kubelet probes
+#   - DNS, K8s API, Mac node HTTPS
+networkPolicy:
+  enabled: true
+  # Namespace label (metadata.name) of the Prometheus installation.
+  # Empty = allow scrape from any namespace.
+  prometheusNamespace: ""
+  # CIDR for Mac host nodes. Used for egress to `spook serve` on each
+  # Mac. Empty / "0.0.0.0/0" allows all (tighten in production).
+  macNodeCIDR: ""
+  # Port on Mac hosts running `spook serve`.
+  macNodePort: 8484
+  # Whether to allow Prometheus scraping.
+  allowPrometheusScrape: true
+  # Whether to allow kubelet probes.
+  allowKubeletProbes: true
+  # Additional NetworkPolicy egress rules appended verbatim.
+  additionalEgress: []
+
 # -----------------------------------------------------------------------------
 # Pod Disruption Budget
 # -----------------------------------------------------------------------------
 podDisruptionBudget:
-  enabled: false
+  enabled: true
+  # Keep at least one controller schedulable through voluntary disruption.
   minAvailable: 1
+  # Alternatively set maxUnavailable; leave unset to use minAvailable.
+  maxUnavailable: ""
 
 # -----------------------------------------------------------------------------
 # CRD Installation

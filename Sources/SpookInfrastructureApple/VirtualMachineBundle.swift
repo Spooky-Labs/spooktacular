@@ -104,6 +104,11 @@ public struct VirtualMachineBundle: Sendable {
     public static func create(at url: URL, spec: VirtualMachineSpecification) throws -> VirtualMachineBundle {
         let fileManager = FileManager.default
 
+        // Validate BEFORE creating directories or writing files:
+        // an invalid spec must fail closed without littering the
+        // filesystem with a half-constructed bundle.
+        try spec.validate()
+
         guard !fileManager.fileExists(atPath: url.path) else {
             Log.vm.error("Bundle already exists at \(url.lastPathComponent, privacy: .public)")
             throw VirtualMachineBundleError.alreadyExists(url: url)

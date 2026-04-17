@@ -167,12 +167,20 @@ public actor HTTPAPIServer {
     /// `SPOOK_MAX_REQUEST_BYTES`.
     private let maxRequestBytes: Int
 
-    /// Maximum seconds to wait for a complete request after the first byte.
+    /// Maximum seconds from the first byte to a complete request.
     ///
     /// Clients that send bytes more slowly than this (the slow-loris
     /// family of denial-of-service attacks) are rejected with HTTP 408.
     /// Defaults to 30 s; override with `SPOOK_REQUEST_TIMEOUT_SECONDS`.
     private let requestTimeoutSeconds: TimeInterval
+
+    /// Maximum seconds allowed to receive the complete header block.
+    ///
+    /// Stricter than the total request timeout because an attacker
+    /// who trickles header bytes can starve the server for minutes
+    /// before the body phase starts. Defaults to 10 s; override
+    /// with `SPOOK_HEADER_TIMEOUT_SECONDS`.
+    private let headerTimeoutSeconds: TimeInterval
 
     /// Default maximum request size: 1 MiB.
     private static let defaultMaxRequestBytes = 1 << 20
@@ -180,8 +188,41 @@ public actor HTTPAPIServer {
     /// Default request read timeout: 30 seconds.
     private static let defaultRequestTimeoutSeconds: TimeInterval = 30
 
-    /// Tracks request counts per client IP for rate limiting.
-    private var clientRequestCounts: [String: (count: Int, windowStart: Date)] = [:]
+    /// Default header read timeout: 10 seconds.
+    private static let defaultHeaderTimeoutSeconds: TimeInterval = 10
+
+    /// A per-client bucket for split read/write rate limits.
+    ///
+    /// GET/HEAD (lists, health, metrics) get a generous bucket.
+    /// Writes (POST/PUT/PATCH/DELETE) get a much smaller one —
+    /// every write is a control-plane side effect and the ceiling
+    /// prevents a compromised read-scoped caller from walking up to
+    /// a write-burst.
+    private struct RateLimitBucket {
+        var readCount: Int
+        var writeCount: Int
+        var windowStart: Date
+    }
+
+    /// Tracks request counts per client IP for rate limiting, with
+    /// separate buckets for read vs write methods.
+    private var clientRequestBuckets: [String: RateLimitBucket] = [:]
+
+    /// Per-minute ceiling for read methods (GET, HEAD, OPTIONS).
+    /// Override with `SPOOK_READ_RATE_LIMIT`.
+    private let readRateLimit: Int
+
+    /// Per-minute ceiling for write methods (POST, PUT, PATCH, DELETE).
+    /// Defaults to one-third of the read limit (rounded up).
+    /// Override with `SPOOK_WRITE_RATE_LIMIT`.
+    private let writeRateLimit: Int
+
+    /// Whether to trust an inbound `X-Forwarded-For` as the client
+    /// IP. Default `false` — trusting it by default is a rate-limit
+    /// bypass (any caller spoofs any IP). Operators who front the
+    /// server with a proxy they control must opt in via
+    /// `SPOOK_TRUST_FORWARDED_FOR=1`.
+    private let trustForwardedFor: Bool
 
     /// The tenant identity for this server instance.
     ///
@@ -311,11 +352,18 @@ public actor HTTPAPIServer {
         self.tenantRegistry = tenantRegistry
         self.insecureMode = insecureMode
         self.maxConcurrentConnections = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50
-        self.maxRequestsPerMinute = Int(ProcessInfo.processInfo.environment["SPOOK_RATE_LIMIT"] ?? "") ?? 120
+        let overallLimit = Int(ProcessInfo.processInfo.environment["SPOOK_RATE_LIMIT"] ?? "") ?? 120
+        self.maxRequestsPerMinute = overallLimit
+        self.readRateLimit = Int(ProcessInfo.processInfo.environment["SPOOK_READ_RATE_LIMIT"] ?? "") ?? overallLimit
+        self.writeRateLimit = Int(ProcessInfo.processInfo.environment["SPOOK_WRITE_RATE_LIMIT"] ?? "")
+            ?? max(1, (overallLimit + 2) / 3)
+        self.trustForwardedFor = (ProcessInfo.processInfo.environment["SPOOK_TRUST_FORWARDED_FOR"] ?? "0") == "1"
         self.maxRequestBytes = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_REQUEST_BYTES"] ?? "")
             ?? Self.defaultMaxRequestBytes
         self.requestTimeoutSeconds = Double(ProcessInfo.processInfo.environment["SPOOK_REQUEST_TIMEOUT_SECONDS"] ?? "")
             ?? Self.defaultRequestTimeoutSeconds
+        self.headerTimeoutSeconds = Double(ProcessInfo.processInfo.environment["SPOOK_HEADER_TIMEOUT_SECONDS"] ?? "")
+            ?? Self.defaultHeaderTimeoutSeconds
 
         self.signatureVerifier = signatureVerifier
         self.actorIdentityByKeyFingerprint = actorIdentityByKeyFingerprint
@@ -632,39 +680,78 @@ public actor HTTPAPIServer {
     /// Reads bytes from a connection, buffering until a complete HTTP
     /// request has arrived or a safety limit trips.
     ///
-    /// Enforces three safety limits:
+    /// Enforces four safety limits:
     /// - **Total size** (`maxRequestBytes`): rejects with HTTP 413 before
     ///   the body is fully read, defeating memory-exhaustion attacks.
-    /// - **Total time** (`requestTimeoutSeconds`): rejects with HTTP 408
-    ///   when the client sends bytes too slowly (slow-loris).
+    ///   The parser also rejects advertised `Content-Length` values
+    ///   that would push past the cap BEFORE reading the body, so an
+    ///   attacker can't tie up memory by claiming a huge body.
+    /// - **Header deadline** (`headerTimeoutSeconds`): rejects with
+    ///   HTTP 408 if the header block isn't complete within 10 s of
+    ///   the first byte — the slow-loris defense.
+    /// - **Total deadline** (`requestTimeoutSeconds`): rejects with
+    ///   HTTP 408 if the whole request (headers + body) takes
+    ///   longer than 30 s.
     /// - **Malformed headers**: rejects with HTTP 400 as soon as the
-    ///   header block is complete and unparseable.
+    ///   header block is complete and unparseable (duplicate
+    ///   `Content-Length`, missing colon, non-ASCII method/path).
+    ///
+    /// Deadlines use `ContinuousClock` so the elapsed measurement is
+    /// immune to wall-clock jumps (daylight-saving, NTP corrections).
     private nonisolated func receiveRequest(on connection: NWConnection) {
+        let clock = ContinuousClock()
+        let startedAt = clock.now
         readIntoBuffer(
             on: connection,
             buffer: Data(),
-            deadline: Date().addingTimeInterval(requestTimeoutSeconds),
-            maxBytes: maxRequestBytes
+            startedAt: startedAt,
+            headersComplete: false,
+            clock: clock,
+            maxBytes: maxRequestBytes,
+            headerDeadline: .seconds(headerTimeoutSeconds),
+            totalDeadline: .seconds(requestTimeoutSeconds)
         )
     }
 
     /// Recursive reader that accumulates bytes until a complete request
     /// is parseable or a limit is exceeded.
+    ///
+    /// - Parameters:
+    ///   - headersComplete: `true` once the `\r\n\r\n` terminator has
+    ///     been observed; from that point on only the total-request
+    ///     deadline applies (header-phase deadline is moot).
     private nonisolated func readIntoBuffer(
         on connection: NWConnection,
         buffer: Data,
-        deadline: Date,
-        maxBytes: Int
+        startedAt: ContinuousClock.Instant,
+        headersComplete: Bool,
+        clock: ContinuousClock,
+        maxBytes: Int,
+        headerDeadline: Duration,
+        totalDeadline: Duration
     ) {
-        if Date() > deadline {
-            let response = HTTPResponse.error(message: "Request Timeout.", statusCode: 408)
+        let elapsed = clock.now - startedAt
+
+        if !headersComplete, elapsed > headerDeadline {
+            let response = HTTPResponse.error(
+                code: .timeout, message: "Header read timed out.", statusCode: 408
+            )
+            sendResponse(response, on: connection)
+            return
+        }
+        if elapsed > totalDeadline {
+            let response = HTTPResponse.error(
+                code: .timeout, message: "Request read timed out.", statusCode: 408
+            )
             sendResponse(response, on: connection)
             return
         }
 
         let remaining = maxBytes - buffer.count
         guard remaining > 0 else {
-            let response = HTTPResponse.error(message: "Payload Too Large.", statusCode: 413)
+            let response = HTTPResponse.error(
+                code: .payloadTooLarge, message: "Request exceeds maximum size.", statusCode: 413
+            )
             sendResponse(response, on: connection)
             return
         }
@@ -677,18 +764,49 @@ public actor HTTPAPIServer {
             if let data { next.append(data) }
 
             if next.count > maxBytes {
-                let response = HTTPResponse.error(message: "Payload Too Large.", statusCode: 413)
+                let response = HTTPResponse.error(
+                    code: .payloadTooLarge, message: "Request exceeds maximum size.", statusCode: 413
+                )
                 self.sendResponse(response, on: connection)
                 return
             }
 
+            // Detect header-complete state by probing for `\r\n\r\n`.
+            // Flipping `headersComplete` disables the header-phase
+            // deadline while keeping the total-request deadline.
+            let seenHeaderTerminator = headersComplete
+                || next.range(of: Data([0x0d, 0x0a, 0x0d, 0x0a])) != nil
+
             do {
-                if let request = try HTTPRequestParser.parseIfComplete(next) {
+                switch try HTTPRequestParser.parseIfComplete(next, maxRequestBytes: maxBytes) {
+                case .complete(let request):
                     Task { await self.processParsedRequest(request, on: connection) }
                     return
+                case .tooLarge:
+                    let response = HTTPResponse.error(
+                        code: .payloadTooLarge,
+                        message: "Content-Length exceeds maximum request size.",
+                        statusCode: 413
+                    )
+                    self.sendResponse(response, on: connection)
+                    return
+                case .needMore:
+                    break
                 }
+            } catch HTTPAPIServerError.duplicateContentLength {
+                let response = HTTPResponse.error(
+                    code: .malformedRequest,
+                    message: "Duplicate Content-Length header.",
+                    statusCode: 400
+                )
+                self.sendResponse(response, on: connection)
+                return
             } catch {
-                let response = HTTPResponse.error(message: "Malformed HTTP request.", statusCode: 400)
+                let response = HTTPResponse.error(
+                    code: .malformedRequest,
+                    message: "Malformed HTTP request.",
+                    statusCode: 400
+                )
                 self.sendResponse(response, on: connection)
                 return
             }
@@ -699,42 +817,83 @@ public actor HTTPAPIServer {
                 return
             }
 
-            self.readIntoBuffer(on: connection, buffer: next, deadline: deadline, maxBytes: maxBytes)
+            self.readIntoBuffer(
+                on: connection,
+                buffer: next,
+                startedAt: startedAt,
+                headersComplete: seenHeaderTerminator,
+                clock: clock,
+                maxBytes: maxBytes,
+                headerDeadline: headerDeadline,
+                totalDeadline: totalDeadline
+            )
         }
     }
 
     /// Checks whether a client IP is within its rate limit window.
     ///
-    /// Each client is allowed ``maxRequestsPerMinute`` requests per
-    /// 60-second sliding window. Returns `true` if the request is
-    /// allowed, `false` if rate-limited.
+    /// Reads (GET/HEAD/OPTIONS) and writes (POST/PUT/PATCH/DELETE)
+    /// get separate buckets within the same 60-second sliding
+    /// window. A read-heavy Prometheus scrape cannot starve the
+    /// write budget for a legitimate controller — and a caller who
+    /// exhausts writes still gets to read `/health`.
     ///
-    /// - Parameter clientIP: The IP address string of the connecting client.
+    /// - Parameters:
+    ///   - clientIP: The IP address string of the connecting client.
+    ///   - method: The HTTP method of the incoming request.
     /// - Returns: `true` if the request should proceed; `false` if rate-limited.
-    func checkRateLimit(clientIP: String) -> Bool {
+    func checkRateLimit(clientIP: String, method: String) -> Bool {
         let now = Date()
-        if let entry = clientRequestCounts[clientIP] {
-            if now.timeIntervalSince(entry.windowStart) > 60 {
-                // New window
-                clientRequestCounts[clientIP] = (count: 1, windowStart: now)
-                return true
-            } else if entry.count >= maxRequestsPerMinute {
-                return false
-            } else {
-                clientRequestCounts[clientIP] = (count: entry.count + 1, windowStart: entry.windowStart)
-                return true
+        let isRead = Self.isReadMethod(method)
+        let limit = isRead ? readRateLimit : writeRateLimit
+
+        if var bucket = clientRequestBuckets[clientIP] {
+            if now.timeIntervalSince(bucket.windowStart) > 60 {
+                bucket = RateLimitBucket(readCount: 0, writeCount: 0, windowStart: now)
             }
-        } else {
-            clientRequestCounts[clientIP] = (count: 1, windowStart: now)
+            let current = isRead ? bucket.readCount : bucket.writeCount
+            if current >= limit {
+                clientRequestBuckets[clientIP] = bucket
+                return false
+            }
+            if isRead { bucket.readCount += 1 } else { bucket.writeCount += 1 }
+            clientRequestBuckets[clientIP] = bucket
             return true
+        }
+
+        var fresh = RateLimitBucket(readCount: 0, writeCount: 0, windowStart: now)
+        if isRead { fresh.readCount = 1 } else { fresh.writeCount = 1 }
+        clientRequestBuckets[clientIP] = fresh
+        return true
+    }
+
+    /// Classifies an HTTP method as a read verb. `true` for GET /
+    /// HEAD / OPTIONS (no side effects on the control plane).
+    private static func isReadMethod(_ method: String) -> Bool {
+        switch method.uppercased() {
+        case "GET", "HEAD", "OPTIONS": return true
+        default: return false
         }
     }
 
     /// Extracts a client IP string from an `NWConnection`'s remote endpoint.
     ///
+    /// When `trustForwardedFor` is `true`, an inbound
+    /// `X-Forwarded-For` header overrides the transport endpoint —
+    /// the left-most value in the comma-separated list is used,
+    /// matching the RFC 7239 / de-facto convention. When `false`
+    /// (the default), the header is ignored so a caller cannot
+    /// spoof its IP for rate-limit bypass.
+    ///
     /// Falls back to the endpoint's debug description when the endpoint
     /// is not a host-port pair.
-    private func clientIP(from connection: NWConnection) -> String {
+    func clientIP(from connection: NWConnection, request: HTTPRequest? = nil) -> String {
+        if trustForwardedFor, let fwd = request?.headers["x-forwarded-for"] {
+            let first = fwd.split(separator: ",").first.map {
+                $0.trimmingCharacters(in: .whitespaces)
+            } ?? ""
+            if !first.isEmpty { return first }
+        }
         switch connection.endpoint {
         case .hostPort(let host, _):
             return "\(host)"
@@ -745,18 +904,24 @@ public actor HTTPAPIServer {
 
     /// Dispatches a fully-parsed request: logs, rate-limits, routes.
     private func processParsedRequest(_ request: HTTPRequest, on connection: NWConnection) async {
-        logger.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
+        logger.info("[rid=\(request.requestID, privacy: .public)] \(request.method, privacy: .public) \(request.path, privacy: .public)")
 
-        let ip = clientIP(from: connection)
-        guard checkRateLimit(clientIP: ip) else {
-            logger.warning("Rate limit exceeded for \(ip, privacy: .public)")
-            let response = HTTPResponse.error(message: "Too Many Requests.", statusCode: 429)
+        let ip = clientIP(from: connection, request: request)
+        guard checkRateLimit(clientIP: ip, method: request.method) else {
+            logger.warning("Rate limit exceeded for \(ip, privacy: .public) method=\(request.method, privacy: .public)")
+            let response = HTTPResponse.error(
+                code: .rateLimited,
+                message: "Too many requests — slow down.",
+                statusCode: 429,
+                requestID: request.requestID
+            )
             sendResponse(response, on: connection)
             return
         }
 
         let spanStart = Date()
-        let response = await routeRequest(request)
+        let raw = await routeRequest(request)
+        let response = raw.with(requestID: request.requestID)
         sendResponse(response, on: connection)
 
         // OTel span emission — best-effort, drops silently on
@@ -1372,16 +1537,29 @@ public actor HTTPAPIServer {
                     statusCode: 400
                 )
             }
-            let binding = VMIAMBinding(
-                vmName: vmName,
-                tenant: tenant,
-                roleArn: put.roleArn,
-                audience: put.audience ?? "sts.amazonaws.com",
-                maxTTLSeconds: put.maxTTLSeconds ?? 900,
-                additionalClaims: put.additionalClaims ?? [:],
-                createdAt: Date(),
-                createdBy: actorIdentity
-            )
+            let binding: VMIAMBinding
+            do {
+                binding = try VMIAMBinding(
+                    vmName: vmName,
+                    tenant: tenant,
+                    roleArn: put.roleArn,
+                    audience: put.audience ?? "sts.amazonaws.com",
+                    maxTTLSeconds: put.maxTTLSeconds ?? 900,
+                    additionalClaims: put.additionalClaims ?? [:],
+                    createdAt: Date(),
+                    createdBy: actorIdentity
+                )
+            } catch let err as IAMBindingError {
+                // Surface the exact validation failure to the
+                // operator — silently clamping was the prior
+                // behaviour and the reason the check was added.
+                return HTTPResponse.error(
+                    message: err.errorDescription ?? "Invalid IAM binding.",
+                    statusCode: 400
+                )
+            } catch {
+                return internalError("Could not construct IAM binding", error)
+            }
             do {
                 try await store.put(binding)
                 return HTTPResponse.ok(binding)
@@ -1578,7 +1756,13 @@ public actor HTTPAPIServer {
             action: method,
             outcome: statusCode < 400 ? .success : .failed
         )
-        await sink.record(record)
+        do {
+            try await sink.record(record)
+        } catch {
+            Log.audit.error(
+                "API audit record failed: \(error.localizedDescription, privacy: .public) — method=\(method, privacy: .public) path=\(path, privacy: .public)"
+            )
+        }
     }
 
     /// Returns `true` when a Bearer value looks like a JWT (three
@@ -1993,10 +2177,15 @@ public actor HTTPAPIServer {
 // MARK: - Errors
 
 /// Errors that can occur during HTTP API server operation.
-public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
+public enum HTTPAPIServerError: Error, Sendable, LocalizedError, Equatable {
 
     /// The HTTP request data could not be parsed.
     case malformedRequest
+
+    /// The request carries two or more `Content-Length` headers —
+    /// the request-smuggling precursor that RFC 7230 §3.3.2
+    /// mandates a 400 response for.
+    case duplicateContentLength
 
     /// The server was cancelled before it started.
     case cancelled
@@ -2024,6 +2213,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
         switch self {
         case .malformedRequest:
             "Malformed HTTP request."
+        case .duplicateContentLength:
+            "Duplicate Content-Length header."
         case .cancelled:
             "Server was cancelled."
         case .portInUse(let port):
@@ -2043,6 +2234,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
         switch self {
         case .malformedRequest:
             "Ensure the HTTP request is well-formed with valid headers and body."
+        case .duplicateContentLength:
+            "A request must carry at most one Content-Length header (RFC 7230 §3.3.2)."
         case .cancelled:
             "Restart the server with 'spook serve'."
         case .portInUse:

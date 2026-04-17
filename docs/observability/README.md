@@ -9,9 +9,13 @@ Everything in this directory is production-hardened: the scrape config uses mTLS
 | File | What it does |
 |------|--------------|
 | [`metrics.md`](metrics.md) | The full metric catalog — every series `/metrics` exposes, with type, unit, and an operational meaning |
-| [`prometheus.yml`](prometheus.yml) | Scrape config for a single Spooktacular deployment (mTLS-authenticated, 15s interval) |
-| [`alerts.yml`](alerts.yml) | Prometheus alerting rules for capacity, lock contention, audit-pipeline health, and VM-lifecycle regressions |
-| [`grafana-dashboard.json`](grafana-dashboard.json) | Importable Grafana dashboard with four rows: capacity, API health, VM-lifecycle latencies, runner SLOs |
+| [`slo-catalog.md`](slo-catalog.md) | The SLI/SLO catalog — user-facing + platform SLOs, with PromQL, targets, and alert mappings |
+| [`prometheus.yml`](prometheus.yml) | Minimal scrape config for a single Spooktacular deployment |
+| [`prometheus-scrape-config.yaml`](prometheus-scrape-config.yaml) | Full production scrape config covering controller (K8s SD) + fleet (EC2 SD / file-SD) |
+| [`alerts.yml`](alerts.yml) | Prometheus alerting rules — capacity, API health, audit-pipeline, VM lifecycle, and SLO burn-rate alerts |
+| [`grafana-dashboard.json`](grafana-dashboard.json) | Legacy single-dashboard layout (kept for backward compatibility) |
+| [`grafana-dashboard-controller.json`](grafana-dashboard-controller.json) | Controller dashboard — reconcile latency, error rate, queue depth, watch stream, API p95 |
+| [`grafana-dashboard-fleet.json`](grafana-dashboard-fleet.json) | Fleet dashboard — VMs per host, pool size, scale events, job throughput, audit volume |
 
 ## Fifteen-minute setup
 

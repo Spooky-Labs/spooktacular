@@ -1,5 +1,6 @@
 import SwiftUI
 import SpooktacularKit
+import Darwin
 
 /// Entry for a shared folder in the create form.
 struct SharedFolderEntry: Identifiable {
@@ -28,7 +29,10 @@ struct CreateVMSheet: View {
     @State private var diskSizeInGigabytes: Double = 64
     @State private var displayCount = 1
     @State private var autoResizeDisplay = true
-    @State private var networkMode = NetworkMode.nat
+    /// The high-level network kind selected in the picker.
+    /// Bridged mode reveals the ``bridgedInterface`` picker below.
+    @State private var networkKind: NetworkKind = .nat
+    @State private var bridgedInterface: String = ""
     @State private var audioEnabled = true
     @State private var microphoneEnabled = false
     @State private var clipboardSharingEnabled = true
@@ -39,7 +43,21 @@ struct CreateVMSheet: View {
     @State private var isCreating = false
     @State private var statusMessage = ""
     @State private var progress: Double = 0
+    @State private var bytesReceived: Int64 = 0
+    @State private var bytesTotal: Int64 = 0
     @State private var errorMessage: String?
+
+    /// In-flight creation task, used by the Cancel button to
+    /// interrupt the download / install loop and clean up the
+    /// partial bundle.
+    @State private var creationTask: Task<Void, Never>?
+
+    /// Network selector modes. Separating ``NetworkMode`` (the
+    /// domain value) from the picker's selection avoids leaking
+    /// the associated interface name into the UI state space.
+    private enum NetworkKind: String, Hashable, CaseIterable {
+        case nat, bridged, isolated
+    }
 
     // MARK: - Body
 
@@ -80,22 +98,43 @@ struct CreateVMSheet: View {
             // Button bar
             Divider()
             HStack {
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { cancelOrDismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .help("Close the sheet and cancel the in-flight download")
+                    .accessibilityIdentifier(AccessibilityID.cancelButton)
                 Spacer()
                 if isCreating {
                     ProgressView().controlSize(.small)
-                } else {
-                    Button("Create") { Task { await createVM() } }
-                        .glassButton()
-                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .keyboardShortcut(.defaultAction)
                 }
+                Button("Create") {
+                    let task = Task { await createVM() }
+                    creationTask = task
+                }
+                .glassButton()
+                .disabled(isCreating || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .keyboardShortcut(.defaultAction)
+                .help("Download the IPSW, install macOS, and register the bundle")
+                .accessibilityIdentifier(AccessibilityID.createConfirmButton)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
         .frame(width: 680, height: 640)
+        .accessibilityIdentifier(AccessibilityID.createSheet)
+    }
+
+    // MARK: - Cancel / Dismiss
+
+    /// Cancels the in-flight creation task if running, otherwise
+    /// dismisses the sheet. Partial bundle cleanup happens in the
+    /// `catch` branch of ``createVM()``.
+    private func cancelOrDismiss() {
+        if let task = creationTask {
+            task.cancel()
+            creationTask = nil
+        } else {
+            dismiss()
+        }
     }
 
     // MARK: - Rows (two-column: control | explanation)
@@ -135,12 +174,18 @@ struct CreateVMSheet: View {
                             Text("\(Int(cpuCount)) cores")
                                 .monospacedDigit()
                         }
+                        .accessibilityIdentifier(AccessibilityID.cpuStepper)
+                        .help("Number of virtual CPU cores. Minimum 4, maximum is this Mac's logical core count.")
+                        .accessibilityValue("\(Int(cpuCount)) CPU cores")
                     }
 
                     HStack {
                         Text("Memory")
                             .frame(width: 70, alignment: .leading)
                         Slider(value: $memorySizeInGigabytes, in: 4...64, step: 4)
+                            .accessibilityIdentifier(AccessibilityID.memorySlider)
+                            .help("Guest RAM in gigabytes. Allocated from your Mac's unified memory.")
+                            .accessibilityValue("\(Int(memorySizeInGigabytes)) gigabytes RAM")
                         Text("\(Int(memorySizeInGigabytes)) GB")
                             .monospacedDigit()
                             .frame(width: 45, alignment: .trailing)
@@ -150,6 +195,9 @@ struct CreateVMSheet: View {
                         Text("Disk")
                             .frame(width: 70, alignment: .leading)
                         Slider(value: $diskSizeInGigabytes, in: 32...500, step: 32)
+                            .accessibilityIdentifier(AccessibilityID.diskSlider)
+                            .help("Virtual disk size. APFS sparse — only host space the guest actually writes is consumed.")
+                            .accessibilityValue("\(Int(diskSizeInGigabytes)) gigabytes disk")
                         Text("\(Int(diskSizeInGigabytes)) GB")
                             .monospacedDigit()
                             .frame(width: 45, alignment: .trailing)
@@ -177,8 +225,11 @@ struct CreateVMSheet: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                    .accessibilityIdentifier(AccessibilityID.displayPicker)
+                    .help("Number of virtual monitors attached to the guest. Each uses a Metal-accelerated GPU.")
 
                     Toggle("Auto-resize display", isOn: $autoResizeDisplay)
+                        .help("Adjust the guest resolution automatically when you resize the window. Recommended for remote desktop.")
                 }
             },
             explanation: """
@@ -195,15 +246,59 @@ struct CreateVMSheet: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Network").font(.headline).glassSectionHeader()
 
-                    Picker("Mode", selection: $networkMode) {
-                        Text("NAT (shared)").tag(NetworkMode.nat)
-                        Text("Isolated (no network)").tag(NetworkMode.isolated)
+                    Picker("Mode", selection: $networkKind) {
+                        Text("NAT (shared)").tag(NetworkKind.nat)
+                        Text("Bridged (own IP)").tag(NetworkKind.bridged)
+                        Text("Isolated (no network)").tag(NetworkKind.isolated)
                     }
                     .labelsHidden()
+                    .accessibilityIdentifier(AccessibilityID.networkPicker)
+                    .help("Networking mode. Bridged requires the com.apple.vm.networking entitlement.")
+
+                    if networkKind == .bridged {
+                        Picker("Interface", selection: $bridgedInterface) {
+                            ForEach(availableBridgedInterfaces(), id: \.self) { iface in
+                                Text(iface).tag(iface)
+                            }
+                        }
+                        .help("Host network interface to bridge onto. Typically en0 for Wi-Fi, en1 for Ethernet.")
+                        .onAppear {
+                            // Preselect the first interface if none chosen.
+                            if bridgedInterface.isEmpty,
+                               let first = availableBridgedInterfaces().first {
+                                bridgedInterface = first
+                            }
+                        }
+                    }
                 }
             },
             explanation: networkExplanation
         )
+    }
+
+    /// Enumerates host network interface names via `getifaddrs`
+    /// and returns the ones suitable for VM bridging (up, not
+    /// loopback, has an IPv4 address).
+    private func availableBridgedInterfaces() -> [String] {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
+        defer { freeifaddrs(head) }
+
+        var result: [String] = []
+        var pointer: UnsafeMutablePointer<ifaddrs>? = first
+        while let current = pointer {
+            let flags = Int32(current.pointee.ifa_flags)
+            let isUp = (flags & IFF_UP) == IFF_UP
+            let isLoopback = (flags & IFF_LOOPBACK) == IFF_LOOPBACK
+            let family = current.pointee.ifa_addr?.pointee.sa_family
+            let isIPv4 = family == UInt8(AF_INET)
+            if isUp, !isLoopback, isIPv4 {
+                let name = String(cString: current.pointee.ifa_name)
+                if !result.contains(name) { result.append(name) }
+            }
+            pointer = current.pointee.ifa_next
+        }
+        return result.sorted()
     }
 
     private var audioRow: some View {
@@ -322,7 +417,7 @@ struct CreateVMSheet: View {
     // MARK: - Network Explanation
 
     private var networkExplanation: String {
-        switch networkMode {
+        switch networkKind {
         case .nat:
             "The VM accesses the internet through your Mac's connection. " +
             "The host can reach the guest via its DHCP-assigned IP."
@@ -331,8 +426,20 @@ struct CreateVMSheet: View {
             "where network isolation is required. Host-guest " +
             "communication is still possible via the VirtIO socket."
         case .bridged:
-            "The VM gets its own IP on your local network. Requires " +
-            "the com.apple.vm.networking entitlement."
+            "The VM gets its own IP on your local network via the " +
+            "chosen host interface. Requires the " +
+            "com.apple.vm.networking entitlement."
+        }
+    }
+
+    /// Converts the UI-local ``NetworkKind`` + bridged interface
+    /// into the domain ``NetworkMode`` value the bundle expects.
+    private func resolvedNetworkMode() -> NetworkMode {
+        switch networkKind {
+        case .nat: return .nat
+        case .isolated: return .isolated
+        case .bridged:
+            return .bridged(interface: bridgedInterface.isEmpty ? "en0" : bridgedInterface)
         }
     }
 
@@ -344,9 +451,20 @@ struct CreateVMSheet: View {
             if isCreating {
                 ProgressView(value: progress)
                     .tint(.accentColor)
-                Text(statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier(AccessibilityID.progressIndicator)
+                    .accessibilityValue("\(Int(progress * 100)) percent")
+                HStack {
+                    Text(statusMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier(AccessibilityID.statusMessage)
+                    Spacer()
+                    if bytesTotal > 0 {
+                        Text("\(byteString(bytesReceived)) / \(byteString(bytesTotal))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
             if let error = errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -357,6 +475,10 @@ struct CreateVMSheet: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 10)
         .glassCard(cornerRadius: 10)
+    }
+
+    private func byteString(_ count: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 
     // MARK: - Actions
@@ -389,17 +511,20 @@ struct CreateVMSheet: View {
 
     @MainActor
     private func createVM() async {
-        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedName.isEmpty else { return }
 
         isCreating = true
         errorMessage = nil
+        bytesReceived = 0
+        bytesTotal = 0
 
         let spec = VirtualMachineSpecification(
             cpuCount: Int(cpuCount),
             memorySizeInBytes: .gigabytes(Int(memorySizeInGigabytes)),
             diskSizeInBytes: .gigabytes(Int(diskSizeInGigabytes)),
             displayCount: displayCount,
-            networkMode: networkMode,
+            networkMode: resolvedNetworkMode(),
             audioEnabled: audioEnabled,
             microphoneEnabled: microphoneEnabled,
             sharedFolders: sharedFolders.map {
@@ -410,29 +535,38 @@ struct CreateVMSheet: View {
         )
 
         let manager = RestoreImageManager(cacheDirectory: appState.ipswCacheDirectory)
+        let bundleURL = (try? SpooktacularPaths.bundleURL(for: trimmedName))
 
         do {
             statusMessage = "Fetching restore image info…"
             progress = 0
             let restoreImage = try await manager.fetchLatestSupported()
+            try Task.checkCancellation()
             let version = restoreImage.operatingSystemVersion
             statusMessage = "Found macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
             progress = 0.05
 
-            statusMessage = "Downloading IPSW…"
-            let ipswURL = try await manager.downloadIPSW(from: restoreImage) { fractionCompleted in
+            statusMessage = "Downloading kernel and firmware…"
+            let ipswURL = try await manager.downloadIPSW(from: restoreImage) { snapshot in
                 Task { @MainActor in
-                    progress = 0.05 + fractionCompleted * 0.45
-                    statusMessage = "Downloading IPSW (\(Int(fractionCompleted * 100))%)…"
+                    bytesReceived = snapshot.bytesReceived
+                    bytesTotal = snapshot.bytesTotal
+                    progress = 0.05 + snapshot.fraction * 0.45
+                    let pct = Int(snapshot.fraction * 100)
+                    statusMessage = snapshot.resumed
+                        ? "Resuming IPSW download (\(pct)%)…"
+                        : "Downloading IPSW (\(pct)%)…"
                 }
             }
+            try Task.checkCancellation()
 
-            statusMessage = "Creating VM bundle…"
+            statusMessage = "Writing base disk…"
             progress = 0.5
             let bundle = try manager.createBundle(
-                named: name, in: appState.vmsDirectory,
+                named: trimmedName, in: appState.vmsDirectory,
                 from: restoreImage, spec: spec
             )
+            try Task.checkCancellation()
 
             statusMessage = "Installing macOS…"
             progress = 0.55
@@ -444,12 +578,29 @@ struct CreateVMSheet: View {
             }
 
             appState.loadVMs()
-            appState.selectedVM = name
+            appState.selectedVM = trimmedName
             isCreating = false
+            creationTask = nil
+            dismiss()
+        } catch is CancellationError {
+            // User hit Cancel — remove any partial bundle so a
+            // subsequent retry doesn't trip over it.
+            if let url = bundleURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+            isCreating = false
+            creationTask = nil
+            progress = 0
+            statusMessage = "Cancelled."
             dismiss()
         } catch {
-            errorMessage = error.localizedDescription
+            if let url = bundleURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+            let categorized = SpooktacularError.classify(error)
+            errorMessage = "\(categorized.errorDescription ?? error.localizedDescription) \(categorized.suggestedAction)"
             isCreating = false
+            creationTask = nil
             progress = 0
         }
     }

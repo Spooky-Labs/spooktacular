@@ -122,32 +122,46 @@ public enum SnapshotManager {
             throw SnapshotError.fileNotFound(path: diskURL.path)
         }
 
-        try fileManager.createDirectory(at: snapshotURL, withIntermediateDirectories: true)
+        // Stage the snapshot into a sibling `.in-progress` directory
+        // so that a mid-operation crash leaves no half-baked snapshot
+        // visible to `list()`. We rename to the final location only
+        // after every file + metadata has been written (and
+        // protection-class inheritance has been applied).
+        try fileManager.createDirectory(at: savedStatesURL, withIntermediateDirectories: true)
+        let stagingURL = savedStatesURL.appendingPathComponent("\(label).in-progress")
+        if fileManager.fileExists(atPath: stagingURL.path) {
+            try fileManager.removeItem(at: stagingURL)
+        }
+        try fileManager.createDirectory(at: stagingURL, withIntermediateDirectories: true)
 
         do {
             let totalSize = try copySnapshotFiles(
-                from: bundle.url, to: snapshotURL
+                from: bundle.url, to: stagingURL
             )
             let info = SnapshotInfo(
                 label: label, createdAt: Date(), sizeInBytes: totalSize
             )
             let data = try VirtualMachineBundle.encoder.encode(info)
-            try data.write(to: snapshotURL.appendingPathComponent(infoFileName))
+            try data.write(to: stagingURL.appendingPathComponent(infoFileName))
 
             // Inherit the bundle's data-at-rest protection class
-            // onto the snapshot dir + every file we just copied.
+            // onto the staging dir + every file we just copied.
             // A snapshot of a CUFUA bundle must NOT appear on disk
             // at `.none` — that would defeat the whole point of
             // the at-rest protection.
             if let bundleClass = try? BundleProtection.current(at: bundle.url) {
-                try? BundleProtection.apply(bundleClass, to: snapshotURL)
-                try? BundleProtection.propagate(to: snapshotURL)
+                try? BundleProtection.apply(bundleClass, to: stagingURL)
+                try? BundleProtection.propagate(to: stagingURL)
             }
+
+            // Atomic promotion: on APFS `moveItem` within the same
+            // filesystem is a single directory-entry rename.
+            try fileManager.moveItem(at: stagingURL, to: snapshotURL)
 
             Log.snapshot.notice("Saved snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public) (\(totalSize) bytes)")
         } catch {
-            Log.snapshot.error("Snapshot save failed, cleaning up: \(error.localizedDescription, privacy: .public)")
-            try? fileManager.removeItem(at: snapshotURL)
+            Log.snapshot.error("Snapshot save failed, cleaning up staging: \(error.localizedDescription, privacy: .public)")
+            try? fileManager.removeItem(at: stagingURL)
             throw error
         }
     }

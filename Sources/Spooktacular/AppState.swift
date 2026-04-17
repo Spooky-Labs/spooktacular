@@ -3,6 +3,104 @@ import os
 @preconcurrency import Virtualization
 import SpooktacularKit
 
+// MARK: - SpooktacularError
+
+/// User-facing errors categorized by recovery path.
+///
+/// Every case carries a ``localizedDescription`` explaining
+/// *what* happened plus a ``suggestedAction`` explaining *how to
+/// fix it*. The SwiftUI alert surfaces both so users are never
+/// stuck on a failure without a next step — matching Apple HIG
+/// guidance that destructive or failed operations should always
+/// offer a path forward.
+///
+/// ## Mapping
+///
+/// | Case | Example |
+/// |------|---------|
+/// | ``diskFull`` | Sparse disk expansion exceeded volume capacity |
+/// | ``networkTimeout`` | IPSW CDN request exceeded 120s |
+/// | ``quotaExceeded`` | Tenant limit reached |
+/// | ``invalidVMName`` | Name contains `/` or is empty |
+/// | ``vmNotFound`` | Bundle removed while window was open |
+/// | ``permissionDenied`` | Missing sandbox entitlement |
+/// | ``internalError`` | Unexpected; catch-all |
+enum SpooktacularError: LocalizedError, Equatable, Sendable {
+    case diskFull(requested: UInt64, available: UInt64)
+    case networkTimeout(service: String)
+    case quotaExceeded(current: Int, max: Int)
+    case invalidVMName(reason: String)
+    case vmNotFound(name: String)
+    case permissionDenied(what: String)
+    case internalError(reason: String)
+
+    /// A human-readable explanation of what went wrong.
+    var errorDescription: String? {
+        switch self {
+        case .diskFull(let requested, let available):
+            let r = ByteCountFormatter.string(fromByteCount: Int64(requested), countStyle: .file)
+            let a = ByteCountFormatter.string(fromByteCount: Int64(available), countStyle: .file)
+            return "Disk full — need \(r), have \(a)."
+        case .networkTimeout(let service):
+            return "\(service) did not respond in time."
+        case .quotaExceeded(let current, let max):
+            return "Quota exceeded — \(current) of \(max) VMs in use."
+        case .invalidVMName(let reason):
+            return "Invalid VM name: \(reason)"
+        case .vmNotFound(let name):
+            return "No virtual machine named '\(name)'."
+        case .permissionDenied(let what):
+            return "Permission denied: \(what)"
+        case .internalError(let reason):
+            return "Internal error: \(reason)"
+        }
+    }
+
+    /// A short action the user can take to recover, rendered
+    /// beneath the alert message.
+    var suggestedAction: String {
+        switch self {
+        case .diskFull:
+            return "Free disk space on your host volume, or choose a smaller disk size, and retry."
+        case .networkTimeout:
+            return "Check your internet connection and retry. Downloads resume from where they left off."
+        case .quotaExceeded:
+            return "Delete an unused VM or request a higher quota from your administrator."
+        case .invalidVMName:
+            return "Use only letters, digits, dashes, or underscores. 1-64 characters."
+        case .vmNotFound:
+            return "Run spook list to see available virtual machines."
+        case .permissionDenied:
+            return "Grant access in System Settings → Privacy & Security, then retry."
+        case .internalError:
+            return "File a bug report at github.com/Spooky-Labs/spooktacular/issues with the error text."
+        }
+    }
+
+    /// `LocalizedError.recoverySuggestion` so the SwiftUI
+    /// `Alert.message` format string gets the suggested action
+    /// by default.
+    var recoverySuggestion: String? { suggestedAction }
+
+    /// Classifies a raw `Error` into a ``SpooktacularError``
+    /// so AppState's centralized alert can present a consistent
+    /// message + action regardless of which subsystem surfaced it.
+    static func classify(_ error: Error) -> SpooktacularError {
+        if let already = error as? SpooktacularError { return already }
+        let ns = error as NSError
+        if ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError {
+            return .diskFull(requested: 0, available: 0)
+        }
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorTimedOut {
+            return .networkTimeout(service: "Network")
+        }
+        if ns.domain == NSCocoaErrorDomain && ns.code == NSFileReadNoPermissionError {
+            return .permissionDenied(what: ns.localizedDescription)
+        }
+        return .internalError(reason: error.localizedDescription)
+    }
+}
+
 /// The shared application state for Spooktacular.
 ///
 /// `AppState` tracks all known VM bundles, running VM instances,
@@ -82,10 +180,25 @@ final class AppState {
         return monitor
     }
 
+    // MARK: - Lifecycle Transitions
+
+    /// Names of VMs currently transitioning (starting / stopping /
+    /// cloning). Observed by ``SpooktacularApp`` to swap the menu-
+    /// bar icon for a busy indicator.
+    var transitioningVMs: Set<String> = []
+
+    /// Whether any VM is currently mid-transition.
+    var isAnyVMTransitioning: Bool { !transitioningVMs.isEmpty }
+
     // MARK: - Error Handling
 
     /// A user-facing error message for the centralized alert.
     var errorMessage: String?
+
+    /// A user-facing suggested next step, rendered as a second
+    /// line beneath ``errorMessage`` in the alert. Populated
+    /// from ``SpooktacularError/suggestedAction``.
+    var errorSuggestedAction: String?
 
     /// Whether the error alert is presented.
     var errorPresented: Bool = false
@@ -151,8 +264,14 @@ final class AppState {
     }
 
     /// Starts a VM by name.
+    ///
+    /// Marks the VM as transitioning for the duration of the start
+    /// sequence so the menu-bar icon switches to its busy variant.
     func startVM(_ name: String) async {
         guard let bundle = vms[name], runningVMs[name] == nil else { return }
+
+        transitioningVMs.insert(name)
+        defer { transitioningVMs.remove(name) }
 
         do {
             let vm = try VirtualMachine(bundle: bundle)
@@ -174,8 +293,14 @@ final class AppState {
     }
 
     /// Stops a VM by name.
+    ///
+    /// Marks the VM as transitioning for the duration of the stop
+    /// sequence so the menu-bar icon switches to its busy variant.
     func stopVM(_ name: String) async {
         guard let vm = runningVMs[name] else { return }
+
+        transitioningVMs.insert(name)
+        defer { transitioningVMs.remove(name) }
 
         do {
             try await vm.stop(graceful: false)
@@ -217,9 +342,15 @@ final class AppState {
     }
 
     /// Clones a VM.
+    ///
+    /// Marks the destination name as transitioning for the
+    /// duration so the menu-bar icon reflects that a clone is
+    /// in progress.
     func cloneVM(_ source: String, to destination: String) {
         do {
             guard let sourceBundle = vms[source] else { return }
+            transitioningVMs.insert(destination)
+            defer { transitioningVMs.remove(destination) }
             let destinationURL = try SpooktacularPaths.bundleURL(for: destination)
             let clone = try CloneManager.clone(source: sourceBundle, to: destinationURL)
             vms[destination] = clone
@@ -234,12 +365,20 @@ final class AppState {
 
     // MARK: - Workspace Window Lifecycle
 
+    /// `@AppStorage`-compatible key for persisted open workspace
+    /// names. Consumed at launch by ``ContentView`` to restore
+    /// previously open windows.
+    static let openWorkspacesDefaultsKey = "openWorkspaces"
+
     /// Called by `WorkspaceWindow` when it first appears.
     ///
     /// Tracks the open window so the library can show a "focused"
     /// indicator and so quit can close workspaces gracefully.
+    /// Also persists the set to UserDefaults for next-launch
+    /// window restoration.
     func workspaceDidOpen(_ name: String) async {
         openWorkspaceWindows.insert(name)
+        persistOpenWorkspaces()
     }
 
     /// Called by `WorkspaceWindow` when it disappears (user closed
@@ -248,6 +387,28 @@ final class AppState {
         openWorkspaceWindows.remove(name)
         if focusedWorkspace == name {
             focusedWorkspace = nil
+        }
+        persistOpenWorkspaces()
+    }
+
+    /// Reads the set of previously-open workspace names from
+    /// UserDefaults, filtering out any VMs that no longer exist
+    /// on disk. Called once at launch by ``ContentView``.
+    func restorableWorkspaceNames() -> [String] {
+        guard let data = UserDefaults.standard.data(forKey: Self.openWorkspacesDefaultsKey),
+              let decoded = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        // Filter against the on-disk VM list so deleted VMs are
+        // silently skipped.
+        return decoded.filter { vms[$0] != nil }
+    }
+
+    /// Writes the current open-windows set to UserDefaults as JSON.
+    private func persistOpenWorkspaces() {
+        let names = Array(openWorkspaceWindows).sorted()
+        if let data = try? JSONEncoder().encode(names) {
+            UserDefaults.standard.set(data, forKey: Self.openWorkspacesDefaultsKey)
         }
     }
 
@@ -284,12 +445,18 @@ final class AppState {
         agentClients.removeAll()
     }
 
-    // MARK: - Private
+    // MARK: - Error Presentation
 
     /// Surfaces an error to the user through the centralized alert.
-    private func presentError(_ error: Error) {
-        Log.ui.error("Presenting error to user: \(error.localizedDescription, privacy: .public)")
-        errorMessage = error.localizedDescription
+    ///
+    /// Routes every error through ``SpooktacularError/classify(_:)``
+    /// so the alert shows a consistent "what + how to recover"
+    /// pair regardless of which subsystem threw.
+    func presentError(_ error: Error) {
+        let categorized = SpooktacularError.classify(error)
+        Log.ui.error("Presenting error to user: \(categorized.errorDescription ?? "unknown", privacy: .public)")
+        errorMessage = categorized.errorDescription
+        errorSuggestedAction = categorized.suggestedAction
         errorPresented = true
     }
 }

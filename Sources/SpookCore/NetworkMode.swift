@@ -1,3 +1,5 @@
+import Foundation
+
 /// The network configuration mode for a virtual machine.
 ///
 /// Each mode maps to a specific `Virtualization.framework` network
@@ -92,23 +94,41 @@ public enum NetworkMode: Sendable, Codable, Equatable, Hashable {
     /// Accepts `"nat"`, `"isolated"`, or `"bridged:<interface>"`.
     ///
     /// ```swift
-    /// let mode = NetworkMode(serialized: "bridged:en0")
+    /// let mode = try NetworkMode(serialized: "bridged:en0")
     /// // .bridged(interface: "en0")
     /// ```
     ///
+    /// Previously returned `nil` on malformed input, which callers
+    /// often paired with `try?` — producing invisible fallback to a
+    /// default mode. This initializer now throws
+    /// ``NetworkModeError/invalidFormat(input:reason:)`` with an
+    /// actionable message so the failure is visible in logs, tests,
+    /// and CLI error output.
+    ///
     /// - Parameter serialized: The serialized string.
-    /// - Returns: The parsed network mode, or `nil` if the string
-    ///   is not recognized.
-    public init?(serialized: String) {
+    /// - Throws: ``NetworkModeError/invalidFormat(input:reason:)`` if
+    ///   the string is not one of the accepted forms.
+    public init(serialized: String) throws {
         switch serialized {
-        case "nat": self = .nat
-        case "isolated": self = .isolated
+        case "nat":
+            self = .nat
+        case "isolated":
+            self = .isolated
         default:
-            if serialized.hasPrefix("bridged:") {
-                self = .bridged(interface: String(serialized.dropFirst("bridged:".count)))
-            } else {
-                return nil
+            guard serialized.hasPrefix("bridged:") else {
+                throw NetworkModeError.invalidFormat(
+                    input: serialized,
+                    reason: "Expected 'nat', 'isolated', or 'bridged:<interface>'."
+                )
             }
+            let iface = String(serialized.dropFirst("bridged:".count))
+            guard !iface.isEmpty else {
+                throw NetworkModeError.invalidFormat(
+                    input: serialized,
+                    reason: "bridged mode requires a non-empty interface, e.g. 'bridged:en0'."
+                )
+            }
+            self = .bridged(interface: iface)
         }
     }
 
@@ -130,7 +150,7 @@ public enum NetworkMode: Sendable, Codable, Equatable, Hashable {
         // Try single-value (canonical) format first.
         if let container = try? decoder.singleValueContainer(),
            let string = try? container.decode(String.self),
-           let mode = NetworkMode(serialized: string) {
+           let mode = try? NetworkMode(serialized: string) {
             self = mode
             return
         }
@@ -162,5 +182,28 @@ public enum NetworkMode: Sendable, Codable, Equatable, Hashable {
 
     private enum BridgedKeys: String, CodingKey {
         case interface
+    }
+}
+
+/// Errors raised by ``NetworkMode/init(serialized:)`` when a string
+/// does not describe a valid network mode.
+public enum NetworkModeError: Error, Sendable, Equatable, LocalizedError {
+
+    /// The input string did not match any accepted form.
+    ///
+    /// - Parameters:
+    ///   - input: The literal string that was supplied.
+    ///   - reason: A human-readable description of why it was rejected.
+    case invalidFormat(input: String, reason: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidFormat(let input, let reason):
+            "Invalid network mode '\(input)': \(reason)"
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        "Use 'nat', 'isolated', or 'bridged:<interface>' (e.g. 'bridged:en0')."
     }
 }

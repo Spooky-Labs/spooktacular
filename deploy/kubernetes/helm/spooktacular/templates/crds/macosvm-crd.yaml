@@ -128,9 +128,48 @@ spec:
               type: object
               description: Observed state of the macOS VM.
               properties:
+                observedGeneration:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: >-
+                    The `metadata.generation` the controller most recently
+                    reconciled. Clients compare against `metadata.generation`
+                    to detect drift between desired and observed state.
+                conditions:
+                  type: array
+                  description: Standard `meta/v1.Condition` entries.
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys: [type]
+                  items:
+                    type: object
+                    required: [type, status, lastTransitionTime, reason, message]
+                    properties:
+                      type:
+                        type: string
+                        maxLength: 316
+                        pattern: "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$"
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                        pattern: "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$"
+                      message:
+                        type: string
+                        maxLength: 32768
                 phase:
                   type: string
-                  enum: [Pending, Creating, Running, Stopped, Failed, Terminating]
+                  enum: [Pending, Cloning, Starting, Running, Stopping, Failed, Deleted]
                 ip:
                   type: string
                 nodeName:
@@ -146,6 +185,9 @@ spec:
         - name: Phase
           type: string
           jsonPath: .status.phase
+        - name: Available
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Available")].status
         - name: IP
           type: string
           jsonPath: .status.ip

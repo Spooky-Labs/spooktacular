@@ -38,11 +38,22 @@ public struct VMIAMBinding: Sendable, Codable, Equatable {
     /// the standard AWS STS value `"sts.amazonaws.com"`.
     public let audience: String
 
-    /// Maximum token TTL in seconds. Capped at 3600 (1h) — AWS
-    /// STS `sts:AssumeRoleWithWebIdentity` has its own duration
-    /// policy on the role, so this is primarily about limiting
-    /// how long a leaked JWT is replayable.
+    /// Maximum token TTL in seconds. Must be in
+    /// ``VMIAMBinding/allowedTTLRange`` (60…3600). AWS STS
+    /// `sts:AssumeRoleWithWebIdentity` has its own duration
+    /// policy on the role; this cap limits how long a leaked
+    /// JWT is replayable.
     public let maxTTLSeconds: Int
+
+    /// Inclusive bounds on ``maxTTLSeconds``. A TTL outside
+    /// this range causes ``init(vmName:tenant:roleArn:audience:maxTTLSeconds:additionalClaims:createdAt:createdBy:)``
+    /// to throw ``IAMBindingError/ttlOutOfRange(requested:allowedMin:allowedMax:)``
+    /// rather than silently clamping — silent clamping was the
+    /// root cause of "I asked for 30s sessions, why are they
+    /// lasting 60?" operator confusion, and the clamp could
+    /// widen a caller's security posture without their
+    /// knowledge.
+    public static let allowedTTLRange: ClosedRange<Int> = 60...3600
 
     /// Custom claim overrides baked into every JWT minted for
     /// this binding. Useful for tenant-specific claim keys the
@@ -67,12 +78,19 @@ public struct VMIAMBinding: Sendable, Codable, Equatable {
         additionalClaims: [String: String] = [:],
         createdAt: Date = Date(),
         createdBy: String
-    ) {
+    ) throws {
+        guard Self.allowedTTLRange.contains(maxTTLSeconds) else {
+            throw IAMBindingError.ttlOutOfRange(
+                requested: maxTTLSeconds,
+                allowedMin: Self.allowedTTLRange.lowerBound,
+                allowedMax: Self.allowedTTLRange.upperBound
+            )
+        }
         self.vmName = vmName
         self.tenant = tenant
         self.roleArn = roleArn
         self.audience = audience
-        self.maxTTLSeconds = min(max(maxTTLSeconds, 60), 3600)
+        self.maxTTLSeconds = maxTTLSeconds
         self.additionalClaims = additionalClaims
         self.createdAt = createdAt
         self.createdBy = createdBy
@@ -82,6 +100,39 @@ public struct VMIAMBinding: Sendable, Codable, Equatable {
     /// Unique per tenant — a VM name is unique only within its
     /// tenant scope.
     public var storeKey: String { "\(tenant.rawValue)/\(vmName)" }
+}
+
+// MARK: - Errors
+
+/// Errors raised when constructing or mutating a ``VMIAMBinding``.
+///
+/// Kept distinct from transport / store errors so callers can
+/// branch cleanly on model-level validation failures without
+/// coupling to the persistence layer.
+public enum IAMBindingError: Error, LocalizedError, Sendable, Equatable {
+
+    /// ``VMIAMBinding/maxTTLSeconds`` was outside
+    /// ``VMIAMBinding/allowedTTLRange``. Previously this was
+    /// silently clamped — callers asking for 30s sessions got
+    /// 60s, callers asking for 2h got 1h. Both directions
+    /// change the security posture without informing the
+    /// caller, so the API now rejects out-of-range values
+    /// explicitly.
+    case ttlOutOfRange(requested: Int, allowedMin: Int, allowedMax: Int)
+
+    public var errorDescription: String? {
+        switch self {
+        case .ttlOutOfRange(let requested, let min, let max):
+            "maxTTLSeconds \(requested) is out of the allowed range [\(min), \(max)]."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .ttlOutOfRange(_, let min, let max):
+            "Choose a TTL in the range [\(min), \(max)] seconds. The lower bound prevents cold-start burn on the caller; the upper bound limits the replay window of a leaked JWT."
+        }
+    }
 }
 
 // MARK: - Role-ARN validation

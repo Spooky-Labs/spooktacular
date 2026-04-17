@@ -28,11 +28,11 @@ struct AuditPipelineTests {
     private static func populatedMerkleSink(
         count: Int,
         key: P256.Signing.PrivateKey = .init()
-    ) async -> (merkle: MerkleAuditSink, inner: CollectingAuditSink) {
+    ) async throws -> (merkle: MerkleAuditSink, inner: CollectingAuditSink) {
         let inner = CollectingAuditSink()
         let merkle = MerkleAuditSink(wrapping: inner, signer: key)
         for i in 0..<count {
-            await merkle.record(sampleRecord(index: i))
+            try await merkle.record(sampleRecord(index: i))
         }
         return (merkle, inner)
     }
@@ -43,30 +43,30 @@ struct AuditPipelineTests {
     struct MerkleIntegrity {
 
         @Test("tree root changes after each record")
-        func rootChanges() async {
+        func rootChanges() async throws {
             let key = P256.Signing.PrivateKey()
             let inner = CollectingAuditSink()
             let sink = MerkleAuditSink(wrapping: inner, signer: key)
 
             let rootBefore = await sink.rootHash()
 
-            await sink.record(AuditPipelineTests.sampleRecord(index: 0))
+            try await sink.record(AuditPipelineTests.sampleRecord(index: 0))
             let rootAfterFirst = await sink.rootHash()
             #expect(rootAfterFirst != rootBefore,
                     "Root must change after appending the first record")
 
-            await sink.record(AuditPipelineTests.sampleRecord(index: 1))
+            try await sink.record(AuditPipelineTests.sampleRecord(index: 1))
             let rootAfterSecond = await sink.rootHash()
             #expect(rootAfterSecond != rootAfterFirst,
                     "Root must change after appending a second record")
         }
 
         @Test("inclusion proof verifies for every leaf", arguments: 0..<8)
-        func inclusionProof(leafIndex: Int) async {
+        func inclusionProof(leafIndex: Int) async throws {
             // Use a power-of-2 tree size to avoid odd-leaf promotion
             // edge cases in the Merkle tree implementation.
             let key = P256.Signing.PrivateKey()
-            let (sink, _) = await AuditPipelineTests.populatedMerkleSink(count: 8, key: key)
+            let (sink, _) = try await AuditPipelineTests.populatedMerkleSink(count: 8, key: key)
 
             // Retrieve the leaf hash from the internal leaves array.
             let leaves = await sink.leaves
@@ -95,7 +95,7 @@ struct AuditPipelineTests {
         func signedTreeHead() async throws {
             let key = P256.Signing.PrivateKey()
             let publicKey = key.publicKey
-            let (sink, _) = await AuditPipelineTests.populatedMerkleSink(count: 5, key: key)
+            let (sink, _) = try await AuditPipelineTests.populatedMerkleSink(count: 5, key: key)
 
             let sth = try await sink.signedTreeHead()
             #expect(sth.treeSize == 5)
@@ -124,8 +124,8 @@ struct AuditPipelineTests {
         }
 
         @Test("tree size equals record count after N records", arguments: [1, 5, 10, 50, 100])
-        func treeSize(count: Int) async {
-            let (sink, _) = await AuditPipelineTests.populatedMerkleSink(count: count)
+        func treeSize(count: Int) async throws {
+            let (sink, _) = try await AuditPipelineTests.populatedMerkleSink(count: count)
             let size = await sink.treeSize()
             #expect(size == count, "Tree size must equal the number of appended records")
         }
@@ -189,13 +189,13 @@ struct AuditPipelineTests {
     struct DualSinkTests {
 
         @Test("dual sink forwards to both sinks")
-        func forwardsToBoth() async {
+        func forwardsToBoth() async throws {
             let primary = CollectingAuditSink()
             let secondary = CollectingAuditSink()
             let dual = DualAuditSink(primary: primary, secondary: secondary)
 
             let record = AuditPipelineTests.sampleRecord(index: 7)
-            await dual.record(record)
+            try await dual.record(record)
 
             let primaryRecords = await primary.records
             let secondaryRecords = await secondary.records
@@ -212,13 +212,13 @@ struct AuditPipelineTests {
         }
 
         @Test("dual sink forwards multiple records in order")
-        func forwardsMultiple() async {
+        func forwardsMultiple() async throws {
             let primary = CollectingAuditSink()
             let secondary = CollectingAuditSink()
             let dual = DualAuditSink(primary: primary, secondary: secondary)
 
             for i in 0..<5 {
-                await dual.record(AuditPipelineTests.sampleRecord(index: i))
+                try await dual.record(AuditPipelineTests.sampleRecord(index: i))
             }
 
             let pRecords = await primary.records

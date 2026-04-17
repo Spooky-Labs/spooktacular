@@ -4,30 +4,92 @@
 #
 # Order matters — last match wins.
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# ─────────────────────────────────────────────────────────────
+#  SECONDARY-REVIEWER PLACEHOLDERS
+# ─────────────────────────────────────────────────────────────
+# The repo has a single maintainer today. The commented-out
+# lines below anticipate team growth and encode an *intent* for
+# separation of duties on security-critical surfaces. As the
+# team grows:
+#
+#   1. Replace `<security-team-member>` with an active
+#      @username who owns security review (SAML, OIDC,
+#      break-glass, audit, RBAC).
+#   2. Replace `<platform-team-member>` with the platform /
+#      infrastructure reviewer (controller, K8s, agent, EC2).
+#   3. Uncomment the line and delete the placeholder token.
+#   4. Cross-review the permission sets on sensitive paths
+#      (two reviewers required for security-critical diffs —
+#      configured via GitHub branch protection, not here).
+#
+# TODO(@WikipediaBrown): populate as team grows. Until then,
+# solo review + pre-merge CI + signed releases carry the load.
 
 # Default owner for everything
 * @WikipediaBrown
 
 # Core library
 Sources/SpooktacularKit/ @WikipediaBrown
+# Sources/SpooktacularKit/ @WikipediaBrown @<platform-team-member>
 
 # CLI
 Sources/spook/ @WikipediaBrown
+# Sources/spook/ @WikipediaBrown @<platform-team-member>
 
 # GUI
 Sources/Spooktacular/ @WikipediaBrown
+# Sources/Spooktacular/ @WikipediaBrown @<platform-team-member>
 
 # Kubernetes operator
 Sources/spook-controller/ @WikipediaBrown
 deploy/kubernetes/ @WikipediaBrown
+# Sources/spook-controller/ @WikipediaBrown @<platform-team-member>
+# deploy/kubernetes/ @WikipediaBrown @<platform-team-member>
 
 # Guest agent
 Sources/spook-agent/ @WikipediaBrown
+# Sources/spook-agent/ @WikipediaBrown @<platform-team-member>
+
+# Security-critical surfaces — force a second reviewer once the
+# team grows. These paths touch SAML, OIDC, break-glass tickets,
+# Merkle audit, and RBAC. Never let one person self-approve a
+# change to any of these.
+# Sources/SpookInfrastructureApple/SAMLAssertionVerifier.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookInfrastructureApple/MerkleAuditSink.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookInfrastructureApple/AuditSinkFactory.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookInfrastructureApple/S3ObjectLockAuditStore.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookInfrastructureApple/AppendOnlyFileAuditStore.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookApplication/UsedTicketCache.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookCore/BreakGlassTicket.swift @WikipediaBrown @<security-team-member>
+# Sources/spooktacular-agent/BreakGlassVerification.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookCore/RBACModel.swift @WikipediaBrown @<security-team-member>
+# Sources/SpookApplication/ProductionPreflight.swift @WikipediaBrown @<security-team-member>
+
+# Security documentation — keep in lockstep with code owners above
+# SECURITY.md @WikipediaBrown @<security-team-member>
+# docs/THREAT_MODEL.md @WikipediaBrown @<security-team-member>
+# docs/INCIDENT_RESPONSE.md @WikipediaBrown @<security-team-member>
+# docs/PATCH_POLICY.md @WikipediaBrown @<security-team-member>
+# docs/EXPORT_CONTROL.md @WikipediaBrown @<security-team-member>
+# docs/OWASP_ASVS_AUDIT.md @WikipediaBrown @<security-team-member>
+
+# Procurement / legal documentation — when a legal reviewer is
+# onboarded, add them here for DPA / sub-processor / audit-status
+# changes.
+# docs/DATA_PROCESSING_AGREEMENT.md @WikipediaBrown @<legal-team-member>
+# docs/SUB_PROCESSORS.md @WikipediaBrown @<legal-team-member>
+# docs/AUDIT_STATUS.md @WikipediaBrown @<security-team-member> @<legal-team-member>
+# docs/VPAT.md @WikipediaBrown @<accessibility-team-member>
 
 # CI/CD and build
 .github/ @WikipediaBrown
 build-app.sh @WikipediaBrown
 fastlane/ @WikipediaBrown
+# .github/ @WikipediaBrown @<platform-team-member>
+# build-app.sh @WikipediaBrown @<platform-team-member>
+# fastlane/ @WikipediaBrown @<platform-team-member>
 
 # Website
 docs/ @WikipediaBrown

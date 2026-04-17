@@ -115,6 +115,11 @@ spec:
             - name: health
               containerPort: 8082
               protocol: TCP
+            {{- if .Values.admissionWebhook.enabled }}
+            - name: webhook
+              containerPort: {{ .Values.admissionWebhook.port | default 9443 }}
+              protocol: TCP
+            {{- end }}
 
           # -------------------------------------------------------------------
           # Health probes
@@ -165,6 +170,11 @@ spec:
               mountPath: /etc/spooktacular/tls
               readOnly: true
             {{- end }}
+            {{- if .Values.admissionWebhook.enabled }}
+            - name: webhook-serving
+              mountPath: /etc/spooktacular/webhook
+              readOnly: true
+            {{- end }}
 
           # -------------------------------------------------------------------
           # Environment variables
@@ -195,4 +205,10 @@ spec:
             {{- else }}
             secretName: {{ include "spooktacular.fullname" . }}-tls
             {{- end }}
+        {{- end }}
+
+        {{- if .Values.admissionWebhook.enabled }}
+        - name: webhook-serving
+          secret:
+            secretName: {{ include "spooktacular.fullname" . }}-admission-serving
         {{- end }}

@@ -144,16 +144,27 @@ public final class BreakGlassTicketVerifier: @unchecked Sendable {
         guard t.tenant == tenant else {
             return .failure(.invalidTicket)
         }
-        if t.isExpired() || t.isNotYetValid() {
+        if t.isExpired() || t.isFutureIssued() {
             return .failure(.expired)
         }
         guard t.maxUses >= 1, t.maxUses <= 100 else {
             return .failure(.invalidTicket)
         }
 
-        // Single-use (or capped-use) enforcement. This is where
-        // two concurrent requests with the same JTI are
-        // linearized into exactly one success.
+        // Capped-use enforcement via the shared counter cache.
+        //
+        // `UsedTicketCache.tryConsume` increments a per-JTI use
+        // counter and returns `true` iff the counter was < `maxUses`
+        // before the call. On the Nth consume of a `maxUses=N`
+        // ticket, the counter hits the cap, the (N+1)th call
+        // observes `usedCount >= maxUses`, and we return
+        // `.alreadyConsumed`. Concurrent consumes of the same JTI
+        // are linearized by the cache's internal lock — two races
+        // become exactly one winner + one `.alreadyConsumed`.
+        //
+        // A `maxUses=1` ticket collapses this to strict single-use.
+        // Tickets with `maxUses=5` accept exactly 5 consumes and
+        // then reject — no off-by-one, no replay past the cap.
         guard cache.tryConsume(
             jti: t.jti,
             expiresAt: t.expiresAt,

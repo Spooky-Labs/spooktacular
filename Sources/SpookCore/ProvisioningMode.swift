@@ -115,65 +115,50 @@ public enum ProvisioningMode: String, Sendable, Codable, Equatable,
 
     /// A detailed explanation of when and why to use this mode.
     /// Used in the GUI, CLI help, and documentation.
+    ///
+    /// Rendered as clean multi-line strings (no backslash
+    /// continuations) so a stray leading space or tab in the
+    /// source won't silently corrupt user-facing help text.
     public var explanation: String {
         switch self {
         case .diskInject:
-            """
-            Your script runs automatically when macOS starts — no SSH, \
-            no agent, no network, and no manual setup required. \
-            Before the VM boots, Spooktacular writes a standard macOS \
-            LaunchDaemon to the guest's disk that executes your script \
-            at startup.
-
-            Best for: Fresh VMs from IPSW, CI runners, zero-touch \
-            fleet provisioning. This is the only mode that works on \
-            a completely vanilla macOS with no prior configuration.
-            """
-
+            return Self.diskInjectExplanation
         case .ssh:
-            """
-            Spooktacular waits for the VM to boot, discovers its IP \
-            address, connects via SSH, and runs your script. You get \
-            real-time output streaming and full control.
-
-            Best for: Cloned VMs where the base image has Remote Login \
-            (SSH) enabled. Development and debugging workflows where \
-            you want to watch output as it runs.
-
-            Requires: Remote Login enabled in the guest (System \
-            Settings → General → Sharing → Remote Login).
-            """
-
+            return Self.sshExplanation
         case .agent:
-            """
-            The Spooktacular guest agent communicates with the host \
-            over a VirtIO socket — a direct channel that works without \
-            any network configuration. The host sends your script to \
-            the agent, which executes it and streams output back.
-
-            Best for: VMs created from Spooktacular's official OCI \
-            images (ghcr.io/spooktacular/), which include the agent. \
-            This is the fastest mode and works with isolated \
-            (no-network) VMs.
-
-            Requires: The guest agent installed in the VM (pre-installed \
-            in Spooktacular OCI images).
-            """
-
+            return Self.agentExplanation
         case .sharedFolder:
-            """
-            Spooktacular shares a host directory into the VM using \
-            VirtIO. A watcher daemon in the guest detects new scripts \
-            in the shared folder and executes them automatically.
-
-            Best for: Cloned VMs where SSH is not available and you \
-            prefer not to modify the guest disk. The base image needs \
-            a one-time setup of the watcher daemon.
-
-            Requires: The shared-folder watcher installed in the base \
-            image (included in Spooktacular OCI images, or install \
-            with 'spook tools install <vm-name>').
-            """
+            return Self.sharedFolderExplanation
         }
     }
+
+    private static let diskInjectExplanation = [
+        "Your script runs automatically when macOS starts — no SSH, no agent, no network, and no manual setup required. Before the VM boots, Spooktacular writes a standard macOS LaunchDaemon to the guest's disk that executes your script at startup.",
+        "",
+        "Best for: Fresh VMs from IPSW, CI runners, zero-touch fleet provisioning. This is the only mode that works on a completely vanilla macOS with no prior configuration.",
+    ].joined(separator: "\n")
+
+    private static let sshExplanation = [
+        "Spooktacular waits for the VM to boot, discovers its IP address, connects via SSH, and runs your script. You get real-time output streaming and full control.",
+        "",
+        "Best for: Cloned VMs where the base image has Remote Login (SSH) enabled. Development and debugging workflows where you want to watch output as it runs.",
+        "",
+        "Requires: Remote Login enabled in the guest (System Settings → General → Sharing → Remote Login).",
+    ].joined(separator: "\n")
+
+    private static let agentExplanation = [
+        "The Spooktacular guest agent communicates with the host over a VirtIO socket — a direct channel that works without any network configuration. The host sends your script to the agent, which executes it and streams output back.",
+        "",
+        "Best for: VMs created from Spooktacular's official OCI images (ghcr.io/spooktacular/), which include the agent. This is the fastest mode and works with isolated (no-network) VMs.",
+        "",
+        "Requires: The guest agent installed in the VM (pre-installed in Spooktacular OCI images).",
+    ].joined(separator: "\n")
+
+    private static let sharedFolderExplanation = [
+        "Spooktacular shares a host directory into the VM using VirtIO. A watcher daemon in the guest detects new scripts in the shared folder and executes them automatically.",
+        "",
+        "Best for: Cloned VMs where SSH is not available and you prefer not to modify the guest disk. The base image needs a one-time setup of the watcher daemon.",
+        "",
+        "Requires: The shared-folder watcher installed in the base image (included in Spooktacular OCI images, or install with 'spook tools install <vm-name>').",
+    ].joined(separator: "\n")
 }

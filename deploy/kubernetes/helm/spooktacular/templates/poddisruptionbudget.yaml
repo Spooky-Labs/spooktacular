@@ -1,0 +1,31 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+# =============================================================================
+# PodDisruptionBudget — keep at least one controller replica available
+# =============================================================================
+#
+# The controller uses leader election, so only one replica is active at a time,
+# but at least two should remain schedulable through voluntary disruption (node
+# drain, cluster upgrade) so the admission webhook and reconcile loop survive.
+#
+# Pairs with `.Values.controller.replicas` >= 2.
+# =============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  {{- if .Values.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- with .Values.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ . }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "spooktacular.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+{{- end }}

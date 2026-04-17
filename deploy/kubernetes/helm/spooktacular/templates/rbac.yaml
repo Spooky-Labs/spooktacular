@@ -157,6 +157,21 @@ rules:
       - watch
 
   # ---------------------------------------------------------------------------
+  # Namespaces — read-only. The admission webhook resolves a request's
+  # namespace to inspect the `spooktacular.app/tenant` label and
+  # `spooktacular.app/image-allowlist` annotation for cross-tenant
+  # isolation enforcement.
+  # ---------------------------------------------------------------------------
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+
+  # ---------------------------------------------------------------------------
   # Leases — for leader election when running multiple controller replicas.
   # ---------------------------------------------------------------------------
   - apiGroups:

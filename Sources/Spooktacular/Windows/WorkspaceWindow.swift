@@ -100,7 +100,8 @@ struct WorkspaceWindow: View {
                 Label("Snapshots", systemImage: "clock.arrow.circlepath")
             }
             .glassButton()
-            .help("Manage snapshots for this workspace")
+            .help("Manage snapshots for this workspace (⇧⌘S)")
+            .keyboardShortcut("s", modifiers: [.command, .shift])
 
             Button {
                 showPorts.toggle()
@@ -108,7 +109,8 @@ struct WorkspaceWindow: View {
                 Label("Ports", systemImage: "network")
             }
             .glassButton()
-            .help("See listening ports inside the workspace")
+            .help("See listening ports inside the workspace (⇧⌘P)")
+            .keyboardShortcut("p", modifiers: [.command, .shift])
             .popover(isPresented: $showPorts, arrowEdge: .bottom) {
                 PortPanel(monitor: appState.portMonitor(for: vmName))
             }
@@ -134,7 +136,8 @@ struct WorkspaceWindow: View {
                 Label("Hardware", systemImage: "cpu")
             }
             .glassButton()
-            .help("Edit CPU, memory, and disk")
+            .help("Edit CPU, memory, and disk (⇧⌘H)")
+            .keyboardShortcut("h", modifiers: [.command, .shift])
 
             Button {
                 showSnapshots = true
@@ -142,7 +145,8 @@ struct WorkspaceWindow: View {
                 Label("Snapshots", systemImage: "clock.arrow.circlepath")
             }
             .glassButton()
-            .help("Manage snapshots for this workspace")
+            .help("Manage snapshots for this workspace (⇧⌘S)")
+            .keyboardShortcut("s", modifiers: [.command, .shift])
         }
     }
 }

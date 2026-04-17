@@ -16,8 +16,8 @@ struct VMIAMBindingTests {
     // MARK: - Model
 
     @Test("Default TTL is 900 seconds")
-    func defaultTTL() {
-        let b = VMIAMBinding(
+    func defaultTTL() throws {
+        let b = try VMIAMBinding(
             vmName: "runner-01", tenant: TenantID("acme"),
             roleArn: "arn:aws:iam::123456789012:role/x",
             createdBy: "test"
@@ -25,26 +25,47 @@ struct VMIAMBindingTests {
         #expect(b.maxTTLSeconds == 900)
     }
 
-    @Test("TTL is clamped to [60, 3600]")
-    func ttlClamping() {
-        let low = VMIAMBinding(
-            vmName: "v", tenant: TenantID("t"),
-            roleArn: "arn:aws:iam::1:role/x",
-            maxTTLSeconds: 30, createdBy: "test"
-        )
-        #expect(low.maxTTLSeconds == 60)
+    @Test("TTL below the allowed range is rejected with a typed error")
+    func ttlTooLowThrows() {
+        #expect(throws: IAMBindingError.ttlOutOfRange(requested: 30, allowedMin: 60, allowedMax: 3600)) {
+            _ = try VMIAMBinding(
+                vmName: "v", tenant: TenantID("t"),
+                roleArn: "arn:aws:iam::1:role/x",
+                maxTTLSeconds: 30, createdBy: "test"
+            )
+        }
+    }
 
-        let high = VMIAMBinding(
+    @Test("TTL above the allowed range is rejected with a typed error")
+    func ttlTooHighThrows() {
+        #expect(throws: IAMBindingError.ttlOutOfRange(requested: 7200, allowedMin: 60, allowedMax: 3600)) {
+            _ = try VMIAMBinding(
+                vmName: "v", tenant: TenantID("t"),
+                roleArn: "arn:aws:iam::1:role/x",
+                maxTTLSeconds: 7200, createdBy: "test"
+            )
+        }
+    }
+
+    @Test("TTLs at the bounds are accepted exactly")
+    func ttlBoundsAccepted() throws {
+        let lowest = try VMIAMBinding(
             vmName: "v", tenant: TenantID("t"),
             roleArn: "arn:aws:iam::1:role/x",
-            maxTTLSeconds: 7200, createdBy: "test"
+            maxTTLSeconds: 60, createdBy: "test"
         )
-        #expect(high.maxTTLSeconds == 3600)
+        #expect(lowest.maxTTLSeconds == 60)
+        let highest = try VMIAMBinding(
+            vmName: "v", tenant: TenantID("t"),
+            roleArn: "arn:aws:iam::1:role/x",
+            maxTTLSeconds: 3600, createdBy: "test"
+        )
+        #expect(highest.maxTTLSeconds == 3600)
     }
 
     @Test("storeKey composes tenant + vmName")
-    func storeKeyFormat() {
-        let b = VMIAMBinding(
+    func storeKeyFormat() throws {
+        let b = try VMIAMBinding(
             vmName: "runner-01", tenant: TenantID("team-a"),
             roleArn: "arn:aws:iam::1:role/x", createdBy: "test"
         )
@@ -97,7 +118,7 @@ struct VMIAMBindingTests {
     @Test("In-memory store: put / get / list / remove round-trip")
     func inMemoryRoundTrip() async throws {
         let store = InMemoryVMIAMBindingStore()
-        let b = VMIAMBinding(
+        let b = try VMIAMBinding(
             vmName: "runner-01", tenant: TenantID("team-a"),
             roleArn: "arn:aws:iam::1:role/x", createdBy: "alice"
         )
@@ -116,11 +137,11 @@ struct VMIAMBindingTests {
     @Test("In-memory store: same VM name in different tenants → separate bindings")
     func multiTenantIsolation() async throws {
         let store = InMemoryVMIAMBindingStore()
-        try await store.put(VMIAMBinding(
+        try await store.put(try VMIAMBinding(
             vmName: "runner-01", tenant: TenantID("team-a"),
             roleArn: "arn:aws:iam::1:role/a", createdBy: "alice"
         ))
-        try await store.put(VMIAMBinding(
+        try await store.put(try VMIAMBinding(
             vmName: "runner-01", tenant: TenantID("team-b"),
             roleArn: "arn:aws:iam::1:role/b", createdBy: "bob"
         ))
@@ -137,7 +158,7 @@ struct VMIAMBindingTests {
         let tmp = NSTemporaryDirectory() + "iam-bindings-\(UUID().uuidString).json"
         defer { try? FileManager.default.removeItem(atPath: tmp) }
 
-        let binding = VMIAMBinding(
+        let binding = try VMIAMBinding(
             vmName: "runner-01", tenant: TenantID("team-a"),
             roleArn: "arn:aws:iam::1:role/x",
             additionalClaims: ["environment": "prod"],
@@ -157,7 +178,7 @@ struct VMIAMBindingTests {
     @Test("JSON store with empty configPath is in-memory only")
     func jsonStoreInMemoryMode() async throws {
         let store = try JSONVMIAMBindingStore(configPath: "")
-        try await store.put(VMIAMBinding(
+        try await store.put(try VMIAMBinding(
             vmName: "v", tenant: TenantID("t"),
             roleArn: "arn:aws:iam::1:role/x",
             createdBy: "alice"

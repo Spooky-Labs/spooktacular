@@ -76,8 +76,18 @@ struct MenuBarView: View {
     @ViewBuilder
     private func vmMenuItem(name: String) -> some View {
         let isRunning = appState.isRunning(name)
+        let isTransitioning = appState.transitioningVMs.contains(name)
 
-        if isRunning {
+        if isTransitioning {
+            // Show an hourglass while the VM is mid-start/stop —
+            // gives immediate feedback that the click registered.
+            Label {
+                Text(name) + Text("  ") + Text("…").foregroundColor(.secondary)
+            } icon: {
+                Image(systemName: "hourglass")
+                    .foregroundStyle(.orange)
+            }
+        } else if isRunning {
             Menu {
                 Button("Stop", systemImage: "stop.fill") {
                     Task { await appState.stopVM(name) }

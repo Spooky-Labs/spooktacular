@@ -1,5 +1,10 @@
 # SwiftLint configuration for Spooktacular
 # Security-focused rules + code quality
+#
+# CI invokes `swiftlint --strict --config .swiftlint.yml`, which
+# promotes every warning to an error. Every opt-in rule below
+# therefore fails the build on a single hit. Keep this file
+# tight — loosening a severity here loosens it fleet-wide.
 
 included:
   - Sources
@@ -33,14 +38,25 @@ disabled_rules:
   - type_body_length   # Actor types with many methods
   - file_length        # Infrastructure files wrap frameworks
 
-# Custom rule: flag raw shell execution patterns
+# Individual-rule severities — explicit rather than implicit so
+# strict mode cannot silently change meaning across SwiftLint
+# releases. Every memory-unsafety escape hatch is an ERROR.
+force_cast:
+  severity: error
+force_try:
+  severity: error
+force_unwrapping:
+  severity: error
+
+# Custom rules — error-severity for patterns that bypass the
+# typed shell/keychain abstractions.
 custom_rules:
   raw_shell_execution:
     name: "Raw Shell Execution"
-    regex: 'Process\(\)|executableURL.*bin/bash|bin/sh'
+    regex: 'Process\(\)|executableURL.*bin/bash|executableURL.*bin/sh'
     message: "Raw shell execution detected. Use ProcessRunner or guest agent exec endpoint."
-    severity: warning
-    included: "Sources/SpooktacularKit/(Entities|UseCases|Interfaces)/"
+    severity: error
+    included: "Sources/SpookCore/.*|Sources/SpookApplication/.*|Sources/SpookInfrastructureApple/(Entities|UseCases|Interfaces)/.*"
 
   plaintext_secret:
     name: "Plaintext Secret"
@@ -52,5 +68,5 @@ custom_rules:
     name: "Force HTTP"
     regex: '"http://[^"]+'
     message: "Plain HTTP URL detected. Use HTTPS."
-    severity: warning
+    severity: error
     excluded: "Tests/"

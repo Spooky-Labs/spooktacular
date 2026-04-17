@@ -126,6 +126,15 @@ public enum BreakGlassTicketCodec {
         guard !publicKeys.isEmpty else {
             throw BreakGlassTicketError.invalidTicket
         }
+        // Envelope shape validation — every violation surfaces as
+        // `malformedEnvelope` but the internal narrative stays
+        // specific via the comment trail below.
+        //
+        // 1. Prefix must be exactly `bgt:`.
+        // 2. After stripping the prefix, exactly one `.` splits
+        //    the body into two base64url segments.
+        // 3. Each segment must decode as valid base64url (RFC 4648
+        //    §5). Empty or ill-padded segments are rejected.
         guard raw.hasPrefix(prefix) else {
             throw BreakGlassTicketError.malformedEnvelope
         }
@@ -134,8 +143,13 @@ public enum BreakGlassTicketCodec {
         guard parts.count == 2 else {
             throw BreakGlassTicketError.malformedEnvelope
         }
-        guard let payloadData = base64URLDecode(String(parts[0])),
-              let signatureData = base64URLDecode(String(parts[1])) else {
+        let payloadB64 = String(parts[0])
+        let signatureB64 = String(parts[1])
+        guard !payloadB64.isEmpty, !signatureB64.isEmpty else {
+            throw BreakGlassTicketError.malformedEnvelope
+        }
+        guard let payloadData = base64URLDecode(payloadB64),
+              let signatureData = base64URLDecode(signatureB64) else {
             throw BreakGlassTicketError.malformedEnvelope
         }
 
@@ -173,7 +187,7 @@ public enum BreakGlassTicketCodec {
             throw BreakGlassTicketError.invalidTicket
         }
 
-        if ticket.isExpired(now: now) || ticket.isNotYetValid(now: now) {
+        if ticket.isExpired(now: now) || ticket.isFutureIssued(now: now) {
             throw BreakGlassTicketError.expired
         }
 

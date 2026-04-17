@@ -64,6 +64,7 @@ public final class SignedRequestVerifier: @unchecked Sendable {
     private let clockSkew: TimeInterval
     private let nonceTTL: TimeInterval
     private let nonceCache: NonceCache
+    private let fleetSingleton: (any FleetSingleton)?
     private let clock: @Sendable () -> Date
 
     /// - Parameters:
@@ -77,22 +78,78 @@ public final class SignedRequestVerifier: @unchecked Sendable {
     ///     use, in seconds. Must be ≥ 2 × clockSkew so a replay
     ///     cannot simply wait for the cache entry to expire.
     ///     Defaults to 300s (5 minutes).
+    ///   - fleetSingleton: Fleet-wide replay cache. When
+    ///     provided, the per-process `NonceCache` is used as a
+    ///     first-tier fast-path; the singleton is the source of
+    ///     truth across hosts. Must be set in multi-controller
+    ///     deployments; `nil` is valid only for single-host
+    ///     installations.
     ///   - clock: Injectable clock for tests.
     public init(
         trustedKeys: [P256.Signing.PublicKey],
         clockSkew: TimeInterval = 60,
         nonceTTL: TimeInterval = 300,
+        fleetSingleton: (any FleetSingleton)? = nil,
         clock: @Sendable @escaping () -> Date = { Date() }
     ) {
         self.trustedKeys = trustedKeys
         self.clockSkew = clockSkew
         self.nonceTTL = nonceTTL
         self.nonceCache = NonceCache()
+        self.fleetSingleton = fleetSingleton
         self.clock = clock
     }
 
     /// True iff any trusted keys were provided.
     public var hasTrustedKeys: Bool { !trustedKeys.isEmpty }
+
+    /// True when a fleet-wide singleton is wired and this
+    /// verifier will reject replays observed on peer hosts.
+    public var hasFleetReplayProtection: Bool { fleetSingleton != nil }
+
+    /// Fleet-wide verify: identical to ``verify(method:path:headers:body:)``
+    /// but first consults the configured ``FleetSingleton`` (if
+    /// any) to reject replays across controllers. A fleet-level
+    /// hit short-circuits before the per-process claim + signature
+    /// check — once a peer host has consumed the nonce, no other
+    /// host may accept it either.
+    public func verifyFleetWide(
+        method: String,
+        path: String,
+        headers: [String: String],
+        body: Data
+    ) async throws -> P256.Signing.PublicKey {
+        guard let fleet = fleetSingleton else {
+            // Degrade to per-process verification explicitly —
+            // the caller opted out of fleet-wide replay by not
+            // wiring a singleton. The preflight check refuses
+            // this combination in multi-tenant mode.
+            return try verify(method: method, path: path, headers: headers, body: body)
+        }
+        guard
+            let nonce = headers["x-spook-nonce"]?.trimmingCharacters(in: .whitespaces),
+            !nonce.isEmpty
+        else {
+            throw VerifyError.missingHeaders
+        }
+        let outcome = try await fleet.mark(id: "nonce:\(nonce)", ttl: nonceTTL)
+        switch outcome {
+        case .alreadyConsumed:
+            throw VerifyError.replay
+        case .freshMark:
+            // Fleet-wide claim granted. Now run the local path;
+            // on a local signature failure, we deliberately do
+            // NOT unmark the fleet entry — a legitimate retry is
+            // impossible with the same nonce anyway, because
+            // every client is required to generate a fresh UUID
+            // per request. Leaving the mark in place is strictly
+            // safer (closes a release-after-sig-fail replay
+            // window that the local-only path has to reopen).
+            return try verify(
+                method: method, path: path, headers: headers, body: body
+            )
+        }
+    }
 
     /// Verifies a signed request. On success, returns the
     /// public key that accepted the signature — useful for

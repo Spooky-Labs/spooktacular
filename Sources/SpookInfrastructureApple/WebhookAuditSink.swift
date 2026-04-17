@@ -95,7 +95,7 @@ public actor WebhookAuditSink: AuditSink {
 
     // MARK: - AuditSink
 
-    public func record(_ entry: AuditRecord) async {
+    public func record(_ entry: AuditRecord) async throws {
         queue.append(entry)
         if queue.count >= config.batchSize {
             await flush()

@@ -83,14 +83,81 @@ public actor DynamoDBDistributedLock: DistributedLockService {
               let secret = env["AWS_SECRET_ACCESS_KEY"] else {
             throw DynamoDBLockError.missingCredentials
         }
+        try Self.validateAccessKeyID(key)
+        try Self.validateSecretAccessKey(secret)
+        // Construct the DynamoDB endpoint. Prefer the caller-
+        // supplied `endpoint` (LocalStack, custom VPC endpoint);
+        // otherwise derive from the region. The URL construction
+        // is guarded rather than force-unwrapped — a syntactically
+        // invalid region would otherwise crash the process at
+        // init.
+        let resolvedEndpoint: URL
+        if let endpoint {
+            resolvedEndpoint = endpoint
+        } else {
+            guard let derived = URL(string: "https://dynamodb.\(region).amazonaws.com") else {
+                throw DynamoDBLockError.invalidEndpoint(region: region)
+            }
+            resolvedEndpoint = derived
+        }
         self.tableName = tableName
         self.region = region
         self.accessKeyID = key
         self.secretAccessKey = secret
         self.sessionToken = env["AWS_SESSION_TOKEN"]
-        self.endpoint = endpoint
-            ?? URL(string: "https://dynamodb.\(region).amazonaws.com")!
+        self.endpoint = resolvedEndpoint
         self.session = URLSession(configuration: .ephemeral)
+    }
+
+    /// Validates the shape of `AWS_ACCESS_KEY_ID`.
+    ///
+    /// AWS access key IDs follow the pattern
+    /// `^(AKIA|ASIA)[A-Z0-9]{16}$` — `AKIA` prefixes a long-term
+    /// IAM user key, `ASIA` a short-term STS session token. A
+    /// string outside that shape is a typo or an unrelated
+    /// value that will fail at SigV4 time anyway; failing at
+    /// init gives the operator a clear error at a predictable
+    /// location.
+    static func validateAccessKeyID(_ value: String) throws {
+        // Length + charset guard before regex-like inspection so
+        // the message can be precise.
+        guard value.count == 20 else {
+            throw DynamoDBLockError.invalidAccessKeyID
+        }
+        let prefix = String(value.prefix(4))
+        guard prefix == "AKIA" || prefix == "ASIA" else {
+            throw DynamoDBLockError.invalidAccessKeyID
+        }
+        for scalar in value.unicodeScalars {
+            let c = scalar.value
+            let isUpper = (0x41...0x5A).contains(c)
+            let isDigit = (0x30...0x39).contains(c)
+            guard isUpper || isDigit else {
+                throw DynamoDBLockError.invalidAccessKeyID
+            }
+        }
+    }
+
+    /// Validates the shape of `AWS_SECRET_ACCESS_KEY`.
+    ///
+    /// Standard IAM secret keys are 40 base64-ish ASCII bytes;
+    /// STS session keys and FIPS / GovCloud variants shift the
+    /// length slightly. We accept any printable-ASCII string in
+    /// [16, 128] — the real validator is the AWS service, this
+    /// guard exists to catch fat-fingered `=========` values
+    /// that would otherwise sign malformed requests forever.
+    static func validateSecretAccessKey(_ value: String) throws {
+        let length = value.count
+        guard length >= 16 && length <= 128 else {
+            throw DynamoDBLockError.invalidSecretAccessKey
+        }
+        for scalar in value.unicodeScalars {
+            let c = scalar.value
+            // Printable ASCII excluding control and DEL.
+            guard (0x20...0x7E).contains(c) else {
+                throw DynamoDBLockError.invalidSecretAccessKey
+            }
+        }
     }
 
     // MARK: - DistributedLockService
@@ -136,26 +203,57 @@ public actor DynamoDBDistributedLock: DistributedLockService {
         _ lease: DistributedLease,
         duration: TimeInterval
     ) async throws -> DistributedLease {
+        let nextCount = lease.renewalCount + 1
+        guard nextCount <= DistributedLease.maxRenewals else {
+            throw DistributedLockServiceError.renewalBudgetExhausted(
+                name: lease.name, count: nextCount
+            )
+        }
         let now = Date()
         let renewed = DistributedLease(
             name: lease.name, holder: lease.holder,
             acquiredAt: now, duration: duration,
-            version: lease.version + 1
+            version: lease.version + 1,
+            renewalCount: nextCount
         )
+        let ok = try await compareAndSwap(old: lease, new: renewed)
+        guard ok else {
+            throw DynamoDBLockError.leaseLost(name: lease.name)
+        }
+        return renewed
+    }
+
+    /// Advances a lease from `old` to `new` via a conditional
+    /// DynamoDB `PutItem`. Returns `true` on success, `false`
+    /// when a concurrent writer won the race.
+    ///
+    /// The CAS condition pins both `version` and `holder` —
+    /// matching version alone would let a hijacker with the
+    /// same version number (after a full takeover round)
+    /// overwrite our update.
+    public func compareAndSwap(
+        old: DistributedLease,
+        new: DistributedLease
+    ) async throws -> Bool {
+        guard new.renewalCount <= DistributedLease.maxRenewals else {
+            throw DistributedLockServiceError.renewalBudgetExhausted(
+                name: new.name, count: new.renewalCount
+            )
+        }
         let request = PutItemRequest(
             tableName: tableName,
-            item: leaseItem(renewed),
+            item: leaseItem(new),
             conditionExpression: "version = :v AND holder = :h",
             expressionAttributeValues: [
-                ":v": .number("\(lease.version)"),
-                ":h": .string(lease.holder),
+                ":v": .number("\(old.version)"),
+                ":h": .string(old.holder),
             ]
         )
         do {
             _ = try await post(action: "PutItem", body: request)
-            return renewed
+            return true
         } catch DynamoDBLockError.conditionalCheckFailed {
-            throw DynamoDBLockError.leaseLost(name: lease.name)
+            return false
         }
     }
 
@@ -192,11 +290,12 @@ public actor DynamoDBDistributedLock: DistributedLockService {
     /// that a required attribute like `expiresAt` was present.
     private func leaseItem(_ lease: DistributedLease) -> [String: DDBAttribute] {
         [
-            "name":       .string(lease.name),
-            "holder":     .string(lease.holder),
-            "acquiredAt": .number("\(Int(lease.acquiredAt.timeIntervalSince1970))"),
-            "expiresAt":  .number("\(Int(lease.expiresAt.timeIntervalSince1970))"),
-            "version":    .number("\(lease.version)"),
+            "name":         .string(lease.name),
+            "holder":       .string(lease.holder),
+            "acquiredAt":   .number("\(Int(lease.acquiredAt.timeIntervalSince1970))"),
+            "expiresAt":    .number("\(Int(lease.expiresAt.timeIntervalSince1970))"),
+            "version":      .number("\(lease.version)"),
+            "renewalCount": .number("\(lease.renewalCount)"),
         ]
     }
 
@@ -348,6 +447,9 @@ struct DeleteItemRequest: Encodable, Sendable {
 
 public enum DynamoDBLockError: Error, LocalizedError, Sendable, Equatable {
     case missingCredentials
+    case invalidAccessKeyID
+    case invalidSecretAccessKey
+    case invalidEndpoint(region: String)
     case invalidResponse
     case conditionalCheckFailed
     case leaseLost(name: String)
@@ -357,6 +459,12 @@ public enum DynamoDBLockError: Error, LocalizedError, Sendable, Equatable {
         switch self {
         case .missingCredentials:
             "AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
+        case .invalidAccessKeyID:
+            "AWS_ACCESS_KEY_ID doesn't match the AWS key ID shape (^(AKIA|ASIA)[A-Z0-9]{16}$)."
+        case .invalidSecretAccessKey:
+            "AWS_SECRET_ACCESS_KEY is not a printable-ASCII string of length 16…128."
+        case .invalidEndpoint(let region):
+            "Could not derive a DynamoDB endpoint URL for region '\(region)'."
         case .invalidResponse:
             "DynamoDB returned a non-HTTP response."
         case .conditionalCheckFailed:
@@ -372,6 +480,12 @@ public enum DynamoDBLockError: Error, LocalizedError, Sendable, Equatable {
         switch self {
         case .missingCredentials:
             "Export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or run on an EC2 instance with an attached IAM role (the credential provider will pick it up)."
+        case .invalidAccessKeyID:
+            "AWS access keys always match ^(AKIA|ASIA)[A-Z0-9]{16}$. Check for stray whitespace or a partial copy-paste."
+        case .invalidSecretAccessKey:
+            "Standard IAM secret keys are 40 base64-ish ASCII bytes. Re-export from the IAM console and make sure your shell didn't strip padding."
+        case .invalidEndpoint(let region):
+            "Check SPOOK_DYNAMO_REGION '\(region)' — it must be a valid AWS region code (e.g. us-east-1, eu-west-1)."
         case .invalidResponse:
             "The DynamoDB endpoint returned a non-HTTP response. Verify SPOOK_DYNAMO_ENDPOINT (if set), DNS, and network reachability."
         case .conditionalCheckFailed:

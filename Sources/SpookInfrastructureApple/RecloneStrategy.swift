@@ -31,8 +31,24 @@ public struct RecloneStrategy: RecycleStrategy {
         log.info("Reclone complete for VM '\(vm)'")
     }
 
-    public func validate(vm: String, using node: any NodeClient, on endpoint: URL) async throws -> Bool {
-        try await node.health(vm: vm, on: endpoint)
+    /// Validates a freshly recloned VM by running the node-level
+    /// health check.
+    ///
+    /// Because reclone produces a brand-new bundle from the source
+    /// template, validation collapses to a boot health check. A
+    /// failed health check always maps to ``RecycleOutcome/failed(reason:)``
+    /// — you cannot retry a reclone that produced a dead VM; the
+    /// caller must destroy it and try the next host.
+    public func validate(vm: String, using node: any NodeClient, on endpoint: URL) async throws -> RecycleOutcome {
+        let healthy: Bool
+        do {
+            healthy = try await node.health(vm: vm, on: endpoint)
+        } catch {
+            return .failed(reason: "health check threw: \(error.localizedDescription)")
+        }
+        return healthy
+            ? .readyForNextJob
+            : .failed(reason: "health check returned false after reclone")
     }
 
     /// Recycles the VM and validates the result. If validation fails,
@@ -71,14 +87,16 @@ public struct RecloneStrategy: RecycleStrategy {
         }
 
         try await recycle(vm: vm, source: source, using: node, on: endpoint)
-        let valid = try await validate(vm: vm, using: node, on: endpoint)
-        if valid {
+        let outcome = try await validate(vm: vm, using: node, on: endpoint)
+        switch outcome {
+        case .readyForNextJob:
             log.info("VM '\(vm)' passed reclone health check")
             return .clean
+        case .needsRetry(let reason), .failed(let reason):
+            log.error("VM '\(vm)' failed reclone health check — destroying. Reason: \(reason)")
+            try await node.stop(vm: vm, on: endpoint)
+            try await node.delete(vm: vm, on: endpoint)
+            return .destroyed
         }
-        log.error("VM '\(vm)' failed reclone health check — destroying")
-        try await node.stop(vm: vm, on: endpoint)
-        try await node.delete(vm: vm, on: endpoint)
-        return .destroyed
     }
 }

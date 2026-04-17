@@ -42,6 +42,30 @@ enum AgentHTTPServer {
     /// file upload via Base64, which should still fit comfortably.
     private static let maxRequestSize = 1_048_576
 
+    /// Kernel backlog depth for vsock `listen(2)`. Was previously 8,
+    /// which bottlenecks concurrent boot-time probes from the host
+    /// against the read-only port. 64 matches Darwin's typical
+    /// upper bound for unprivileged daemons.
+    private static let listenBacklog: Int32 = 64
+
+    /// Maximum concurrent accepted connections the agent will
+    /// process before returning `503 Service Unavailable` to new
+    /// arrivals. A single runaway runner shouldn't be able to
+    /// exhaust file descriptors on the tiny guest process.
+    private static let maxConcurrentConnections = 128
+
+    /// Per-read socket deadline in seconds. Applied via
+    /// `SO_RCVTIMEO` / an elapsed-time check in ``readRequest(fd:)``
+    /// so a slow-loris connection can't starve a handler thread.
+    private static let readTimeoutSeconds: Int = 5
+
+    /// Counter of currently-busy handler queues. Protected by
+    /// `connectionLock`. Unsafe globals are the idiomatic pattern
+    /// in this file (see `ticketVerifier`) and the mutation is
+    /// serialized by the lock.
+    nonisolated(unsafe) private static var activeConnections: Int = 0
+    nonisolated(unsafe) private static var connectionLock = os_unfair_lock()
+
     /// VirtIO socket address structure matching the kernel's `struct sockaddr_vm`.
     private struct sockaddr_vm {
         var svm_len: UInt8
@@ -173,13 +197,13 @@ enum AgentHTTPServer {
             exit(1)
         }
 
-        guard Darwin.listen(fd, 8) == 0 else {
+        guard Darwin.listen(fd, listenBacklog) == 0 else {
             log.error("listen() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public)")
             close(fd)
             exit(1)
         }
 
-        log.notice("Listening on vsock port \(port) (scope: \(channelScope.debugLabel, privacy: .public))")
+        log.notice("Listening on vsock port \(port) (scope: \(channelScope.debugLabel, privacy: .public), backlog: \(listenBacklog))")
 
         while true {
             var clientAddr = sockaddr_vm(
@@ -204,13 +228,56 @@ enum AgentHTTPServer {
                 continue
             }
 
+            // Set a read timeout via SO_RCVTIMEO so read(2) returns
+            // EAGAIN after `readTimeoutSeconds` instead of blocking
+            // indefinitely on a slow-loris peer. Apple POSIX docs:
+            // developer.apple.com/library/archive/documentation/NetworkingInternetWeb
+            var rcvTimeout = timeval(tv_sec: readTimeoutSeconds, tv_usec: 0)
+            setsockopt(
+                clientFD, SOL_SOCKET, SO_RCVTIMEO,
+                &rcvTimeout, socklen_t(MemoryLayout<timeval>.size)
+            )
+
+            // Connection-limit back-pressure. Respond with 503 and
+            // close; don't spawn a handler queue (which is the
+            // resource we're trying to protect).
+            os_unfair_lock_lock(&connectionLock)
+            guard activeConnections < maxConcurrentConnections else {
+                os_unfair_lock_unlock(&connectionLock)
+                let body = Data("{\"error\":\"Service unavailable: agent at capacity.\"}".utf8)
+                let response = buildRawResponse(statusCode: 503, body: body)
+                writeAll(fd: clientFD, data: response)
+                close(clientFD)
+                log.warning("Rejected connection: active=\(activeConnections) cap=\(maxConcurrentConnections)")
+                continue
+            }
+            activeConnections += 1
+            os_unfair_lock_unlock(&connectionLock)
+
             log.info("Accepted connection from CID \(clientAddr.svm_cid) on port \(port)")
 
             let scope = channelScope
             DispatchQueue.global().async {
+                defer {
+                    os_unfair_lock_lock(&connectionLock)
+                    activeConnections -= 1
+                    os_unfair_lock_unlock(&connectionLock)
+                }
                 handleConnection(clientFD, channelScope: scope)
             }
         }
+    }
+
+    /// Outcome of a bounded-time read attempt on a client socket.
+    enum ReadOutcome: Sendable {
+        /// The complete request data, bounded by `maxRequestSize`.
+        case data(Data)
+        /// Read budget exhausted — return 408 Request Timeout.
+        case timedOut
+        /// Request exceeded ``maxRequestSize`` — return 413.
+        case tooLarge
+        /// Connection closed before any bytes arrived, or read errored.
+        case closed
     }
 
     /// Handles a single HTTP connection: read, parse, route, respond, close.
@@ -223,7 +290,22 @@ enum AgentHTTPServer {
     private static func handleConnection(_ fd: Int32, channelScope: EndpointScope = .breakGlass) {
         defer { close(fd) }
 
-        guard let requestData = readRequest(fd: fd) else {
+        let outcome = readRequest(fd: fd, deadlineSeconds: readTimeoutSeconds)
+        let requestData: Data
+        switch outcome {
+        case .data(let d):
+            requestData = d
+        case .timedOut:
+            let body = Data("{\"error\":\"Request timed out.\"}".utf8)
+            writeAll(fd: fd, data: buildRawResponse(statusCode: 408, body: body))
+            log.warning("Read deadline exceeded — closing connection")
+            return
+        case .tooLarge:
+            let body = Data("{\"error\":\"Payload too large.\"}".utf8)
+            writeAll(fd: fd, data: buildRawResponse(statusCode: 413, body: body))
+            log.warning("Request exceeded maxRequestSize — closing connection")
+            return
+        case .closed:
             log.error("Failed to read request data")
             return
         }
@@ -250,34 +332,58 @@ enum AgentHTTPServer {
         writeAll(fd: fd, data: response)
     }
 
-    /// Reads up to ``maxRequestSize`` bytes from a file descriptor.
+    /// Reads up to ``maxRequestSize`` bytes from a file descriptor,
+    /// enforcing a total-elapsed-time deadline at every read boundary.
     ///
-    /// Uses a single `read(2)` call since HTTP requests from the host
-    /// are small and typically arrive in one TCP segment. For larger
-    /// payloads (file uploads), loops until no more data is available
-    /// or the size limit is reached.
+    /// `SO_RCVTIMEO` set in the accept loop backs each individual
+    /// `read(2)` with a kernel-level timeout. This method layers a
+    /// second check on total elapsed wall time so even a sequence
+    /// of just-under-timeout reads cannot extend past the deadline.
     ///
-    /// - Parameter fd: An open, connected file descriptor.
-    /// - Returns: The received data, or `nil` on read error.
-    private static func readRequest(fd: Int32) -> Data? {
+    /// - Parameters:
+    ///   - fd: An open, connected file descriptor.
+    ///   - deadlineSeconds: Total seconds allowed for the complete
+    ///     request to arrive.
+    /// - Returns: A ``ReadOutcome`` describing the read result.
+    static func readRequest(fd: Int32, deadlineSeconds: Int) -> ReadOutcome {
         var buffer = Data(capacity: 65536)
         let readBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
         defer { readBuffer.deallocate() }
 
+        let clock = ContinuousClock()
+        let start = clock.now
+        let deadline: Duration = .seconds(deadlineSeconds)
+
         while buffer.count < maxRequestSize {
+            if clock.now - start > deadline {
+                return .timedOut
+            }
+
             let n = read(fd, readBuffer, 65536)
             if n < 0 {
+                // EAGAIN/EWOULDBLOCK from SO_RCVTIMEO → treat as a
+                // timeout and surface 408 (rather than the previous
+                // silent close).
+                if errno == EAGAIN || errno == EWOULDBLOCK {
+                    return .timedOut
+                }
                 if errno == EINTR { continue }
-                return buffer.isEmpty ? nil : buffer
+                return buffer.isEmpty ? .closed : .data(buffer)
             }
             if n == 0 { break }
             buffer.append(readBuffer, count: n)
 
             // If we got less than a full buffer, the request is likely complete.
             if n < 65536 { break }
+
+            // Bounce the ceiling: `while` condition re-checks at top,
+            // but we also guard against the exact-size boundary case
+            // where a 1-MiB body arrives in one full read.
+            if buffer.count >= maxRequestSize { return .tooLarge }
         }
 
-        return buffer.isEmpty ? nil : buffer
+        if buffer.count >= maxRequestSize { return .tooLarge }
+        return buffer.isEmpty ? .closed : .data(buffer)
     }
 
     /// Writes all bytes to a file descriptor, retrying on partial writes.

@@ -91,24 +91,44 @@ public actor AppendOnlyFileAuditStore: ImmutableAuditStore, AuditSink {
         }
     }
 
-    // AuditSink conformance — errors surface through a typed log
-    // channel rather than being silently swallowed with `try?`.
-    // The audit port's own contract requires adapters to report
-    // failures; dropping them would hide gaps in the audit trail.
-    public func record(_ entry: AuditRecord) async {
+    // AuditSink conformance — failures propagate. The previous
+    // implementation logged-and-returned, which silently converted
+    // a disk full / UF_APPEND violation / EIO into "record dropped"
+    // and broke the AU-9 non-repudiation contract.
+    public func record(_ entry: AuditRecord) async throws {
         do {
             _ = try await append(entry)
+        } catch let error as AuditSinkError {
+            throw error
         } catch {
-            logger.error("AppendOnlyFileAuditStore.record failed: \(error.localizedDescription, privacy: .public). Record dropped: \(entry.id, privacy: .public)")
+            throw AuditSinkError.recordingFailed(reason: "append failed: \(error.localizedDescription)")
         }
     }
 
-    // ImmutableAuditStore conformance
+    // ImmutableAuditStore conformance.
+    //
+    // Every record is fsync'd before sequenceNumber advances. A
+    // successful return from `append` means the bytes are on
+    // durable storage — NIST SP 800-53 AU-9 (protection of audit
+    // information) requires this at the adapter boundary, because
+    // a controller crash between `write` and `fsync` on a default
+    // APFS volume can lose the last writes. `FileHandle.synchronize()`
+    // issues fsync(2) under the hood.
     public func append(_ record: AuditRecord) async throws -> UInt64 {
         let seq = sequenceNumber
-        var data = try encoder.encode(record)
+        var data: Data
+        do {
+            data = try encoder.encode(record)
+        } catch {
+            throw AuditSinkError.recordingFailed(reason: "encode failed: \(error.localizedDescription)")
+        }
         data.append(0x0A)
-        try fileHandle.write(contentsOf: data)
+        do {
+            try fileHandle.write(contentsOf: data)
+            try fileHandle.synchronize()
+        } catch {
+            throw AuditSinkError.recordingFailed(reason: "fsync write failed: \(error.localizedDescription)")
+        }
         // Sequence number advances only after the write commits —
         // if the write throws, callers can retry safely without
         // leaving a hole in the sequence.
@@ -116,15 +136,40 @@ public actor AppendOnlyFileAuditStore: ImmutableAuditStore, AuditSink {
         return seq
     }
 
+    /// Reads records at the given sequence range.
+    ///
+    /// - Throws: ``AuditSinkError/truncatedRead`` if the file is
+    ///   shorter than the requested range (external truncation —
+    ///   a tamper signal).
     public func read(from: UInt64, count: Int) async throws -> [AuditRecord] {
-        let data = (try? Data(contentsOf: URL(filePath: filePath))) ?? Data()
-        let lines = String(data: data, encoding: .utf8)?.split(separator: "\n") ?? []
+        let data: Data
+        do {
+            data = try Data(contentsOf: URL(filePath: filePath))
+        } catch {
+            throw AuditSinkError.recordingFailed(reason: "read failed: \(error.localizedDescription)")
+        }
+        guard let content = String(data: data, encoding: .utf8) else {
+            throw AuditSinkError.recordingFailed(reason: "audit file not valid UTF-8")
+        }
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: true)
         let start = Int(from)
         let end = min(start + count, lines.count)
         guard start < lines.count else { return [] }
+        if UInt64(lines.count) < sequenceNumber {
+            throw AuditSinkError.truncatedRead
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return lines[start..<end].compactMap { try? decoder.decode(AuditRecord.self, from: Data($0.utf8)) }
+        var out: [AuditRecord] = []
+        out.reserveCapacity(end - start)
+        for line in lines[start..<end] {
+            do {
+                out.append(try decoder.decode(AuditRecord.self, from: Data(line.utf8)))
+            } catch {
+                throw AuditSinkError.recordingFailed(reason: "decode failed: \(error.localizedDescription)")
+            }
+        }
+        return out
     }
 
     public func recordCount() async throws -> UInt64 { sequenceNumber }

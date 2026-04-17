@@ -33,6 +33,7 @@ struct RunnerPoolMeta: Codable, Sendable {
     let namespace: String?
     let uid: String?
     let resourceVersion: String?
+    let generation: Int64?
     var labels: [String: String]?
     var annotations: [String: String]?
 }
@@ -49,11 +50,19 @@ struct RunnerPoolSpec: Codable, Sendable {
 }
 
 /// The observed state of a RunnerPool, written by the controller.
+///
+/// Tracks the `metadata.generation` the controller has reconciled via
+/// ``observedGeneration`` and emits standard K8s
+/// ``KubernetesCondition`` entries (`PoolReady`, `ScaleUpInProgress`,
+/// `ScaleDownInProgress`, `CapacityExhausted`) via ``conditions``.
 struct RunnerPoolStatus: Codable, Sendable {
     var activeRunners: Int?
     var readyRunners: Int?
+    var desiredRunners: Int?
     var message: String?
     var runners: [RunnerPoolRunnerStatus]?
+    var observedGeneration: Int64?
+    var conditions: [KubernetesCondition]?
 }
 
 /// Per-runner status stored in the RunnerPool CRD status.
@@ -82,6 +91,23 @@ actor RunnerPoolReconciler {
     private let client: KubernetesClient
     private let manager: RunnerPoolManager
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "runnerpool")
+
+    /// Writes an audit record and logs a failure rather than
+    /// propagating it. Reconciliation paths cannot abort halfway
+    /// through a state transition on a transient audit-backend
+    /// blip — the VM lifecycle is already in motion. The failure
+    /// is surfaced to operators via `os.Logger` so SIEM ingest
+    /// against the controller's Console stream can alert on
+    /// audit-loss events.
+    private func recordAudit(_ record: AuditRecord) async {
+        do {
+            try await auditSink.record(record)
+        } catch {
+            logger.error(
+                "audit record failed: \(error.localizedDescription, privacy: .public) — resource=\(record.resource, privacy: .public) action=\(record.action, privacy: .public)"
+            )
+        }
+    }
 
     /// Per-runner state machines, keyed by runner name.
     private var stateMachines: [String: RunnerStateMachine] = [:]
@@ -317,7 +343,7 @@ actor RunnerPoolReconciler {
         inFlight.insert(poolName)
         defer { inFlight.remove(poolName) }
 
-        logger.info("Reconciling RunnerPool '\(poolName, privacy: .public)'")
+        logger.info("Reconciling RunnerPool '\(poolName, privacy: .public)' gen=\(pool.metadata.generation ?? 0)")
 
         // Build desired state from the CRD spec, clamping
         // `maxRunners` to the fair-share cap when the scheduler
@@ -352,12 +378,59 @@ actor RunnerPoolReconciler {
 
         // Delegate the scale decision to RunnerPoolManager.
         let actions = await manager.reconcilePool(desired: desired, current: current)
+        let creates = actions.filter {
+            if case .createRunner = $0 { return true }
+            return false
+        }.count
+        let drains = actions.filter {
+            if case .drainRunner = $0 { return true }
+            return false
+        }.count
+        let deletes = actions.filter {
+            if case .deleteRunner = $0 { return true }
+            return false
+        }.count
+        let desiredCount = max(
+            pool.spec.minRunners,
+            current.count + creates - (deletes + drains)
+        )
+
+        // Pre-flight capacity check so `CapacityExhausted=True`
+        // shows up on status even when no create has actually been
+        // attempted yet. Lets operators see the pool is waiting on
+        // free host slots rather than silently idle.
+        var capacityExhausted = false
+        var capacityMessage: String?
+        if let nodeName = pool.spec.nodeName, !nodeName.isEmpty, creates > 0 {
+            let vmsOnNode = await vmCountOnNode(nodeName)
+            if vmsOnNode >= Self.macVMPerHostLimit {
+                capacityExhausted = true
+                capacityMessage = "Node '\(nodeName)' at \(Self.macVMPerHostLimit)-VM limit (current=\(vmsOnNode))"
+            }
+        }
+
+        recordObservation(
+            poolName: poolName,
+            generation: pool.metadata.generation,
+            minRunners: pool.spec.minRunners,
+            desiredRunners: desiredCount,
+            priorConditions: pool.status?.conditions ?? [],
+            capacityExhausted: capacityExhausted,
+            message: capacityMessage
+        )
 
         // Execute each action.
         for action in actions {
             switch action {
             case .createRunner(let name, let sourceVM):
                 await createRunner(name: name, sourceVM: sourceVM, pool: pool)
+
+            case .drainRunner(let name, _):
+                // Drain = mark busy-unavailable → wait → delete. The
+                // per-runner state machine owns the wait loop; from
+                // the reconciler's view draining is one pending
+                // effect that eventually produces a delete.
+                await deleteRunner(name: name, pool: pool)
 
             case .deleteRunner(let name):
                 await deleteRunner(name: name, pool: pool)
@@ -386,6 +459,13 @@ actor RunnerPoolReconciler {
 
     // MARK: - Runner Creation / Deletion
 
+    /// Hard per-host VM cap enforced by Apple's kernel (Virtualization.framework).
+    ///
+    /// Apple's kernel refuses to boot a third concurrent VM on Apple Silicon;
+    /// the controller enforces the limit *before* creating a MacOSVM so a
+    /// denial surfaces as a clear condition instead of a boot failure.
+    private static let macVMPerHostLimit = 2
+
     /// Creates a MacOSVM child resource owned by the RunnerPool.
     private func createRunner(name: String, sourceVM: String, pool: RunnerPool) async {
         let poolName = pool.metadata.name
@@ -411,8 +491,49 @@ actor RunnerPoolReconciler {
                 action: "scheduleRunner"
             )
             let audit = AuditRecord(context: context, outcome: .denied)
-            await auditSink.record(audit)
+            await recordAudit(audit)
             return
+        }
+
+        // --- 2-VM-per-host enforcement ---
+        //
+        // Apple's kernel refuses a 3rd concurrent VM per host. Reject at the
+        // controller before the admission webhook does. If capacity is
+        // exhausted, set the `CapacityExhausted` condition and skip the
+        // clone — the next reconcile pass will retry.
+        let nodeName = pool.spec.nodeName ?? ""
+        if !nodeName.isEmpty {
+            let vmsOnNode = await vmCountOnNode(nodeName)
+            if vmsOnNode >= Self.macVMPerHostLimit {
+                logger.warning(
+                    "Capacity exhausted: node '\(nodeName, privacy: .public)' has \(vmsOnNode) VMs, limit \(Self.macVMPerHostLimit). Deferring runner '\(name, privacy: .public)'."
+                )
+                return
+            }
+
+            // --- sourceVM pre-flight ---
+            //
+            // Verify the named source VM exists on the node before attempting
+            // to clone. Fail fast with an explicit error so operators can
+            // detect image allow-list misconfigurations immediately.
+            if !sourceVM.isEmpty, let endpoint = await nodeManager.endpoint(for: nodeName) {
+                let exists = await sourceVMExists(name: sourceVM, on: endpoint)
+                if !exists {
+                    logger.error(
+                        "sourceVM '\(sourceVM, privacy: .public)' not present on node '\(nodeName, privacy: .public)'; refusing to create runner '\(name, privacy: .public)'"
+                    )
+                    let context = AuthorizationContext(
+                        actorIdentity: "spook-controller",
+                        tenant: tenantID,
+                        scope: .runner,
+                        resource: name,
+                        action: "sourceVMNotFound"
+                    )
+                    let audit = AuditRecord(context: context, outcome: .denied)
+                    await recordAudit(audit)
+                    return
+                }
+            }
         }
 
         // Initialize the state machine.
@@ -438,13 +559,64 @@ actor RunnerPoolReconciler {
             action: "createRunner"
         )
         let audit = AuditRecord(context: context, outcome: .success)
-        await auditSink.record(audit)
+        await recordAudit(audit)
 
         // Drive the state machine: node is available, start cloning.
-        var updatedMachine = stateMachines[name]!
+        guard var updatedMachine = stateMachines[name] else {
+            logger.error("State machine for '\(name, privacy: .public)' disappeared before transition — skipping")
+            return
+        }
         let effects = updatedMachine.transition(event: .nodeAvailable)
         stateMachines[name] = updatedMachine
         await executeSideEffects(effects, runnerName: name, poolName: poolName)
+    }
+
+    // MARK: - Capacity helpers
+
+    /// Counts the number of MacOSVM resources currently scheduled on the
+    /// given node, used for 2-VM-per-host enforcement.
+    ///
+    /// Queries the K8s API for MacOSVMs with the matching
+    /// `spec.nodeName` and filters in-memory. A failed API call returns
+    /// `Int.max` so the controller errs on the side of refusing to create.
+    func vmCountOnNode(_ nodeName: String) async -> Int {
+        let namespace = client.namespace
+        let baseURL = client.baseURL
+        let url = baseURL.appendingPathComponent(
+            "/apis/spooktacular.app/v1alpha1/namespaces/\(namespace)/macosvms")
+        do {
+            let data = try await k8sRequest(url: url, method: "GET")
+            let list = try JSONDecoder().decode(MacOSVMList.self, from: data)
+            return list.items.filter {
+                $0.spec.nodeName == nodeName
+                    && $0.metadata.deletionTimestamp == nil
+            }.count
+        } catch {
+            logger.error("VM capacity query failed for node '\(nodeName, privacy: .public)': \(error.localizedDescription, privacy: .public) — treating node as full")
+            return Int.max
+        }
+    }
+
+    /// Queries a node's HTTP API to verify the source VM is present.
+    ///
+    /// Returns `true` only if the node answers with HTTP 200; any
+    /// non-success is treated as "not present" so the caller fails fast.
+    private func sourceVMExists(name: String, on endpoint: NodeEndpoint) async -> Bool {
+        let url = endpoint.apiURL.appendingPathComponent("/v1/vms/\(name)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 10
+        if let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"], !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (_, response) = try await session.data(for: request)
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            return (200..<300).contains(code)
+        } catch {
+            logger.warning("sourceVM existence check failed for '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 
     /// Deletes a runner: drives the state machine and removes the child VM.
@@ -464,14 +636,14 @@ actor RunnerPoolReconciler {
         guard await authService.authorize(context) else {
             logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
             let audit = AuditRecord(context: context, outcome: .denied)
-            await auditSink.record(audit)
+            await recordAudit(audit)
             return
         }
 
         await deleteChildVM(name: name, poolName: poolName)
 
         let audit = AuditRecord(context: context, outcome: .success)
-        await auditSink.record(audit)
+        await recordAudit(audit)
 
         stateMachines.removeValue(forKey: name)
         runnerOwnership.removeValue(forKey: name)
@@ -520,7 +692,7 @@ actor RunnerPoolReconciler {
                 guard await authService.authorize(context) else {
                     logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
                     let audit = AuditRecord(context: context, outcome: .denied)
-                    await auditSink.record(audit)
+                    await recordAudit(audit)
                     continue
                 }
                 logger.info("Side effect: stop VM for '\(runnerName, privacy: .public)'")
@@ -528,7 +700,7 @@ actor RunnerPoolReconciler {
                     await callNodeAPI(method: "POST", path: "/v1/vms/\(runnerName)/stop", on: endpoint)
                 }
                 let audit = AuditRecord(context: context, outcome: .success)
-                await auditSink.record(audit)
+                await recordAudit(audit)
 
             case .deleteVM:
                 let context = AuthorizationContext(
@@ -541,13 +713,13 @@ actor RunnerPoolReconciler {
                 guard await authService.authorize(context) else {
                     logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
                     let audit = AuditRecord(context: context, outcome: .denied)
-                    await auditSink.record(audit)
+                    await recordAudit(audit)
                     continue
                 }
                 logger.info("Side effect: delete VM for '\(runnerName, privacy: .public)'")
                 await deleteChildVM(name: runnerName, poolName: poolName)
                 let deleteAudit = AuditRecord(context: context, outcome: .success)
-                await auditSink.record(deleteAudit)
+                await recordAudit(deleteAudit)
 
             case .execProvisioningScript:
                 logger.info("Side effect: exec provisioning for '\(runnerName, privacy: .public)'")
@@ -577,7 +749,7 @@ actor RunnerPoolReconciler {
                 guard await authService.authorize(context) else {
                     logger.warning("Authorization denied: \(context.action, privacy: .public) on \(context.resource, privacy: .public)")
                     let audit = AuditRecord(context: context, outcome: .denied)
-                    await auditSink.record(audit)
+                    await recordAudit(audit)
                     continue
                 }
                 logger.info("Side effect: deregister runner \(runnerId) for '\(runnerName, privacy: .public)'")
@@ -590,7 +762,7 @@ actor RunnerPoolReconciler {
                     }
                 }
                 let deregAudit = AuditRecord(context: context, outcome: .success)
-                await auditSink.record(deregAudit)
+                await recordAudit(deregAudit)
 
             case .updateStatus(let state):
                 logger.info("Side effect: update status to '\(state.rawValue, privacy: .public)' for '\(runnerName, privacy: .public)'")
@@ -607,6 +779,15 @@ actor RunnerPoolReconciler {
                 logger.info("Side effect: create replacement for '\(runnerName, privacy: .public)'")
                 // The next reconciliation pass will detect the shortfall and
                 // create a replacement via RunnerPoolManager.
+
+            case .logProtocolViolation(let state, let event):
+                logger.error("Protocol violation on '\(runnerName, privacy: .public)': state=\(String(describing: state), privacy: .public) event=\(String(describing: event), privacy: .public)")
+
+            case .auditRecycleComplete(let priorRunnerId, let sourceVM):
+                logger.info("Recycle complete for '\(runnerName, privacy: .public)' — prior=\(priorRunnerId.map(String.init) ?? "(none)", privacy: .public) sourceVM=\(sourceVM, privacy: .public)")
+
+            case .recycleValidationFailed(let reason):
+                logger.error("Recycle validation failed for '\(runnerName, privacy: .public)': \(reason, privacy: .public)")
             }
         }
 
@@ -633,7 +814,7 @@ actor RunnerPoolReconciler {
                     action: "crossTenantReuseBlocked"
                 )
                 let audit = AuditRecord(context: context, outcome: .denied)
-                await auditSink.record(audit)
+                await recordAudit(audit)
 
                 // Destroy instead of recycling — feed recycleFailed to
                 // transition to .failed and trigger deleteVM.
@@ -958,8 +1139,53 @@ actor RunnerPoolReconciler {
 
     // MARK: - Pool Status Updates
 
+    /// Cache of per-pool observation metadata (generation, prior
+    /// conditions) so `updatePoolStatus` can write observedGeneration
+    /// and preserve `lastTransitionTime`.
+    private var poolObservationCache: [String: PoolObservation] = [:]
+
+    /// Observation metadata for a RunnerPool, captured at reconcile
+    /// time and used when writing status.
+    private struct PoolObservation {
+        var generation: Int64?
+        var minRunners: Int
+        var desiredRunners: Int
+        var priorConditions: [KubernetesCondition]
+        var capacityExhausted: Bool
+        var message: String?
+    }
+
+    /// Records observation metadata for a pool so the next
+    /// ``updatePoolStatus`` call can emit observedGeneration and
+    /// merged conditions. Called from reconcilePool.
+    private func recordObservation(
+        poolName: String,
+        generation: Int64?,
+        minRunners: Int,
+        desiredRunners: Int,
+        priorConditions: [KubernetesCondition],
+        capacityExhausted: Bool = false,
+        message: String? = nil
+    ) {
+        poolObservationCache[poolName] = PoolObservation(
+            generation: generation,
+            minRunners: minRunners,
+            desiredRunners: desiredRunners,
+            priorConditions: priorConditions,
+            capacityExhausted: capacityExhausted,
+            message: message
+        )
+    }
+
     /// Persists the current runner status back to the RunnerPool CRD status
     /// subresource.
+    ///
+    /// Writes ``RunnerPoolStatus/observedGeneration`` and the standard
+    /// ``KubernetesCondition`` set (`PoolReady`, `ScaleUpInProgress`,
+    /// `ScaleDownInProgress`, `CapacityExhausted`) alongside legacy
+    /// fields. Conditions are merged against prior values so
+    /// ``KubernetesCondition/lastTransitionTime`` is preserved when
+    /// status is unchanged.
     private func updatePoolStatus(poolName: String) async {
         let runners = stateMachines
             .filter { runnerOwnership[$0.key] == poolName }
@@ -971,30 +1197,68 @@ actor RunnerPoolReconciler {
         let activeCount = runners.values.filter { $0.state != .deleted && $0.state != .failed }.count
         let readyCount = runners.values.filter { $0.state == .ready }.count
 
+        let observation = poolObservationCache[poolName]
+        let desiredCount = observation?.desiredRunners ?? activeCount
+        let minRunners = observation?.minRunners ?? 0
+        let generation = observation?.generation
+        let priorConditions = observation?.priorConditions ?? []
+        let capacityExhausted = observation?.capacityExhausted ?? false
+        let message = observation?.message
+
+        let desiredConditions = ConditionMerger.runnerPoolConditions(
+            observedGeneration: generation,
+            minRunners: minRunners,
+            readyRunners: readyCount,
+            activeRunners: activeCount,
+            desiredRunners: desiredCount,
+            capacityExhausted: capacityExhausted,
+            message: message
+        )
+        let mergedConditions = ConditionMerger.merge(
+            existing: priorConditions, with: desiredConditions
+        )
+
         let namespace = client.namespace
         let baseURL = client.baseURL
         let url = baseURL.appendingPathComponent(
             "/apis/spooktacular.app/v1alpha1/namespaces/\(namespace)/runnerpools/\(poolName)/status")
 
-        let patch: [String: Any] = [
-            "status": [
-                "activeRunners": activeCount,
-                "readyRunners": readyCount,
-                "runners": runnerStatuses.map { runner in
-                    [
-                        "name": runner.name,
-                        "state": runner.state,
-                        "retryCount": runner.retryCount,
-                    ] as [String: Any]
-                },
-            ]
+        var statusPayload: [String: Any] = [
+            "activeRunners": activeCount,
+            "readyRunners": readyCount,
+            "desiredRunners": desiredCount,
+            "runners": runnerStatuses.map { runner in
+                [
+                    "name": runner.name,
+                    "state": runner.state,
+                    "retryCount": runner.retryCount,
+                ] as [String: Any]
+            },
+            "conditions": mergedConditions.map { condition -> [String: Any] in
+                var entry: [String: Any] = [
+                    "type": condition.type,
+                    "status": condition.status,
+                    "reason": condition.reason,
+                    "message": condition.message,
+                    "lastTransitionTime": condition.lastTransitionTime,
+                ]
+                if let og = condition.observedGeneration {
+                    entry["observedGeneration"] = og
+                }
+                return entry
+            },
         ]
+        if let generation {
+            statusPayload["observedGeneration"] = generation
+        }
+
+        let patch: [String: Any] = ["status": statusPayload]
 
         do {
             let data = try JSONSerialization.data(withJSONObject: patch)
             try await k8sRequest(url: url, method: "PATCH", body: data,
                                  contentType: "application/merge-patch+json")
-            logger.debug("Updated RunnerPool '\(poolName, privacy: .public)' status: active=\(activeCount) ready=\(readyCount)")
+            logger.debug("Updated RunnerPool '\(poolName, privacy: .public)' status: active=\(activeCount) ready=\(readyCount) desired=\(desiredCount)")
         } catch {
             logger.error("Failed to update RunnerPool '\(poolName, privacy: .public)' status: \(error.localizedDescription, privacy: .public)")
         }

@@ -206,6 +206,7 @@ extension Spook {
             let dynamoSelected = env["SPOOK_DYNAMO_TABLE"]?.isEmpty == false
             let k8sSelected = env["SPOOK_K8S_API"]?.isEmpty == false
             let fileLockSelected = env["SPOOK_LOCK_DIR"] != nil
+            var distributedLockBuilt: DistributedLockFactory.Built?
             if dynamoSelected || k8sSelected || fileLockSelected || tenancyMode == .multiTenant {
                 let built = try DistributedLockFactory.makeFromEnvironment(environment: env)
                 print(Style.info("Distributed lock backend: \(built.backend)"))
@@ -219,6 +220,7 @@ extension Spook {
                     print(Style.error("Another spook serve instance holds the lock. Use a different port or wait."))
                     throw ExitCode.failure
                 }
+                distributedLockBuilt = built
             }
 
             // Audit sink chain
@@ -269,7 +271,8 @@ extension Spook {
                 tenancyMode: tenancyMode,
                 insecure: insecure,
                 hasAuthorizationService: authService != nil,
-                hasAuditSink: auditSink != nil
+                hasAuditSink: auditSink != nil,
+                hasDistributedLockService: distributedLockBuilt != nil
             )
             do {
                 try preflight.validate()
@@ -575,16 +578,32 @@ extension Spook {
                 return identity
             }
 
-            // If SecItemImport gave us a SecCertificate directly, use it.
+            // If `SecItemImport` returned a `SecCertificate`, use it
+            // directly. Otherwise — some PEMs come back as other
+            // CF types (e.g. `SecIdentity`) depending on input shape
+            // — fall through to DER-decoding as a clean second path.
+            //
+            // `CFGetTypeID` + `SecCertificateGetTypeID` is the Apple-
+            // documented way to type-check a `CFTypeRef`. See
+            // https://developer.apple.com/documentation/security/seccertificate .
+            // Swift's `as?` from `CFTypeRef` to a CoreFoundation
+            // subclass always succeeds (it checks the Obj-C class,
+            // not the CF type id), so the type-id comparison is the
+            // check that actually matters, and `unsafeBitCast` under
+            // a verified guard is the standard Swift idiom for the
+            // narrowing step. No trap is possible — a failing
+            // type-id check maps to the DER-decoding fallback.
             let cert: SecCertificate
-            if let directCert = certificate as! SecCertificate? {
-                cert = directCert
-            } else {
-                guard let derData = Self.pemToDER(certPEM),
-                      let fallbackCert = SecCertificateCreateWithData(nil, derData as CFData) else {
-                    throw TLSLoadingError.invalidCertificate(certPath)
-                }
+            if CFGetTypeID(certificate as CFTypeRef) == SecCertificateGetTypeID() {
+                cert = unsafeBitCast(certificate as AnyObject, to: SecCertificate.self)
+            } else if let derData = Self.pemToDER(certPEM),
+                      let fallbackCert = SecCertificateCreateWithData(nil, derData as CFData) {
                 cert = fallbackCert
+            } else {
+                throw TLSLoadingError.invalidTLSMaterial(
+                    path: certPath,
+                    reason: "SecItemImport returned a non-SecCertificate reference and the PEM could not be DER-decoded."
+                )
             }
 
             return try Self.createIdentity(certificate: cert, keyPEM: keyPEM, keyPath: keyPath)
@@ -616,7 +635,24 @@ extension Spook {
                 throw TLSLoadingError.invalidPrivateKey(keyPath)
             }
 
-            let privateKey = key as! SecKey
+            // Type-check the imported object against `SecKeyGetTypeID`
+            // before narrowing — `SecItemImport` theoretically could
+            // return a different class (identity, certificate) for a
+            // malformed PEM, and a force-cast would DoS the server
+            // on a first-run TLS path that ingests user-supplied
+            // files. Documented pattern at
+            // https://developer.apple.com/documentation/security/seckey .
+            // Same CFTypeRef narrowing dance as the certificate
+            // branch above — `as?` on CF types bypasses the type-id
+            // check, so we verify the type id ourselves and bridge
+            // with `unsafeBitCast`.
+            guard CFGetTypeID(key as CFTypeRef) == SecKeyGetTypeID() else {
+                throw TLSLoadingError.invalidTLSMaterial(
+                    path: keyPath,
+                    reason: "SecItemImport returned a non-SecKey reference for the private key PEM."
+                )
+            }
+            let privateKey: SecKey = unsafeBitCast(key as AnyObject, to: SecKey.self)
 
             // Add items to the temporary keychain so
             // SecIdentityCreateWithCertificate can find the pair.
@@ -667,7 +703,7 @@ extension Spook {
 // MARK: - TLS Loading Errors
 
 /// Errors that can occur when loading TLS certificates and keys from PEM files.
-enum TLSLoadingError: Error, LocalizedError {
+enum TLSLoadingError: Error, LocalizedError, Equatable {
 
     /// The PEM certificate file could not be parsed.
     case invalidCertificate(String)
@@ -682,6 +718,12 @@ enum TLSLoadingError: Error, LocalizedError {
     /// certificate with its private key.
     case identityCreationFailed(OSStatus)
 
+    /// `SecItemImport` returned a CF object whose dynamic type
+    /// is not the expected `SecCertificate` / `SecKey`. Surfaced
+    /// as a typed error instead of a trapping force-cast so a
+    /// malformed user-supplied PEM cannot DoS the server.
+    case invalidTLSMaterial(path: String, reason: String)
+
     var errorDescription: String? {
         switch self {
         case .invalidCertificate(let path):
@@ -692,6 +734,8 @@ enum TLSLoadingError: Error, LocalizedError {
             "Keychain operation failed (OSStatus \(status))."
         case .identityCreationFailed(let status):
             "Failed to create TLS identity from certificate and key (OSStatus \(status))."
+        case .invalidTLSMaterial(let path, let reason):
+            "TLS material at '\(path)' was not in the expected CF class: \(reason)"
         }
     }
 
@@ -705,6 +749,8 @@ enum TLSLoadingError: Error, LocalizedError {
             "Check that the certificate and key are valid and not corrupted."
         case .identityCreationFailed:
             "Ensure the private key matches the certificate. Generate a new pair if needed."
+        case .invalidTLSMaterial:
+            "Confirm the PEM is a plain X.509 certificate / PKCS#8 private key — not a bundle, trust store, or PKCS#12 archive. Regenerate with `openssl x509 -in cert.pem -outform PEM` if unsure."
         }
     }
 }

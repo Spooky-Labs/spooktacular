@@ -46,23 +46,38 @@ final class IntentAppState {
 
     /// Starts the named VM. Mirrors ``AppState/startVM(_:)``
     /// without the UI-only side effects.
-    func startVM(_ name: String) async {
+    ///
+    /// Throws on failure so `AppIntent.perform()` surfaces the
+    /// error in the Shortcuts UI instead of silently succeeding.
+    func startVM(_ name: String) async throws {
         refresh()
-        guard let bundle = cache[name] else { return }
+        guard let bundle = cache[name] else {
+            throw IntentError.vmNotFound(name)
+        }
         do {
             let vm = try VirtualMachine(bundle: bundle)
             try await vm.start()
         } catch {
             Log.vm.error("Intent StartVM failed: \(error.localizedDescription, privacy: .public)")
+            throw IntentError.startFailed(name: name, reason: error.localizedDescription)
         }
     }
 
     /// Stops the named VM by sending SIGTERM to its PID file.
     /// Works whether or not this process is the owner.
-    func stopVM(_ name: String) async {
-        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name),
-              let pid = PIDFile.read(from: bundleURL) else { return }
-        kill(pid, SIGTERM)
+    ///
+    /// Throws when the VM is unknown or no PID file can be read,
+    /// so Shortcuts can present a meaningful "couldn't stop" step.
+    func stopVM(_ name: String) async throws {
+        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else {
+            throw IntentError.vmNotFound(name)
+        }
+        guard let pid = PIDFile.read(from: bundleURL) else {
+            throw IntentError.notRunning(name)
+        }
+        if kill(pid, SIGTERM) != 0 {
+            throw IntentError.stopFailed(name: name, reason: "kill(\(pid), SIGTERM) returned \(errno)")
+        }
     }
 
     /// Takes a snapshot. VM must be stopped.
@@ -83,12 +98,15 @@ final class IntentAppState {
         try SnapshotManager.restore(bundle: bundle, label: label)
     }
 
-    /// Clones a VM.
-    func cloneVM(_ source: String, to destination: String) async {
+    /// Clones a VM. Throws on failure so the Shortcuts user sees
+    /// a clear error rather than a silent no-op.
+    func cloneVM(_ source: String, to destination: String) async throws {
         refresh()
-        guard let sourceBundle = cache[source],
-              let destinationURL = try? SpooktacularPaths.bundleURL(for: destination) else { return }
-        _ = try? CloneManager.clone(source: sourceBundle, to: destinationURL)
+        guard let sourceBundle = cache[source] else {
+            throw IntentError.vmNotFound(source)
+        }
+        let destinationURL = try SpooktacularPaths.bundleURL(for: destination)
+        _ = try CloneManager.clone(source: sourceBundle, to: destinationURL)
     }
 
     /// Runs a command inside a running VM and returns stdout.
@@ -138,6 +156,9 @@ final class IntentAppState {
 enum IntentError: LocalizedError {
     case vmNotFound(String)
     case noGuestAgent
+    case startFailed(name: String, reason: String)
+    case stopFailed(name: String, reason: String)
+    case notRunning(String)
 
     var errorDescription: String? {
         switch self {
@@ -145,6 +166,12 @@ enum IntentError: LocalizedError {
             "No virtual machine named '\(name)'."
         case .noGuestAgent:
             "The workspace has no guest agent reachable over vsock. Ensure the VM is running and spooktacular-agent is installed."
+        case .startFailed(let name, let reason):
+            "Could not start '\(name)': \(reason)"
+        case .stopFailed(let name, let reason):
+            "Could not stop '\(name)': \(reason)"
+        case .notRunning(let name):
+            "Virtual machine '\(name)' is not running."
         }
     }
 }

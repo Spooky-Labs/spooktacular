@@ -41,10 +41,25 @@ enum LaunchDaemon {
 
     // MARK: - LaunchDaemon
 
+    /// Directory the LaunchDaemon writes its logs to. Matches the
+    /// `/var/log/spooktacular/` convention used by the host process.
+    private static let daemonLogDirectory = "/var/log/spooktacular"
+
     /// The LaunchDaemon plist content.
     ///
     /// Runs at boot as root with `KeepAlive`. Logs to
-    /// `/var/log/spooktacular-agent.log`.
+    /// `/var/log/spooktacular/agent.log`.
+    ///
+    /// ## Resource controls
+    /// - `SoftResourceLimits` caps file descriptors (256) and
+    ///   memory (512 MiB) so a runaway agent can't exhaust the
+    ///   host. Apple launchd docs:
+    ///   https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html
+    /// - `ThrottleInterval=10` rate-limits crash-respawn so a
+    ///   segfault loop doesn't fork-bomb the system.
+    /// - `KeepAlive.SuccessfulExit=false` — restart on crash but
+    ///   not when the agent exits cleanly (e.g., via `launchctl
+    ///   unload`).
     private static let daemonPlistContent = """
     <?xml version="1.0" encoding="UTF-8"?>
     <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
@@ -60,11 +75,28 @@ enum LaunchDaemon {
         <key>RunAtLoad</key>
         <true/>
         <key>KeepAlive</key>
-        <true/>
+        <dict>
+            <key>SuccessfulExit</key>
+            <false/>
+        </dict>
+        <key>ThrottleInterval</key>
+        <integer>10</integer>
+        <key>SoftResourceLimits</key>
+        <dict>
+            <key>NumberOfFiles</key>
+            <integer>256</integer>
+        </dict>
+        <key>HardResourceLimits</key>
+        <dict>
+            <key>NumberOfFiles</key>
+            <integer>512</integer>
+        </dict>
+        <key>ProcessType</key>
+        <string>Background</string>
         <key>StandardOutPath</key>
-        <string>/var/log/spooktacular-agent.log</string>
+        <string>\(daemonLogDirectory)/agent.log</string>
         <key>StandardErrorPath</key>
-        <string>/var/log/spooktacular-agent.log</string>
+        <string>\(daemonLogDirectory)/agent.log</string>
     </dict>
     </plist>
     """
@@ -78,6 +110,21 @@ enum LaunchDaemon {
         guard FileManager.default.fileExists(atPath: agentBinaryPath) else {
             log.error("Agent binary not found at \(agentBinaryPath, privacy: .public)")
             print("Error: \(agentBinaryPath) not found. Copy the binary there first.")
+            exit(1)
+        }
+
+        // Ensure the log directory exists with mode 0755 so launchd
+        // can redirect stdout/stderr without the first boot failing
+        // silently. Idempotent — repeated installs are safe.
+        do {
+            try FileManager.default.createDirectory(
+                atPath: daemonLogDirectory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o755]
+            )
+        } catch {
+            log.error("Failed to create log directory: \(error.localizedDescription, privacy: .public)")
+            print("Error: Could not create \(daemonLogDirectory). Are you running as root?")
             exit(1)
         }
 
@@ -120,6 +167,9 @@ enum LaunchDaemon {
     /// Runs at login in the user's GUI session with `KeepAlive`.
     /// This gives the agent access to the clipboard and window server.
     /// Logs to `~/Library/Logs/spooktacular-agent.log`.
+    ///
+    /// Resource controls mirror the LaunchDaemon plist — see
+    /// ``daemonPlistContent`` for the rationale.
     private static func agentPlistContent(logPath: String) -> String {
         """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -136,7 +186,24 @@ enum LaunchDaemon {
             <key>RunAtLoad</key>
             <true/>
             <key>KeepAlive</key>
-            <true/>
+            <dict>
+                <key>SuccessfulExit</key>
+                <false/>
+            </dict>
+            <key>ThrottleInterval</key>
+            <integer>10</integer>
+            <key>SoftResourceLimits</key>
+            <dict>
+                <key>NumberOfFiles</key>
+                <integer>256</integer>
+            </dict>
+            <key>HardResourceLimits</key>
+            <dict>
+                <key>NumberOfFiles</key>
+                <integer>512</integer>
+            </dict>
+            <key>ProcessType</key>
+            <string>Interactive</string>
             <key>StandardOutPath</key>
             <string>\(logPath)</string>
             <key>StandardErrorPath</key>

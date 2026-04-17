@@ -17,7 +17,7 @@
 #
 # ==============================================================================
 
-set -euo pipefail
+set -Eeuo pipefail
 
 # ------------------------------------------------------------------------------
 # Configuration
@@ -29,11 +29,19 @@ SPOOK_HOST="${SPOOK_HOST:-0.0.0.0}"
 CERT_DIR="/etc/spooktacular/tls"
 CONFIG_DIR="/etc/spooktacular"
 DRAIN_MARKER="${CONFIG_DIR}/drain"
-LOG_FILE="/var/log/spooktacular-bootstrap.log"
+LOG_DIR="/var/log/spooktacular"
+LOG_FILE="${LOG_DIR}/bootstrap.log"
 PLIST_PATH="/Library/LaunchDaemons/app.spooktacular.serve.plist"
 KEYCHAIN_SERVICE="com.spooktacular"
 KEYCHAIN_ACCOUNT="api-token"
 GITHUB_RELEASES="https://github.com/Spooky-Labs/spooktacular/releases"
+
+# Ensure the log directory exists before the first log() call.
+sudo mkdir -p "${LOG_DIR}"
+sudo chmod 755 "${LOG_DIR}"
+
+# Scratch directory for downloads — removed on exit by trap.
+WORK_DIR="$(mktemp -d -t spooktacular-bootstrap.XXXXXX)"
 
 # ------------------------------------------------------------------------------
 # Logging
@@ -42,7 +50,7 @@ GITHUB_RELEASES="https://github.com/Spooky-Labs/spooktacular/releases"
 log() {
     local timestamp
     timestamp="$(date '+%Y-%m-%d %H:%M:%S')"
-    echo "[${timestamp}] $*" | tee -a "${LOG_FILE}"
+    echo "[${timestamp}] $*" | sudo tee -a "${LOG_FILE}"
 }
 
 log_error() {
@@ -53,6 +61,19 @@ die() {
     log_error "$*"
     exit 1
 }
+
+cleanup() {
+    local rc=$?
+    if [[ -n "${WORK_DIR:-}" && -d "${WORK_DIR}" ]]; then
+        rm -rf "${WORK_DIR}"
+    fi
+    if (( rc != 0 )); then
+        log_error "bootstrap exited with code ${rc}"
+    fi
+    return "${rc}"
+}
+trap cleanup EXIT
+trap 'log_error "bootstrap interrupted"; exit 130' INT TERM
 
 # ------------------------------------------------------------------------------
 # Drain / Undrain Mode
@@ -194,6 +215,19 @@ log_supported_macos_versions() {
 log_supported_macos_versions
 
 # ------------------------------------------------------------------------------
+# Fast-path idempotency check
+# ------------------------------------------------------------------------------
+#
+# If spook is already installed AND the daemon is healthy AND all strict
+# controls pass, there is nothing to do. This is the common case on reboot
+# or when SSM re-invokes the bootstrap after a failed drain cycle.
+
+if command -v spook &>/dev/null && spook doctor --strict >/dev/null 2>&1; then
+    log "Already installed and healthy (spook doctor --strict passed). Skipping bootstrap."
+    exit 0
+fi
+
+# ------------------------------------------------------------------------------
 # Step 1: Install Spooktacular
 # ------------------------------------------------------------------------------
 
@@ -226,9 +260,14 @@ else
             DOWNLOAD_URL="${GITHUB_RELEASES}/download/v${SPOOKTACULAR_VERSION}/spook"
         fi
 
-        curl -fsSL "${DOWNLOAD_URL}" -o /usr/local/bin/spook \
+        # Download into the trap-cleaned scratch dir first; atomic-move only
+        # once the payload fully downloaded. A partial /usr/local/bin/spook
+        # would fail preflight in confusing ways.
+        local_binary="${WORK_DIR}/spook"
+        curl -fsSL "${DOWNLOAD_URL}" -o "${local_binary}" \
             || die "Failed to download spook from ${DOWNLOAD_URL}"
-        chmod +x /usr/local/bin/spook
+        chmod +x "${local_binary}"
+        sudo mv "${local_binary}" /usr/local/bin/spook
         log "Installed spook to /usr/local/bin/spook"
     fi
 fi

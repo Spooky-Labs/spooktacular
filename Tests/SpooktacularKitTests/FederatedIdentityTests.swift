@@ -15,27 +15,32 @@ struct FederatedIdentityTests {
     @Test("Expired identity reports isExpired")
     func expiredIdentity() {
         let id = FederatedIdentity(issuer: "test", subject: "s", expiresAt: Date.distantPast)
-        #expect(id.isExpired)
+        #expect(id.isExpired())
     }
 
     @Test("Non-expired identity reports not expired")
     func validIdentity() {
         let id = FederatedIdentity(issuer: "test", subject: "s", expiresAt: Date.distantFuture)
-        #expect(!id.isExpired)
+        #expect(!id.isExpired())
     }
 
     @Test("OIDCProviderConfig encodes and decodes")
     func configCodable() throws {
-        let config = OIDCProviderConfig(issuerURL: "https://example.com", clientID: "client-1")
+        let config = OIDCProviderConfig(
+            issuerURL: "https://example.com", clientID: "client-1", audience: "client-1"
+        )
         let data = try JSONEncoder().encode(config)
         let decoded = try JSONDecoder().decode(OIDCProviderConfig.self, from: data)
         #expect(decoded.issuerURL == "https://example.com")
         #expect(decoded.clientID == "client-1")
+        #expect(decoded.audience == "client-1")
     }
 
     @Test("OIDCTokenVerifier rejects malformed tokens")
     func rejectsMalformed() async {
-        let config = OIDCProviderConfig(issuerURL: "https://test.com", clientID: "c")
+        let config = OIDCProviderConfig(
+            issuerURL: "https://test.com", clientID: "c", audience: "c"
+        )
         let verifier = OIDCTokenVerifier(config: config, http: MockHTTPClient())
         await #expect(throws: OIDCError.self) {
             try await verifier.verify(token: "not-a-jwt")

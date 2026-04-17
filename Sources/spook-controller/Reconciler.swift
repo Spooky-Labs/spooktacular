@@ -55,6 +55,10 @@ actor Reconciler {
     // MARK: - Main Loop
 
     /// Runs the list-watch-reconcile loop indefinitely.
+    ///
+    /// Uses ``KubernetesClient/watchVMsWithReconnect(resourceVersion:)``
+    /// so timeouts and transient errors trigger capped-exponential-backoff
+    /// reconnection without falling out of the outer loop.
     func run() async {
         logger.notice("Reconciler starting")
 
@@ -73,7 +77,7 @@ actor Reconciler {
                 }
 
                 logger.info("Watching from resourceVersion \(rv, privacy: .public)")
-                for try await event in await client.watchVMs(resourceVersion: rv) {
+                for try await event in await client.watchVMsWithReconnect(resourceVersion: rv) {
                     await nodeManager.checkHealth()
                     await reconcile(vm: event.object, eventType: event.type)
                 }
@@ -95,7 +99,7 @@ actor Reconciler {
         inFlight.insert(uid)
         defer { inFlight.remove(uid) }
 
-        logger.info("Reconciling '\(name, privacy: .public)' event=\(eventType, privacy: .public)")
+        logger.info("Reconciling '\(name, privacy: .public)' event=\(eventType, privacy: .public) gen=\(vm.metadata.generation ?? 0)")
         switch eventType {
         case "ADDED":    await handleAdded(vm)
         case "MODIFIED": await handleModified(vm)
@@ -103,6 +107,13 @@ actor Reconciler {
         case "BOOKMARK": break
         default: logger.warning("Unknown event '\(eventType, privacy: .public)' for '\(name, privacy: .public)'")
         }
+    }
+
+    /// Returns the observed generation and currently-persisted condition
+    /// list for a VM, so ``ConditionMerger`` can preserve
+    /// ``KubernetesCondition/lastTransitionTime`` across patches.
+    private func observedStateSnapshot(for vm: MacOSVM) -> (Int64?, [KubernetesCondition]) {
+        (vm.metadata.generation, vm.status?.conditions ?? [])
     }
 
     private static let finalizerName = "spooktacular.app/cleanup"
@@ -113,49 +124,61 @@ actor Reconciler {
     private func handleAdded(_ vm: MacOSVM) async {
         let name = vm.metadata.name
         let nodeName = vm.spec.nodeName
+        let (generation, priorConditions) = observedStateSnapshot(for: vm)
 
         if vm.status?.phase == .running { return }
 
         guard let endpoint = await nodeManager.endpoint(for: nodeName) else {
-            await setStatus(name: name, phase: .failed, message: "Node '\(nodeName)' not found")
+            await setStatus(
+                name: name, phase: .failed, message: "Node '\(nodeName)' not found",
+                generation: generation, priorConditions: priorConditions
+            )
             return
         }
 
         // Clone
-        await setStatus(name: name, phase: .cloning, nodeName: nodeName)
+        await setStatus(name: name, phase: .cloning, nodeName: nodeName,
+                        generation: generation, priorConditions: priorConditions)
         let cloneResult = await callNodeAPI(endpoint: endpoint, method: .post,
                                             path: "/v1/vms/\(name)/clone", body: ["source": vm.spec.baseImage])
         switch cloneResult {
         case .success: logger.info("Cloned '\(name, privacy: .public)' on \(nodeName, privacy: .public)")
         case .conflict: logger.info("VM '\(name, privacy: .public)' exists on \(nodeName, privacy: .public)")
         case .failure(let msg):
-            await setStatus(name: name, phase: .failed, nodeName: nodeName, message: "Clone failed: \(msg)")
+            await setStatus(name: name, phase: .failed, nodeName: nodeName, message: "Clone failed: \(msg)",
+                            generation: generation, priorConditions: priorConditions)
             return
         }
 
         // Start
-        await setStatus(name: name, phase: .starting, nodeName: nodeName)
+        await setStatus(name: name, phase: .starting, nodeName: nodeName,
+                        generation: generation, priorConditions: priorConditions)
         let startResult = await callNodeAPI(endpoint: endpoint, method: .post,
                                             path: "/v1/vms/\(name)/start", body: nil)
         switch startResult {
         case .success, .conflict:
-            await setStatus(name: name, phase: .running, nodeName: nodeName)
+            await setStatus(name: name, phase: .running, nodeName: nodeName,
+                            generation: generation, priorConditions: priorConditions)
             logger.notice("VM '\(name, privacy: .public)' running on \(nodeName, privacy: .public)")
-            await resolveIP(name: name, endpoint: endpoint, nodeName: nodeName)
+            await resolveIP(name: name, endpoint: endpoint, nodeName: nodeName,
+                            generation: generation, priorConditions: priorConditions)
             await addFinalizer(name: name, existing: vm.metadata.finalizers)
         case .failure(let msg):
-            await setStatus(name: name, phase: .failed, nodeName: nodeName, message: "Start failed: \(msg)")
+            await setStatus(name: name, phase: .failed, nodeName: nodeName, message: "Start failed: \(msg)",
+                            generation: generation, priorConditions: priorConditions)
         }
     }
 
     /// MODIFIED: retry failed VMs or resolve missing IPs.
     private func handleModified(_ vm: MacOSVM) async {
         let name = vm.metadata.name
+        let (generation, priorConditions) = observedStateSnapshot(for: vm)
         if vm.metadata.deletionTimestamp != nil { await handleDeleted(vm); return }
         if vm.status?.phase == .pending || vm.status?.phase == .failed { await handleAdded(vm); return }
         if vm.status?.phase == .running, vm.status?.ip == nil,
            let endpoint = await nodeManager.endpoint(for: vm.spec.nodeName) {
-            await resolveIP(name: name, endpoint: endpoint, nodeName: vm.spec.nodeName)
+            await resolveIP(name: name, endpoint: endpoint, nodeName: vm.spec.nodeName,
+                            generation: generation, priorConditions: priorConditions)
         }
     }
 
@@ -171,6 +194,7 @@ actor Reconciler {
         let name = vm.metadata.name
         let nodeName = vm.spec.nodeName
         let retryCount = deleteRetries[name] ?? 0
+        let (generation, priorConditions) = observedStateSnapshot(for: vm)
 
         // --- Check retry exhaustion ---
         if retryCount >= Self.maxDeleteRetries {
@@ -183,7 +207,8 @@ actor Reconciler {
             } else {
                 await setStatus(
                     name: name, phase: .failed, nodeName: nodeName,
-                    message: "Delete failed after \(retryCount) retries. Set annotation '\(Self.forceCleanupAnnotation): \"true\"' to force cleanup."
+                    message: "Delete failed after \(retryCount) retries. Set annotation '\(Self.forceCleanupAnnotation): \"true\"' to force cleanup.",
+                    generation: generation, priorConditions: priorConditions
                 )
                 return
             }
@@ -201,7 +226,8 @@ actor Reconciler {
             logger.warning("Cannot delete '\(name, privacy: .public)': node '\(nodeName, privacy: .public)' unreachable")
             await setStatus(
                 name: name, phase: .stopping, nodeName: nodeName,
-                message: "Node unreachable, will retry"
+                message: "Node unreachable, will retry",
+                generation: generation, priorConditions: priorConditions
             )
             deleteRetries[name] = retryCount + 1
             return
@@ -228,7 +254,8 @@ actor Reconciler {
             logger.warning("VM '\(name, privacy: .public)' still running on \(nodeName, privacy: .public), retry \(retryCount + 1)")
             await setStatus(
                 name: name, phase: .stopping, nodeName: nodeName,
-                message: "Delete returned conflict, retry \(retryCount + 1)/\(Self.maxDeleteRetries)"
+                message: "Delete returned conflict, retry \(retryCount + 1)/\(Self.maxDeleteRetries)",
+                generation: generation, priorConditions: priorConditions
             )
 
         case .failure(let msg):
@@ -236,7 +263,8 @@ actor Reconciler {
             logger.error("Delete failed for '\(name, privacy: .public)': \(msg, privacy: .public) (retry \(retryCount + 1))")
             await setStatus(
                 name: name, phase: .stopping, nodeName: nodeName,
-                message: "Delete failed: \(msg) — retry \(retryCount + 1)/\(Self.maxDeleteRetries)"
+                message: "Delete failed: \(msg) — retry \(retryCount + 1)/\(Self.maxDeleteRetries)",
+                generation: generation, priorConditions: priorConditions
             )
         }
     }
@@ -271,24 +299,57 @@ actor Reconciler {
 
     // MARK: - IP Resolution
 
-    private func resolveIP(name: String, endpoint: NodeEndpoint, nodeName: String) async {
+    private func resolveIP(
+        name: String,
+        endpoint: NodeEndpoint,
+        nodeName: String,
+        generation: Int64?,
+        priorConditions: [KubernetesCondition]
+    ) async {
         if case .success(let data) = await callNodeAPI(endpoint: endpoint, method: .get,
                                                        path: "/v1/vms/\(name)/ip", body: nil),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let inner = json["data"] as? [String: Any],
            let ip = inner["ip"] as? String {
-            await setStatus(name: name, phase: .running, ip: ip, nodeName: nodeName)
+            await setStatus(name: name, phase: .running, ip: ip, nodeName: nodeName,
+                            generation: generation, priorConditions: priorConditions)
             logger.info("IP for '\(name, privacy: .public)': \(ip, privacy: .public)")
         }
     }
 
     // MARK: - Status Updates
 
-    private func setStatus(name: String, phase: MacOSVMStatus.Phase,
-                           ip: String? = nil, nodeName: String? = nil, message: String? = nil) async {
+    /// Writes status with a merged condition list and refreshed
+    /// ``MacOSVMStatus/observedGeneration``.
+    ///
+    /// The controller reads ``ObjectMeta/generation`` from the event
+    /// payload and stamps it on every status patch. `conditions` is
+    /// computed via ``ConditionMerger`` so
+    /// ``KubernetesCondition/lastTransitionTime`` is preserved for
+    /// unchanged statuses — matching controller-runtime semantics.
+    private func setStatus(
+        name: String,
+        phase: MacOSVMStatus.Phase,
+        ip: String? = nil,
+        nodeName: String? = nil,
+        message: String? = nil,
+        generation: Int64? = nil,
+        priorConditions: [KubernetesCondition] = []
+    ) async {
+        let desired = ConditionMerger.macOSVMConditions(
+            phase: phase, observedGeneration: generation, message: message
+        )
+        let merged = ConditionMerger.merge(existing: priorConditions, with: desired)
+        let status = MacOSVMStatus(
+            phase: phase,
+            ip: ip,
+            nodeName: nodeName,
+            message: message,
+            observedGeneration: generation,
+            conditions: merged
+        )
         do {
-            try await client.updateStatus(name: name,
-                                          status: MacOSVMStatus(phase: phase, ip: ip, nodeName: nodeName, message: message))
+            try await client.updateStatus(name: name, status: status)
         } catch {
             logger.error("Status update failed for '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
         }

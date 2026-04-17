@@ -304,6 +304,15 @@ public actor GuestAgentClient {
 
     // MARK: - Internal Transport
 
+    /// Default per-request timeout for vsock round-trips.
+    ///
+    /// The vsock is not the network — latency is microseconds — but
+    /// a wedged agent is still possible (deadlock in a handler, a
+    /// guest under GPU-heavy load). 30 s is well above the 99th
+    /// percentile of legitimate requests and prevents an indefinite
+    /// host-side hang.
+    static let defaultRequestTimeout: Duration = .seconds(30)
+
     /// Sends an HTTP request to the guest agent and decodes the response.
     ///
     /// This is the shared transport layer for all public methods. It:
@@ -318,18 +327,24 @@ public actor GuestAgentClient {
     ///   - method: The HTTP method (`"GET"`, `"POST"`).
     ///   - path: The request path (e.g., `"/health"`).
     ///   - body: Optional JSON body data for POST/DELETE requests.
+    ///   - port: Optional explicit vsock port override.
+    ///   - timeout: Maximum duration to wait for a response.
+    ///     Defaults to ``defaultRequestTimeout``.
     /// - Returns: The decoded response of type `T`.
     /// - Throws: ``GuestAgentError`` on connection, protocol, or
-    ///   decoding failures.
+    ///   decoding failures, or ``GuestAgentError/timedOut`` when
+    ///   the deadline expires.
     private func request<T: Decodable>(
         method: String,
         path: String,
         body: Data? = nil,
-        port: UInt32? = nil
+        port: UInt32? = nil,
+        timeout: Duration = GuestAgentClient.defaultRequestTimeout
     ) async throws -> T {
         let responseData = try await rawRequest(
             method: method, path: path, body: body,
-            port: port ?? portForRequest(method: method, path: path)
+            port: port ?? portForRequest(method: method, path: path),
+            timeout: timeout
         )
 
         let (statusCode, responseBody) = try parseHTTPResponse(responseData)
@@ -382,7 +397,8 @@ public actor GuestAgentClient {
         method: String,
         path: String,
         body: Data? = nil,
-        port: UInt32 = 9470
+        port: UInt32 = 9470,
+        timeout: Duration = GuestAgentClient.defaultRequestTimeout
     ) async throws -> Data {
         Log.guestAgent.debug(
             "\(method, privacy: .public) \(path, privacy: .public)"
@@ -443,37 +459,72 @@ public actor GuestAgentClient {
         }
 
         // Perform blocking I/O on a background queue to avoid
-        // blocking the actor or main thread.
-        let responseData: Data = try await withCheckedThrowingContinuation {
-            continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                defer {
-                    try? writeHandle.close()
-                    try? readHandle.close()
-                }
+        // blocking the actor or main thread. Race the read against
+        // a `Task.sleep(for:)`-driven deadline so a wedged agent
+        // can't hang the call forever.
+        let responseData: Data = try await withThrowingTaskGroup(of: Data.self) { group in
+            let txRxHandle = VsockTransferHandle(writeHandle: writeHandle, readHandle: readHandle)
+            let payload = requestData
 
-                writeHandle.write(requestData)
-
-                // Read until EOF. The agent sends Connection: close,
-                // so the read side closes when the response is complete.
-                var accumulated = Data()
-                while true {
-                    let chunk = readHandle.readData(ofLength: 65_536)
-                    if chunk.isEmpty { break }
-                    accumulated.append(chunk)
+            group.addTask {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, any Error>) in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        txRxHandle.write.write(payload)
+                        var accumulated = Data()
+                        while true {
+                            let chunk = txRxHandle.read.readData(ofLength: 65_536)
+                            if chunk.isEmpty { break }
+                            accumulated.append(chunk)
+                        }
+                        if accumulated.isEmpty {
+                            continuation.resume(throwing: GuestAgentError.invalidResponse)
+                        } else {
+                            continuation.resume(returning: accumulated)
+                        }
+                    }
                 }
+            }
 
-                if accumulated.isEmpty {
-                    continuation.resume(
-                        throwing: GuestAgentError.invalidResponse
-                    )
-                } else {
-                    continuation.resume(returning: accumulated)
-                }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                // Force the blocking read to return by closing the
+                // read handle. The sibling task then sees an empty
+                // buffer and throws `.invalidResponse`, which we
+                // translate into `.timeout` below.
+                try? txRxHandle.read.close()
+                throw GuestAgentError.timeout
+            }
+
+            do {
+                let first = try await group.next()
+                group.cancelAll()
+                // Close the write handle eagerly once we have a
+                // response (or an error) — the read handle may have
+                // already been closed by the timeout task.
+                try? txRxHandle.write.close()
+                return first ?? Data()
+            } catch {
+                group.cancelAll()
+                try? txRxHandle.write.close()
+                try? txRxHandle.read.close()
+                throw error
             }
         }
 
         return responseData
+    }
+
+    /// Holds the two duplicated file descriptors so both concurrent
+    /// tasks (the I/O task and the timeout task) can see the same
+    /// handles without Sendable/actor gymnastics.
+    private struct VsockTransferHandle: @unchecked Sendable {
+        let write: FileHandle
+        let read: FileHandle
+
+        init(writeHandle: FileHandle, readHandle: FileHandle) {
+            self.write = writeHandle
+            self.read = readHandle
+        }
     }
 
     // MARK: - HTTP Response Parsing

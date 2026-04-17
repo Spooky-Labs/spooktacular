@@ -124,20 +124,34 @@ public enum DiskInjector {
     /// - Log stdout to `/var/log/spooktacular-user-data.log`
     /// - Log stderr to `/var/log/spooktacular-user-data.error.log`
     ///
+    /// Values are XML-entity-escaped before interpolation so that
+    /// a future change to ``daemonLabel`` or ``guestScriptPath``
+    /// containing `&`, `<`, `>`, `'`, or `"` cannot produce a plist
+    /// `launchd` refuses to parse.
+    ///
+    /// See Apple's [PropertyListSerialization docs](https://developer.apple.com/documentation/foundation/propertylistserialization)
+    /// for the generic plist format. We emit the XML shape directly
+    /// because `PropertyListSerialization` writes an OS-specific
+    /// binary format by default and emits byte-accurate XML only
+    /// with additional work — the hand-written template is simpler
+    /// to audit.
+    ///
     /// - Returns: The plist XML as a string.
     public static func generateLaunchDaemonPlist() -> String {
-        """
+        let label = Self.xmlEscape(daemonLabel)
+        let scriptPath = Self.xmlEscape(guestScriptPath)
+        return """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
         "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
             <key>Label</key>
-            <string>\(daemonLabel)</string>
+            <string>\(label)</string>
             <key>ProgramArguments</key>
             <array>
                 <string>/bin/bash</string>
-                <string>\(guestScriptPath)</string>
+                <string>\(scriptPath)</string>
             </array>
             <key>RunAtLoad</key>
             <true/>
@@ -148,6 +162,21 @@ public enum DiskInjector {
         </dict>
         </plist>
         """
+    }
+
+    /// Escapes the five XML predefined entities (`&`, `<`, `>`, `'`,
+    /// `"`) so a string can be safely interpolated between
+    /// `<string>` tags in the LaunchDaemon plist template.
+    ///
+    /// Ordering matters — ampersand must be escaped first, otherwise
+    /// it would re-escape the entities we just wrote.
+    static func xmlEscape(_ raw: String) -> String {
+        var result = raw.replacingOccurrences(of: "&", with: "&amp;")
+        result = result.replacingOccurrences(of: "<", with: "&lt;")
+        result = result.replacingOccurrences(of: ">", with: "&gt;")
+        result = result.replacingOccurrences(of: "'", with: "&apos;")
+        result = result.replacingOccurrences(of: "\"", with: "&quot;")
+        return result
     }
 
     // MARK: - Internal Helpers
@@ -173,9 +202,10 @@ public enum DiskInjector {
             return try ProcessRunner.run(path, arguments: arguments)
         } catch let error as ProcessRunnerError {
             switch error {
-            case .processFailed(let command, let exitCode):
+            case .processFailed(let command, _, let stderr, let exitCode):
                 throw DiskInjectorError.processFailed(
                     command: command,
+                    stderr: stderr,
                     exitCode: exitCode
                 )
             }
@@ -324,21 +354,28 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
     ///
     /// - Parameters:
     ///   - command: The command that was executed.
+    ///   - stderr: Captured stderr output for diagnostic context.
     ///   - exitCode: The process exit code.
-    case processFailed(command: String, exitCode: Int32)
+    case processFailed(command: String, stderr: String, exitCode: Int32)
 
     // MARK: - LocalizedError
 
     public var errorDescription: String? {
         switch self {
         case .diskImageNotFound(let path):
-            "Disk image not found at '\(path)'."
+            return "Disk image not found at '\(path)'."
         case .scriptNotFound(let path):
-            "User-data script not found at '\(path)'."
+            return "User-data script not found at '\(path)'."
         case .mountFailed(let reason):
-            "Failed to mount guest disk: \(reason)."
-        case .processFailed(let command, let exitCode):
-            "Command failed with exit code \(exitCode): \(command)."
+            return "Failed to mount guest disk: \(reason)."
+        case .processFailed(let command, let stderr, let exitCode):
+            let snippet = stderr
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix(512)
+            if snippet.isEmpty {
+                return "Command failed with exit code \(exitCode): \(command)."
+            }
+            return "Command failed with exit code \(exitCode): \(command). stderr: \(snippet)"
         }
     }
 

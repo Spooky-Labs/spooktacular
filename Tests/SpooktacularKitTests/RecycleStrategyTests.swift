@@ -32,15 +32,30 @@ struct RecycleStrategyTests {
             #expect(mock.calls == ["stop:r1", "delete:r1", "clone:r1:base", "start:r1"])
         }
 
-        @Test("validate checks health and returns true for healthy VM")
+        @Test("validate checks health and returns readyForNextJob for healthy VM")
         func recloneValidate() async throws {
             let mock = MockNodeClient()
             let strategy = RecloneStrategy()
 
-            let result = try await strategy.validate(vm: "r1", using: mock, on: endpoint)
+            let outcome = try await strategy.validate(vm: "r1", using: mock, on: endpoint)
 
-            #expect(result == true)
+            #expect(outcome == .readyForNextJob)
             #expect(mock.calls == ["health:r1"])
+        }
+
+        @Test("validate returns failed when health reports false after reclone")
+        func recloneValidateFailedOnUnhealthy() async throws {
+            let mock = MockNodeClient()
+            mock.healthResult = false
+            let strategy = RecloneStrategy()
+
+            let outcome = try await strategy.validate(vm: "r1", using: mock, on: endpoint)
+
+            if case .failed = outcome {
+                // ok
+            } else {
+                Issue.record("Expected .failed, got \(outcome)")
+            }
         }
     }
 
@@ -79,15 +94,19 @@ struct RecycleStrategyTests {
             #expect(mock.calls.first == "exec:r1")
         }
 
-        @Test("validation failure returns false on non-zero exit")
+        @Test("validation failure returns needsRetry with a concrete reason")
         func scrubValidationFailure() async throws {
             let mock = MockNodeClient()
             mock.execResult = GuestExecResult(exitCode: 1, stdout: "", stderr: "leftover")
             let strategy = ScrubStrategy()
 
-            let result = try await strategy.validate(vm: "r1", using: mock, on: endpoint)
+            let outcome = try await strategy.validate(vm: "r1", using: mock, on: endpoint)
 
-            #expect(result == false)
+            if case .needsRetry(let reason) = outcome {
+                #expect(!reason.isEmpty)
+            } else {
+                Issue.record("Expected .needsRetry, got \(outcome)")
+            }
         }
 
         @Test("recycle throws RecycleError on non-zero exit code")

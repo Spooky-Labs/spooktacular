@@ -1,6 +1,47 @@
 import Foundation
 import SpookCore
 
+// MARK: - Errors
+
+/// An error that occurs when a Setup Assistant automation
+/// sequence is requested for an unsupported environment.
+///
+/// Returning a ``BootStep`` array of zero length would masquerade
+/// as success — the executor would run zero steps and the caller
+/// would see a "fresh" VM stuck on the language picker. Throwing
+/// forces the caller to decide: fall back to interactive setup,
+/// fail loudly, or map to a different macOS automation sequence.
+public enum SetupAutomationError: Error, Sendable, Equatable, LocalizedError {
+
+    /// No automation sequence is registered for the requested macOS
+    /// major version.
+    ///
+    /// - Parameters:
+    ///   - requested: The macOS major version number the caller
+    ///     asked for.
+    ///   - supported: The versions that have a registered sequence
+    ///     at the time of the call.
+    case unsupportedVersion(requested: Int, supported: Set<Int>)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedVersion(let requested, let supported):
+            let list = supported.sorted().map(String.init).joined(separator: ", ")
+            return "No Setup Assistant automation sequence for macOS \(requested). "
+                + "Supported versions: \(list)."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .unsupportedVersion:
+            "Install a supported macOS version from an IPSW, or skip Setup "
+            + "Assistant automation and complete setup interactively with "
+            + "`spook start <name>`."
+        }
+    }
+}
+
 // MARK: - Boot Step Types
 
 /// A single step in a Setup Assistant automation sequence.
@@ -197,18 +238,25 @@ public enum SetupAutomation {
     ///   - username: The account name and full name for the admin user.
     ///     Defaults to `"admin"`.
     ///   - password: The password for the admin user. Defaults to `"admin"`.
-    /// - Returns: An ordered array of boot steps. Returns an empty array
-    ///   if the version is not supported.
+    /// - Returns: An ordered, non-empty array of boot steps.
+    /// - Throws: ``SetupAutomationError/unsupportedVersion(requested:supported:)``
+    ///   when no registered sequence matches the macOS version. Callers
+    ///   receive an actionable error instead of a silently-empty step
+    ///   list that would leave the VM stranded on the first Setup
+    ///   Assistant screen.
     public static func sequence(
         for macOSVersion: Int,
         username: String = "admin",
         password: String = "admin"
-    ) -> [BootStep] {
+    ) throws -> [BootStep] {
         switch macOSVersion {
         case 15, 26:
             return sequoiaSequence(username: username, password: password)
         default:
-            return []
+            throw SetupAutomationError.unsupportedVersion(
+                requested: macOSVersion,
+                supported: supportedVersions
+            )
         }
     }
 

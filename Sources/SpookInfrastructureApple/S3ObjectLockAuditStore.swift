@@ -73,11 +73,15 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
 
     // MARK: - AuditSink
 
-    public func record(_ entry: AuditRecord) async {
+    public func record(_ entry: AuditRecord) async throws {
         do {
             _ = try await append(entry)
+        } catch let error as AuditSinkError {
+            throw error
+        } catch let error as S3AuditError {
+            throw AuditSinkError.recordingFailed(reason: error.localizedDescription)
         } catch {
-            Log.audit.error("S3ObjectLockAuditStore.record failed: \(error.localizedDescription, privacy: .public). Record dropped: \(entry.id, privacy: .public)")
+            throw AuditSinkError.recordingFailed(reason: "S3 append failed: \(error.localizedDescription)")
         }
     }
 
@@ -180,12 +184,57 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw S3AuditError.uploadFailed(code)
         }
+
+        // Confirm the object is locked. An Object-Lock-enabled
+        // bucket SHOULD apply the retention header, but a bucket
+        // misconfiguration (Object Lock turned off after bucket
+        // creation, or the role missing `s3:PutObjectRetention`)
+        // can accept the PUT and silently drop the lock. A HEAD
+        // with `x-amz-object-lock-mode` in the response confirms
+        // the lock stuck.
+        try await headVerifyLock(key: key, host: host)
+    }
+
+    /// Issues an S3 HEAD Object and fails if the object is not
+    /// under Object Lock. This is the WORM correctness check that
+    /// makes the adapter SOC 2 defensible.
+    private func headVerifyLock(key: String, host: String) async throws {
+        let url = URL(string: "https://\(host)/\(key)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        let now = Date()
+        let emptyHash = SHA256.hash(data: Data()).map { String(format: "%02x", $0) }.joined()
+        request.setValue(host, forHTTPHeaderField: "Host")
+        request.setValue(emptyHash, forHTTPHeaderField: "x-amz-content-sha256")
+        request.setValue(SigV4Signer.amzDate(now), forHTTPHeaderField: "x-amz-date")
+        if let token = sessionToken {
+            request.setValue(token, forHTTPHeaderField: "x-amz-security-token")
+        }
+        let signer = SigV4Signer(
+            credentials: .init(accessKeyID: accessKeyID, secretAccessKey: secretAccessKey, sessionToken: sessionToken),
+            region: region,
+            service: "s3"
+        )
+        request.setValue(signer.signature(for: request, body: Data(), date: now), forHTTPHeaderField: "Authorization")
+
+        let (_, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            throw S3AuditError.lockVerificationFailed(code)
+        }
+        guard let mode = http.value(forHTTPHeaderField: "x-amz-object-lock-mode"),
+              !mode.isEmpty else {
+            throw S3AuditError.notLocked
+        }
     }
 }
 
 public enum S3AuditError: Error, LocalizedError, Sendable {
     case missingCredentials
     case uploadFailed(Int)
+    case lockVerificationFailed(Int)
+    case notLocked
 
     public var errorDescription: String? {
         switch self {
@@ -193,6 +242,10 @@ public enum S3AuditError: Error, LocalizedError, Sendable {
             "AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY."
         case .uploadFailed(let code):
             "S3 PutObject failed with HTTP \(code)"
+        case .lockVerificationFailed(let code):
+            "S3 HEAD for lock verification failed with HTTP \(code)"
+        case .notLocked:
+            "S3 PutObject returned success but the object has no x-amz-object-lock-mode header — Object Lock is not enforced on this bucket."
         }
     }
 
@@ -206,6 +259,10 @@ public enum S3AuditError: Error, LocalizedError, Sendable {
             case 400: "Check SPOOK_AUDIT_S3_BUCKET name and SPOOK_AUDIT_S3_REGION — 400 often means the region's endpoint doesn't host that bucket."
             default: "HTTP \(code) from S3. Inspect CloudTrail for the failed PutObject call; the `Errors.S3.InvalidArgument` → bucket misconfiguration is the most common cause."
             }
+        case .lockVerificationFailed:
+            "HEAD after PUT failed. Grant `s3:GetObject` and `s3:GetObjectRetention` on the bucket policy."
+        case .notLocked:
+            "Enable Object Lock on the bucket (AWS S3 console → Properties → Object Lock → Enable). Object Lock cannot be turned on after bucket creation — create a new bucket with Object Lock enabled from the start."
         }
     }
 }

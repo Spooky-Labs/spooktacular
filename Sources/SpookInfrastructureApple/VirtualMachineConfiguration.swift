@@ -246,10 +246,24 @@ public enum VirtualMachineConfiguration {
             devices = []
 
         case .bridged(let interface):
+            // Cheap host-level pre-check via `getifaddrs(3)` so
+            // operators without the `com.apple.vm.networking`
+            // entitlement still get a "no such interface" error
+            // pointing at the real problem, rather than an empty
+            // `VZBridgedNetworkInterface.networkInterfaces` list
+            // that only reveals the entitlement issue indirectly.
+            //
+            // See: https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man3/getifaddrs.3.html
+            if !hostInterfaceExists(named: interface) {
+                Log.config.error(
+                    "Bridge interface '\(interface, privacy: .public)' is not present on this host (getifaddrs pre-check)."
+                )
+                throw NetworkConfigurationError.bridgeInterfaceNotFound(interface)
+            }
             let available = VZBridgedNetworkInterface.networkInterfaces
             guard let target = available.first(where: { $0.identifier == interface }) else {
                 let names = available.map(\.identifier).joined(separator: ", ")
-                Log.config.error("Bridge interface '\(interface, privacy: .public)' not found. Available: \(names, privacy: .public)")
+                Log.config.error("Bridge interface '\(interface, privacy: .public)' not visible to Virtualization. Available: \(names, privacy: .public)")
                 throw NetworkConfigurationError.bridgeInterfaceNotFound(interface)
             }
             let device = VZVirtioNetworkDeviceConfiguration()
@@ -269,5 +283,25 @@ public enum VirtualMachineConfiguration {
         }
 
         return devices
+    }
+
+    /// Walks the host's network interfaces via `getifaddrs(3)` and
+    /// reports whether any interface with the given BSD name
+    /// (`en0`, `bridge100`, etc.) is present. Errors from
+    /// `getifaddrs` are treated as "cannot tell" and return `true`
+    /// so we don't block legitimate configurations on a syscall
+    /// failure — the caller still falls through to the
+    /// `VZBridgedNetworkInterface` check.
+    static func hostInterfaceExists(named name: String) -> Bool {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return true }
+        defer { freeifaddrs(head) }
+        var current: UnsafeMutablePointer<ifaddrs>? = first
+        while let entry = current {
+            let ifname = String(cString: entry.pointee.ifa_name)
+            if ifname == name { return true }
+            current = entry.pointee.ifa_next
+        }
+        return false
     }
 }

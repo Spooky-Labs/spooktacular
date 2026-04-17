@@ -152,3 +152,140 @@ groups:
             available for jobs. Check GitHub API latency and the
             provisioning logs for slow brew/xcode-select steps.
           runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#time-to-green
+
+      - alert: SpooktacularRunnerClaimP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, host) (rate(spooktacular_runner_claim_duration_seconds_bucket[5m]))
+          ) > 30
+        for: 15m
+        labels:
+          severity: ticket
+          component: runners
+        annotations:
+          summary: "Runner idle-to-claimed p95 > 30s on {{ $labels.host }}"
+          description: |
+            SLO target is p95 < 30s. Sustained misses usually point at
+            GitHub API rate-limits or an overwhelmed controller watch loop.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#runner-claim-latency
+
+  # -------------------------------------------------------------------
+  - name: slo-user-facing
+    rules:
+      - alert: SpooktacularCloneLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, host) (rate(spooktacular_clone_duration_seconds_bucket[5m]))
+          ) > 5
+        for: 15m
+        labels:
+          severity: ticket
+          component: lifecycle
+          slo: clone-latency-p95
+        annotations:
+          summary: "Clone p95 > 5s on {{ $labels.host }} — SLO breach"
+          description: |
+            The user-facing clone latency SLO (p95 < 5s) is burning budget.
+            Check the APFS clonefile path — a regression here usually means
+            snapshot depth has grown past safe limits.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#clone-latency
+
+      - alert: SpooktacularAPIRequestP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(spooktacular_api_request_duration_seconds_bucket{status=~"2.."}[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: ticket
+          component: http-api
+          slo: api-request-latency-p95
+        annotations:
+          summary: "API p95 latency > 500ms for 10m"
+          description: |
+            User-facing SLO is p95 < 500ms. Current rate violates budget.
+            Profile the hot path — most breaches come from Keychain lookup
+            regressions or unbounded tenant-list scans.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#api-latency
+
+  # -------------------------------------------------------------------
+  - name: slo-platform
+    rules:
+      - alert: SpooktacularAuditWriteErrors
+        expr: |
+          sum(rate(spooktacular_audit_write_errors_total[5m]))
+          /
+          clamp_min(sum(rate(spooktacular_audit_writes_total[5m])), 1)
+          > 0.001
+        for: 15m
+        labels:
+          severity: page
+          component: audit
+          slo: audit-write-error-rate
+        annotations:
+          summary: "Audit write error rate > 0.1% — SLO breach, SOC 2 risk"
+          description: |
+            Audit writes failing means the Merkle chain is being broken
+            silently. Cordon the affected host(s) and investigate disk
+            pressure / IAM / S3 Object Lock connectivity immediately.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#audit-write-failure
+
+      - alert: SpooktacularReconcileQueueDeep
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le, pod) (rate(spooktacular_reconcile_queue_depth_bucket[5m]))
+          ) > 10
+        for: 15m
+        labels:
+          severity: ticket
+          component: controller
+          slo: reconcile-queue-depth-p95
+        annotations:
+          summary: "Reconcile queue p95 depth > 10 items"
+          description: |
+            Reconciler is falling behind. Check for a wedged watch stream
+            or a misbehaving CRD that keeps re-enqueueing.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#reconcile-backlog
+
+      - alert: SpooktacularTLSCertExpiringSoon
+        expr: min(spooktacular_tls_cert_days_until_expiry) < 14
+        for: 0m
+        labels:
+          severity: ticket
+          component: tls
+          slo: tls-cert-expiry
+        annotations:
+          summary: "Spooktacular TLS cert expires in < 14 days on {{ $labels.host }}"
+          description: |
+            Rotate the cert before it lapses. Production `spook serve`
+            refuses to start without valid TLS material.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#tls-rotation
+
+      - alert: SpooktacularAuditMerkleGap
+        expr: max(spooktacular_audit_gap_detection_seconds) > 900
+        for: 0m
+        labels:
+          severity: page
+          component: audit
+          slo: merkle-gap-detection
+        annotations:
+          summary: "Merkle audit gap detection > 15m — SOC 2 ship-blocker"
+          description: |
+            The audit verifier has not observed a fresh signed-tree head
+            in the last 15 minutes. Either the signer is down or writes
+            are not being published to S3 Object Lock.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#merkle-gap
+
+      - alert: SpooktacularControllerWatchStreamDown
+        expr: avg_over_time(up{job="spook-controller"}[5m]) < 0.999
+        for: 10m
+        labels:
+          severity: page
+          component: controller
+          slo: watch-stream-uptime
+        annotations:
+          summary: "Controller watch stream uptime < 99.9% over the last 5 minutes"
+          description: |
+            The controller's Kubernetes watch is flapping. Pods may be
+            CrashLoopBackOff or the API server is rate-limiting.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#controller-watch-down

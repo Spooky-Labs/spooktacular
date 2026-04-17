@@ -180,6 +180,19 @@ spec:
                       maxLength: 63
 
                 # ==============================================================
+                # Tenant
+                # ==============================================================
+                tenant:
+                  type: string
+                  description: >-
+                    Optional tenant identifier asserted by the user. The
+                    admission webhook verifies this matches the enclosing
+                    namespace's `spooktacular.app/tenant` label to prevent
+                    cross-tenant forgery. Omit in single-tenant deployments.
+                  maxLength: 63
+                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+
+                # ==============================================================
                 # Lifecycle
                 # ==============================================================
                 ephemeral:
@@ -288,6 +301,80 @@ spec:
                 Observed state of the macOS VM, updated by the Spooktacular
                 controller. Do not modify these fields manually.
               properties:
+                # -----------------------------------------------------------
+                # observedGeneration: the spec.generation the controller
+                # last reconciled. Clients use this to detect drift between
+                # desired and observed state.
+                # -----------------------------------------------------------
+                observedGeneration:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: >-
+                    The `metadata.generation` that the controller has most
+                    recently reconciled. When `status.observedGeneration` lags
+                    `metadata.generation`, the controller has not yet applied
+                    the most recent spec change.
+
+                # -----------------------------------------------------------
+                # conditions: standard K8s Condition meta/v1 shape. Clients
+                # should prefer conditions (Available/Progressing/Degraded)
+                # over phase for programmatic checks.
+                # -----------------------------------------------------------
+                conditions:
+                  type: array
+                  description: >-
+                    Standard Kubernetes conditions describing the current
+                    state of the VM. Uses the meta/v1 Condition shape.
+                  x-kubernetes-list-type: map
+                  x-kubernetes-list-map-keys:
+                    - type
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                      - lastTransitionTime
+                      - reason
+                      - message
+                    properties:
+                      type:
+                        type: string
+                        description: >-
+                          The condition type. Spooktacular uses `Available`,
+                          `Progressing`, and `Degraded`.
+                        maxLength: 316
+                        pattern: "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$"
+                      status:
+                        type: string
+                        description: Condition status.
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        minimum: 0
+                        description: The spec generation this condition reflects.
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                        description: >-
+                          Timestamp of the last status transition. Only
+                          updated when `status` changes; controllers
+                          preserve the prior value for no-op patches.
+                      reason:
+                        type: string
+                        description: Machine-readable cause (CamelCase).
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: "^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$"
+                      message:
+                        type: string
+                        description: Human-readable detail.
+                        maxLength: 32768
+
                 phase:
                   type: string
                   description: >-
@@ -353,11 +440,15 @@ spec:
           description: Current lifecycle phase of the VM.
           jsonPath: .status.phase
 
+        - name: Available
+          type: string
+          description: Available condition status (True / False).
+          jsonPath: .status.conditions[?(@.type=="Available")].status
+
         - name: IP
           type: string
           description: IP address of the running VM.
           jsonPath: .status.ip
-          priority: 0
 
         - name: Node
           type: string

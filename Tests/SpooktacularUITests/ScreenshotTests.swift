@@ -32,6 +32,17 @@ import XCTest
 /// | 16" Retina | 2880×1800 |
 ///
 /// Post-process with `scripts/process-screenshots.sh`.
+///
+/// ## Wait strategy
+///
+/// Every navigation step uses event-based waits
+/// (`waitForExistence(timeout:)`) rather than
+/// `Thread.sleep(forTimeInterval:)`. Fixed sleeps are a common
+/// source of flakes in CI: the one animation-settle duration
+/// that works on a fresh local macOS host is not the one that
+/// works on a busy `macos-26` runner, so we let the XCUITest
+/// framework poll the view hierarchy and proceed as soon as
+/// the target element is present.
 @MainActor
 final class ScreenshotTests: XCTestCase {
 
@@ -58,11 +69,24 @@ final class ScreenshotTests: XCTestCase {
     // MARK: - Helper
 
     /// Captures a named screenshot and attaches it to the test.
+    ///
+    /// Uses `waitForExistence` on the window to replace the
+    /// previous `Thread.sleep(forTimeInterval: 0.5)` — the
+    /// fixed sleep masked races on slow hosts and wasted time
+    /// on fast ones.
     private func captureScreenshot(named name: String) {
-        // Small delay for animations to settle.
-        Thread.sleep(forTimeInterval: 0.5)
+        // Ensure the window is hit-testable before grabbing
+        // pixels. `waitForExistence` returns immediately on hit
+        // and polls at ~100ms intervals otherwise, so the test
+        // is both faster on healthy hosts and more reliable on
+        // busy ones.
+        let window = app.windows.firstMatch
+        XCTAssertTrue(
+            window.waitForExistence(timeout: 5),
+            "window must exist before screenshotting"
+        )
 
-        let screenshot = app.windows.firstMatch.screenshot()
+        let screenshot = window.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
@@ -71,7 +95,15 @@ final class ScreenshotTests: XCTestCase {
 
     /// Captures the entire screen (including menu bar and Dock).
     private func captureFullScreen(named name: String) {
-        Thread.sleep(forTimeInterval: 0.5)
+        // Same reasoning as `captureScreenshot(named:)` —
+        // confirm the app window exists first so the screen
+        // shot is framed around a hosted window, not a
+        // half-drawn launch state.
+        let window = app.windows.firstMatch
+        XCTAssertTrue(
+            window.waitForExistence(timeout: 5),
+            "window must exist before full-screen capture"
+        )
 
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
@@ -134,7 +166,11 @@ final class ScreenshotTests: XCTestCase {
             let firstCell = sidebar.cells.firstMatch
             if firstCell.waitForExistence(timeout: 3) {
                 firstCell.click()
-                Thread.sleep(forTimeInterval: 0.5)
+                // Wait for the launch-screen Start button to
+                // exist — replaces a `Thread.sleep(0.5)` that
+                // was racing animation on busy hosts.
+                let startButton = app.buttons["vmStartButton"]
+                _ = startButton.waitForExistence(timeout: 5)
             }
         }
 
@@ -157,6 +193,11 @@ final class ScreenshotTests: XCTestCase {
         let inspectorButton = app.buttons["inspectorToggle"]
         if inspectorButton.waitForExistence(timeout: 3) {
             inspectorButton.click()
+            // Wait for a known inspector element to appear,
+            // rather than sleeping. The inspector exposes the
+            // `inspectorPane` accessibility identifier.
+            let pane = app.otherElements["inspectorPane"]
+            _ = pane.waitForExistence(timeout: 5)
         }
 
         captureScreenshot(named: "05_inspector")

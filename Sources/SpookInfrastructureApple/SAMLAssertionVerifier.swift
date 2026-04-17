@@ -83,7 +83,7 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
             throw SAMLError.issuerMismatch
         }
 
-        let conditions = extractConditions(within: signedElement, destination: destination)
+        let conditions = try extractConditions(within: signedElement, destination: destination)
         try validateConditions(conditions, now: Date())
 
         // W3C XMLDSig verification.
@@ -95,13 +95,14 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         // an attacker can't fill the cache with arbitrary IDs) and
         // BEFORE we return the identity. OWASP SAML §XSW/Replay.
         // TTL is the assertion's NotOnOrAfter plus skew; the cache
-        // auto-evicts expired entries.
+        // auto-evicts expired entries. `notOnOrAfter` is now
+        // guaranteed non-nil by `extractConditions`, so there is
+        // no "pessimistic default" path that can stretch a missing
+        // window into a permanent entry.
         if let assertionID = attribute(of: signedElement, named: "ID") {
-            let notOnOrAfter = conditions.notOnOrAfter
-                ?? Date().addingTimeInterval(3600) // pessimistic default
             try await replayCache.checkAndInsert(
                 id: assertionID,
-                expiresAt: notOnOrAfter.addingTimeInterval(clockSkew)
+                expiresAt: conditions.notOnOrAfter.addingTimeInterval(clockSkew)
             )
         }
 
@@ -135,19 +136,49 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         return issuer.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func extractConditions(within element: XMLCanonicalization.Element, destination: String?) -> SAMLConditions {
+    /// The subset of `<Conditions>` we validate. Both times are
+    /// **required** — an assertion missing either is rejected
+    /// upstream. The redundant-looking inner type exists
+    /// specifically so `validateConditions` can operate on
+    /// non-optional `Date` values and the fail-closed path is a
+    /// single throwing step instead of a chain of optional
+    /// unwraps that each silently degrade to "skip the check".
+    private struct ParsedConditions {
+        let notBefore: Date
+        let notOnOrAfter: Date
+        let audiences: [String]
+        let destination: String?
+    }
+
+    private func extractConditions(within element: XMLCanonicalization.Element, destination: String?) throws -> ParsedConditions {
         // `Date.ISO8601FormatStyle` accepts both the fractional-second
         // and no-fractional-second RFC 3339 forms, so we no longer
         // need to allocate two `ISO8601DateFormatter`s and fall
         // through from one to the other.
-        let conditionsElement = findFirst(localName: "Conditions", in: element)
-        let notBefore = conditionsElement.flatMap { attribute(of: $0, named: "NotBefore") }
-            .flatMap { try? Date($0, strategy: .iso8601) }
-        let notOnOrAfter = conditionsElement.flatMap { attribute(of: $0, named: "NotOnOrAfter") }
-            .flatMap { try? Date($0, strategy: .iso8601) }
+        //
+        // **Fail-closed on missing Conditions**. OWASP SAML Cheat
+        // Sheet §Conditions: SPs MUST reject assertions lacking
+        // NotBefore + NotOnOrAfter. The prior implementation
+        // returned a struct with `nil` times and `validateConditions`
+        // silently skipped both checks — an IdP (or attacker with
+        // signing capability via a compromised cert) could mint a
+        // permanent assertion. Here every missing-or-unparseable
+        // time throws `missingConditions` before we ever reach the
+        // validation step.
+        guard let conditionsElement = findFirst(localName: "Conditions", in: element) else {
+            throw SAMLError.missingConditions
+        }
+        guard let notBeforeStr = attribute(of: conditionsElement, named: "NotBefore"),
+              let notBefore = try? Date(notBeforeStr, strategy: .iso8601) else {
+            throw SAMLError.missingConditions
+        }
+        guard let notOnOrAfterStr = attribute(of: conditionsElement, named: "NotOnOrAfter"),
+              let notOnOrAfter = try? Date(notOnOrAfterStr, strategy: .iso8601) else {
+            throw SAMLError.missingConditions
+        }
 
         var audiences: [String] = []
-        if let restriction = conditionsElement.flatMap({ findFirst(localName: "AudienceRestriction", in: $0) }) {
+        if let restriction = findFirst(localName: "AudienceRestriction", in: conditionsElement) {
             for child in restriction.children {
                 if case .element(let audElement) = child,
                    audElement.localName == "Audience",
@@ -157,7 +188,7 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
             }
         }
 
-        return SAMLConditions(
+        return ParsedConditions(
             notBefore: notBefore,
             notOnOrAfter: notOnOrAfter,
             audiences: audiences,
@@ -165,17 +196,20 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         )
     }
 
-    private func validateConditions(_ conditions: SAMLConditions, now: Date) throws {
+    private func validateConditions(_ conditions: ParsedConditions, now: Date) throws {
         // Apply the same 60s clock-skew tolerance as OIDC. Without
         // it, host-clock drift (common on EC2 Mac) causes
         // intermittent rejection of valid assertions. OWASP SAML
         // Cheat Sheet §Clock Drift recommends 60–120 s.
-        if let notBefore = conditions.notBefore,
-           now < notBefore.addingTimeInterval(-clockSkew) {
+        //
+        // `notBefore` and `notOnOrAfter` are now non-optional —
+        // `extractConditions` throws `.missingConditions` upstream
+        // when either is absent — so this path is a pure
+        // comparison with no "skip the check" branches.
+        if now < conditions.notBefore.addingTimeInterval(-clockSkew) {
             throw SAMLError.conditionNotYetValid
         }
-        if let notOnOrAfter = conditions.notOnOrAfter,
-           now >= notOnOrAfter.addingTimeInterval(clockSkew) {
+        if now >= conditions.notOnOrAfter.addingTimeInterval(clockSkew) {
             throw SAMLError.assertionExpired
         }
         if let expectedAudience = config.audience {
@@ -504,6 +538,11 @@ public enum SAMLError: Error, LocalizedError, Sendable, Equatable {
     case signatureVerificationFailed
     case signatureWrappingDetected
 
+    /// The `<Conditions>` element is absent, or its `NotBefore` /
+    /// `NotOnOrAfter` attributes are missing / unparseable. OWASP
+    /// SAML Cheat Sheet §Conditions: fail closed on any of these.
+    case missingConditions
+
     /// A previously-seen assertion ID arrived again within its
     /// validity window. OWASP SAML §Replay requires rejection.
     case assertionReplayed
@@ -540,6 +579,8 @@ public enum SAMLError: Error, LocalizedError, Sendable, Equatable {
             "SAML XML signature RSA-SHA256 verification failed"
         case .signatureWrappingDetected:
             "SAML Reference URI does not match the signed Assertion ID — potential signature wrapping attack"
+        case .missingConditions:
+            "SAML assertion is missing a required Conditions element, NotBefore, or NotOnOrAfter — refusing to accept an unconstrained assertion"
         case .assertionReplayed:
             "SAML assertion with this ID has already been consumed (replay detected)"
         case .weakKey(let bits):
@@ -575,6 +616,8 @@ public enum SAMLError: Error, LocalizedError, Sendable, Equatable {
             "RSA-SHA256 verification failed. Confirm the IdP's public cert in `SAMLProviderConfig.certificate` matches the private key it signs with."
         case .signatureWrappingDetected:
             "The signed Reference URI points at a different element than the validated Assertion — classic XSW attack. Reject the assertion; do NOT relax this check."
+        case .missingConditions:
+            "The IdP must emit `<Conditions NotBefore=\"…\" NotOnOrAfter=\"…\">` on every assertion. An assertion without a bounded validity window is treated as permanently-valid by any SP that skips the check — we do not. Configure the IdP to include Conditions."
         case .assertionReplayed:
             "The assertion's ID was seen before within its validity window. Either the caller is replaying a valid assertion (reject) or the IdP is issuing duplicate IDs (misconfiguration)."
         case .weakKey(let bits):

@@ -1,0 +1,115 @@
+{{- if .Values.admissionWebhook.enabled }}
+# =============================================================================
+# ValidatingWebhookConfiguration — cross-tenant / image-allowlist validation
+# =============================================================================
+#
+# Fails closed (failurePolicy=Fail) so any missing / unreachable webhook
+# service rejects the request instead of silently allowing it. This is the
+# correct posture for tenant-isolation enforcement.
+#
+# Cert-manager injects the `caBundle` via the `inject-ca-from` annotation.
+# The serving certificate is issued by `certificates.yaml`.
+# =============================================================================
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-admission
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: admission-webhook
+  annotations:
+    # Cert-manager automatically populates `.webhooks[*].clientConfig.caBundle`
+    # from the referenced Certificate's CA once it is issued.
+    cert-manager.io/inject-ca-from: "{{ .Release.Namespace }}/{{ include "spooktacular.fullname" . }}-admission-serving"
+webhooks:
+  - name: validate.macosvm.spooktacular.app
+    clientConfig:
+      service:
+        name: {{ include "spooktacular.fullname" . }}-controller
+        namespace: {{ .Release.Namespace }}
+        path: /admission/validate
+        port: {{ .Values.admissionWebhook.port | default 9443 }}
+      # caBundle is injected by cert-manager at runtime via the
+      # `cert-manager.io/inject-ca-from` annotation above. Leave empty.
+      caBundle: ""
+    rules:
+      - apiGroups:   ["spooktacular.app"]
+        apiVersions: ["v1alpha1"]
+        operations:  ["CREATE", "UPDATE"]
+        resources:   ["macosvms"]
+        scope:       Namespaced
+    # Fail closed — if the webhook is unreachable, CREATE/UPDATE is
+    # rejected. This is correct for tenant-isolation enforcement.
+    failurePolicy: {{ .Values.admissionWebhook.failurePolicy | default "Fail" }}
+    # The webhook is idempotent and only reads the object / namespace;
+    # declare `None` so the API server permits dry-run requests.
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    timeoutSeconds: {{ .Values.admissionWebhook.timeoutSeconds | default 5 }}
+    # Don't re-validate webhook-emitted events.
+    namespaceSelector:
+      matchExpressions:
+        - key: spooktacular.app/skip-admission
+          operator: DoesNotExist
+
+  - name: validate.runnerpool.spooktacular.app
+    clientConfig:
+      service:
+        name: {{ include "spooktacular.fullname" . }}-controller
+        namespace: {{ .Release.Namespace }}
+        path: /admission/validate
+        port: {{ .Values.admissionWebhook.port | default 9443 }}
+      caBundle: ""
+    rules:
+      - apiGroups:   ["spooktacular.app"]
+        apiVersions: ["v1alpha1"]
+        operations:  ["CREATE", "UPDATE"]
+        resources:   ["runnerpools"]
+        scope:       Namespaced
+    failurePolicy: {{ .Values.admissionWebhook.failurePolicy | default "Fail" }}
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
+    timeoutSeconds: {{ .Values.admissionWebhook.timeoutSeconds | default 5 }}
+    namespaceSelector:
+      matchExpressions:
+        - key: spooktacular.app/skip-admission
+          operator: DoesNotExist
+
+---
+{{- if .Values.tls.certManager.enabled }}
+# =============================================================================
+# Admission Webhook Serving Certificate
+# =============================================================================
+# Issued by the intermediate CA so the API server can verify the webhook's
+# TLS handshake. SAN covers the in-cluster Service DNS name.
+# =============================================================================
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "spooktacular.fullname" . }}-admission-serving
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "spooktacular.fullname" . }}-admission-serving
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days
+  commonName: {{ include "spooktacular.fullname" . }}-controller.{{ .Release.Namespace }}.svc
+  dnsNames:
+    - {{ include "spooktacular.fullname" . }}-controller
+    - {{ include "spooktacular.fullname" . }}-controller.{{ .Release.Namespace }}
+    - {{ include "spooktacular.fullname" . }}-controller.{{ .Release.Namespace }}.svc
+    - {{ include "spooktacular.fullname" . }}-controller.{{ .Release.Namespace }}.svc.cluster.local
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: {{ include "spooktacular.fullname" . }}-ca-issuer
+    kind: Issuer
+{{- end }}
+{{- end }}

@@ -36,8 +36,174 @@ extension Spook {
                 Apps.self,
                 Health.self,
                 Ports.self,
+                InstallAgent.self,
             ]
         )
+    }
+}
+
+// MARK: - Remote.InstallAgent
+
+extension Spook.Remote {
+
+    /// Bootstraps `spooktacular-agent` inside a running VM.
+    ///
+    /// Copies the `spooktacular-agent` binary from the host into
+    /// `/usr/local/bin/spooktacular-agent` on the guest via SCP,
+    /// then invokes it with `--install-agent` to register the
+    /// LaunchAgent. The VM must be booted and accepting SSH
+    /// connections — the same requirement every other ``Spook``
+    /// remote bootstrap operation has.
+    ///
+    /// ## Why this exists
+    ///
+    /// Zero-friction is the product requirement: `spook create` → VM
+    /// boots → `spook remote install-agent my-vm`. No manual scp,
+    /// no hand-edited plists, no SSH-in to run a script. The only
+    /// thing the operator has to ship into the VM is the agent
+    /// binary itself, which this command takes care of.
+    ///
+    /// ## Binary lookup
+    ///
+    /// By default the command looks for the binary next to the
+    /// running `spook` executable — that's where `swift build`
+    /// drops it and where installer packages place it. The
+    /// `--local-binary` option overrides this for operators who
+    /// built the agent with a custom toolchain or stash it
+    /// elsewhere.
+    struct InstallAgent: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "install-agent",
+            abstract: "Copy spooktacular-agent into a running VM and register it."
+        )
+
+        @Argument(help: "Name of the VM.")
+        var name: String
+
+        @Option(
+            name: .customLong("ssh-key"),
+            help: "Path to the SSH private key.",
+            transform: { $0.expandingTilde }
+        )
+        var sshKey: String = "~/.ssh/id_ed25519"
+
+        @Option(
+            name: .customLong("local-binary"),
+            help: "Path to a local `spooktacular-agent` binary to ship into the VM.",
+            transform: { $0.expandingTilde }
+        )
+        var localBinary: String?
+
+        @Option(help: "SSH user name inside the guest.")
+        var user: String = "admin"
+
+        @MainActor
+        func run() async throws {
+            let bundleURL = try requireBundle(for: name)
+
+            guard PIDFile.isRunning(bundleURL: bundleURL) else {
+                print(Style.error("✗ VM '\(name)' is not running."))
+                print(Style.dim("  Start it with 'spook start \(name)'."))
+                throw ExitCode.failure
+            }
+
+            let bundle = try VirtualMachineBundle.load(from: bundleURL)
+
+            guard let macAddress = bundle.spec.macAddress else {
+                print(Style.error("✗ VM '\(name)' has no MAC address for auto IP resolution."))
+                throw ExitCode.failure
+            }
+
+            guard let ip = try await IPResolver.resolveIP(macAddress: macAddress) else {
+                print(Style.error("✗ Could not resolve IP for VM '\(name)'."))
+                print(Style.dim("  The VM may still be booting. Try again in a few seconds."))
+                throw ExitCode.failure
+            }
+
+            let binary = try Self.resolveLocalBinary(explicit: localBinary)
+            print(Style.info("Installing agent from \(binary.path) to \(user)@\(ip)..."))
+
+            try await SSHExecutor.waitForSSH(ip: ip)
+
+            let installScript = try Self.buildInstallScript(localBinary: binary)
+            try await SSHExecutor.execute(
+                script: installScript,
+                on: ip,
+                user: user,
+                key: sshKey
+            )
+            print(Style.success("✓ Agent installed in '\(name)'."))
+        }
+
+        /// Resolves the agent binary. Explicit path wins; otherwise
+        /// we look for `spooktacular-agent` in the same directory as
+        /// the running `spook` executable, which is where `swift
+        /// build` and every installer drops it.
+        private static func resolveLocalBinary(
+            explicit: String?
+        ) throws -> URL {
+            if let explicit {
+                let url = URL(fileURLWithPath: explicit)
+                guard FileManager.default.isReadableFile(atPath: url.path) else {
+                    print(Style.error("✗ Local binary '\(explicit)' not found."))
+                    throw ExitCode.failure
+                }
+                return url
+            }
+            let spookPath = CommandLine.arguments.first ?? "/usr/local/bin/spook"
+            let spookURL = URL(fileURLWithPath: spookPath)
+                .resolvingSymlinksInPath()
+            let candidate = spookURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("spooktacular-agent")
+            if FileManager.default.isReadableFile(atPath: candidate.path) {
+                return candidate
+            }
+            print(Style.error("✗ Could not locate 'spooktacular-agent' next to '\(spookURL.path)'."))
+            print(Style.dim("  Pass '--local-binary <path>' to point at it explicitly."))
+            throw ExitCode.failure
+        }
+
+        /// Builds a self-contained installer script that pulls the
+        /// binary in over ``SSHExecutor/execute(script:on:user:key:)``'s
+        /// `scp` handoff, unpacks it to `/usr/local/bin`, and
+        /// invokes `--install-agent`.
+        ///
+        /// The actual binary copy rides ``SSHExecutor/execute(...)``'s
+        /// scp handoff — the script we emit here is intentionally
+        /// small: `mv` the uploaded binary into place and run it.
+        /// This keeps the install path identical to the one the
+        /// agent docs describe for manual installs.
+        private static func buildInstallScript(localBinary: URL) throws -> URL {
+            // SSHExecutor.execute uploads exactly ONE file to
+            // /tmp/spook-user-data.sh. We embed the agent binary
+            // path as a base64-encoded blob inside that script so
+            // the whole install arrives in one round-trip.
+            let data = try Data(contentsOf: localBinary)
+            let encoded = data.base64EncodedString()
+            let content = """
+            #!/bin/bash
+            set -euo pipefail
+
+            # Decode the embedded spooktacular-agent binary.
+            TARGET=/usr/local/bin/spooktacular-agent
+            TMPBIN=$(mktemp)
+            base64 -d > "$TMPBIN" <<'SPOOK_AGENT_BASE64_EOF'
+            \(encoded)
+            SPOOK_AGENT_BASE64_EOF
+
+            chmod 0755 "$TMPBIN"
+            sudo mkdir -p "$(dirname "$TARGET")"
+            sudo mv "$TMPBIN" "$TARGET"
+
+            # Register the LaunchAgent.
+            "$TARGET" --install-agent
+            """
+            return try ScriptFile.writeToCache(
+                script: content,
+                fileName: "install-agent.sh"
+            )
+        }
     }
 }
 

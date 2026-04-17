@@ -37,6 +37,17 @@ import SpookCore
 /// most common ES256 JWT implementation bug; we avoid it by
 /// construction.
 ///
+/// ## Key rotation
+///
+/// `WorkloadTokenIssuer` is immutable — to rotate signing keys,
+/// assemble an ``IssuerKeySet`` with the new "current" key plus
+/// the old key as "previous" and create a fresh issuer. The JWKS
+/// endpoint serves both keys for a 24-hour overlap so in-flight
+/// JWTs signed by the previous key still verify while the
+/// current key takes over new mints. See
+/// `Docs/runbooks/workload-key-rotation.md` for the operator
+/// procedure.
+///
 /// [IAM prerequisites docs]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc.html
 public struct WorkloadTokenIssuer: Sendable {
 
@@ -44,14 +55,14 @@ public struct WorkloadTokenIssuer: Sendable {
     /// has registered as the OIDC provider URL.
     public let issuerURL: String
 
-    /// Signer backed by a SEP-bound P-256 key (production) or
-    /// software P-256 key (tests / non-SEP hosts).
-    private let signer: any P256Signer
+    /// The signing-key set. Always contains a `current` key and
+    /// optionally a `previous` key during the rotation overlap.
+    public let keys: IssuerKeySet
 
-    /// Cached, stable key ID. AWS STS uses this to select the
-    /// correct JWK from the JWKS when multiple keys coexist
-    /// (e.g., during a rotation window).
-    public let kid: String
+    /// Stable key ID of the *current* key. Tokens minted today
+    /// carry this `kid` in their header; verifiers pair it with
+    /// the `current` JWK the JWKS endpoint serves.
+    public var kid: String { keys.current.kid }
 
     /// Default token TTL (15 minutes). STS credentials derived
     /// from the token have their own TTL (up to the role's
@@ -60,10 +71,23 @@ public struct WorkloadTokenIssuer: Sendable {
     /// longer-lived STS credentials thereafter.
     public static let defaultTokenTTL: TimeInterval = 900
 
-    public init(issuerURL: String, signer: any P256Signer) {
+    /// The overlap window during which a previous key is still
+    /// published via JWKS. 24 hours gives downstream verifiers a
+    /// full day to pick up the new JWKS before old-key-signed
+    /// tokens become unverifiable — comfortably beyond AWS IAM's
+    /// typical JWKS refresh interval.
+    public static let defaultRotationOverlap: TimeInterval = 24 * 60 * 60
+
+    /// Primary constructor — caller supplies a pre-assembled key set.
+    public init(issuerURL: String, keys: IssuerKeySet) {
         self.issuerURL = issuerURL
-        self.signer = signer
-        self.kid = Self.deriveKID(from: signer.publicKey)
+        self.keys = keys
+    }
+
+    /// Single-key convenience initializer. Equivalent to calling
+    /// ``init(issuerURL:keys:)`` with ``IssuerKeySet/single(_:)``.
+    public init(issuerURL: String, signer: any P256Signer) {
+        self.init(issuerURL: issuerURL, keys: .single(signer))
     }
 
     // MARK: - Token issuance
@@ -85,10 +109,12 @@ public struct WorkloadTokenIssuer: Sendable {
 
         // Header — note no `x5c` / `x5t` since we publish the
         // key via JWKS. `typ: "JWT"` is informational only but
-        // required by some strict verifiers.
+        // required by some strict verifiers. Always use the
+        // *current* key's `kid`; the `previous` key is only
+        // published for verification.
         let header: [String: String] = [
             "alg": "ES256",
-            "kid": kid,
+            "kid": keys.current.kid,
             "typ": "JWT"
         ]
 
@@ -121,7 +147,7 @@ public struct WorkloadTokenIssuer: Sendable {
         // Signer returns raw r ‖ s (64 bytes). Perfect for ES256
         // — NO DER stripping needed because our P256Signer
         // protocol is already raw-form.
-        let signature = try signer.signature(for: Data(signingInput.utf8))
+        let signature = try keys.current.signer.signature(for: Data(signingInput.utf8))
         let encodedSignature = Self.base64URL(signature)
 
         return "\(signingInput).\(encodedSignature)"
@@ -130,30 +156,22 @@ public struct WorkloadTokenIssuer: Sendable {
     // MARK: - JWKS
 
     /// Returns the JWKS document that `.well-known/jwks.json`
-    /// serves. Single-key for now; a future rotation scheme
-    /// would add the previous key alongside for an overlap
-    /// window.
+    /// serves. During a rotation window this contains both the
+    /// current and previous keys — verifiers still holding a
+    /// stale JWKS cache continue to validate recently-minted
+    /// previous-key tokens.
     public func jwks() -> JWKSDocument {
-        JWKSDocument(keys: [jwk()])
+        var list = [jwk(for: keys.current)]
+        if let prev = keys.previous {
+            list.append(jwk(for: prev))
+        }
+        return JWKSDocument(keys: list)
     }
 
-    /// Returns this issuer's JWK (single-key variant).
+    /// Returns this issuer's current JWK. Retained for binary
+    /// compatibility with the pre-rotation `single-key` tests.
     public func jwk() -> JWK {
-        // P-256 uncompressed point: 0x04 || x (32) || y (32).
-        let raw = signer.publicKey.x963Representation
-        // Skip the 0x04 format byte.
-        let xy = raw.dropFirst()
-        let x = xy.prefix(32)
-        let y = xy.suffix(32)
-        return JWK(
-            kty: "EC",
-            crv: "P-256",
-            alg: "ES256",
-            use: "sig",
-            kid: kid,
-            x: Self.base64URL(x),
-            y: Self.base64URL(y)
-        )
+        jwk(for: keys.current)
     }
 
     /// Returns the minimal OIDC discovery document. Fields
@@ -172,6 +190,24 @@ public struct WorkloadTokenIssuer: Sendable {
         )
     }
 
+    // MARK: - Rotation
+
+    /// Promotes the `newCurrent` key to `current` and demotes the
+    /// existing `current` to `previous`, discarding any key that
+    /// was previously in the `previous` slot.
+    ///
+    /// This is the functional, immutable rotation primitive the
+    /// operator runbook calls: copy the existing issuer, call
+    /// `rotated(to: newKey)`, then atomically swap the issuer in
+    /// the control-plane's DI container. In-flight JWTs signed by
+    /// the now-previous key continue to verify via JWKS for the
+    /// default ``defaultRotationOverlap`` window.
+    public func rotated(to newCurrent: any P256Signer) -> WorkloadTokenIssuer {
+        let newCurrentKey = IssuerKey(signer: newCurrent)
+        let set = IssuerKeySet(current: newCurrentKey, previous: keys.current)
+        return WorkloadTokenIssuer(issuerURL: issuerURL, keys: set)
+    }
+
     // MARK: - Helpers
 
     /// Derives a stable, short key ID from the public key
@@ -182,6 +218,24 @@ public struct WorkloadTokenIssuer: Sendable {
         let digest = SHA256.hash(data: publicKey.x963Representation)
         let hex = digest.map { String(format: "%02x", $0) }.joined()
         return String(hex.prefix(16))
+    }
+
+    /// Builds a JWK envelope from a single key entry.
+    private func jwk(for entry: IssuerKey) -> JWK {
+        // P-256 uncompressed point: 0x04 || x (32) || y (32).
+        let raw = entry.signer.publicKey.x963Representation
+        let xy = raw.dropFirst()    // skip the 0x04 format byte
+        let x = xy.prefix(32)
+        let y = xy.suffix(32)
+        return JWK(
+            kty: "EC",
+            crv: "P-256",
+            alg: "ES256",
+            use: "sig",
+            kid: entry.kid,
+            x: Self.base64URL(x),
+            y: Self.base64URL(y)
+        )
     }
 
     /// Canonical JSON encoding — sorted keys, no escape
@@ -206,6 +260,44 @@ public struct WorkloadTokenIssuer: Sendable {
 
     public static func base64URL(_ data: Data) -> String {
         base64URL(Array(data))
+    }
+}
+
+// MARK: - Key set value types
+
+/// One entry in the JWKS key set — a ``P256Signer`` paired with its
+/// precomputed `kid` so we don't rederive the hash on every mint or
+/// discovery call.
+public struct IssuerKey: Sendable {
+    public let signer: any P256Signer
+    public let kid: String
+
+    public init(signer: any P256Signer) {
+        self.signer = signer
+        self.kid = WorkloadTokenIssuer.deriveKID(from: signer.publicKey)
+    }
+
+    public init(signer: any P256Signer, kid: String) {
+        self.signer = signer
+        self.kid = kid
+    }
+}
+
+/// A current + optional previous signing key pair, serving the JWKS
+/// endpoint during a rotation overlap window.
+public struct IssuerKeySet: Sendable {
+    public let current: IssuerKey
+    public let previous: IssuerKey?
+
+    public init(current: IssuerKey, previous: IssuerKey? = nil) {
+        self.current = current
+        self.previous = previous
+    }
+
+    /// Single-key convenience — the starting state for any issuer
+    /// that has never rotated.
+    public static func single(_ signer: any P256Signer) -> IssuerKeySet {
+        IssuerKeySet(current: IssuerKey(signer: signer), previous: nil)
     }
 }
 

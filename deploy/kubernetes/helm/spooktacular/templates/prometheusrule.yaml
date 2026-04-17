@@ -1,0 +1,115 @@
+{{- if and .Values.metrics.enabled .Values.metrics.prometheusRule.enabled }}
+# =============================================================================
+# PrometheusRule — default alerting rules for the Spooktacular controller
+# =============================================================================
+#
+# Pairs with the ServiceMonitor. Covers the four signals that platform teams
+# want paged on for a Kubernetes operator:
+#
+#   1. SpooktacularControllerDown        — no scrape target responding.
+#   2. SpooktacularReconcileErrorRateHigh — > 10% reconcile errors over 5m.
+#   3. SpooktacularTLSCertExpiringSoon   — mTLS cert < 7 days to expiry.
+#   4. SpooktacularWebhookDownTooLong    — admission webhook 5xx > 5m.
+#
+# Operators can append to `additionalRules` in values.yaml.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "spooktacular.fullname" . }}
+  {{- with .Values.metrics.prometheusRule.namespace }}
+  namespace: {{ . }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "spooktacular.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+    {{- with .Values.metrics.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: spooktacular.controller
+      rules:
+        - alert: SpooktacularControllerDown
+          expr: |
+            max_over_time(up{job=~".*spooktacular.*"}[5m]) == 0
+          for: 3m
+          labels:
+            severity: critical
+            component: spooktacular-controller
+          annotations:
+            summary: Spooktacular controller is down
+            description: >-
+              No Spooktacular controller pod has reported `up` in the last 5
+              minutes. Admission webhook and reconciler are unavailable.
+            runbook_url: https://spooktacular.app/runbooks/controller-down
+
+        - alert: SpooktacularReconcileErrorRateHigh
+          expr: |
+            (
+              sum(rate(spooktacular_reconcile_errors_total[5m]))
+              /
+              clamp_min(sum(rate(spooktacular_reconcile_total[5m])), 1)
+            ) > 0.10
+          for: 10m
+          labels:
+            severity: warning
+            component: spooktacular-controller
+          annotations:
+            summary: Reconciler error rate > 10% over 10m
+            description: >-
+              More than 10% of reconcile invocations are failing. Check
+              controller logs for node unreachable, RBAC, or TLS errors.
+
+        - alert: SpooktacularTLSCertExpiringSoon
+          expr: |
+            spooktacular_tls_cert_expiry_seconds_remaining < {{ .Values.metrics.prometheusRule.tlsExpirySecondsThreshold | default 604800 }}
+          for: 15m
+          labels:
+            severity: warning
+            component: spooktacular-controller
+          annotations:
+            summary: Controller mTLS certificate expires in < 7 days
+            description: >-
+              `spooktacular_tls_cert_expiry_seconds_remaining` has dropped
+              below the 7-day threshold. Ensure cert-manager renewal is
+              healthy, or rotate manually.
+            runbook_url: https://spooktacular.app/runbooks/cert-renewal
+
+        - alert: SpooktacularWebhookDownTooLong
+          expr: |
+            max_over_time(spooktacular_webhook_up[5m]) == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: spooktacular-controller
+          annotations:
+            summary: Admission webhook unreachable > 5m
+            description: >-
+              The `ValidatingWebhookConfiguration` has been failing for more
+              than 5 minutes. With failurePolicy=Fail, all MacOSVM and
+              RunnerPool CREATE/UPDATE requests are being rejected.
+            runbook_url: https://spooktacular.app/runbooks/webhook-down
+
+        - alert: SpooktacularWatchStreamReconnecting
+          expr: |
+            increase(spooktacular_watch_stream_reconnect_total[10m]) > 10
+          for: 10m
+          labels:
+            severity: warning
+            component: spooktacular-controller
+          annotations:
+            summary: Watch stream reconnecting frequently
+            description: >-
+              The controller's Kubernetes watch stream has reconnected more
+              than 10 times in 10 minutes. Likely apiserver flakiness or
+              network partition between controller and API.
+
+    {{- with .Values.metrics.prometheusRule.additionalRules }}
+    - name: spooktacular.controller.user
+      rules:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+{{- end }}

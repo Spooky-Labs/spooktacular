@@ -95,6 +95,25 @@ public enum P256KeyStore {
             throw KeyStoreError.missingAuthenticationPrompt
         }
 
+        // Pre-flight: Secure Enclave availability.
+        //
+        // CryptoKit exposes `SecureEnclave.isAvailable` exactly
+        // for this — ask once before the `try
+        // SecureEnclave.P256.Signing.PrivateKey(...)` call that
+        // will otherwise throw a low-level error on Intel Macs
+        // without T2, on non-Apple hosts, and in hybrid
+        // deployments where the controller runs on non-Apple
+        // hardware. Apple docs:
+        // https://developer.apple.com/documentation/cryptokit/secureenclave
+        //
+        // The explicit `.secureEnclaveUnavailableOnHost` carries
+        // a fallback pointer to `loadOrCreateSoftware(at:)` so
+        // operators see the recovery path in the surfaced error
+        // without reading the source.
+        guard SecureEnclave.isAvailable else {
+            throw KeyStoreError.secureEnclaveUnavailableOnHost
+        }
+
         // Fast path — key already exists.
         if let existing = try await loadExisting(
             service: service, label: label,
@@ -344,6 +363,17 @@ public enum KeyStoreError: Error, LocalizedError {
     case missingAuthenticationPrompt
     case accessControlFailed(Error?)
     case secureEnclaveUnavailable(underlying: Error)
+
+    /// Pre-flight via `SecureEnclave.isAvailable` returned
+    /// `false` — this host has no SEP (Intel Mac without T2,
+    /// non-Apple hardware, or a stripped virtualized
+    /// environment). Distinct from
+    /// ``secureEnclaveUnavailable(underlying:)``, which reports
+    /// a late failure during key creation. Points at
+    /// ``P256KeyStore/loadOrCreateSoftware(at:)`` as the
+    /// fallback.
+    case secureEnclaveUnavailableOnHost
+
     case notFound(service: String, label: String)
     case userDeclined
     case presenceUnavailable(underlying: Error?)
@@ -362,6 +392,8 @@ public enum KeyStoreError: Error, LocalizedError {
             "Could not create a Keychain access-control policy: \(err.map { $0.localizedDescription } ?? "unknown error")"
         case .secureEnclaveUnavailable(let err):
             "Secure Enclave unavailable on this host: \(err.localizedDescription)"
+        case .secureEnclaveUnavailableOnHost:
+            "This host has no Secure Enclave (SecureEnclave.isAvailable == false). Switch to `P256KeyStore.loadOrCreateSoftware(at:)` for Intel Macs without a T2 chip, CI, or non-Apple controller deployments."
         case .notFound(let service, let label):
             "No key exists under service '\(service)' label '\(label)'."
         case .userDeclined:
@@ -392,6 +424,8 @@ public enum KeyStoreError: Error, LocalizedError {
             "Ensure the device has Touch ID, Watch unlock, or a login password configured. SEP keys with `.userPresence` require at least one of these."
         case .secureEnclaveUnavailable:
             "This host lacks a Secure Enclave (Apple Silicon or Intel Mac with T2). Use the software-key fallback path."
+        case .secureEnclaveUnavailableOnHost:
+            "Use `P256KeyStore.loadOrCreateSoftware(at: \"<path-to-pem>\")` on this host. Software keys rely on filesystem-level protection (0600) rather than hardware isolation — adequate for CI and development, not for production key material that requires hardware-bound non-extractability."
         case .notFound:
             "Generate the key with the appropriate CLI (e.g. `spook break-glass keygen --keychain-label <label>`)."
         case .userDeclined:

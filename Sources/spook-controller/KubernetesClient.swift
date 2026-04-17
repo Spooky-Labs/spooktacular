@@ -83,17 +83,27 @@ actor KubernetesClient {
     /// Opens a streaming watch, yielding events line-by-line as they arrive.
     ///
     /// Uses `URLSession.bytes(for:)` so events stream in real time instead of
-    /// buffering the entire response. A 410 Gone finishes the stream cleanly;
-    /// the reconciler loop will re-list and restart the watch.
+    /// buffering the entire response. Applies a 60-second request timeout so
+    /// idle connections don't hang half-open forever. A 410 Gone finishes the
+    /// stream cleanly; the reconciler loop will re-list and restart the watch.
+    ///
+    /// Use ``watchVMsWithReconnect(resourceVersion:)`` for the
+    /// auto-reconnecting variant that the reconcile loop consumes —
+    /// it wraps this single-pass function with exponential backoff
+    /// (5s → 10s → 30s) and increments
+    /// ``watchReconnectCount`` on every restart.
     func watchVMs(resourceVersion: String) -> AsyncThrowingStream<WatchEvent, Error> {
-        let url = crdURL(query: "watch=true&resourceVersion=\(resourceVersion)&allowWatchBookmarks=true")
+        let url = crdURL(query: "watch=true&resourceVersion=\(resourceVersion)&allowWatchBookmarks=true&timeoutSeconds=60")
 
         return AsyncThrowingStream { continuation in
             let task = Task { [session, token] in
                 var req = URLRequest(url: url)
                 req.httpMethod = "GET"
                 req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                req.timeoutInterval = 0
+                // 60s matches the `timeoutSeconds` query parameter so the
+                // API server and client agree on when the stream should
+                // be considered idle.
+                req.timeoutInterval = 60
 
                 let (bytes, response) = try await session.bytes(for: req)
 
@@ -119,19 +129,118 @@ actor KubernetesClient {
         }
     }
 
+    /// Total number of times the watch stream had to reconnect due to
+    /// timeout, server disconnect, or transient error.
+    ///
+    /// Exposed as the Prometheus metric
+    /// `spooktacular_watch_stream_reconnect_total` by the controller's
+    /// `/metrics` endpoint.
+    private var watchReconnectCount: Int = 0
+
+    /// Returns the current watch-reconnect counter.
+    func watchStreamReconnectTotal() -> Int { watchReconnectCount }
+
+    /// Streams MacOSVM watch events, automatically reconnecting on
+    /// timeout or transient failure with capped exponential backoff.
+    ///
+    /// The reconnect schedule is 5s → 10s → 30s and clamps at 30s for
+    /// further failures so a wedged API server doesn't spin the
+    /// reconciler. A successful reconnect resets the backoff.
+    ///
+    /// The initial ``resourceVersion`` is used for the first watch;
+    /// subsequent reconnects refresh `resourceVersion` via a list call
+    /// because a cached RV may be expired by the time we return.
+    func watchVMsWithReconnect(
+        resourceVersion initialResourceVersion: String
+    ) -> AsyncThrowingStream<WatchEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { [weak self] in
+                guard let self else { continuation.finish(); return }
+                var resourceVersion = initialResourceVersion
+                var backoffIndex = 0
+                let backoffSeconds: [Int] = [5, 10, 30]
+
+                while !Task.isCancelled {
+                    do {
+                        for try await event in await self.watchVMs(resourceVersion: resourceVersion) {
+                            continuation.yield(event)
+                            backoffIndex = 0  // reset on successful event
+                        }
+                        // Watch ended cleanly (e.g., 410 Gone) — re-list
+                        // to pick up a fresh resourceVersion.
+                        await self.noteWatchReconnect(reason: "watch-ended")
+                    } catch {
+                        await self.noteWatchReconnect(reason: "watch-error: \(error.localizedDescription)")
+                    }
+
+                    if Task.isCancelled { break }
+
+                    // Refresh resourceVersion via a list call so the next
+                    // watch starts from a current cursor.
+                    if let list = try? await self.listVMs(),
+                       let rv = list.metadata.resourceVersion {
+                        resourceVersion = rv
+                    }
+
+                    let delay = backoffSeconds[min(backoffIndex, backoffSeconds.count - 1)]
+                    backoffIndex += 1
+                    do {
+                        try await Task.sleep(for: .seconds(delay))
+                    } catch {
+                        break  // cancelled
+                    }
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private func noteWatchReconnect(reason: String) {
+        watchReconnectCount += 1
+        logger.warning("Watch stream reconnecting (total=\(self.watchReconnectCount)): \(reason, privacy: .public)")
+    }
+
     // MARK: - Patch Status
 
     /// Updates the status subresource via merge-patch.
+    ///
+    /// Writes ``MacOSVMStatus/observedGeneration`` and
+    /// ``MacOSVMStatus/conditions`` alongside the phase so every patch
+    /// advertises which spec generation the controller has reconciled.
+    /// Following controller-runtime conventions, each ``KubernetesCondition``
+    /// entry is serialised as a nested object the API server can
+    /// merge directly.
     func updateStatus(name: String, status: MacOSVMStatus) async throws {
         let url = crdURL(name: name, subresource: "status")
-        let patch: [String: Any] = [
-            "status": [
-                "phase": status.phase.rawValue,
-                "ip": status.ip as Any,
-                "nodeName": status.nodeName as Any,
-                "message": status.message as Any,
-            ].compactMapValues { $0 }
-        ]
+        var payload: [String: Any] = [
+            "phase": status.phase.rawValue,
+            "ip": status.ip as Any,
+            "nodeName": status.nodeName as Any,
+            "message": status.message as Any,
+        ].compactMapValues { $0 }
+
+        if let observed = status.observedGeneration {
+            payload["observedGeneration"] = observed
+        }
+
+        if let conditions = status.conditions, !conditions.isEmpty {
+            payload["conditions"] = conditions.map { condition -> [String: Any] in
+                var entry: [String: Any] = [
+                    "type": condition.type,
+                    "status": condition.status,
+                    "reason": condition.reason,
+                    "message": condition.message,
+                    "lastTransitionTime": condition.lastTransitionTime,
+                ]
+                if let og = condition.observedGeneration {
+                    entry["observedGeneration"] = og
+                }
+                return entry
+            }
+        }
+
+        let patch: [String: Any] = ["status": payload]
 
         var req = URLRequest(url: url)
         req.httpMethod = "PATCH"
@@ -145,6 +254,36 @@ actor KubernetesClient {
             throw ControllerError.apiError("PATCH status/\(name) failed: HTTP \(code)")
         }
         logger.debug("Updated status '\(name, privacy: .public)': \(status.phase.rawValue, privacy: .public)")
+    }
+
+    /// Fetches a single MacOSVM by name. Used by the reconciler when
+    /// merging conditions so ``KubernetesCondition/lastTransitionTime``
+    /// is preserved across status transitions.
+    func getVM(name: String) async throws -> MacOSVM {
+        let data = try await request(url: crdURL(name: name), method: "GET")
+        return try JSONDecoder().decode(MacOSVM.self, from: data)
+    }
+
+    /// Fetches a namespace's labels and annotations. Used by the
+    /// admission webhook to verify tenant/image-allowlist constraints.
+    func getNamespaceMetadata(name: String) async throws -> NamespaceMetadata {
+        let url = baseURL.appendingPathComponent("/api/v1/namespaces/\(name)")
+        let data = try await request(url: url, method: "GET")
+
+        struct NamespaceDTO: Decodable {
+            let metadata: Meta
+            struct Meta: Decodable {
+                let name: String
+                let labels: [String: String]?
+                let annotations: [String: String]?
+            }
+        }
+        let dto = try JSONDecoder().decode(NamespaceDTO.self, from: data)
+        return NamespaceMetadata(
+            name: dto.metadata.name,
+            labels: dto.metadata.labels ?? [:],
+            annotations: dto.metadata.annotations ?? [:]
+        )
     }
 
     // MARK: - Nodes

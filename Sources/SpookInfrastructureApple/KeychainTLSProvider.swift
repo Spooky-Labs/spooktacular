@@ -4,6 +4,45 @@ import SpookApplication
 import Security
 import CryptoKit
 
+/// Infrastructure-layer refinement of ``TLSIdentityProvider`` that
+/// carries the anchor-pinning contract.
+///
+/// Declared here (not in ``SpookCore``) because the method
+/// signature references `SecCertificate` — a Security-framework
+/// type that Clean Architecture prohibits the domain layer from
+/// importing. Callers that genuinely need pinning depend on this
+/// protocol directly; callers that only need the generic mTLS
+/// client stay on the vanilla ``TLSIdentityProvider``.
+///
+/// Apple's TLS hardening guide
+/// (https://developer.apple.com/documentation/security/preventing-insecure-network-connections)
+/// recommends anchor pinning for sensitive endpoints. The
+/// ``makeHTTPClient(pinnedCertificates:)`` contract: the returned
+/// client **MUST** reject any server chain that does not
+/// terminate at one of the passed-in anchors.
+public protocol PinnedTLSIdentityProvider: TLSIdentityProvider {
+
+    /// Returns an ``HTTPClient`` pinned to the supplied anchor
+    /// certificates.
+    ///
+    /// Implementations MUST:
+    ///
+    /// - Replace the system trust store during server-trust
+    ///   evaluation with the passed-in anchors (e.g., via
+    ///   `SecTrustSetAnchorCertificates` +
+    ///   `SecTrustSetAnchorCertificatesOnly`).
+    /// - Reject any handshake whose leaf certificate does not
+    ///   chain to at least one of `pinnedCertificates`.
+    /// - Continue to present client-certificate credentials for
+    ///   mTLS challenges when the implementation is stateful
+    ///   about an identity (as ``KeychainTLSProvider`` is).
+    ///
+    /// Passing an empty array is a programmer error — the
+    /// pinning promise is meaningless without anchors and
+    /// implementations MUST throw rather than silently accept.
+    func makeHTTPClient(pinnedCertificates: [SecCertificate]) throws -> any HTTPClient
+}
+
 /// Loads a client identity from the Keychain and configures a
 /// `URLSession` for mutual TLS (mTLS).
 ///
@@ -24,7 +63,7 @@ import CryptoKit
 /// )
 /// let session = tls.configuredSession()
 /// ```
-public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessionDelegate, @unchecked Sendable {
+public final class KeychainTLSProvider: NSObject, PinnedTLSIdentityProvider, URLSessionDelegate, @unchecked Sendable {
 
     // MARK: - Stored Properties
 
@@ -84,6 +123,38 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
         let configuration = URLSessionConfiguration.ephemeral
         configuration.tlsMinimumSupportedProtocolVersion = .TLSv13
         let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        return URLSessionHTTPClient(session: session)
+    }
+
+    /// Returns an ``HTTPClient`` pinned to the passed-in anchor
+    /// certificates, satisfying the
+    /// ``TLSIdentityProvider/makeHTTPClient(pinnedCertificates:)``
+    /// contract.
+    ///
+    /// The returned client evaluates every server chain against
+    /// **only** the supplied anchors — any chain that does not
+    /// terminate at one of them is rejected via
+    /// `cancelAuthenticationChallenge`. Client-certificate
+    /// challenges still present the stored ``clientIdentity``.
+    ///
+    /// - Parameter pinnedCertificates: The anchor certificates.
+    ///   Must be non-empty; an empty array throws
+    ///   ``TLSProviderError/invalidCACertificate`` because a
+    ///   pinned client with no anchors accepts no servers.
+    /// - Returns: A mTLS `HTTPClient` with pinned server trust.
+    public func makeHTTPClient(pinnedCertificates: [SecCertificate]) throws -> any HTTPClient {
+        guard !pinnedCertificates.isEmpty else {
+            throw TLSProviderError.invalidCACertificate
+        }
+        let delegate = PinnedAnchorsDelegate(
+            clientIdentity: clientIdentity,
+            anchors: pinnedCertificates
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.tlsMinimumSupportedProtocolVersion = .TLSv13
+        let session = URLSession(
+            configuration: configuration, delegate: delegate, delegateQueue: nil
+        )
         return URLSessionHTTPClient(session: session)
     }
 
@@ -247,14 +318,106 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
         }
 
         // Confirm the Keychain actually returned a SecIdentity.
-        // A mismatched dynamic type would crash `as!`, which on a
-        // first-run path that handles user-supplied cert/key bytes
-        // is a denial-of-service footgun. Surface the confusion as a
-        // typed error so callers can alert instead.
+        // A mismatched dynamic type would trap on force-cast, which
+        // on a first-run path that handles user-supplied cert/key
+        // bytes is a denial-of-service footgun. `CFGetTypeID` is the
+        // Apple-documented way to type-check an opaque CF ref —
+        // https://developer.apple.com/documentation/security/secidentity .
+        //
+        // After the type-id check, we bridge via `unsafeBitCast`.
+        // Swift's `as?` from `CFTypeRef` to a CoreFoundation type
+        // always succeeds on the Obj-C bridge regardless of the CF
+        // type id, so `as?` would be a misleading check. `unsafeBitCast`
+        // under a CFGetTypeID guard is the standard Swift idiom for
+        // narrowing `CFTypeRef` to a specific CF subclass.
         guard CFGetTypeID(identity) == SecIdentityGetTypeID() else {
             throw TLSProviderError.identityNotFound(identityStatus)
         }
-        return identity as! SecIdentity  // now guarded by CFGetTypeID
+        let secIdentity: SecIdentity = unsafeBitCast(identity, to: SecIdentity.self)
+
+        // Cert/key pairing verification. `SecIdentityCreateWithCertificate`
+        // and the Keychain lookup will happily return an identity whose
+        // cert+key are from *different* provisioning events if the
+        // Keychain has stray items — the label filter reduces the
+        // blast radius but doesn't close it. To prove the pairing is
+        // cryptographically sound, we sign a known nonce with the
+        // identity's private key and verify the signature with the
+        // cert's public key. A mismatch throws `.invalidIdentity`
+        // before the identity ever reaches a TLS handshake.
+        try Self.verifyIdentityPairing(secIdentity)
+        return secIdentity
+    }
+
+    /// Proves the identity's private key matches the certificate's
+    /// public key via a round-trip sign + verify over a fresh
+    /// random nonce.
+    ///
+    /// This is the Apple-documented (`SecIdentityCopyCertificate` +
+    /// `SecIdentityCopyPrivateKey` + `SecKeyCreateSignature` +
+    /// `SecKeyVerifySignature`) approach. See
+    /// https://developer.apple.com/documentation/security/seckey .
+    /// The algorithm is selected by the cert's key type:
+    ///
+    /// - EC keys sign with `ecdsaSignatureMessageX962SHA256`
+    /// - RSA keys sign with `rsaSignatureMessagePKCS1v15SHA256`
+    ///
+    /// The nonce is 32 random bytes from the system RNG, so no
+    /// attacker-influenced signing oracle is created.
+    private static func verifyIdentityPairing(_ identity: SecIdentity) throws {
+        var certRef: SecCertificate?
+        let certStatus = SecIdentityCopyCertificate(identity, &certRef)
+        guard certStatus == errSecSuccess, let cert = certRef else {
+            throw TLSProviderError.invalidIdentity("SecIdentityCopyCertificate failed (OSStatus \(certStatus))")
+        }
+        var privRef: SecKey?
+        let privStatus = SecIdentityCopyPrivateKey(identity, &privRef)
+        guard privStatus == errSecSuccess, let privateKey = privRef else {
+            throw TLSProviderError.invalidIdentity("SecIdentityCopyPrivateKey failed (OSStatus \(privStatus))")
+        }
+        guard let publicKey = SecCertificateCopyKey(cert) else {
+            throw TLSProviderError.invalidIdentity("SecCertificateCopyKey returned nil")
+        }
+
+        // Branch on key type — ECDSA vs RSA algorithm constants.
+        // `kSecAttrKeyType*` constants are `CFString` — we compare
+        // the bridged Swift String rather than switching, which
+        // requires expression pattern parity.
+        let privAttrs = SecKeyCopyAttributes(privateKey) as? [String: Any]
+        let keyType = privAttrs?[kSecAttrKeyType as String] as? String
+        let algo: SecKeyAlgorithm
+        if keyType == (kSecAttrKeyTypeECSECPrimeRandom as String) {
+            algo = .ecdsaSignatureMessageX962SHA256
+        } else if keyType == (kSecAttrKeyTypeRSA as String) {
+            algo = .rsaSignatureMessagePKCS1v15SHA256
+        } else {
+            throw TLSProviderError.invalidIdentity("Unsupported key type \(keyType ?? "(nil)") — expected EC or RSA")
+        }
+
+        // Fresh 32-byte nonce from the system RNG.
+        var nonceBytes = [UInt8](repeating: 0, count: 32)
+        let rngStatus = SecRandomCopyBytes(kSecRandomDefault, nonceBytes.count, &nonceBytes)
+        guard rngStatus == errSecSuccess else {
+            throw TLSProviderError.invalidIdentity("SecRandomCopyBytes failed (OSStatus \(rngStatus))")
+        }
+        let nonce = Data(nonceBytes)
+
+        var signErr: Unmanaged<CFError>?
+        guard let signature = SecKeyCreateSignature(
+            privateKey, algo, nonce as CFData, &signErr
+        ) as Data? else {
+            let err = signErr?.takeRetainedValue()
+            throw TLSProviderError.invalidIdentity("SecKeyCreateSignature failed: \(err?.localizedDescription ?? "(unknown)")")
+        }
+
+        var verifyErr: Unmanaged<CFError>?
+        let valid = SecKeyVerifySignature(
+            publicKey, algo, nonce as CFData, signature as CFData, &verifyErr
+        )
+        guard valid else {
+            throw TLSProviderError.invalidIdentity(
+                "Private key does not match certificate's public key — identity pairing is broken"
+            )
+        }
     }
 
     /// Removes Keychain items associated with a specific client certificate.
@@ -281,6 +444,58 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
     }
 }
 
+// MARK: - Pinned-Anchors Delegate
+
+/// `URLSessionDelegate` that evaluates every server-trust
+/// challenge against a fixed set of anchor certificates.
+///
+/// Used by ``KeychainTLSProvider/makeHTTPClient(pinnedCertificates:)``
+/// to satisfy the
+/// ``TLSIdentityProvider/makeHTTPClient(pinnedCertificates:)``
+/// pinning contract — any chain that does not terminate at one
+/// of the pinned anchors is rejected outright. Apple TLS docs:
+/// https://developer.apple.com/documentation/security/preventing-insecure-network-connections
+private final class PinnedAnchorsDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+
+    private let clientIdentity: SecIdentity
+    private let anchors: [SecCertificate]
+
+    init(clientIdentity: SecIdentity, anchors: [SecCertificate]) {
+        self.clientIdentity = clientIdentity
+        self.anchors = anchors
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        let method = challenge.protectionSpace.authenticationMethod
+        switch method {
+        case NSURLAuthenticationMethodServerTrust:
+            guard let serverTrust = challenge.protectionSpace.serverTrust else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+                return
+            }
+            SecTrustSetAnchorCertificates(serverTrust, anchors as CFArray)
+            SecTrustSetAnchorCertificatesOnly(serverTrust, true)
+            var evalError: CFError?
+            if SecTrustEvaluateWithError(serverTrust, &evalError) {
+                completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            } else {
+                completionHandler(.cancelAuthenticationChallenge, nil)
+            }
+        case NSURLAuthenticationMethodClientCertificate:
+            let credential = URLCredential(
+                identity: clientIdentity, certificates: nil, persistence: .forSession
+            )
+            completionHandler(.useCredential, credential)
+        default:
+            completionHandler(.performDefaultHandling, nil)
+        }
+    }
+}
+
 // MARK: - Errors
 
 /// Errors raised when constructing a ``KeychainTLSProvider``.
@@ -296,6 +511,12 @@ public enum TLSProviderError: Error, CustomStringConvertible {
     /// Could not find an identity pairing cert + key in the Keychain.
     case identityNotFound(OSStatus)
 
+    /// The `SecIdentity` returned from the Keychain carries a
+    /// private key that doesn't match the certificate's public
+    /// key. Detected via a sign-then-verify round-trip — see
+    /// `KeychainTLSProvider.verifyIdentityPairing`.
+    case invalidIdentity(String)
+
     public var description: String {
         switch self {
         case .invalidClientCertificate:
@@ -308,6 +529,8 @@ public enum TLSProviderError: Error, CustomStringConvertible {
             "Keychain operation failed with OSStatus \(status)"
         case .identityNotFound(let status):
             "SecIdentity not found after import (OSStatus \(status))"
+        case .invalidIdentity(let reason):
+            "TLS identity failed cert/key pairing verification: \(reason)"
         }
     }
 }

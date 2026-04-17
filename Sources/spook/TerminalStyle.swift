@@ -24,6 +24,91 @@ func requireBundle(for name: String) throws -> URL {
     }
 }
 
+// MARK: - CLI Exit Codes
+
+/// Documented exit codes used across the spook CLI.
+///
+/// Every command's `--help` discussion references these values so
+/// shell scripts can branch deterministically on failure mode.
+///
+/// ## Convention
+///
+/// | Code | Meaning |
+/// |------|---------|
+/// | 0    | Success |
+/// | 1    | Network failure, bundle-exists, or general I/O |
+/// | 2    | Insufficient disk space |
+/// | 3    | Invalid input / validation failure |
+/// | 4    | VM not found |
+/// | 5    | Permission denied |
+enum CLIExit {
+    static let success: Int32 = 0
+    static let generalFailure: Int32 = 1
+    static let diskSpace: Int32 = 2
+    static let validation: Int32 = 3
+    static let notFound: Int32 = 4
+    static let permission: Int32 = 5
+}
+
+// MARK: - JSON Output Helpers
+
+/// Prints an `Encodable` payload as JSON to stdout.
+///
+/// Uses sorted keys and pretty-printing for deterministic diffs
+/// in CI logs. On encoding failure, writes a structured error
+/// document so consumers never receive a half-encoded payload.
+///
+/// All commands that expose `--json` route through this helper so
+/// output is byte-identical regardless of command.
+///
+/// - Parameter value: The `Encodable` payload.
+func printJSON<T: Encodable>(_ value: T) {
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    encoder.dateEncodingStrategy = .iso8601
+    do {
+        let data = try encoder.encode(value)
+        if let string = String(data: data, encoding: .utf8) {
+            print(string)
+        }
+    } catch {
+        // Never leak a half-encoded payload. Emit a structured
+        // error document so shell pipelines can still `jq .error`.
+        let fallback = #"{"error":"encoding-failed","detail":"\#(error.localizedDescription)"}"#
+        print(fallback)
+    }
+}
+
+/// Prints a structured error document to stdout for `--json` mode.
+///
+/// - Parameters:
+///   - code: A stable, machine-readable error code.
+///   - message: A human-readable explanation.
+///   - hint: Optional recovery suggestion.
+func printJSONError(code: String, message: String, hint: String? = nil) {
+    struct ErrorDocument: Encodable {
+        let error: String
+        let message: String
+        let hint: String?
+    }
+    printJSON(ErrorDocument(error: code, message: message, hint: hint))
+}
+
+// MARK: - Operation Duration
+
+/// Formats an elapsed time in seconds for human-readable CLI output.
+///
+/// Values under 60s are shown as `"XX.Xs"`, longer operations
+/// fall back to `"XmXXs"`.
+func formatElapsed(_ seconds: TimeInterval) -> String {
+    if seconds < 60 {
+        return String(format: "%.1fs", seconds)
+    }
+    let minutes = Int(seconds) / 60
+    let remaining = Int(seconds) % 60
+    return "\(minutes)m\(remaining)s"
+}
+
 /// Styled terminal output with ANSI color codes.
 ///
 /// Respects the `NO_COLOR` environment variable and checks

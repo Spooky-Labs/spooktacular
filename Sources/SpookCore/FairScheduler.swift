@@ -248,9 +248,48 @@ public struct FairScheduler: Sendable {
             )
         }
 
-        // Step 2: distribute the remaining capacity by weight
-        // among tenants with unmet demand, iterating until no
-        // surplus is redistributable.
+        // Step 2a: no-starvation floor (conditional).
+        //
+        // If the pure weighted pass would give any hungry tenant a
+        // share of 0 AND capacity can afford a 1-slot floor for
+        // every hungry tenant, grant the floor first. This turns the
+        // scheduler into "max-min weighted fair" in the classical
+        // sense: proportional share dominates when it doesn't starve
+        // anyone, and the 1-slot floor kicks in only when it would.
+        //
+        // Without this conditional, (a) `weights=[1, 1, 100]` at
+        // `capacity=3` starves the two low-weight tenants, or (b) an
+        // unconditional floor distorts `weights=[3, 1]` at
+        // `capacity=8` from the expected 6:2 into 5:3.
+        let initiallyHungry = demand.filter { tenant, want in
+            let cap = policies[tenant]?.maxCap ?? .max
+            return min(want, cap) > 0
+        }
+        let initialTotalWeight = initiallyHungry.reduce(into: 0) { acc, pair in
+            acc += policies[pair.key]?.weight ?? 1
+        }
+        let anyWouldStarve: Bool
+        if initialTotalWeight > 0 && !initiallyHungry.isEmpty {
+            anyWouldStarve = initiallyHungry.contains { tenant, _ in
+                let weight = policies[tenant]?.weight ?? 1
+                return (remaining * weight) / initialTotalWeight == 0
+            }
+        } else {
+            anyWouldStarve = false
+        }
+        if anyWouldStarve
+            && remaining >= initiallyHungry.count
+            && !initiallyHungry.isEmpty
+        {
+            for tenant in initiallyHungry.keys {
+                allocation[tenant] = (allocation[tenant] ?? 0) + 1
+            }
+            remaining -= initiallyHungry.count
+        }
+
+        // Step 2b: distribute remaining capacity by weight among
+        // tenants with unmet demand, iterating until no surplus is
+        // redistributable.
         while remaining > 0 {
             let hungry = demand.filter { tenant, want in
                 let current = allocation[tenant] ?? 0
@@ -285,10 +324,27 @@ public struct FairScheduler: Sendable {
 
             // If the weighted split granted nothing (every share
             // floored to 0), allocate single slots round-robin by
-            // weight until we exhaust the remainder. Avoids an
-            // infinite loop when `remaining < totalWeight`.
+            // weight until we exhaust the remainder OR every
+            // tenant reaches demand/cap. Avoids an infinite loop
+            // when `remaining < totalWeight`, and preserves the
+            // no-starvation invariant: a low-weight tenant with
+            // unmet demand still gets at least one slot in the
+            // round before the outer loop exits via the empty
+            // `hungry` check.
             if slotsUsed == 0 {
+                // Round-robin fallback. Sort by LEAST-ALLOCATED first
+                // so zero-allocation tenants get a turn before
+                // already-served tenants receive a second slot. This
+                // is the no-starvation invariant: when `capacity >=
+                // hungry.count`, every hungry tenant gets at least one
+                // slot before any gets two. Ties broken by weight
+                // descending (honors the policy), then name ascending
+                // (determinism).
+                var grantedThisRound = false
                 for (tenant, want) in hungry.sorted(by: { lhs, rhs in
+                    let la = allocation[lhs.key] ?? 0
+                    let ra = allocation[rhs.key] ?? 0
+                    if la != ra { return la < ra }
                     let lw = policies[lhs.key]?.weight ?? 1
                     let rw = policies[rhs.key]?.weight ?? 1
                     if lw != rw { return lw > rw }
@@ -300,9 +356,16 @@ public struct FairScheduler: Sendable {
                     if current < min(want, cap) {
                         allocation[tenant] = current + 1
                         remaining -= 1
+                        grantedThisRound = true
                     }
                 }
-                break
+                // If nobody could absorb a slot (all at cap or
+                // demand), there is no further work to do — break
+                // to avoid spinning. Otherwise continue: the
+                // outer loop's `hungry` filter handles termination
+                // when demand is finally satisfied.
+                if !grantedThisRound { break }
+                continue
             }
 
             for (tenant, grant) in grants {

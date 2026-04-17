@@ -73,10 +73,15 @@ public actor MerkleAuditSink: AuditSink {
 
     // MARK: - AuditSink
 
-    public func record(_ entry: AuditRecord) async {
-        let entryData = (try? encoder.encode(entry)) ?? Data()
+    public func record(_ entry: AuditRecord) async throws {
+        let entryData: Data
+        do {
+            entryData = try encoder.encode(entry)
+        } catch {
+            throw AuditSinkError.recordingFailed(reason: "merkle encode failed: \(error.localizedDescription)")
+        }
 
-        // RFC 6962 leaf hash: SHA256(0x00 || data)
+        // RFC 6962 §2.1 leaf hash: SHA256(0x00 || data)
         let leafHash = merkleLeafHash(entryData)
         leaves.append(leafHash)
         rebuildTree()
@@ -101,7 +106,48 @@ public actor MerkleAuditSink: AuditSink {
             outcome: entry.outcome,
             correlationID: "\(entry.correlationID ?? entry.id)|merkle:\(root)|leaf:\(leaves.count - 1)"
         )
-        await inner.record(chainedEntry)
+        // Inner-sink failures propagate. If the base sink (JSONL /
+        // append-only / S3) cannot durably store the record, neither
+        // can the Merkle tree — otherwise callers see a "committed"
+        // tree root whose leaf is nowhere in the log.
+        try await inner.record(chainedEntry)
+    }
+
+    // MARK: - Hash-chain integrity on restart
+
+    /// Rehydrates the in-memory tree from an ordered list of prior
+    /// leaf payloads and verifies no record is missing.
+    ///
+    /// Call this at controller startup when the underlying store is
+    /// readable — it rebuilds the tree so a new STH from the
+    /// rehydrated root matches the prior committed root. If
+    /// `expectedPriorRoot` is supplied and doesn't match the
+    /// reconstruction, the method throws — a strong tamper signal,
+    /// because the on-disk log cannot have grown to a state that
+    /// reconstructs a root different from the one the controller
+    /// last signed.
+    public func rehydrate(
+        from records: [AuditRecord],
+        expectedPriorRoot: String? = nil
+    ) async throws {
+        leaves.removeAll()
+        tree.removeAll()
+        for record in records {
+            let data: Data
+            do {
+                data = try encoder.encode(record)
+            } catch {
+                throw AuditSinkError.recordingFailed(reason: "rehydrate encode failed: \(error.localizedDescription)")
+            }
+            leaves.append(merkleLeafHash(data))
+        }
+        rebuildTree()
+        if let expected = expectedPriorRoot {
+            let got = treeRoot().hexString
+            if got != expected {
+                throw AuditSinkError.truncatedRead
+            }
+        }
     }
 
     // MARK: - Signed Tree Head (NIST AU-10 Non-Repudiation)

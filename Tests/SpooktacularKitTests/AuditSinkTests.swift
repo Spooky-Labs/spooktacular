@@ -24,7 +24,7 @@ struct AuditSinkTests {
             correlationID: "req-123"
         )
 
-        await sink.record(record)
+        try await sink.record(record)
 
         let data = try Data(contentsOf: URL(fileURLWithPath: tmpPath))
         let line = String(data: data, encoding: .utf8)!.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -51,7 +51,7 @@ struct AuditSinkTests {
             action: "healthCheck",
             outcome: .success
         )
-        await sink.record(record)
+        try await sink.record(record)
 
         #expect(FileManager.default.fileExists(atPath: tmpPath))
     }

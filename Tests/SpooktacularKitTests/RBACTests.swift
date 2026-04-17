@@ -159,6 +159,79 @@ struct RBACTests {
         }
     }
 
+    // MARK: - Role equality includes permissions
+
+    @Suite("Role equality and hashing")
+    struct RoleEqualityTests {
+
+        @Test("Roles with the same id/tenant but divergent permissions are NOT equal")
+        func differingPermissionsBreakEquality() {
+            let a = Role(
+                id: "ci-operator", tenant: .default, name: "CI",
+                permissions: [Permission(resource: "vm", action: "start")]
+            )
+            let b = Role(
+                id: "ci-operator", tenant: .default, name: "CI",
+                permissions: [Permission(resource: "vm", action: "delete")]
+            )
+            #expect(a != b,
+                    "Role equality must include the permission set, not just id+tenant")
+            #expect(a.hashValue != b.hashValue,
+                    "Divergent permissions must produce divergent hashes")
+        }
+
+        @Test("Roles with the same id/tenant and same permissions are equal")
+        func matchingPermissionsAreEqual() {
+            let perms: Set<Permission> = [
+                Permission(resource: "vm", action: "start"),
+                Permission(resource: "vm", action: "stop"),
+            ]
+            let a = Role(id: "x", tenant: .default, name: "X", permissions: perms)
+            let b = Role(id: "x", tenant: .default, name: "X", permissions: perms)
+            #expect(a == b)
+            #expect(a.hashValue == b.hashValue)
+        }
+    }
+
+    // MARK: - AuthzOutcome
+
+    @Suite("AuthzOutcome")
+    struct AuthzOutcomeTests {
+
+        @Test("allow.allowed is true; deny/error default to false")
+        func allowedBoolMapping() {
+            #expect(AuthzOutcome.allow.allowed == true)
+            #expect(AuthzOutcome.deny.allowed == false)
+            #expect(AuthzOutcome.error(transient: RBACTestError.boom).allowed == false)
+        }
+
+        @Test("authorizeDetailed returns .error when the role store throws")
+        func roleStoreErrorSurfacesAsError() async {
+            let store = ThrowingRoleStore()
+            let auth = RBACAuthorization(roleStore: store, isolation: SingleTenantIsolation())
+            let ctx = AuthorizationContext(
+                actorIdentity: "alice", tenant: .default,
+                scope: .runner, resource: "vm", action: "create"
+            )
+            let outcome = await auth.authorizeDetailed(ctx)
+            guard case .error = outcome else {
+                Issue.record("Expected .error, got \(outcome)")
+                return
+            }
+        }
+
+        @Test("authorize (Bool) fails closed when the store throws")
+        func boolAuthorizeIsFailClosed() async {
+            let store = ThrowingRoleStore()
+            let auth = RBACAuthorization(roleStore: store, isolation: SingleTenantIsolation())
+            let ctx = AuthorizationContext(
+                actorIdentity: "alice", tenant: .default,
+                scope: .runner, resource: "vm", action: "create"
+            )
+            #expect(await auth.authorize(ctx) == false)
+        }
+    }
+
     // MARK: - Assignments
 
     @Suite("Assignments")
@@ -212,7 +285,8 @@ struct RBACTests {
         func oidcRoundTrip() throws {
             let config = IdPConfig.oidc(OIDCProviderConfig(
                 issuerURL: "https://login.example.com",
-                clientID: "app-1"
+                clientID: "app-1",
+                audience: "app-1"
             ))
             #expect(config.issuer == "https://login.example.com")
             let data = try JSONEncoder().encode(config)
@@ -232,5 +306,28 @@ struct RBACTests {
             let decoded = try JSONDecoder().decode(IdPConfig.self, from: data)
             #expect(decoded.issuer == "https://idp.example.com")
         }
+    }
+}
+
+// MARK: - Test support: throwing RoleStore
+
+/// Error used to simulate a transient role-store failure in tests.
+private enum RBACTestError: Error { case boom }
+
+/// Role store that always throws, modeling a ConfigMap outage or
+/// disk-read error. Used to verify ``RBACAuthorization`` distinguishes
+/// a transient store error from an explicit deny.
+private actor ThrowingRoleStore: RoleStore {
+    func rolesForActor(_ identity: String, tenant: TenantID) async throws -> [Role] {
+        throw RBACTestError.boom
+    }
+    func allRoles(tenant: TenantID) async throws -> [Role] {
+        throw RBACTestError.boom
+    }
+    func assign(_ assignment: RoleAssignment) async throws {
+        throw RBACTestError.boom
+    }
+    func revoke(actor: String, role: String, tenant: TenantID) async throws {
+        throw RBACTestError.boom
     }
 }

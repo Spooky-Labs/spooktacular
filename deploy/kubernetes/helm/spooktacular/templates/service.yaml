@@ -57,3 +57,16 @@ spec:
       port: 8082
       targetPort: health
       protocol: TCP
+
+    {{- if .Values.admissionWebhook.enabled }}
+    # -------------------------------------------------------------------------
+    # Admission webhook port — receives AdmissionReview requests from the
+    # kube-apiserver over TLS. The cert is issued by cert-manager
+    # (see templates/validatingwebhook.yaml) and trusted via the
+    # `cert-manager.io/inject-ca-from` annotation.
+    # -------------------------------------------------------------------------
+    - name: webhook
+      port: {{ .Values.admissionWebhook.port | default 9443 }}
+      targetPort: webhook
+      protocol: TCP
+    {{- end }}

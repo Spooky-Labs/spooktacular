@@ -3,12 +3,12 @@ import Foundation
 /// In-memory cache of the most recent workload-identity token
 /// minted by the control plane for this VM.
 ///
-/// A companion (``WorkloadTokenRefresher``, not yet shipped in
-/// this commit) is responsible for populating the cache on a
-/// timer and persisting the token to the on-disk path declared
-/// by `SPOOK_WORKLOAD_TOKEN_FILE` so unmodified AWS / GCP /
-/// Azure SDKs pick it up transparently. The cache itself is
-/// just the in-memory coordination point.
+/// ``WorkloadTokenRefresher`` is the companion actor that
+/// populates the cache on a timer and mirrors it to the on-disk
+/// path declared by `SPOOK_WORKLOAD_TOKEN_FILE` so unmodified
+/// AWS / GCP / Azure SDKs pick it up transparently. This cache
+/// itself is the in-memory coordination point; reads are
+/// lock-protected and cheap.
 public final class WorkloadTokenCache: @unchecked Sendable {
 
     public static let shared = WorkloadTokenCache()

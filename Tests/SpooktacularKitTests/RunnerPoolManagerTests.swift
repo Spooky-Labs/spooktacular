@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import SpooktacularKit
 @testable import SpookInfrastructureApple
@@ -106,6 +107,66 @@ struct RunnerPoolManagerTests {
             }
             let actions = await manager.reconcilePool(desired: desired, current: current)
             #expect(actions.isEmpty)
+        }
+    }
+
+    // MARK: - Drain-before-delete
+
+    @Suite("Drain before delete")
+    struct DrainBeforeDelete {
+
+        @Test("shrinking the pool emits drainRunner actions with a deadline")
+        func drainsExcess() async {
+            let fixed = Date(timeIntervalSince1970: 1_700_000_000)
+            let manager = RunnerPoolManager(now: { fixed })
+            let desired = PoolDesiredState(
+                minRunners: 1,
+                maxRunners: 1,
+                sourceVM: "macos-14-base",
+                mode: .warmPool,
+                preWarm: false
+            )
+            let current: [RunnerStatus] = [
+                RunnerStatus(name: "runner-001", state: .ready, retryCount: 0),
+                RunnerStatus(name: "runner-002", state: .ready, retryCount: 0),
+            ]
+            let actions = await manager.reconcilePool(
+                desired: desired,
+                current: current,
+                drainWindow: 300
+            )
+            #expect(actions.count == 1)
+            guard case .drainRunner(_, let deadline) = actions.first else {
+                Issue.record("Expected drainRunner action; got \(String(describing: actions.first))")
+                return
+            }
+            #expect(deadline == fixed.addingTimeInterval(300))
+        }
+
+        @Test("drains idle runners before busy ones")
+        func idleDrainsFirst() async {
+            let manager = RunnerPoolManager()
+            let desired = PoolDesiredState(
+                minRunners: 1,
+                maxRunners: 1,
+                sourceVM: "macos-14-base",
+                mode: .warmPool,
+                preWarm: false
+            )
+            let current: [RunnerStatus] = [
+                RunnerStatus(name: "runner-001", state: .busy, retryCount: 0),
+                RunnerStatus(name: "runner-002", state: .ready, retryCount: 0),
+            ]
+            let actions = await manager.reconcilePool(
+                desired: desired,
+                current: current
+            )
+            #expect(actions.count == 1)
+            if case .drainRunner(let name, _) = actions.first {
+                #expect(name == "runner-002", "idle runners must drain first")
+            } else {
+                Issue.record("Expected drainRunner action")
+            }
         }
     }
 

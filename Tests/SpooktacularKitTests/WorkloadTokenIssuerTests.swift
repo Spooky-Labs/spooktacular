@@ -219,6 +219,51 @@ struct WorkloadTokenIssuerTests {
         }
     }
 
+    // MARK: - Rotation
+
+    @Test("rotated() promotes new key and keeps old in JWKS overlap")
+    func rotationOverlap() throws {
+        let (original, originalKey) = Self.makeIssuer()
+        let next = P256.Signing.PrivateKey()
+        let rotated = original.rotated(to: next)
+
+        // Current kid is the new key's fingerprint.
+        let expectedNewKid = WorkloadTokenIssuer.deriveKID(from: next.publicKey)
+        #expect(rotated.kid == expectedNewKid)
+
+        // JWKS serves both keys during the overlap.
+        let jwks = rotated.jwks()
+        #expect(jwks.keys.count == 2)
+        let kids = Set(jwks.keys.map(\.kid))
+        #expect(kids.contains(expectedNewKid))
+        #expect(kids.contains(WorkloadTokenIssuer.deriveKID(from: originalKey.publicKey)))
+    }
+
+    @Test("tokens minted after rotation carry the new kid")
+    func rotationMintsWithCurrentKid() throws {
+        let (original, _) = Self.makeIssuer()
+        let next = P256.Signing.PrivateKey()
+        let rotated = original.rotated(to: next)
+        let token = try rotated.mintToken(subject: "vm/x", audience: "sts.amazonaws.com")
+        let headerJSON = try base64URLDecode(String(token.split(separator: ".")[0]))
+        let header = try JSONSerialization.jsonObject(with: headerJSON) as! [String: Any]
+        #expect(header["kid"] as? String == rotated.kid)
+        #expect(header["kid"] as? String == WorkloadTokenIssuer.deriveKID(from: next.publicKey))
+    }
+
+    @Test("second rotation evicts the oldest key (no triple-key JWKS)")
+    func rotationTwoStepDropsOldest() throws {
+        let (original, _) = Self.makeIssuer()
+        let k2 = P256.Signing.PrivateKey()
+        let k3 = P256.Signing.PrivateKey()
+        let afterFirst = original.rotated(to: k2)
+        let afterSecond = afterFirst.rotated(to: k3)
+        #expect(afterSecond.jwks().keys.count == 2)
+        let kids = Set(afterSecond.jwks().keys.map(\.kid))
+        #expect(kids.contains(WorkloadTokenIssuer.deriveKID(from: k2.publicKey)))
+        #expect(kids.contains(WorkloadTokenIssuer.deriveKID(from: k3.publicKey)))
+    }
+
     // MARK: - Helpers
 
     private func base64URLDecode(_ string: String) throws -> Data {

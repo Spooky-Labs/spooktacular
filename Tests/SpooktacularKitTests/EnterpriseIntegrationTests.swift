@@ -79,7 +79,7 @@ struct EnterpriseIntegrationTests {
             actorIdentity: "t", tenant: .default, scope: .read,
             resource: "h", action: "check", outcome: .success
         )
-        await sink.record(record)
+        try await sink.record(record)
         let sth = try await sink.signedTreeHead()
         #expect(sth.treeSize == 1)
         #expect(!sth.rootHash.isEmpty)
@@ -87,7 +87,7 @@ struct EnterpriseIntegrationTests {
     }
 
     @Test("MerkleAuditSink tree grows monotonically")
-    func merkleGrowth() async {
+    func merkleGrowth() async throws {
         let key = P256.Signing.PrivateKey()
         let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
         for i in 0..<5 {
@@ -95,13 +95,13 @@ struct EnterpriseIntegrationTests {
                 actorIdentity: "a\(i)", tenant: .default, scope: .read,
                 resource: "r", action: "a", outcome: .success
             )
-            await sink.record(r)
+            try await sink.record(r)
             #expect(await sink.treeSize() == i + 1)
         }
     }
 
     @Test("MerkleAuditSink inclusion proof is non-empty")
-    func merkleInclusionProof() async {
+    func merkleInclusionProof() async throws {
         let key = P256.Signing.PrivateKey()
         let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
         for i in 0..<4 {
@@ -109,7 +109,7 @@ struct EnterpriseIntegrationTests {
                 actorIdentity: "a", tenant: .default, scope: .read,
                 resource: "r\(i)", action: "a", outcome: .success
             )
-            await sink.record(r)
+            try await sink.record(r)
         }
         let proof = await sink.inclusionProof(forLeafAt: 1)
         #expect(proof != nil)
@@ -122,8 +122,8 @@ struct EnterpriseIntegrationTests {
     func federatedExpiry() {
         let expired = FederatedIdentity(issuer: "i", subject: "s", expiresAt: Date.distantPast)
         let valid = FederatedIdentity(issuer: "i", subject: "s", expiresAt: Date.distantFuture)
-        #expect(expired.isExpired)
-        #expect(!valid.isExpired)
+        #expect(expired.isExpired())
+        #expect(!valid.isExpired())
     }
 
     // MARK: - Distributed Lock

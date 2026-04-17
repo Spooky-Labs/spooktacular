@@ -14,10 +14,28 @@ import SwiftUI
 /// This matches the GhostVM pattern where each VM feels like its
 /// own app: the library is just the dashboard; workspaces stand
 /// on their own and can remain open after the library is hidden.
+///
+/// ## Window Restoration
+///
+/// Open workspace windows are persisted to
+/// `@AppStorage("openWorkspaces")` as a JSON array of names. On
+/// the next launch ``ContentView`` iterates the stored list and
+/// calls `openWindow(id:value:)` for each. VMs that no longer
+/// exist are silently skipped.
 @main
 struct SpooktacularApp: App {
 
     @State private var appState = AppState()
+
+    /// Controls whether the menu-bar icon renders as a busy
+    /// indicator when any VM is mid-transition (starting, stopping,
+    /// or cloning).
+    private var menuBarSymbol: String {
+        if appState.isAnyVMTransitioning { return "hourglass.circle" }
+        return appState.runningVMs.isEmpty
+            ? "square.stack.3d.up"
+            : "square.stack.3d.up.fill"
+    }
 
     var body: some Scene {
 
@@ -68,9 +86,7 @@ struct SpooktacularApp: App {
 
         MenuBarExtra(
             "Spooktacular",
-            systemImage: appState.runningVMs.isEmpty
-                ? "square.stack.3d.up"
-                : "square.stack.3d.up.fill"
+            systemImage: menuBarSymbol
         ) {
             MenuBarView()
                 .environment(appState)

@@ -195,8 +195,13 @@ struct VMRow: View {
             }
         }
         .padding(.vertical, 3)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityDescription)
+        // Group the icon + name + specs into a single VoiceOver
+        // element with a dynamic label + value, per Apple's
+        // accessibility guidance: label describes *what*, value
+        // describes the *current state*.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Virtual machine \(name)"))
+        .accessibilityValue(Text(accessibilityValueString))
         .task(id: isRunning) {
             guard isRunning else { agentConnected = nil; return }
             guard let client = appState.agentClients[name] else {
@@ -215,13 +220,14 @@ struct VMRow: View {
         }
     }
 
-    private var accessibilityDescription: String {
-        var parts = [name]
-        parts.append(isRunning ? "running" : "stopped")
+    /// Dynamic VoiceOver value — includes current status, hardware,
+    /// and agent connectivity so the user hears the full state in
+    /// one pass.
+    private var accessibilityValueString: String {
+        var parts: [String] = [isRunning ? "running" : "stopped"]
         if let bundle = appState.vms[name] {
-            let memoryInGigabytes = bundle.spec.memorySizeInGigabytes
-            parts.append("\(bundle.spec.cpuCount) CPU cores")
-            parts.append("\(memoryInGigabytes) gigabytes memory")
+            parts.append("\(bundle.spec.cpuCount) cores")
+            parts.append("\(bundle.spec.memorySizeInGigabytes) GB RAM")
         }
         if let connected = agentConnected {
             parts.append(connected ? "agent connected" : "agent not connected")

@@ -73,7 +73,7 @@ struct StartVMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        await IntentAppState.shared.startVM(vm.id)
+        try await IntentAppState.shared.startVM(vm.id)
         return .result(value: vm.id)
     }
 }
@@ -95,7 +95,7 @@ struct StopVMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        await IntentAppState.shared.stopVM(vm.id)
+        try await IntentAppState.shared.stopVM(vm.id)
         return .result(value: vm.id)
     }
 }
@@ -167,7 +167,7 @@ struct CloneVMIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        await IntentAppState.shared.cloneVM(source.id, to: destination)
+        try await IntentAppState.shared.cloneVM(source.id, to: destination)
         return .result()
     }
 }

@@ -206,11 +206,14 @@ mainSteps:
           echo "TLS certificate generated for ${INSTANCE_IP}."
 
   # --------------------------------------------------------------------------
-  # Step 4: Generate API token
+  # Step 4: Generate API token (stored in Keychain, never on disk)
   # --------------------------------------------------------------------------
   - action: aws:runShellScript
     name: GenerateAPIToken
-    description: "Generate a random API bearer token for authentication."
+    description: |
+      Generate a random API bearer token and store it in the macOS Keychain.
+      Never written to disk — spook serve reads it at startup via the
+      `security` binary. See DEPLOYMENT_HARDENING for Keychain ACL details.
     precondition:
       StringEquals:
         - "{{ Action }}"
@@ -219,22 +222,49 @@ mainSteps:
       runCommand:
         - |
           #!/bin/bash
-          set -euo pipefail
+          set -Eeuo pipefail
 
-          TOKEN_FILE="/etc/spooktacular/api-token"
-          echo "=== Configuring API Token ==="
+          KEYCHAIN_SERVICE="com.spooktacular"
+          KEYCHAIN_ACCOUNT="api-token"
 
-          sudo mkdir -p /etc/spooktacular
+          echo "=== Configuring API Token (Keychain) ==="
 
-          if [[ -f "${TOKEN_FILE}" ]]; then
-              echo "API token already exists. Skipping."
+          if security find-generic-password -s "${KEYCHAIN_SERVICE}" -a "${KEYCHAIN_ACCOUNT}" >/dev/null 2>&1; then
+              echo "API token already present in Keychain. Skipping."
               exit 0
           fi
 
-          API_TOKEN="$(openssl rand -hex 32)"
-          echo "${API_TOKEN}" | sudo tee "${TOKEN_FILE}" >/dev/null
-          sudo chmod 600 "${TOKEN_FILE}"
-          echo "API token generated at ${TOKEN_FILE}."
+          # 32-byte hex, mixed with the EC2 instance identity so tokens
+          # are deterministically tied to this host.
+          IMDS_TOKEN="$(curl -sf -X PUT \
+              -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' \
+              --connect-timeout 2 \
+              http://169.254.169.254/latest/api/token || true)"
+          if [[ -n "${IMDS_TOKEN}" ]]; then
+              INSTANCE_ID="$(curl -sf --connect-timeout 2 \
+                  -H "X-aws-ec2-metadata-token: ${IMDS_TOKEN}" \
+                  http://169.254.169.254/latest/meta-data/instance-id \
+                  || echo "unknown")"
+          else
+              INSTANCE_ID="local-$(hostname -s)"
+          fi
+
+          SEED="${INSTANCE_ID}-$(date +%s)-$(openssl rand -hex 16)"
+          API_TOKEN="$(printf '%s' "${SEED}" | openssl dgst -sha256 -hex | awk '{print $NF}')"
+
+          security add-generic-password \
+              -a "${KEYCHAIN_ACCOUNT}" \
+              -s "${KEYCHAIN_SERVICE}" \
+              -w "${API_TOKEN}" \
+              -U
+
+          # Remove any legacy plaintext token file from earlier bootstrap runs.
+          if [[ -f /etc/spooktacular/api-token ]]; then
+              sudo rm -f /etc/spooktacular/api-token
+              echo "Removed legacy plaintext token file."
+          fi
+
+          echo "API token stored in Keychain (service=${KEYCHAIN_SERVICE}, account=${KEYCHAIN_ACCOUNT})."
 
   # --------------------------------------------------------------------------
   # Step 5: Create base VM (optional)
@@ -291,12 +321,14 @@ mainSteps:
           API_HOST="{{ APIHost }}"
           PLIST_PATH="/Library/LaunchDaemons/app.spooktacular.serve.plist"
           CERT_DIR="/etc/spooktacular/tls"
-          TOKEN_FILE="/etc/spooktacular/api-token"
           SPOOK_BIN="$(command -v spook)"
-          API_TOKEN="$(sudo cat "${TOKEN_FILE}")"
 
           echo "=== Installing LaunchDaemon ==="
 
+          # NOTE: the API token is NEVER passed as a ProgramArguments entry
+          # — passing secrets via argv leaks them into `ps` output and into
+          # the on-disk plist. `spook serve` reads the token from the macOS
+          # Keychain using service=com.spooktacular, account=api-token.
           sudo tee "${PLIST_PATH}" >/dev/null <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -316,8 +348,6 @@ mainSteps:
                   <string>${CERT_DIR}/cert.pem</string>
                   <string>--tls-key</string>
                   <string>${CERT_DIR}/key.pem</string>
-                  <string>--api-token</string>
-                  <string>${API_TOKEN}</string>
               </array>
               <key>RunAtLoad</key>
               <true/>
