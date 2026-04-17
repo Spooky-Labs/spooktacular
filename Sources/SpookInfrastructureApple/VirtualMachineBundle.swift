@@ -132,6 +132,14 @@ public struct VirtualMachineBundle: Sendable {
         let (protection, policy) = BundleProtection.recommendedPolicy()
         do {
             try BundleProtection.apply(protection, to: url)
+            // Propagate to the config.json + metadata.json we just
+            // wrote. Data.write does NOT always mirror the parent
+            // directory's protection class — FileVault's inherit
+            // behavior varies across volumes and APFS snapshot
+            // states. Propagating explicitly here + at every other
+            // bundle-write site makes the inheritance contract
+            // auditable via BundleProtection.verifyInheritance.
+            try BundleProtection.propagate(to: url)
             Log.vm.info(
                 "Bundle '\(url.lastPathComponent, privacy: .public)' protection=\(protection.displayName, privacy: .public) policy=\(String(describing: policy), privacy: .public)"
             )
@@ -158,6 +166,11 @@ public struct VirtualMachineBundle: Sendable {
     public static func writeSpec(_ spec: VirtualMachineSpecification, to bundleURL: URL) throws {
         let data = try encoder.encode(spec)
         try data.write(to: bundleURL.appendingPathComponent(configFileName), options: .atomic)
+        // Re-propagate the bundle's protection class so the freshly
+        // (atomically-renamed) config.json carries the same class as
+        // the bundle dir itself. See docs/DATA_AT_REST.md § "VM
+        // lifetime involves many writes".
+        try? BundleProtection.propagate(to: bundleURL)
     }
 
     /// Writes updated metadata to an existing bundle directory.
@@ -172,6 +185,9 @@ public struct VirtualMachineBundle: Sendable {
         Log.vm.debug("Writing metadata to \(url.lastPathComponent, privacy: .public)")
         let data = try Self.encoder.encode(metadata)
         try data.write(to: url.appendingPathComponent(metadataFileName), options: .atomic)
+        // Same reason as `writeSpec` — atomic rename creates a fresh
+        // inode whose class we must re-apply.
+        try? BundleProtection.propagate(to: url)
     }
 
     // MARK: - Loading Bundles

@@ -88,6 +88,11 @@ extension Spook {
                     let name = url.deletingPathExtension().lastPathComponent
                     do {
                         try BundleProtection.apply(desired, to: url)
+                        // Re-apply to every file inside so an older
+                        // bundle migrated from `.none` brings its
+                        // config.json / metadata.json / disk.img
+                        // along for the ride.
+                        try BundleProtection.propagate(to: url)
                         print(Style.success("✓ \(name): \(desired.displayName)"))
                         applied += 1
                     } catch {

@@ -252,20 +252,44 @@ extension Spook {
             }
 
             var unprotected: [String] = []
+            var inheritanceViolations: [(String, Int)] = []
             for bundle in bundles {
                 let current = (try? BundleProtection.current(at: bundle)) ?? .none
+                let bundleName = bundle.deletingPathExtension().lastPathComponent
                 if current != recommended {
-                    unprotected.append(bundle.deletingPathExtension().lastPathComponent)
+                    unprotected.append(bundleName)
+                    continue
+                }
+                // Only walk bundles that ALREADY match the
+                // recommended class — a bundle at `.none` would
+                // trivially "pass" the inheritance check and
+                // mask the real issue.
+                if let violations = try? BundleProtection.verifyInheritance(bundleURL: bundle),
+                   !violations.isEmpty {
+                    inheritanceViolations.append((bundleName, violations.count))
                 }
             }
-            if unprotected.isEmpty {
-                return CheckResult(status: .pass, message: "Bundle protection: \(bundles.count) bundle(s) at \(recommended.displayName) [\(policy)]")
+            if !unprotected.isEmpty {
+                let list = unprotected.prefix(5).joined(separator: ", ")
+                let more = unprotected.count > 5 ? " (+\(unprotected.count - 5) more)" : ""
+                return CheckResult(
+                    status: .warning,
+                    message: "Bundle protection: \(unprotected.count) bundle(s) not at \(recommended.displayName): \(list)\(more). Run `spook bundle protect --all` to migrate."
+                )
             }
-            let list = unprotected.prefix(5).joined(separator: ", ")
-            let more = unprotected.count > 5 ? " (+\(unprotected.count - 5) more)" : ""
+            if !inheritanceViolations.isEmpty {
+                let summary = inheritanceViolations.prefix(5)
+                    .map { "\($0.0) (\($0.1) file\($0.1 == 1 ? "" : "s"))" }
+                    .joined(separator: ", ")
+                let more = inheritanceViolations.count > 5 ? " (+\(inheritanceViolations.count - 5) more)" : ""
+                return CheckResult(
+                    status: .warning,
+                    message: "Bundle protection: \(inheritanceViolations.count) bundle(s) have files below the parent class: \(summary)\(more). Run `spook bundle protect --all` to re-propagate."
+                )
+            }
             return CheckResult(
-                status: .warning,
-                message: "Bundle protection: \(unprotected.count) bundle(s) not at \(recommended.displayName): \(list)\(more). Run `spook bundle protect --all` to migrate."
+                status: .pass,
+                message: "Bundle protection: \(bundles.count) bundle(s) at \(recommended.displayName) [\(policy)], inheritance verified"
             )
         }
 

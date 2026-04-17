@@ -134,6 +134,16 @@ public enum SnapshotManager {
             let data = try VirtualMachineBundle.encoder.encode(info)
             try data.write(to: snapshotURL.appendingPathComponent(infoFileName))
 
+            // Inherit the bundle's data-at-rest protection class
+            // onto the snapshot dir + every file we just copied.
+            // A snapshot of a CUFUA bundle must NOT appear on disk
+            // at `.none` — that would defeat the whole point of
+            // the at-rest protection.
+            if let bundleClass = try? BundleProtection.current(at: bundle.url) {
+                try? BundleProtection.apply(bundleClass, to: snapshotURL)
+                try? BundleProtection.propagate(to: snapshotURL)
+            }
+
             Log.snapshot.notice("Saved snapshot '\(label, privacy: .public)' for \(bundle.url.lastPathComponent, privacy: .public) (\(totalSize) bytes)")
         } catch {
             Log.snapshot.error("Snapshot save failed, cleaning up: \(error.localizedDescription, privacy: .public)")

@@ -98,7 +98,7 @@ spook bundle protect <name> --none    # opt out explicitly
 - A logged-in user being compromised defeats this entirely. CUFUA is an at-rest control, not a runtime isolation control.
 - The protection class only applies to files written **after** the call. Bundles created before this feature landed stay `.none` until migrated with `spook bundle protect`.
 - `FileProtectionType` on macOS is a no-op without FileVault. Operators running without FileVault get the declaration but not the enforcement — `spook doctor` flags this.
-- VM lifetime involves many writes (snapshots, clones, disk image resizes). Every write path in `SpookInfrastructureApple` that creates a new file inside a bundle must preserve the protection class. We audit this with a test: any new file created inside a protected bundle inherits the class.
+- VM lifetime involves many writes (snapshots, clones, disk image resizes). Every write path in `SpookInfrastructureApple` that creates a new file inside a bundle must preserve the protection class. We audit this with `BundleProtection.verifyInheritance(bundleURL:)` plus a five-case test suite (`BundleProtectionInheritanceTests`) that exercises `create`, `writeSpec`, `writeMetadata`, and `clone` and asserts zero inheritance violations on the resulting bundle. `spook doctor --strict` runs the same verifier against every installed bundle so production deployments can catch drift.
 
 ## Adjacent control: provisioning-script cleanup
 

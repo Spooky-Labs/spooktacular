@@ -106,6 +106,17 @@ public enum CloneManager {
             metadata.setupCompleted = source.metadata.setupCompleted
             try VirtualMachineBundle.writeMetadata(metadata, to: destination)
 
+            // Inherit the source bundle's data-at-rest protection
+            // class — a CUFUA-protected source should never
+            // produce a `.none` clone on disk. We re-apply
+            // explicitly rather than relying on FileManager.copyItem
+            // to carry the class across, because APFS clonefile(2)
+            // preserves the class but FallbackCopy may not.
+            if let srcClass = try? BundleProtection.current(at: source.url) {
+                try? BundleProtection.apply(srcClass, to: destination)
+                try? BundleProtection.propagate(to: destination)
+            }
+
             Log.clone.notice("Clone complete: '\(destination.lastPathComponent, privacy: .public)'")
             return VirtualMachineBundle(
                 url: destination,

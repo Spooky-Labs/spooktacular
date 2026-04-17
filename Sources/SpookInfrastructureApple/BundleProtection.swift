@@ -97,6 +97,75 @@ public enum BundleProtection {
         return (attrs[.protectionKey] as? FileProtectionType) ?? .none
     }
 
+    // MARK: - Inheritance
+
+    /// Propagates the protection class of `bundleURL` to every
+    /// file + subdirectory beneath it.
+    ///
+    /// Called from the bundle write paths — `clone`, `save`
+    /// snapshot, `writeSpec`, `writeMetadata` — so that a file
+    /// added to a CUFUA-protected bundle can't silently come in
+    /// at `.none`. macOS's FileVault default *usually* inherits
+    /// the parent's class on the volumes we care about, but
+    /// `Data.write(to:)` + `FileManager.copyItem` don't guarantee
+    /// it across every volume / filesystem configuration we'll
+    /// encounter in the wild — this call makes the guarantee
+    /// explicit and testable.
+    ///
+    /// Silent on individual file failures (a file that went away
+    /// during the walk is not an error); throws only on the
+    /// bundle-directory read itself.
+    public static func propagate(to bundleURL: URL) throws {
+        let desired = try current(at: bundleURL)
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: bundleURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for case let child as URL in enumerator {
+            // Apply class to the file. If the child is a dir we
+            // still apply, since we want to preserve the inherit-
+            // from-parent chain for anything written into it later.
+            try? fm.setAttributes(
+                [.protectionKey: desired],
+                ofItemAtPath: child.path
+            )
+        }
+    }
+
+    /// Walks a bundle and returns files whose protection class is
+    /// *weaker* than the bundle directory's — the inheritance
+    /// violations a test can enumerate.
+    ///
+    /// "Weaker" follows Apple's documented ordering:
+    /// `.none` < `.completeUntilFirstUserAuthentication` <
+    /// `.completeUnlessOpen` < `.complete`. A stronger class on a
+    /// child is fine (over-protection isn't a violation).
+    public static func verifyInheritance(
+        bundleURL: URL
+    ) throws -> [(URL, FileProtectionType)] {
+        let desiredRank = try current(at: bundleURL).strengthRank
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: bundleURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var violations: [(URL, FileProtectionType)] = []
+        for case let child as URL in enumerator {
+            let values = try? child.resourceValues(forKeys: [.isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            guard let actual = try? current(at: child) else { continue }
+            if actual.strengthRank < desiredRank {
+                violations.append((child, actual))
+            }
+        }
+        return violations
+    }
+
     // MARK: - Portable-Mac detection
 
     /// True on Macs with a battery (MacBook / MacBook Air /
@@ -128,7 +197,7 @@ public enum BundleProtection {
     }()
 }
 
-// MARK: - Display
+// MARK: - Display + ordering
 
 extension FileProtectionType {
 
@@ -140,6 +209,24 @@ extension FileProtectionType {
         case .completeUntilFirstUserAuthentication: "CompleteUntilFirstUserAuthentication"
         case .none: "None"
         default: "Unknown(\(rawValue))"
+        }
+    }
+
+    /// Ordered strength rank used by ``BundleProtection/verifyInheritance``.
+    ///
+    /// Apple's own docs enumerate the classes from weakest to
+    /// strongest; mirroring that order as an Int lets the
+    /// verifier say "child >= parent" without a match on every
+    /// possible pair. Unknown classes sort below `.none` so a
+    /// future macOS-introduced class shows up as a violation
+    /// until the rank is extended explicitly.
+    public var strengthRank: Int {
+        switch self {
+        case .none: 0
+        case .completeUntilFirstUserAuthentication: 1
+        case .completeUnlessOpen: 2
+        case .complete: 3
+        default: -1
         }
     }
 }
