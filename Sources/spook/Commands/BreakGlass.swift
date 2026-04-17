@@ -52,29 +52,59 @@ extension Spook {
             )
 
             @Option(name: .customLong("private-key"),
-                    help: "Destination path for the Ed25519 private key (mode 0600).")
-            var privateKeyPath: String
+                    help: "Destination path for the Ed25519 private key (mode 0600). Mutually exclusive with --keychain-label.")
+            var privateKeyPath: String?
 
             @Option(name: .customLong("public-key"),
                     help: "Destination path for the matching public key (mode 0644).")
             var publicKeyPath: String
 
+            @Option(name: .customLong("keychain-label"),
+                    help: "Store the private key in the macOS Keychain with user-presence (Touch ID / passcode) required at retrieval. Satisfies OWASP ASVS V2.7.")
+            var keychainLabel: String?
+
             func run() async throws {
+                guard privateKeyPath != nil || keychainLabel != nil else {
+                    print(Style.error("✗ Provide either --private-key <path> or --keychain-label <label>."))
+                    print(Style.dim("  --keychain-label is the recommended mode on workstations with Touch ID."))
+                    throw ExitCode.failure
+                }
+                if privateKeyPath != nil && keychainLabel != nil {
+                    print(Style.error("✗ --private-key and --keychain-label are mutually exclusive."))
+                    throw ExitCode.failure
+                }
+
                 let key = Curve25519.Signing.PrivateKey()
-                try writeSecret(
-                    key.rawRepresentation,
-                    to: privateKeyPath,
-                    mode: 0o600,
-                    label: "Private key"
-                )
+
+                if let path = privateKeyPath {
+                    try writeSecret(
+                        key.rawRepresentation,
+                        to: path,
+                        mode: 0o600,
+                        label: "Private key"
+                    )
+                    print(Style.success("✓ Key pair written."))
+                    print(Style.dim("  Private: \(path) (keep this secret — HSM or sealed envelope)"))
+                }
+
+                if let label = keychainLabel {
+                    do {
+                        try BreakGlassSigningKeyStore.store(key, label: label)
+                    } catch let err as BreakGlassSigningKeyStoreError {
+                        print(Style.error("✗ \(err.localizedDescription)"))
+                        if let hint = err.recoverySuggestion { print(Style.dim("  \(hint)")) }
+                        throw ExitCode.failure
+                    }
+                    print(Style.success("✓ Key pair written."))
+                    print(Style.dim("  Private: macOS Keychain (label '\(label)', requires Touch ID / passcode at retrieval)"))
+                }
+
                 try writeSecret(
                     key.publicKey.rawRepresentation,
                     to: publicKeyPath,
                     mode: 0o644,
                     label: "Public key"
                 )
-                print(Style.success("✓ Key pair written."))
-                print(Style.dim("  Private: \(privateKeyPath) (keep this secret — HSM or sealed envelope)"))
                 print(Style.dim("  Public:  \(publicKeyPath) (distribute to agents via SPOOK_BREAKGLASS_PUBLIC_KEY)"))
             }
 
@@ -176,13 +206,37 @@ extension Spook {
             var uses: Int = 1
 
             @Option(name: .customLong("signing-key"),
-                    help: "Path to the Ed25519 private key file (raw 32-byte representation).")
-            var signingKeyPath: String
+                    help: "Path to the Ed25519 private key file (raw 32-byte representation). Mutually exclusive with --keychain-label.")
+            var signingKeyPath: String?
+
+            @Option(name: .customLong("keychain-label"),
+                    help: "Load the signing key from the macOS Keychain. Prompts for Touch ID / passcode (OWASP ASVS V2.7 per-action MFA).")
+            var keychainLabel: String?
 
             @Option(help: "Human-readable reason surfaced in every audit record. Strongly recommended.")
             var reason: String?
 
             func run() async throws {
+                guard signingKeyPath != nil || keychainLabel != nil else {
+                    print(Style.error("✗ Provide either --signing-key <path> or --keychain-label <label>."))
+                    throw ExitCode.failure
+                }
+                if signingKeyPath != nil && keychainLabel != nil {
+                    print(Style.error("✗ --signing-key and --keychain-label are mutually exclusive."))
+                    throw ExitCode.failure
+                }
+
+                // Per-action MFA (OWASP ASVS V2.7 / V4.3.1).
+                // Keychain mode triggers Touch ID at key retrieval,
+                // so the presence gate is redundant there — we only
+                // invoke it for file-path mode to close the
+                // compromised-shell scenario for that path too.
+                if signingKeyPath != nil {
+                    _ = try await AdminPresenceGate.requirePresence(
+                        reason: "Mint a break-glass ticket for tenant '\(tenant)'"
+                    )
+                }
+
                 // Parse TTL.
                 let ttlSeconds: TimeInterval
                 do {
@@ -194,13 +248,27 @@ extension Spook {
 
                 // Load the signing key.
                 let key: Curve25519.Signing.PrivateKey
-                do {
-                    let raw = try Data(contentsOf: URL(filePath: signingKeyPath))
-                    key = try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
-                } catch {
-                    print(Style.error("✗ Cannot read signing key at \(signingKeyPath): \(error.localizedDescription)"))
-                    print(Style.dim("  Generate one with `spook break-glass keygen` first."))
-                    throw ExitCode.failure
+                if let path = signingKeyPath {
+                    do {
+                        let raw = try Data(contentsOf: URL(filePath: path))
+                        key = try Curve25519.Signing.PrivateKey(rawRepresentation: raw)
+                    } catch {
+                        print(Style.error("✗ Cannot read signing key at \(path): \(error.localizedDescription)"))
+                        print(Style.dim("  Generate one with `spook break-glass keygen` first."))
+                        throw ExitCode.failure
+                    }
+                } else {
+                    let label = keychainLabel!
+                    do {
+                        key = try BreakGlassSigningKeyStore.load(
+                            label: label,
+                            reason: "Mint a break-glass ticket for tenant '\(tenant)'" + (reason.map { " — \($0)" } ?? "")
+                        )
+                    } catch let err as BreakGlassSigningKeyStoreError {
+                        print(Style.error("✗ \(err.localizedDescription)"))
+                        if let hint = err.recoverySuggestion { print(Style.dim("  \(hint)")) }
+                        throw ExitCode.failure
+                    }
                 }
 
                 let now = Date()

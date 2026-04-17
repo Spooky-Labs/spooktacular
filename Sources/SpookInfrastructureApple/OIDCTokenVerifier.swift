@@ -65,9 +65,17 @@ struct JWTClaims: Decodable, Sendable {
     let email: String?
     let groups: [String]?
     let roles: [String]?
+    /// Authentication Context Class Reference (OIDC Core §5.5.1.1).
+    /// Values are IdP-defined; we compare against the operator's
+    /// `requiredACRValues` allowlist verbatim.
+    let acr: String?
+    /// Authentication Methods References (RFC 8176). Parsed for
+    /// completeness; not currently used for policy decisions but
+    /// surfaced in ``FederatedIdentity/claims``.
+    let amr: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case iss, sub, exp, iat, nbf, aud, name, email, groups, roles
+        case iss, sub, exp, iat, nbf, aud, name, email, groups, roles, acr, amr
         case preferredUsername = "preferred_username"
     }
 }
@@ -231,6 +239,19 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             let nbf = Date(timeIntervalSince1970: nbfTimestamp)
             guard now >= nbf.addingTimeInterval(-clockSkew) else {
                 throw OIDCError.tokenNotYetValid
+            }
+        }
+
+        // 8a. Enforce Authentication Context Class Reference
+        // (OIDC Core §5.5.1.1, OWASP ASVS V2.7 / V4.3.1). When the
+        // operator configured `requiredACRValues`, the IdP-provided
+        // `acr` claim must be present and in the allowlist — the
+        // stepped-up authentication gate for privileged tokens.
+        if let required = config.requiredACRValues, !required.isEmpty {
+            guard let acr = claims.acr, required.contains(acr) else {
+                throw OIDCError.insufficientACR(
+                    required: required, received: claims.acr
+                )
             }
         }
 
@@ -450,6 +471,12 @@ public enum OIDCError: Error, LocalizedError, Sendable {
     /// JWT uses an unsupported or dangerous algorithm (e.g., none, HS256).
     case unsupportedAlgorithm(String)
 
+    /// The token's `acr` claim is missing or does not match any
+    /// of the operator-required values. Satisfies OWASP ASVS
+    /// V2.7 / V4.3.1 — the stepped-up-MFA gate for federated
+    /// privileged tokens.
+    case insufficientACR(required: Swift.Set<String>, received: String?)
+
     public var errorDescription: String? {
         switch self {
         case .malformedToken: "Malformed JWT token"
@@ -465,6 +492,8 @@ public enum OIDCError: Error, LocalizedError, Sendable {
             "Pinned JWKS at '\(path)' is missing, unreadable, or not a valid JWKS JSON document"
         case .signatureVerificationFailed: "JWT signature verification failed against provider's JWKS"
         case .unsupportedAlgorithm(let alg): "JWT uses unsupported algorithm '\(alg)'. Only RS256 is permitted."
+        case .insufficientACR(let required, let received):
+            "Token acr=\(received ?? "(missing)") did not match any required value (\(required.sorted().joined(separator: ", ")))."
         }
     }
 
@@ -494,6 +523,8 @@ public enum OIDCError: Error, LocalizedError, Sendable {
             "Signature did not verify. Usually means a kid mismatch (the JWKS doesn't have the key that signed the token — cache TTL may be too long) or a tampered token."
         case .unsupportedAlgorithm:
             "Only RS256 is accepted — an IdP emitting HS256/none/ES256 either points at the wrong service or is vulnerable to algorithm-confusion attacks. Do not relax this check."
+        case .insufficientACR:
+            "The IdP-emitted `acr` did not prove stepped-up authentication. Configure the IdP to require MFA on the relevant scope, or broaden `OIDCProviderConfig.requiredACRValues` to include the value the IdP actually emits."
         }
     }
 }

@@ -127,6 +127,32 @@ public struct OIDCProviderConfig: Sendable, Codable {
     /// segmentation.
     public let jwksURLOverride: String?
 
+    /// Required Authentication Context Class Reference values
+    /// (OIDC Core §2, §5.5.1.1, RFC 8176).
+    ///
+    /// When non-nil and non-empty, the verifier rejects any token
+    /// whose `acr` claim is missing or not in this set. This lets
+    /// operators require that the IdP performed stepped-up
+    /// authentication (MFA, smart card, FIDO2 touch) for the
+    /// current token — the OWASP-aligned satisfier of ASVS V2.7
+    /// "Out-of-band Verifier" when federated identities drive
+    /// privileged actions.
+    ///
+    /// Typical values:
+    ///
+    /// - `http://schemas.openid.net/pape/policies/2007/06/multi-factor`
+    ///   (legacy OpenID PAPE, still used by some IdPs)
+    /// - `http://schemas.openid.net/pape/policies/2007/06/multi-factor-physical`
+    ///   (MFA with a physical factor)
+    /// - `urn:mace:incommon:iap:silver` (InCommon assurance silver)
+    /// - IdP-specific strings: Okta's `phr`/`phrh`, Entra's
+    ///   `http://schemas.microsoft.com/claims/multipleauthn`, etc.
+    ///
+    /// `nil` disables the check — recommended only for service-
+    /// account token flows where the IdP's client-credentials
+    /// grant semantics make `acr` inapplicable.
+    public let requiredACRValues: Swift.Set<String>?
+
     public init(
         issuerURL: String,
         clientID: String,
@@ -134,7 +160,8 @@ public struct OIDCProviderConfig: Sendable, Codable {
         groupScopeMapping: [String: AuthScope] = [:],
         groupTenantMapping: [String: String] = [:],
         staticJWKSPath: String? = nil,
-        jwksURLOverride: String? = nil
+        jwksURLOverride: String? = nil,
+        requiredACRValues: Swift.Set<String>? = nil
     ) {
         self.issuerURL = issuerURL
         self.clientID = clientID
@@ -143,5 +170,6 @@ public struct OIDCProviderConfig: Sendable, Codable {
         self.groupTenantMapping = groupTenantMapping
         self.staticJWKSPath = staticJWKSPath
         self.jwksURLOverride = jwksURLOverride
+        self.requiredACRValues = requiredACRValues
     }
 }

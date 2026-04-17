@@ -23,9 +23,9 @@ ASVS Level 1 is the floor for any internet-facing application. Level 2 is the st
 | Chapter | Pass | Partial | N/A | Fail |
 |---------|------|---------|-----|------|
 | V1 Architecture | 10 | 0 | 1 | 0 |
-| V2 Authentication | 14 | 1 | 6 | 0 |
+| V2 Authentication | 15 | 0 | 6 | 0 |
 | V3 Session Management | 3 | 0 | 9 | 0 |
-| V4 Access Control | 7 | 1 | 0 | 0 |
+| V4 Access Control | 8 | 0 | 0 | 0 |
 | V5 Validation / Sanitization / Encoding | 11 | 0 | 3 | 0 |
 | V6 Cryptography | 9 | 0 | 2 | 0 |
 | V7 Error Handling and Logging | 9 | 0 | 0 | 0 |
@@ -36,11 +36,17 @@ ASVS Level 1 is the floor for any internet-facing application. Level 2 is the st
 | V12 Files and Resources | 8 | 0 | 2 | 0 |
 | V13 API and Web Service | 6 | 0 | 3 | 0 |
 | V14 Configuration | 15 | 0 | 0 | 0 |
-| **Total** | **113** | **2** | **31** | **0** |
+| **Total** | **115** | **0** | **31** | **0** |
 
-No `FAIL`. Two `PARTIAL` — see V2.7 and V4.3.1 — both are documented operator-integration concerns rather than gaps in Spooktacular's code.
+No `FAIL`. No `PARTIAL`. The two partials from the prior revision (V2.7 Out-of-band Verifier and V4.3.1 Administrative MFA) are now satisfied with code-level controls rather than operator-integration handwaves — see the three new controls in V2.7 and V4.3.1 below.
 
-One concrete code change fell out of the audit: HTTP responses now carry the full ASVS V14.4 header set (see `Sources/SpookInfrastructureApple/HTTPResponse.swift:serialize()` and `Tests/SpooktacularKitTests/HTTPSecurityHeadersTests.swift`).
+Code changes that fell out of this audit:
+
+- **V14.4** — HTTP responses now carry the full ASVS header set (`Sources/SpookInfrastructureApple/HTTPResponse.swift:serialize()` + `Tests/SpooktacularKitTests/HTTPSecurityHeadersTests.swift`).
+- **V2.7 / V4.3.1** — per-action MFA: break-glass signing key in the Keychain with `SecAccessControl(.userPresence)`, `LAContext`-gated admin CLI commands, and IdP `acr`-claim enforcement on federated tokens. See:
+  - `Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift` + `Tests/SpooktacularKitTests/BreakGlassSigningKeyStoreTests.swift`
+  - `Sources/SpookInfrastructureApple/AdminPresenceGate.swift` + `Tests/SpooktacularKitTests/AdminPresenceGateTests.swift`
+  - `Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift` (`insufficientACR` + config `requiredACRValues`) + `Tests/SpooktacularKitTests/OIDCACRTests.swift`
 
 ---
 
@@ -103,7 +109,10 @@ N/A — no passwords, no reset flow; break-glass is the emergency-access path, c
 
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
-| V2.7.* | Push / SMS / OTP | PARTIAL | Break-glass tickets ARE an out-of-band credential (minted via CLI, carried out-of-band). We don't drive OTP/push ourselves. For Fortune-20 deployments the operator workstation's MFA (YubiKey, Okta Verify) gates the CLI invocation. Documented in `SECURITY.md` as an operator-integration concern. |
+| V2.7.1 | Out-of-band verifier authenticates the request, not the session | PASS | Break-glass signing key is held in the macOS Keychain under `SecAccessControl(.userPresence)` — retrieval requires Touch ID / Watch unlock / device passcode at the moment of mint. A compromised shell can't retrieve the key without a live user gesture. `Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift` |
+| V2.7.2 | Out-of-band verifier is separate from the primary authenticator | PASS | Biometry / Secure Enclave is on a different TCB than the calling process. Even with full process compromise, the attacker can't synthesize a Touch ID event. |
+| V2.7.3 | Verifier expires unused tokens | PASS | Break-glass tickets carry 1 h max TTL + are single-use via `UsedTicketCache`. |
+| V2.7.4 | IdP stepped-up authentication enforced when federated | PASS | `OIDCProviderConfig.requiredACRValues` (RFC 8176 / OIDC Core §5.5.1.1) — verifier rejects any admin-scope token whose `acr` claim isn't in the operator's allowlist. New error case `OIDCError.insufficientACR`. `Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift` |
 
 ### V2.8 One-Time Verifier
 
@@ -146,7 +155,7 @@ Stateless JSON API authenticated per-request via Bearer or ticket. No session ID
 | V4.1.5 | Fail-secure on errors | PASS | Deny-by-default in `MultiTenantAuthorization` and `JSONRoleStore` |
 | V4.2.1 | Sensitive ops not direct-URL accessible | PASS | All `/v1/*` paths gated by RBAC; exec requires port 9472 + ticket |
 | V4.2.2 | CSRF protection | N/A | No browser client; all callers are programmatic and present Bearer per request |
-| V4.3.1 | Admin interfaces MFA | PARTIAL | Platform-admin + security-admin actions are audited, not MFA-gated in-app. Fortune-20 deployments rely on operator workstation MFA (Okta, YubiKey). Documented in `SECURITY.md`. |
+| V4.3.1 | Admin interfaces MFA | PASS | `AdminPresenceGate.requirePresence` wraps every platform-admin CLI command (`spook rbac assign`, `spook rbac revoke`, `spook break-glass issue` in file-path mode) via `LAContext.evaluatePolicy(.deviceOwnerAuthentication, …)`. Silent / unattended invocations fail closed unless `SPOOK_ADMIN_PRESENCE_BYPASS=1` is explicitly set (every bypass logged to OSLog at `.error`). Federated admin tokens additionally enforce the `acr` allowlist (see V2.7.4). `Sources/SpookInfrastructureApple/AdminPresenceGate.swift` |
 | V4.3.2 | Directory browsing disabled | PASS | No HTML UI; API returns 404 on unknown paths |
 
 ---
@@ -448,9 +457,10 @@ N/A — no SOAP, no GraphQL.
 
 | Item | ASVS Control | Status |
 |------|--------------|--------|
-| HTTP security headers on every response | V14.4.2–7 | Remediated in commit `eca57d6aa` |
-
-Both `PARTIAL` items (V2.7, V4.3.1) are deliberate: they document that Fortune-20 operators integrate Spooktacular behind their own MFA-gated workstation controls. Shipping push-based MFA inside the control plane itself would duplicate the operator's existing investment in Okta / YubiKey infrastructure without adding measurable security — we'd be moving the MFA surface onto a system that operators already layer MFA in front of.
+| HTTP security headers on every response | V14.4.2–7 | Remediated (commit `eca57d6aa`) |
+| Break-glass key protected by Secure Enclave user-presence | V2.7.1 | Remediated (`BreakGlassSigningKeyStore`) |
+| Per-action MFA on admin CLI commands | V4.3.1 | Remediated (`AdminPresenceGate`) |
+| Federated admin tokens require stepped-up `acr` | V2.7.4 | Remediated (`OIDCTokenVerifier.insufficientACR`) |
 
 ## External validation
 

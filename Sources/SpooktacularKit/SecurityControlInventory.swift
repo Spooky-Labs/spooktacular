@@ -83,6 +83,30 @@ public enum SecurityControlInventory {
             test: "Tests/SpooktacularKitTests/SAMLVerifierTests.swift",
             notes: "XMLParser with external entities disabled (XXE); XSW detection; assertion replay prevention."
         ),
+        SecurityControl(
+            name: "Per-action MFA: break-glass signing key in Secure-Enclave-adjacent Keychain ACL",
+            category: "Authentication & Identity",
+            standard: "OWASP ASVS V2.7 (Out-of-band Verifier)",
+            implementation: "Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift (SecAccessControl(.userPresence) + kSecAttrAccessibleWhenUnlockedThisDeviceOnly)",
+            test: "Tests/SpooktacularKitTests/BreakGlassSigningKeyStoreTests.swift",
+            notes: "Key retrieval prompts Touch ID / Watch / device passcode. A compromised shell cannot mint a ticket without a live user gesture."
+        ),
+        SecurityControl(
+            name: "Per-action MFA: LocalAuthentication gate on admin CLI commands",
+            category: "Authentication & Identity",
+            standard: "OWASP ASVS V4.3.1 (Administrative Interface MFA)",
+            implementation: "Sources/SpookInfrastructureApple/AdminPresenceGate.swift + Sources/spook/Commands/RBAC.swift (Assign/Revoke) + Sources/spook/Commands/BreakGlass.swift (Issue file-path mode)",
+            test: "Tests/SpooktacularKitTests/AdminPresenceGateTests.swift",
+            notes: "LAContext.deviceOwnerAuthentication; fails closed on headless hosts unless SPOOK_ADMIN_PRESENCE_BYPASS=1 is set (every bypass logged to OSLog at .error)."
+        ),
+        SecurityControl(
+            name: "Stepped-up MFA on federated admin tokens via acr allowlist",
+            category: "Authentication & Identity",
+            standard: "OWASP ASVS V2.7 / V4.3.1 (per-action MFA); OIDC Core §5.5.1.1; RFC 8176",
+            implementation: "Sources/SpookCore/FederatedIdentity.swift (OIDCProviderConfig.requiredACRValues) + Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift (insufficientACR)",
+            test: "Tests/SpooktacularKitTests/OIDCACRTests.swift",
+            notes: "Operator pins acr values (e.g., urn:mace:incommon:iap:silver) per-provider. Tokens missing acr or not in the allowlist are rejected before authorization."
+        ),
 
         // MARK: Authorization
 

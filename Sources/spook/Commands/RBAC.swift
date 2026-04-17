@@ -121,6 +121,13 @@ extension Spook.RBAC {
         var expiresIn: Int = 0
 
         func run() async throws {
+            // Per-action MFA (OWASP ASVS V4.3.1). Mutating RBAC
+            // is a platform-admin action; prompt for Touch ID /
+            // passcode before proceeding. Fails closed.
+            _ = try await AdminPresenceGate.requirePresence(
+                reason: "Assign role '\(role)' to '\(actor)' in tenant '\(tenant)'"
+            )
+
             let store = try JSONRoleStore(
                 configPath: ProcessInfo.processInfo.environment["SPOOK_RBAC_CONFIG"]
             )
@@ -165,6 +172,11 @@ extension Spook.RBAC {
         var tenant: String = "default"
 
         func run() async throws {
+            // Per-action MFA (OWASP ASVS V4.3.1).
+            _ = try await AdminPresenceGate.requirePresence(
+                reason: "Revoke role '\(role)' from '\(actor)' in tenant '\(tenant)'"
+            )
+
             let store = try JSONRoleStore(
                 configPath: ProcessInfo.processInfo.environment["SPOOK_RBAC_CONFIG"]
             )
