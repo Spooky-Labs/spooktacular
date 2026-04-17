@@ -120,7 +120,7 @@ let package = Package(
         // ──────────────────────────────────────────────
         .testTarget(
             name: "SpooktacularKitTests",
-            dependencies: ["SpooktacularKit", "spooktacular-agent"],
+            dependencies: ["SpooktacularKit"],
             path: "Tests/SpooktacularKitTests"
         ),
     ]

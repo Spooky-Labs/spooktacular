@@ -88,7 +88,7 @@ private let log = Logger(subsystem: "com.spooktacular.agent", category: "agent")
 /// valid PEMs — the caller treats `nil` as "signature path
 /// disabled" and falls back to legacy no-auth mode (with a
 /// loud warning).
-private func loadSignatureVerifier() -> AgentSignatureVerifier? {
+private func loadSignatureVerifier() -> SignedRequestVerifier? {
     let env = ProcessInfo.processInfo.environment
     guard let dir = env["SPOOK_HOST_PUBLIC_KEYS_DIR"] else {
         return nil
@@ -131,7 +131,7 @@ private func loadSignatureVerifier() -> AgentSignatureVerifier? {
     }
 
     log.info("Host signature verifier ready: \(keys.count, privacy: .public) trusted host key(s) loaded")
-    return AgentSignatureVerifier(trustedKeys: keys)
+    return SignedRequestVerifier(trustedKeys: keys)
 }
 
 // MARK: - Entry Point

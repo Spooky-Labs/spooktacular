@@ -2,28 +2,20 @@ import Foundation
 import CryptoKit
 import SpookCore
 
-/// Verifies agent HTTP requests signed by a trusted host's
-/// SEP-bound P-256 key.
+/// Verifies HTTP requests signed by a trusted client's P-256
+/// key. Used by both the guest agent (host-to-agent auth) and
+/// the HTTP API server (operator-to-control-plane auth).
 ///
 /// ## Why per-request signing
 ///
-/// The prior auth model used shared static Bearer tokens
-/// (`SPOOK_RUNNER_TOKEN`, `SPOOK_READONLY_TOKEN`) distributed to
-/// every VM that needed host access. That design had two
-/// problems:
-///
-/// 1. **Secrets at rest in every VM image.** Anyone who could
-///    read a VM bundle — a backup, a snapshot, an APFS clone,
-///    a misconfigured MDM profile — recovered the token and
-///    could impersonate the host to every VM running the same
-///    image.
-/// 2. **Revocation was fleet-wide.** Rotating meant pushing new
-///    tokens to every VM simultaneously.
-///
-/// Signed requests solve both: the host holds a SEP-bound
-/// private key (non-exportable); VMs hold only the host's
-/// **public** key, which is not a secret. Rotation is a public-
-/// key file swap.
+/// A long-lived Bearer token is fundamentally a shared secret:
+/// anyone who reads it from disk, process memory, a leaked log
+/// line, or a backup can replay it indefinitely. Signed
+/// requests replace that with an asymmetric primitive — each
+/// caller holds a private key (typically in the Secure Enclave,
+/// non-exportable), each server holds an allowlist of caller
+/// public keys (not secrets). Compromise of a server or a VM
+/// image never yields a usable credential.
 ///
 /// ## Wire format
 ///
@@ -53,7 +45,7 @@ import SpookCore
 /// (`clockSkew`), an attacker who captures a signed request
 /// has at most one shot within the skew window, and zero
 /// shots after.
-public final class AgentSignatureVerifier: @unchecked Sendable {
+public final class SignedRequestVerifier: @unchecked Sendable {
 
     /// Outcome of a verification attempt.
     public enum VerifyError: Error, Equatable {
@@ -75,20 +67,17 @@ public final class AgentSignatureVerifier: @unchecked Sendable {
     private let clock: @Sendable () -> Date
 
     /// - Parameters:
-    ///   - trustedKeys: Operator-provisioned allowlist of host
-    ///     public keys (typically loaded from
-    ///     `SPOOK_HOST_PUBLIC_KEYS_DIR`). Verification succeeds
-    ///     if any one of these accepts the signature.
+    ///   - trustedKeys: Operator-provisioned allowlist of caller
+    ///     public keys. Verification succeeds if any one of
+    ///     these accepts the signature.
     ///   - clockSkew: Maximum absolute difference between the
     ///     claimed timestamp and the verifier's clock, in
-    ///     seconds. Defaults to 60s (matches the NTP-level
-    ///     drift tolerance OWASP recommends).
+    ///     seconds. Defaults to 60s.
     ///   - nonceTTL: How long a nonce is remembered after first
     ///     use, in seconds. Must be ≥ 2 × clockSkew so a replay
     ///     cannot simply wait for the cache entry to expire.
     ///     Defaults to 300s (5 minutes).
-    ///   - clock: Injectable clock for tests. Production callers
-    ///     pass `Date.init`.
+    ///   - clock: Injectable clock for tests.
     public init(
         trustedKeys: [P256.Signing.PublicKey],
         clockSkew: TimeInterval = 60,
@@ -105,7 +94,7 @@ public final class AgentSignatureVerifier: @unchecked Sendable {
     /// True iff any trusted keys were provided.
     public var hasTrustedKeys: Bool { !trustedKeys.isEmpty }
 
-    /// Verifies a signed agent request. On success, returns the
+    /// Verifies a signed request. On success, returns the
     /// public key that accepted the signature — useful for
     /// audit attribution. On failure, throws a ``VerifyError``.
     public func verify(
@@ -180,11 +169,10 @@ public final class AgentSignatureVerifier: @unchecked Sendable {
 
     // MARK: - Helpers
 
-    /// ISO-8601 parser that accepts the `YYYY-MM-DDTHH:MM:SSZ`
-    /// seconds-precision form our signers emit. Uses a stable
-    /// `ISO8601DateFormatter` so parsing is deterministic
-    /// across locale changes.
-    static func parseISO8601(_ s: String) -> Date? {
+    /// ISO-8601 parser that accepts the seconds-precision form
+    /// our signers emit. Uses a stable formatter so parsing is
+    /// deterministic across locale changes.
+    public static func parseISO8601(_ s: String) -> Date? {
         if let d = _iso8601Strict.date(from: s) { return d }
         return _iso8601Fractional.date(from: s)
     }
@@ -202,7 +190,7 @@ public final class AgentSignatureVerifier: @unchecked Sendable {
     }()
 
     /// SHA-256 hex digest, lowercase.
-    static func hexSHA256(_ data: Data) -> String {
+    public static func hexSHA256(_ data: Data) -> String {
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
     }
@@ -231,8 +219,6 @@ private final class NonceCache: @unchecked Sendable {
 
     /// Releases a previously-claimed nonce so a legitimate
     /// retry isn't blocked when the signature itself failed.
-    /// Only called in failure paths that didn't execute the
-    /// privileged action.
     func release(nonce: String) {
         lock.lock()
         defer { lock.unlock() }

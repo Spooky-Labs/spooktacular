@@ -30,6 +30,7 @@ struct Spook: AsyncParsableCommand {
             RBAC.self,
             Bundle.self,
             BreakGlass.self,
+            SignRequest.self,
             SecurityControls.self,
         ],
         defaultSubcommand: List.self

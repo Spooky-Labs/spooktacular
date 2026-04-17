@@ -129,9 +129,14 @@ struct DocConsistencyTests {
         try assertLayerImports(layer: "Sources/SpookCore")
     }
 
-    @Test("SpookApplication files import only Foundation or SpookCore")
+    @Test("SpookApplication files import only Foundation, SpookCore, or CryptoKit")
     func applicationLayerCompliance() throws {
-        try assertLayerImports(layer: "Sources/SpookApplication", allowed: ["Foundation", "SpookCore"])
+        // CryptoKit is allowed in SpookApplication because the shared
+        // SignedRequestVerifier + per-request signing primitive need
+        // P-256 ECDSA verification. CryptoKit is a system framework
+        // (Apple-native, FIPS-validated) so it doesn't violate the
+        // "no third-party deps" rule this layer is otherwise protecting.
+        try assertLayerImports(layer: "Sources/SpookApplication", allowed: ["Foundation", "SpookCore", "CryptoKit"])
     }
 
     /// Scans all `.swift` files in the given layer directory and verifies that

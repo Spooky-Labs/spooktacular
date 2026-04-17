@@ -25,6 +25,7 @@
 import AppKit
 import Foundation
 import os
+import SpookApplication
 import SpookCore
 
 /// Constant-time string equality.
@@ -258,7 +259,7 @@ private enum AuthTier: String {
 func routeRequest(
     _ request: AgentHTTPRequest,
     channelScope: EndpointScope = .breakGlass,
-    signatureVerifier: AgentSignatureVerifier? = nil,
+    signatureVerifier: SignedRequestVerifier? = nil,
     ticketVerifier: BreakGlassTicketVerifier? = nil
 ) -> Data {
 

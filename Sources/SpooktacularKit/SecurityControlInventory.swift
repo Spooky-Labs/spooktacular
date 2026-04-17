@@ -119,9 +119,9 @@ public enum SecurityControlInventory {
             name: "Per-request signed host-to-agent auth (retires shared static tokens)",
             category: "Authentication & Identity",
             standard: "OWASP ASVS V2.10 (no unchanging service credentials); OWASP API Top 10 2023 A02 (broken authentication)",
-            implementation: "Sources/spooktacular-agent/AgentSignatureVerifier.swift (P-256 ECDSA, nonce replay cache, ±60s skew, canonical-string body-hash binding) + Sources/SpookInfrastructureApple/GuestAgentClient.swift (host-side signing via any P256Signer)",
-            test: "Tests/SpooktacularKitTests/AgentSignatureVerifierTests.swift",
-            notes: "Each host has its own SEP-bound signing key. VMs hold only public keys in SPOOK_HOST_PUBLIC_KEYS_DIR — no shared secrets at rest in VM images. Cryptographic attribution + single-file offboarding."
+            implementation: "Sources/SpookApplication/SignedRequestVerifier.swift (P-256 ECDSA, nonce replay cache, ±60s skew, canonical-string body-hash binding) + Sources/SpookInfrastructureApple/GuestAgentClient.swift (host-side signing via any P256Signer) + Sources/SpookInfrastructureApple/HTTPAPIServer.swift (operator-to-control-plane auth)",
+            test: "Tests/SpooktacularKitTests/SignedRequestVerifierTests.swift",
+            notes: "Shared verifier covers both host-to-agent and operator-to-API paths. Trust allowlist via SPOOK_HOST_PUBLIC_KEYS_DIR (agent) and SPOOK_API_PUBLIC_KEYS_DIR (API). No shared static tokens anywhere."
         ),
 
         // MARK: Authorization

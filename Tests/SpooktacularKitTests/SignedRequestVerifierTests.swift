@@ -1,10 +1,11 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import spooktacular_agent
+@testable import SpookApplication
 
-/// Tests for ``AgentSignatureVerifier`` — the guest-agent
-/// end of the signed-request auth path.
+/// Tests for ``SignedRequestVerifier`` — the shared per-request
+/// signature auth path used by both the guest agent and the
+/// HTTP API server.
 ///
 /// The verifier is security-critical: it replaces the
 /// long-lived static Bearer tokens that previously authorised
@@ -13,8 +14,8 @@ import CryptoKit
 /// / skew-tolerance bug, or (b) reject legitimate controller
 /// traffic via false rejections. Both matter; both are pinned
 /// below.
-@Suite("AgentSignatureVerifier", .tags(.security, .cryptography))
-struct AgentSignatureVerifierTests {
+@Suite("SignedRequestVerifier", .tags(.security, .cryptography))
+struct SignedRequestVerifierTests {
 
     // MARK: - Signing helper
 
@@ -51,7 +52,7 @@ struct AgentSignatureVerifierTests {
     @Test("Valid signature from a trusted key verifies")
     func happyPath() throws {
         let key = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [key.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
 
         let body = Data("{\"cmd\":\"ls\"}".utf8)
         let headers = try Self.signedHeaders(
@@ -73,7 +74,7 @@ struct AgentSignatureVerifierTests {
         let bob = P256.Signing.PrivateKey()
         let carol = P256.Signing.PrivateKey()
 
-        let verifier = AgentSignatureVerifier(
+        let verifier = SignedRequestVerifier(
             trustedKeys: [alice.publicKey, bob.publicKey, carol.publicKey]
         )
 
@@ -91,12 +92,12 @@ struct AgentSignatureVerifierTests {
     func untrustedSignerRejected() throws {
         let trusted = P256.Signing.PrivateKey()
         let attacker = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [trusted.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [trusted.publicKey])
 
         let headers = try Self.signedHeaders(
             method: "GET", path: "/api/v1/ports", body: Data(), signer: attacker
         )
-        #expect(throws: AgentSignatureVerifier.VerifyError.invalidSignature) {
+        #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(
                 method: "GET", path: "/api/v1/ports",
                 headers: headers, body: Data()
@@ -109,24 +110,24 @@ struct AgentSignatureVerifierTests {
     @Test("Missing X-Spook-Signature is rejected as missingHeaders")
     func missingSignatureHeader() {
         let key = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [key.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
         let headers = [
             "x-spook-timestamp": "2026-04-17T18:30:00Z",
             "x-spook-nonce": UUID().uuidString
         ]
-        #expect(throws: AgentSignatureVerifier.VerifyError.missingHeaders) {
+        #expect(throws: SignedRequestVerifier.VerifyError.missingHeaders) {
             try verifier.verify(method: "GET", path: "/health", headers: headers, body: Data())
         }
     }
 
     @Test("Empty allowlist fails closed (no trusted keys)")
     func emptyAllowlist() throws {
-        let verifier = AgentSignatureVerifier(trustedKeys: [])
+        let verifier = SignedRequestVerifier(trustedKeys: [])
         let key = P256.Signing.PrivateKey()
         let headers = try Self.signedHeaders(
             method: "GET", path: "/health", body: Data(), signer: key
         )
-        #expect(throws: AgentSignatureVerifier.VerifyError.invalidSignature) {
+        #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(method: "GET", path: "/health", headers: headers, body: Data())
         }
     }
@@ -143,10 +144,10 @@ struct AgentSignatureVerifierTests {
             method: "GET", path: "/health", body: Data(),
             signer: key, timestamp: tenMinAgo
         )
-        let verifier = AgentSignatureVerifier(
+        let verifier = SignedRequestVerifier(
             trustedKeys: [key.publicKey], clockSkew: 60, clock: { now }
         )
-        #expect(throws: AgentSignatureVerifier.VerifyError.timestampOutOfRange) {
+        #expect(throws: SignedRequestVerifier.VerifyError.timestampOutOfRange) {
             try verifier.verify(
                 method: "GET", path: "/health",
                 headers: headers, body: Data()
@@ -163,10 +164,10 @@ struct AgentSignatureVerifierTests {
             method: "GET", path: "/health", body: Data(),
             signer: key, timestamp: tenMinFuture
         )
-        let verifier = AgentSignatureVerifier(
+        let verifier = SignedRequestVerifier(
             trustedKeys: [key.publicKey], clockSkew: 60, clock: { now }
         )
-        #expect(throws: AgentSignatureVerifier.VerifyError.timestampOutOfRange) {
+        #expect(throws: SignedRequestVerifier.VerifyError.timestampOutOfRange) {
             try verifier.verify(
                 method: "GET", path: "/health",
                 headers: headers, body: Data()
@@ -179,7 +180,7 @@ struct AgentSignatureVerifierTests {
     @Test("Same nonce twice is rejected on the second attempt")
     func replayRejected() throws {
         let key = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [key.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
 
         let nonce = UUID().uuidString
         let headers = try Self.signedHeaders(
@@ -190,7 +191,7 @@ struct AgentSignatureVerifierTests {
             method: "GET", path: "/health",
             headers: headers, body: Data()
         )
-        #expect(throws: AgentSignatureVerifier.VerifyError.replay) {
+        #expect(throws: SignedRequestVerifier.VerifyError.replay) {
             try verifier.verify(
                 method: "GET", path: "/health",
                 headers: headers, body: Data()
@@ -202,7 +203,7 @@ struct AgentSignatureVerifierTests {
     func failedVerifyReleasesNonce() throws {
         let trusted = P256.Signing.PrivateKey()
         let attacker = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [trusted.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [trusted.publicKey])
 
         // First attempt: an attacker signs with their own key —
         // rejected. The nonce they claimed must not poison the
@@ -235,7 +236,7 @@ struct AgentSignatureVerifierTests {
     @Test("Mismatched body is rejected (body-hash binding)")
     func tamperedBodyRejected() throws {
         let key = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [key.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
 
         let realBody = Data("alice".utf8)
         let attackerBody = Data("bob".utf8)
@@ -246,7 +247,7 @@ struct AgentSignatureVerifierTests {
         )
         // Attacker presents the same signed headers but swaps
         // the body at send time.
-        #expect(throws: AgentSignatureVerifier.VerifyError.invalidSignature) {
+        #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(
                 method: "POST", path: "/api/v1/foo",
                 headers: headers, body: attackerBody
@@ -257,11 +258,11 @@ struct AgentSignatureVerifierTests {
     @Test("Mismatched path is rejected (path binding)")
     func tamperedPathRejected() throws {
         let key = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [key.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
         let headers = try Self.signedHeaders(
             method: "GET", path: "/api/v1/ports", body: Data(), signer: key
         )
-        #expect(throws: AgentSignatureVerifier.VerifyError.invalidSignature) {
+        #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(
                 method: "GET", path: "/api/v1/exec",   // attacker routes to exec
                 headers: headers, body: Data()
@@ -274,13 +275,13 @@ struct AgentSignatureVerifierTests {
     @Test("Non-base64 signature is rejected as invalidSignature")
     func malformedSignatureRejected() {
         let key = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [key.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
         let headers = [
             "x-spook-timestamp": ISO8601DateFormatter().string(from: Date()),
             "x-spook-nonce": UUID().uuidString,
             "x-spook-signature": "not-base64!!!"
         ]
-        #expect(throws: AgentSignatureVerifier.VerifyError.invalidSignature) {
+        #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(method: "GET", path: "/health", headers: headers, body: Data())
         }
     }
@@ -288,7 +289,7 @@ struct AgentSignatureVerifierTests {
     @Test("Signature with wrong byte length is rejected")
     func wrongSignatureLength() {
         let key = P256.Signing.PrivateKey()
-        let verifier = AgentSignatureVerifier(trustedKeys: [key.publicKey])
+        let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
         // Base64 of 8 bytes instead of 64.
         let shortSig = Data([0, 1, 2, 3, 4, 5, 6, 7]).base64EncodedString()
         let headers = [
@@ -296,7 +297,7 @@ struct AgentSignatureVerifierTests {
             "x-spook-nonce": UUID().uuidString,
             "x-spook-signature": shortSig
         ]
-        #expect(throws: AgentSignatureVerifier.VerifyError.invalidSignature) {
+        #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(method: "GET", path: "/health", headers: headers, body: Data())
         }
     }

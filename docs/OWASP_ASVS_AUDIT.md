@@ -461,7 +461,8 @@ N/A — no SOAP, no GraphQL.
 | HTTP security headers on every response | V14.4.2–7 | Remediated (commit `eca57d6aa`) |
 | Break-glass signing key generated inside Secure Enclave (hardware-bound, non-exportable, AAL3) | V2.7.1 | Remediated (`BreakGlassSigningKeyStore` with `SecureEnclave.P256.Signing.PrivateKey`) |
 | Merkle audit signing key generated inside Secure Enclave (non-exportable; STH forgery requires hardware, not just process compromise) | V7.2.2 | Remediated (`AuditSinkFactory.loadOrCreateSEPSigningKey` + `MerkleAuditSink` takes `any P256Signer`) |
-| Host-to-agent auth swapped from shared static tokens to per-request P-256 signatures (nonce-replay-protected; body-hash-bound) | V2.10.1 | Remediated (`AgentSignatureVerifier` + `GuestAgentClient.sign`) |
+| Host-to-agent auth swapped from shared static tokens to per-request P-256 signatures (nonce-replay-protected; body-hash-bound) | V2.10.1 | Remediated (`SignedRequestVerifier` + `GuestAgentClient.sign`) |
+| Operator-to-API auth retired static Bearer token (`SPOOK_API_TOKEN`) in favor of the same signed-request primitive; `spook sign-request` as the ergonomic CLI / scripting helper | V2.10.1 | Remediated (`HTTPAPIServer` + `SPOOK_API_PUBLIC_KEYS_DIR` + `spook sign-request`) |
 | Per-operator trust allowlist (non-repudiation via cryptographic attribution) | V2.7.5 | Remediated (`SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` + multi-key verifier) |
 | Per-action MFA on admin CLI commands | V4.3.1 | Remediated (`AdminPresenceGate`) |
 | Federated admin tokens require stepped-up `acr` | V2.7.4 | Remediated (`OIDCTokenVerifier.insufficientACR`) |

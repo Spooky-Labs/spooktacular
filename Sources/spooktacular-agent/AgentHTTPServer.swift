@@ -19,6 +19,7 @@
 import Dispatch
 import Foundation
 import os
+import SpookApplication
 
 /// The vsock-based HTTP server for the guest agent.
 enum AgentHTTPServer {
@@ -59,7 +60,7 @@ enum AgentHTTPServer {
     /// Set exactly once before the accept loop begins and never
     /// mutated afterward so concurrent reads from
     /// connection-handler queues are safe.
-    nonisolated(unsafe) static var signatureVerifier: AgentSignatureVerifier?
+    nonisolated(unsafe) static var signatureVerifier: SignedRequestVerifier?
 
     /// The OWASP-aligned break-glass ticket verifier, or `nil` if
     /// the agent is running without ticket support.

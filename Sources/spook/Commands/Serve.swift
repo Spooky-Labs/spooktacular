@@ -277,6 +277,48 @@ extension Spook {
                 throw ExitCode.failure
             }
 
+            // Signed-request verifier — the production auth path.
+            // Walks SPOOK_API_PUBLIC_KEYS_DIR for PEM files;
+            // each one authorises one caller identity (operator
+            // workstation, controller instance, CI runner, etc.).
+            //
+            // File naming convention: `<identity>.pem` — the
+            // filename stem (minus `.pem`) becomes the actor
+            // identity string used in RBAC + audit records. A
+            // fallback fingerprint-based identity is used for
+            // files that don't follow the convention.
+            var sigVerifier: SignedRequestVerifier?
+            var actorIdentityByFingerprint: [String: String] = [:]
+            if let keysDir = env["SPOOK_API_PUBLIC_KEYS_DIR"] {
+                let fm = FileManager.default
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: keysDir, isDirectory: &isDir), isDir.boolValue,
+                   let names = try? fm.contentsOfDirectory(atPath: keysDir) {
+                    var keys: [P256.Signing.PublicKey] = []
+                    for name in names where name.hasSuffix(".pem") || name.hasSuffix(".pub") {
+                        let path = (keysDir as NSString).appendingPathComponent(name)
+                        guard let pem = try? String(contentsOfFile: path, encoding: .utf8),
+                              let key = try? P256.Signing.PublicKey(pemRepresentation: pem) else {
+                            print(Style.warning("Skipping unreadable / malformed key: \(name)"))
+                            continue
+                        }
+                        keys.append(key)
+                        // Derive identity from filename stem.
+                        let stem = (name as NSString).deletingPathExtension
+                        let fingerprint = SignedRequestVerifier.hexSHA256(key.x963Representation)
+                        actorIdentityByFingerprint[fingerprint] = stem
+                    }
+                    if !keys.isEmpty {
+                        sigVerifier = SignedRequestVerifier(trustedKeys: keys)
+                        print(Style.info("Loaded \(keys.count) trusted caller public key(s) from \(keysDir)"))
+                    } else {
+                        print(Style.warning("SPOOK_API_PUBLIC_KEYS_DIR at '\(keysDir)' has no valid PEMs"))
+                    }
+                } else {
+                    print(Style.warning("SPOOK_API_PUBLIC_KEYS_DIR at '\(keysDir)' is not a directory"))
+                }
+            }
+
             let server: HTTPAPIServer
             do {
                 server = try HTTPAPIServer(
@@ -287,6 +329,8 @@ extension Spook {
                     tlsOptions: tlsOptions,
                     authService: authService,
                     auditSink: auditSink,
+                    signatureVerifier: sigVerifier,
+                    actorIdentityByKeyFingerprint: actorIdentityByFingerprint,
                     insecureMode: insecure
                 )
             } catch let error as HTTPAPIServerError {

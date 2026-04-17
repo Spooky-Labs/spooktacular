@@ -16,11 +16,15 @@ import os
 ///
 /// **TLS is required in production.** Provide `NWProtocolTLS.Options`
 /// at initialization. The `--insecure` flag is available for local
-/// development only — production startup without TLS or an API token
-/// will fail with ``HTTPAPIServerError/missingAPIToken``.
+/// development only — production startup without TLS or a signature
+/// verifier will fail with
+/// ``HTTPAPIServerError/missingSignatureVerifier``.
 ///
-/// Set the `SPOOK_API_TOKEN` environment variable to require
-/// Bearer-token authentication on all endpoints except `/health`.
+/// Authentication is per-request P-256 ECDSA signatures (see
+/// ``SignedRequestVerifier``). Operators provision trusted caller
+/// public keys via `SPOOK_API_PUBLIC_KEYS_DIR`; every request
+/// except `GET /health` must carry `X-Spook-Timestamp`,
+/// `X-Spook-Nonce`, and `X-Spook-Signature` headers.
 ///
 /// ## Endpoints
 ///
@@ -95,13 +99,24 @@ public actor HTTPAPIServer {
     /// detached VM processes (e.g., `spook start --headless`).
     private let spookPath: String
 
-    /// Optional Bearer token for API authentication.
+    /// Per-request signature verifier. When set, every request
+    /// except `GET /health` must present the three `X-Spook-*`
+    /// headers (timestamp, nonce, signature) and the signature
+    /// must verify against the operator-provisioned trust
+    /// allowlist.
     ///
-    /// When set (via the `SPOOK_API_TOKEN` environment variable), every
-    /// request except `GET /health` must include an `Authorization:
-    /// Bearer <token>` header. When `nil`, all requests are allowed
-    /// (development mode).
-    private let apiToken: String?
+    /// The static Bearer-token path (`SPOOK_API_TOKEN`) was
+    /// retired in favour of asymmetric signing: shared secrets
+    /// at rest on a client host are a liability that keys in
+    /// the Secure Enclave eliminate structurally. Operators who
+    /// needed ad-hoc `curl` access use `spook sign-request` to
+    /// produce the header triple.
+    private let signatureVerifier: SignedRequestVerifier?
+
+    /// Maps a verified caller's public key to a stable actor
+    /// identity for RBAC + audit records. The key is the lowercase
+    /// hex SHA-256 of the public key's x963 representation.
+    private let actorIdentityByKeyFingerprint: [String: String]
 
     /// Whether the server is running in insecure development mode.
     /// When `true`, TLS and API token requirements are bypassed.
@@ -228,9 +243,9 @@ public actor HTTPAPIServer {
     ///     API token when TLS is not configured. The server logs a
     ///     prominent warning when running in insecure mode.
     /// - Throws: ``HTTPAPIServerError/invalidPort(_:)`` if the port
-    ///   number is invalid, or ``HTTPAPIServerError/missingAPIToken``
+    ///   number is invalid, or ``HTTPAPIServerError/missingSignatureVerifier``
     ///   if TLS is disabled, `insecureMode` is `false`, and no
-    ///   `SPOOK_API_TOKEN` environment variable is set.
+    ///   signature verifier was provided.
     public init(
         host: String,
         port: UInt16 = 8484,
@@ -243,6 +258,8 @@ public actor HTTPAPIServer {
         identityVerifier: (any FederatedIdentityVerifier)? = nil,
         roleStore: (any RoleStore)? = nil,
         tenantRegistry: (any TenantRegistry)? = nil,
+        signatureVerifier: SignedRequestVerifier? = nil,
+        actorIdentityByKeyFingerprint: [String: String] = [:],
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -279,27 +296,27 @@ public actor HTTPAPIServer {
         self.requestTimeoutSeconds = Double(ProcessInfo.processInfo.environment["SPOOK_REQUEST_TIMEOUT_SECONDS"] ?? "")
             ?? Self.defaultRequestTimeoutSeconds
 
-        let token = ProcessInfo.processInfo.environment["SPOOK_API_TOKEN"]
-        self.apiToken = token?.isEmpty == false ? token : nil
+        self.signatureVerifier = signatureVerifier
+        self.actorIdentityByKeyFingerprint = actorIdentityByKeyFingerprint
 
         if insecureMode {
-            Log.httpAPI.warning("⚠️  SERVER RUNNING IN INSECURE MODE — no TLS, no required API token")
+            Log.httpAPI.warning("⚠️  SERVER RUNNING IN INSECURE MODE — no TLS, no signature verification")
             Log.httpAPI.warning("⚠️  Do NOT expose this server to untrusted networks")
         } else {
-            // Production requires BOTH TLS and a bearer token.
+            // Production requires BOTH TLS and a signature verifier.
             //
             // - TLS alone would be unauthenticated control-plane access.
-            // - A bearer token without TLS would transmit credentials
-            //   in plaintext on every request.
+            // - Signed requests without TLS would still leak request
+            //   bodies (and the signature scheme itself doesn't
+            //   protect confidentiality).
             //
-            // The old "either/or" gate fell open on either half; this
-            // closes it. Operators who need cleartext must pass
+            // Operators who need cleartext or no-auth must pass
             // `insecureMode: true` explicitly and accept the warning.
             guard tlsOptions != nil else {
                 throw HTTPAPIServerError.tlsRequired
             }
-            guard self.apiToken != nil else {
-                throw HTTPAPIServerError.missingAPIToken
+            guard let verifier = signatureVerifier, verifier.hasTrustedKeys else {
+                throw HTTPAPIServerError.missingSignatureVerifier
             }
         }
     }
@@ -822,10 +839,24 @@ public actor HTTPAPIServer {
                 )
                 return response
             }
-        } else if let token = apiToken {
-            // Static-token path — constant-time compare against the
-            // configured shared secret.
-            guard Self.constantTimeEqual(header, "Bearer \(token)") else {
+        } else if let verifier = signatureVerifier {
+            // Signed-request path — verify the P-256 signature,
+            // derive the actor identity from the verified
+            // caller's public-key fingerprint.
+            do {
+                let key = try verifier.verify(
+                    method: request.method,
+                    path: request.path,
+                    headers: request.headers,
+                    body: request.body ?? Data()
+                )
+                let fingerprint = SignedRequestVerifier.hexSHA256(key.x963Representation)
+                actorIdentity = actorIdentityByKeyFingerprint[fingerprint]
+                    ?? "key-sha256:\(fingerprint.prefix(16))"
+            } catch {
+                logger.notice(
+                    "Signed-request verification failed: \(error.localizedDescription, privacy: .public)"
+                )
                 let response = HTTPResponse.error(message: "Unauthorized.", statusCode: 401)
                 await emitAPIAudit(
                     method: request.method,
@@ -835,9 +866,8 @@ public actor HTTPAPIServer {
                 )
                 return response
             }
-            actorIdentity = "bearer-token@\(self.host)"
         } else {
-            // No token configured AND no verifier — insecure mode.
+            // No verifier configured — insecure mode.
             // `init` already blocks this combination unless
             // `insecureMode == true`, so we accept as the host user.
             actorIdentity = "insecure-mode@\(self.host)"
@@ -1634,10 +1664,11 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
     /// The port number is invalid (e.g., 0).
     case invalidPort(UInt16)
 
-    /// No API token is configured and the server is not running in
-    /// insecure mode. An API token is required to prevent
-    /// unauthorized access to VM management endpoints.
-    case missingAPIToken
+    /// No signature verifier is configured and the server is not
+    /// running in insecure mode. Signed-request authentication
+    /// is required to prevent unauthorized access to VM
+    /// management endpoints.
+    case missingSignatureVerifier
 
     /// TLS is required in production. Operators can bypass with
     /// `insecureMode: true` but must accept the logged warning.
@@ -1656,8 +1687,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Port \(port) is already in use."
         case .invalidPort(let port):
             "Invalid port number: \(port)."
-        case .missingAPIToken:
-            "No API token configured."
+        case .missingSignatureVerifier:
+            "No signature verifier configured."
         case .tlsRequired:
             "TLS is required in production."
         case .certificateFileNotFound(let path):
@@ -1675,10 +1706,10 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError {
             "Choose a different port with --port, or stop the process using the current port."
         case .invalidPort:
             "Use a port number between 1 and 65535."
-        case .missingAPIToken:
-            "Set the SPOOK_API_TOKEN environment variable. Production requires both TLS and a token — use --insecure to bypass (not recommended)."
+        case .missingSignatureVerifier:
+            "Point SPOOK_API_PUBLIC_KEYS_DIR at a directory of operator/controller PEM public keys. Production requires both TLS and signature verification — use --insecure to bypass (not recommended)."
         case .tlsRequired:
-            "Provide TLS certificates with --tls-cert and --tls-key. Production requires both TLS and a token — use --insecure to bypass (not recommended)."
+            "Provide TLS certificates with --tls-cert and --tls-key. Production requires both TLS and signature verification — use --insecure to bypass (not recommended)."
         case .certificateFileNotFound:
             "Ensure the certificate file path is correct and the file exists."
         }
