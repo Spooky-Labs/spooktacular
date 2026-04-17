@@ -232,6 +232,30 @@ extension Spook {
                 auditSink = auditBase
             }
 
+            // Production preflight — refuse to start when a
+            // multi-tenant deployment is missing controls the
+            // enterprise review specifically flagged as
+            // "deployments that should fail fast." This gate is
+            // in addition to the TLS / bearer-token check inside
+            // `HTTPAPIServer.init`; it catches the combinations
+            // that would otherwise pass the listener's gate but
+            // still leave the fleet unmonitored or un-authorized.
+            let preflight = ProductionPreflight(
+                tenancyMode: tenancyMode,
+                insecure: insecure,
+                hasAuthorizationService: authService != nil,
+                hasAuditSink: auditSink != nil
+            )
+            do {
+                try preflight.validate()
+            } catch let error as ProductionPreflightError {
+                print(Style.error(error.localizedDescription))
+                if let suggestion = error.recoverySuggestion {
+                    print(Style.dim(suggestion))
+                }
+                throw ExitCode.failure
+            }
+
             let server: HTTPAPIServer
             do {
                 server = try HTTPAPIServer(
