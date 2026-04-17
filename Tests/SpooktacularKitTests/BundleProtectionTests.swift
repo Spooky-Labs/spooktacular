@@ -61,6 +61,69 @@ struct BundleProtectionTests {
         #expect(policy == .autoLaptop)
     }
 
+    // MARK: - UserDefaults tier (GUI Settings pane)
+
+    /// Helper: isolated defaults suite so tests don't leak into
+    /// the real login-user's preferences.
+    private func defaults() -> UserDefaults {
+        let suite = UserDefaults(suiteName: "bundle-protection-test-\(UUID().uuidString)")!
+        suite.removePersistentDomain(forName: "bundle-protection-test")
+        return suite
+    }
+
+    @Test("UserDefaults 'none' overrides auto-detect on a laptop")
+    func userDefaultsNoneBeatsLaptop() {
+        let ud = defaults()
+        ud.set("none", forKey: BundleProtection.userDefaultsKey)
+        let (protection, policy) = BundleProtection.recommendedPolicy(
+            environment: [:],
+            userDefaults: ud,
+            isPortable: true
+        )
+        #expect(protection == .none)
+        #expect(policy == .overrideSettingsNone)
+    }
+
+    @Test("UserDefaults 'cufua' overrides auto-detect on a desktop")
+    func userDefaultsCUFUABeatsDesktop() {
+        let ud = defaults()
+        ud.set("cufua", forKey: BundleProtection.userDefaultsKey)
+        let (protection, policy) = BundleProtection.recommendedPolicy(
+            environment: [:],
+            userDefaults: ud,
+            isPortable: false
+        )
+        #expect(protection == .completeUntilFirstUserAuthentication)
+        #expect(policy == .overrideSettingsCUFUA)
+    }
+
+    @Test("env var wins over UserDefaults")
+    func envBeatsUserDefaults() {
+        let ud = defaults()
+        ud.set("none", forKey: BundleProtection.userDefaultsKey)
+        let (protection, policy) = BundleProtection.recommendedPolicy(
+            environment: ["SPOOK_BUNDLE_PROTECTION": "cufua"],
+            userDefaults: ud,
+            isPortable: false
+        )
+        #expect(protection == .completeUntilFirstUserAuthentication)
+        #expect(policy == .overrideCUFUA,
+                "Env-var intent (LaunchDaemon / MDM) must override per-user GUI preference")
+    }
+
+    @Test("UserDefaults 'auto' (sentinel) falls through to auto-detect")
+    func userDefaultsAutoFallsThrough() {
+        let ud = defaults()
+        ud.set("auto", forKey: BundleProtection.userDefaultsKey)
+        let (protection, policy) = BundleProtection.recommendedPolicy(
+            environment: [:],
+            userDefaults: ud,
+            isPortable: true
+        )
+        #expect(protection == .completeUntilFirstUserAuthentication)
+        #expect(policy == .autoLaptop)
+    }
+
     // MARK: - Apply round-trip
     //
     // We intentionally do NOT round-trip through `current(at:)`

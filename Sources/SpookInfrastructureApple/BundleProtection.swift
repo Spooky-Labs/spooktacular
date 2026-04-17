@@ -48,28 +48,60 @@ public enum BundleProtection {
         case overrideNone
         /// Environment override: operator set `SPOOK_BUNDLE_PROTECTION=cufua`.
         case overrideCUFUA
+        /// GUI settings override: user selected "Off" in the Security tab.
+        case overrideSettingsNone
+        /// GUI settings override: user selected "Protected" in the Security tab.
+        case overrideSettingsCUFUA
         /// Portable Mac detected (battery present) — default CUFUA.
         case autoLaptop
         /// Desktop / server-class Mac — default none.
         case autoDesktop
     }
 
-    /// Decides which protection class to apply based on the
-    /// environment and the host's form factor.
+    /// UserDefaults key the GUI Settings pane writes to.
+    ///
+    /// Values: `"auto"` (defer to form-factor detection),
+    /// `"cufua"` (force CUFUA regardless), `"none"` (force off).
+    /// The GUI uses `@AppStorage(BundleProtection.userDefaultsKey)`
+    /// to bind a `Picker` to this string.
+    public static let userDefaultsKey = "com.spooktacular.bundleProtection"
+
+    /// Decides which protection class to apply based on, in
+    /// priority order:
+    ///
+    /// 1. `SPOOK_BUNDLE_PROTECTION` env var — operator intent
+    ///    (LaunchDaemon plist, CI config, shell export). Always
+    ///    wins because it's set out-of-band from the GUI user.
+    /// 2. UserDefaults key `com.spooktacular.bundleProtection` —
+    ///    per-user GUI preference set via the Security tab.
+    /// 3. Form-factor auto-detect via IOKit power sources.
     public static func recommendedPolicy(
         environment: [String: String] = ProcessInfo.processInfo.environment,
+        userDefaults: UserDefaults = .standard,
         isPortable: Bool = isPortableMac
     ) -> (FileProtectionType, Policy) {
+        // Tier 1: env var wins.
         switch environment["SPOOK_BUNDLE_PROTECTION"]?.lowercased() {
         case "none":
             return (.none, .overrideNone)
         case "cufua", "complete-until-first-user-auth":
             return (.completeUntilFirstUserAuthentication, .overrideCUFUA)
         default:
-            return isPortable
-                ? (.completeUntilFirstUserAuthentication, .autoLaptop)
-                : (.none, .autoDesktop)
+            break
         }
+        // Tier 2: GUI preference.
+        switch userDefaults.string(forKey: userDefaultsKey)?.lowercased() {
+        case "none":
+            return (.none, .overrideSettingsNone)
+        case "cufua", "complete-until-first-user-auth":
+            return (.completeUntilFirstUserAuthentication, .overrideSettingsCUFUA)
+        default:
+            break
+        }
+        // Tier 3: auto-detect.
+        return isPortable
+            ? (.completeUntilFirstUserAuthentication, .autoLaptop)
+            : (.none, .autoDesktop)
     }
 
     /// Applies the recommended protection class to the bundle
