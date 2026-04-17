@@ -220,7 +220,7 @@ final class AppState {
     func cloneVM(_ source: String, to destination: String) {
         do {
             guard let sourceBundle = vms[source] else { return }
-            let destinationURL = SpooktacularPaths.bundleURL(for: destination)
+            let destinationURL = try SpooktacularPaths.bundleURL(for: destination)
             let clone = try CloneManager.clone(source: sourceBundle, to: destinationURL)
             vms[destination] = clone
 

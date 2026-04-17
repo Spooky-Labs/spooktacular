@@ -710,18 +710,51 @@ private func handleFrontmostApp() -> Data {
 /// Lists the contents of the directory specified in the `path` query
 /// parameter. Returns file names, types, and sizes.
 ///
+/// Allowed roots for `GET /api/v1/fs`.
+///
+/// Previously the endpoint accepted any absolute path and returned
+/// its contents — effectively a full filesystem read for anyone
+/// holding a runner or break-glass token. The fix is a positive
+/// allow-list rooted at the current user's home directory, with
+/// path resolution that follows symlinks before comparison (so a
+/// symlink inside the home can't escape).
+private let fsAllowedRoots: [URL] = [
+    FileManager.default.homeDirectoryForCurrentUser,
+    URL(filePath: "/tmp"),
+    URL(filePath: "/var/tmp"),
+]
+
+/// Handles `GET /api/v1/fs?path=/some/dir`.
+///
+/// Lists the contents of the directory specified in the `path` query
+/// parameter, **contained within the allowed roots**. Attempts to
+/// traverse outside — `../../etc`, `/var/root/.ssh`, a symlink to
+/// `/private` — return 403.
+///
 /// - Parameter request: Must include a `path` query parameter.
 private func handleListFS(_ request: AgentHTTPRequest) -> Data {
     guard let dirPath = request.query["path"], !dirPath.isEmpty else {
         return errorResponse(message: "Query parameter 'path' is required.", statusCode: 400)
     }
 
-    let url = URL(filePath: dirPath)
-    let fm = FileManager.default
+    // Resolve to a fully-resolved, symlinks-followed absolute path
+    // before the containment check. `standardizedFileURL` collapses
+    // `..` components; `resolvingSymlinksInPath` chases aliases.
+    let resolved = URL(filePath: dirPath)
+        .standardizedFileURL
+        .resolvingSymlinksInPath()
 
+    guard fsAllowedRoots.contains(where: { resolved.path.hasPrefix($0.standardizedFileURL.path) }) else {
+        return errorResponse(
+            message: "Access denied: path is outside the allowed roots.",
+            statusCode: 403
+        )
+    }
+
+    let fm = FileManager.default
     do {
         let contents = try fm.contentsOfDirectory(
-            at: url,
+            at: resolved,
             includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey]
         )
 

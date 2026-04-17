@@ -204,7 +204,7 @@ extension Spook {
         func run() async throws {
             try SpooktacularPaths.ensureDirectories()
 
-            let bundleURL = SpooktacularPaths.bundleURL(for: name)
+            let bundleURL = try SpooktacularPaths.bundleURL(for: name)
             guard !FileManager.default.fileExists(atPath: bundleURL.path) else {
                 print(Style.error("✗ VM '\(name)' already exists."))
                 print(Style.dim("  Choose a different name, or delete the existing VM with 'spook delete \(name)'."))

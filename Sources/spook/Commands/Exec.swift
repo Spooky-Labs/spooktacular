@@ -63,12 +63,22 @@ extension Spook {
             }
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
-            let commandString = command.joined(separator: " ")
+
+            // Join the user's command tokens into a single string for
+            // SSH — SSH protocol transmits the remote command as one
+            // string, so we can't avoid joining. But we MUST
+            // POSIX-quote each token first; joining raw tokens with
+            // spaces invites shell metacharacter injection (`;`,
+            // `|`, `$()`, etc.) when any token contains them. Before
+            // this guard, `spook exec vm 'whoami; rm -rf /'` would
+            // run both commands remotely.
+            let commandString = command.map { posixShellEscape($0) }
+                                       .joined(separator: " ")
 
             guard let macAddress = bundle.spec.macAddress else {
                 print(Style.error("✗ VM '\(name)' has no configured MAC address for automatic IP resolution."))
                 print(Style.dim("  Find the IP manually, then run:"))
-                print(Style.dim("  ssh \(user)@<ip-address> '\(commandString)'"))
+                print(Style.dim("  ssh \(user)@<ip-address> \(commandString)"))
                 throw ExitCode.failure
             }
 
@@ -89,6 +99,19 @@ extension Spook {
                 }
                 throw error
             }
+        }
+
+        /// Quotes a string for safe use as a single POSIX shell token.
+        ///
+        /// Wraps in single quotes and escapes any literal single
+        /// quotes inside the string by breaking out of the quoting
+        /// (`'\''` sequence). Everything between single quotes is
+        /// taken literally by the shell — no variable expansion,
+        /// no command substitution, no metacharacter interpretation.
+        /// This is the standard defense against shell-injection when
+        /// a command string has to be transmitted as one blob.
+        private func posixShellEscape(_ s: String) -> String {
+            return "'" + s.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
         }
     }
 }

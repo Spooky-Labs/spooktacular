@@ -31,7 +31,7 @@ extension Spook {
 
             let sourceURL = try requireBundle(for: source)
 
-            let destinationURL = SpooktacularPaths.bundleURL(for: destination)
+            let destinationURL = try SpooktacularPaths.bundleURL(for: destination)
             guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
                 print(Style.error("✗ VM '\(destination)' already exists."))
                 throw ExitCode.failure

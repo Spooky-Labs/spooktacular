@@ -1167,7 +1167,7 @@ public actor HTTPAPIServer {
     ///
     /// Returns the full configuration and metadata for a single VM.
     private func handleGetVM(name: String) -> HTTPResponse {
-        let bundleURL = SpooktacularPaths.bundleURL(for: name)
+        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
 
         guard FileManager.default.fileExists(atPath: bundleURL.path) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
@@ -1243,12 +1243,12 @@ public actor HTTPAPIServer {
             return HTTPResponse.error(message: "Invalid source VM name.", statusCode: 400)
         }
 
-        let destinationURL = SpooktacularPaths.bundleURL(for: name)
+        guard let destinationURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
         guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
             return HTTPResponse.error(message: "VM '\(name)' already exists.", statusCode: 409)
         }
 
-        let sourceURL = SpooktacularPaths.bundleURL(for: sourceName)
+        guard let sourceURL = try? SpooktacularPaths.bundleURL(for: sourceName) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
         guard FileManager.default.fileExists(atPath: sourceURL.path) else {
             return HTTPResponse.error(message: "Source VM '\(sourceName)' not found.", statusCode: 404)
         }
@@ -1290,7 +1290,7 @@ public actor HTTPAPIServer {
     /// `ProcessInfo.processInfo.arguments[0]`, which is unreliable
     /// under launchd, Docker, or other non-standard deployments.
     private func handleStartVM(name: String) -> HTTPResponse {
-        let bundleURL = SpooktacularPaths.bundleURL(for: name)
+        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
 
         guard FileManager.default.fileExists(atPath: bundleURL.path) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
@@ -1368,7 +1368,7 @@ public actor HTTPAPIServer {
     /// a graceful shutdown. Uses the same PID-file mechanism as
     /// `spook stop`.
     private func handleStopVM(name: String) -> HTTPResponse {
-        let bundleURL = SpooktacularPaths.bundleURL(for: name)
+        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
 
         guard FileManager.default.fileExists(atPath: bundleURL.path) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
@@ -1407,7 +1407,7 @@ public actor HTTPAPIServer {
     /// Deletes a VM bundle and all its data. The VM must be stopped
     /// before deletion.
     private func handleDeleteVM(name: String) -> HTTPResponse {
-        let bundleURL = SpooktacularPaths.bundleURL(for: name)
+        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
 
         guard FileManager.default.fileExists(atPath: bundleURL.path) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
@@ -1438,7 +1438,7 @@ public actor HTTPAPIServer {
     /// Resolves the IP address of a running VM by looking up its
     /// MAC address in the host's DHCP lease table and ARP cache.
     private func handleGetIP(name: String) async -> HTTPResponse {
-        let bundleURL = SpooktacularPaths.bundleURL(for: name)
+        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
 
         guard FileManager.default.fileExists(atPath: bundleURL.path) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)

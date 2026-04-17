@@ -60,8 +60,8 @@ final class IntentAppState {
     /// Stops the named VM by sending SIGTERM to its PID file.
     /// Works whether or not this process is the owner.
     func stopVM(_ name: String) async {
-        let bundleURL = SpooktacularPaths.bundleURL(for: name)
-        guard let pid = PIDFile.read(from: bundleURL) else { return }
+        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name),
+              let pid = PIDFile.read(from: bundleURL) else { return }
         kill(pid, SIGTERM)
     }
 
@@ -86,8 +86,8 @@ final class IntentAppState {
     /// Clones a VM.
     func cloneVM(_ source: String, to destination: String) async {
         refresh()
-        guard let sourceBundle = cache[source] else { return }
-        let destinationURL = SpooktacularPaths.bundleURL(for: destination)
+        guard let sourceBundle = cache[source],
+              let destinationURL = try? SpooktacularPaths.bundleURL(for: destination) else { return }
         _ = try? CloneManager.clone(source: sourceBundle, to: destinationURL)
     }
 
