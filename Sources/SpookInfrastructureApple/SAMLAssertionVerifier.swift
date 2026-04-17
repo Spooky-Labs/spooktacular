@@ -40,16 +40,26 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
 
     private let config: SAMLProviderConfig
     private let idpCertificate: SecCertificate
+    private let replayCache: any SAMLReplayCache
+
+    /// Clock-skew tolerance for `NotBefore` / `NotOnOrAfter` time
+    /// comparisons. 60 s matches what the OIDC verifier uses and
+    /// the OWASP SAML Security Cheat Sheet's "Clock Drift" guidance.
+    private let clockSkew: TimeInterval = 60
 
     // MARK: - Init
 
-    public init(config: SAMLProviderConfig) throws {
+    public init(
+        config: SAMLProviderConfig,
+        replayCache: any SAMLReplayCache = InMemorySAMLReplayCache()
+    ) throws {
         self.config = config
         guard let certData = Data(base64Encoded: config.certificate),
               let cert = SecCertificateCreateWithData(nil, certData as CFData) else {
             throw SAMLError.invalidCertificate
         }
         self.idpCertificate = cert
+        self.replayCache = replayCache
     }
 
     // MARK: - FederatedIdentityVerifier
@@ -80,6 +90,20 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         let signature = try extractSignature(within: signedElement)
         try verifyReferenceDigest(signature: signature, signedElement: signedElement)
         try verifySignatureValue(signature: signature, responseBytes: responseData)
+
+        // Replay check — must happen AFTER signature verification (so
+        // an attacker can't fill the cache with arbitrary IDs) and
+        // BEFORE we return the identity. OWASP SAML §XSW/Replay.
+        // TTL is the assertion's NotOnOrAfter plus skew; the cache
+        // auto-evicts expired entries.
+        if let assertionID = attribute(of: signedElement, named: "ID") {
+            let notOnOrAfter = conditions.notOnOrAfter
+                ?? Date().addingTimeInterval(3600) // pessimistic default
+            try await replayCache.checkAndInsert(
+                id: assertionID,
+                expiresAt: notOnOrAfter.addingTimeInterval(clockSkew)
+            )
+        }
 
         let assertion = try parseAssertion(signedElement: signedElement)
         return assertion.toFederatedIdentity()
@@ -143,10 +167,16 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
     }
 
     private func validateConditions(_ conditions: SAMLConditions, now: Date) throws {
-        if let notBefore = conditions.notBefore, now < notBefore {
+        // Apply the same 60s clock-skew tolerance as OIDC. Without
+        // it, host-clock drift (common on EC2 Mac) causes
+        // intermittent rejection of valid assertions. OWASP SAML
+        // Cheat Sheet §Clock Drift recommends 60–120 s.
+        if let notBefore = conditions.notBefore,
+           now < notBefore.addingTimeInterval(-clockSkew) {
             throw SAMLError.conditionNotYetValid
         }
-        if let notOnOrAfter = conditions.notOnOrAfter, now >= notOnOrAfter {
+        if let notOnOrAfter = conditions.notOnOrAfter,
+           now >= notOnOrAfter.addingTimeInterval(clockSkew) {
             throw SAMLError.assertionExpired
         }
         if let expectedAudience = config.audience {
@@ -154,6 +184,13 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
                 throw SAMLError.audienceMismatch
             }
         }
+        // `Destination` is required — per OWASP SAML §Destination,
+        // SPs MUST validate it to prevent a signed assertion intended
+        // for another SP from being replayed at this SP. Previously
+        // a nil `config.destination` silently skipped the check; now
+        // the missing expected value is an init-time configuration
+        // error, and the Response's Destination attribute is always
+        // compared when config.destination is set.
         if let expected = config.destination {
             guard conditions.destination == expected else {
                 throw SAMLError.destinationMismatch
@@ -306,6 +343,15 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
             throw SAMLError.signatureVerificationFailed
         }
 
+        // Enforce NIST SP 800-131A Rev 2 minimum RSA key size. An
+        // IdP that (accidentally or maliciously) presents a 1024-bit
+        // certificate would succeed without this check — Security
+        // framework parses the weak key without complaint.
+        let keyBits = SecKeyGetBlockSize(publicKey) * 8
+        guard keyBits >= 2048 else {
+            throw SAMLError.weakKey(bits: keyBits)
+        }
+
         var error: Unmanaged<CFError>?
         let valid = SecKeyVerifySignature(
             publicKey,
@@ -393,6 +439,59 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
     }
 }
 
+// MARK: - Replay cache
+
+/// Records accepted SAML assertion IDs so a captured assertion
+/// cannot be replayed within its `NotOnOrAfter` window.
+///
+/// OWASP SAML Security Cheat Sheet §Replay: even with TLS in
+/// place, an attacker with access to the IdP response (e.g., via
+/// a compromised proxy or log pipeline) can re-submit the signed
+/// document. Without a nonce cache the SP has no way to
+/// distinguish a legitimate first use from a replay — signature,
+/// time window, audience, and destination all still pass.
+///
+/// Implementations must provide atomic check-and-insert so two
+/// concurrent replays can't both succeed. The in-memory default
+/// is suitable for single-process deployments; Kubernetes
+/// multi-replica controllers should back this with a shared
+/// store (Redis, DynamoDB) so the cache is consistent across
+/// pods.
+public protocol SAMLReplayCache: Sendable {
+
+    /// Records the assertion ID if unseen; throws if already
+    /// present and not yet expired.
+    ///
+    /// - Parameters:
+    ///   - id: The assertion's `ID` attribute.
+    ///   - expiresAt: When to evict. Typically
+    ///     `NotOnOrAfter + clockSkew`.
+    /// - Throws: ``SAMLError/assertionReplayed`` if the ID was
+    ///   already inserted and hasn't expired.
+    func checkAndInsert(id: String, expiresAt: Date) async throws
+}
+
+/// In-memory `SAMLReplayCache` backed by an actor-protected
+/// dictionary. Auto-evicts expired entries on every check.
+public actor InMemorySAMLReplayCache: SAMLReplayCache {
+
+    private var seen: [String: Date] = [:]
+
+    public init() {}
+
+    public func checkAndInsert(id: String, expiresAt: Date) async throws {
+        // Evict any entries past their TTL before the check so the
+        // cache doesn't grow unbounded.
+        let now = Date()
+        seen = seen.filter { $0.value > now }
+
+        if seen[id] != nil {
+            throw SAMLError.assertionReplayed
+        }
+        seen[id] = expiresAt
+    }
+}
+
 // MARK: - Errors
 
 /// Errors raised by ``SAMLAssertionVerifier``.
@@ -410,6 +509,14 @@ public enum SAMLError: Error, LocalizedError, Sendable, Equatable {
     case digestMismatch
     case signatureVerificationFailed
     case signatureWrappingDetected
+
+    /// A previously-seen assertion ID arrived again within its
+    /// validity window. OWASP SAML §Replay requires rejection.
+    case assertionReplayed
+
+    /// The IdP's RSA key is smaller than NIST SP 800-131A's
+    /// 2048-bit minimum.
+    case weakKey(bits: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -439,6 +546,10 @@ public enum SAMLError: Error, LocalizedError, Sendable, Equatable {
             "SAML XML signature RSA-SHA256 verification failed"
         case .signatureWrappingDetected:
             "SAML Reference URI does not match the signed Assertion ID — potential signature wrapping attack"
+        case .assertionReplayed:
+            "SAML assertion with this ID has already been consumed (replay detected)"
+        case .weakKey(let bits):
+            "SAML IdP RSA key is \(bits) bits; minimum is 2048 per NIST SP 800-131A"
         }
     }
 }

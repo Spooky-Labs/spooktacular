@@ -94,42 +94,59 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
         guard let iss = claims["iss"] as? String, iss == config.issuerURL
         else { throw OIDCError.issuerMismatch }
 
-        // 6. Validate audience
-        if let expectedAud = config.audience {
-            let aud = claims["aud"]
-            let audMatch: Bool
-            if let audString = aud as? String {
-                audMatch = audString == expectedAud
-            } else if let audArray = aud as? [String] {
-                audMatch = audArray.contains(expectedAud)
-            } else {
-                audMatch = false
-            }
-            guard audMatch else { throw OIDCError.audienceMismatch }
-        }
-
-        // 7. Validate expiration.
+        // 6. Validate audience — unconditional.
         //
-        // OIDC Core §2 requires `exp`. An IdP that omits it MUST be
-        // rejected — a token "that never expires" is an unbounded
-        // credential. 60s of clock skew is the RFC 7519 §4.1.4
-        // recommendation; any larger window would create a window
-        // where expired tokens still authenticate.
+        // OIDC Core §3.1.3.7 requires audience validation. Previously
+        // the check was skipped when `config.audience` was nil — in a
+        // shared-issuer setup (GitHub Actions: every org shares
+        // `https://token.actions.githubusercontent.com`) this meant
+        // tokens issued for a different service with the same issuer
+        // passed unchallenged. Fall back to `config.clientID` as the
+        // expected audience, matching OIDC Core §3.1.3.7's guidance
+        // that the Client's own identifier is the canonical audience.
+        let expectedAud = config.audience ?? config.clientID
+        let aud = claims["aud"]
+        let audMatch: Bool
+        if let audString = aud as? String {
+            audMatch = audString == expectedAud
+        } else if let audArray = aud as? [String] {
+            audMatch = audArray.contains(expectedAud)
+        } else {
+            audMatch = false
+        }
+        guard audMatch else { throw OIDCError.audienceMismatch }
+
+        // 7. Validate temporal claims: exp (required), iat, nbf.
+        //
+        // - `exp` is REQUIRED per OIDC Core §2. Missing ⇒ reject.
+        // - `iat` in the future (beyond skew) suggests clock
+        //   manipulation.
+        // - `nbf` per RFC 7519 §4.1.5 is optional, but when present
+        //   MUST be honored — GitHub Actions OIDC tokens and many
+        //   enterprise IdPs rely on it for pre-activation tokens.
+        //
+        // The 60s clock-skew window applies symmetrically to all
+        // three. Any larger window creates a region where revoked
+        // or pre-activation tokens still authenticate.
         guard let expTimestamp = claims["exp"] as? TimeInterval else {
             throw OIDCError.missingRequiredClaim("exp")
         }
         let exp = Date(timeIntervalSince1970: expTimestamp)
         let clockSkew: TimeInterval = 60
-        guard Date() < exp.addingTimeInterval(clockSkew) else {
+        let now = Date()
+        guard now < exp.addingTimeInterval(clockSkew) else {
             throw OIDCError.tokenExpired
         }
-
-        // Also reject tokens issued in the future beyond skew
-        // tolerance — that catches clock-manipulation attacks.
         if let iatTimestamp = claims["iat"] as? TimeInterval {
             let iat = Date(timeIntervalSince1970: iatTimestamp)
-            guard iat < Date().addingTimeInterval(clockSkew) else {
+            guard iat < now.addingTimeInterval(clockSkew) else {
                 throw OIDCError.tokenIssuedInFuture
+            }
+        }
+        if let nbfTimestamp = claims["nbf"] as? TimeInterval {
+            let nbf = Date(timeIntervalSince1970: nbfTimestamp)
+            guard now >= nbf.addingTimeInterval(-clockSkew) else {
+                throw OIDCError.tokenNotYetValid
             }
         }
 
@@ -225,6 +242,16 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             throw OIDCError.signatureVerificationFailed
         }
 
+        // Enforce NIST SP 800-131A Rev 2 minimum RSA key size (2048).
+        // RSA-1024 is disallowed post-2015; `SecKeyCreateWithData`
+        // will parse a 1024-bit key without complaint and
+        // `SecKeyVerifySignature` will accept its signatures, so the
+        // check has to be explicit.
+        let keyBits = SecKeyGetBlockSize(publicKey) * 8
+        guard keyBits >= 2048 else {
+            throw OIDCError.weakKey(bits: keyBits)
+        }
+
         guard SecKeyVerifySignature(publicKey, .rsaSignatureMessagePKCS1v15SHA256, signedInput as CFData, signature as CFData, &error) else {
             throw OIDCError.signatureVerificationFailed
         }
@@ -240,7 +267,14 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
         }
         func integer(_ data: Data) -> Data {
             var d = data
-            if d.first! >= 0x80 { d.insert(0x00, at: 0) } // prepend zero for positive
+            // Guard against an empty modulus/exponent. A rogue or
+            // MITM-altered JWKS can send "n":"" or "e":""; the old
+            // `d.first!` force-unwrap crashed the entire verifier
+            // (DoS). Empty data is never a valid DER INTEGER.
+            guard let firstByte = d.first else {
+                return Data([0x02, 0x01, 0x00])   // encode INTEGER 0
+            }
+            if firstByte >= 0x80 { d.insert(0x00, at: 0) } // prepend zero for positive
             return Data([0x02]) + lengthBytes(d.count) + d
         }
         let modInt = integer(modulus)
@@ -279,6 +313,15 @@ public enum OIDCError: Error, LocalizedError, Sendable {
     /// The `iat` claim is in the future beyond the 60 s skew
     /// tolerance. Indicates a clock-skew or replay attack.
     case tokenIssuedInFuture
+
+    /// The `nbf` (not-before) claim is in the future beyond the
+    /// 60 s skew tolerance. The token is pre-activation and MUST
+    /// be rejected per RFC 7519 §4.1.5.
+    case tokenNotYetValid
+
+    /// The presented RSA key is smaller than NIST SP 800-131A's
+    /// 2048-bit minimum. Associated value is the observed key size.
+    case weakKey(bits: Int)
     /// The token's `aud` claim does not match the configured client.
     case audienceMismatch
     /// The token's `exp` claim is in the past.
@@ -296,6 +339,8 @@ public enum OIDCError: Error, LocalizedError, Sendable {
         case .issuerMismatch: "Token issuer does not match configured provider"
         case .missingRequiredClaim(let claim): "Token is missing required claim '\(claim)'"
         case .tokenIssuedInFuture: "Token iat is in the future beyond clock-skew tolerance"
+        case .tokenNotYetValid: "Token nbf is in the future beyond clock-skew tolerance"
+        case .weakKey(let bits): "IdP RSA key is \(bits) bits; minimum is 2048 per NIST SP 800-131A"
         case .audienceMismatch: "Token audience does not match configured client"
         case .tokenExpired: "Token has expired"
         case .jwksFetchFailed: "Failed to fetch JWKS from identity provider"
