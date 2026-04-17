@@ -100,6 +100,15 @@ actor RunnerPoolReconciler {
     private var inFlight: Set<String> = []
 
     /// The URL session used for RunnerPool K8s API calls.
+    ///
+    /// Reuses `KubernetesClient.session` — which installs
+    /// `ClusterTLSDelegate` and fail-closes when the in-cluster CA
+    /// bundle is missing — so the ServiceAccount bearer attached
+    /// below NEVER ships over an unpinned `.shared` or plain
+    /// `.ephemeral` session. A previous version built its own
+    /// `URLSession(configuration: .ephemeral)` here, which would
+    /// trust any system-root cert for the API host in clusters
+    /// fronted by a publicly-trusted serving cert.
     private let session: URLSession
 
     /// Node manager for calling Mac node APIs (start, stop, exec).
@@ -146,7 +155,10 @@ actor RunnerPoolReconciler {
         self.reusePolicy = reusePolicy
         self.githubService = githubService
         self.auditSink = auditSink
-        self.session = URLSession(configuration: .ephemeral)
+        // Share the client's CA-pinned session so every reconciler
+        // request inherits fail-closed TLS verification against the
+        // in-cluster service-account CA bundle.
+        self.session = client.session
     }
 
     // MARK: - Main Loop

@@ -801,7 +801,23 @@ private func handleListFS(_ request: AgentHTTPRequest) -> Data {
         .standardizedFileURL
         .resolvingSymlinksInPath()
 
-    guard fsAllowedRoots.contains(where: { resolved.path.hasPrefix($0.standardizedFileURL.path) }) else {
+    // Path-component containment — NOT raw hasPrefix. A plain prefix
+    // test lets sibling directories that share a character prefix
+    // escape the allow-list: if the agent runs as `admin` (home
+    // `/Users/admin`), `/Users/administrator/...` and `/Users/admin2`
+    // both satisfy `hasPrefix("/Users/admin")`. Appending a separator
+    // before the comparison forces the match to end at a directory
+    // boundary, and we also accept exact equality with the root
+    // itself. Resolve symlinks on both sides so the allow-list entry
+    // `/tmp` canonicalizes to `/private/tmp` on macOS the same way
+    // any user-supplied `/tmp/...` path does — otherwise legitimate
+    // `/tmp` access would fail the check.
+    guard fsAllowedRoots.contains(where: { root in
+        let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        if resolved.path == rootPath { return true }
+        let rootWithSep = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        return resolved.path.hasPrefix(rootWithSep)
+    }) else {
         return errorResponse(
             message: "Access denied: path is outside the allowed roots.",
             statusCode: 403

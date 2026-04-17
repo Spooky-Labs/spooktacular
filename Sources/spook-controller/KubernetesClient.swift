@@ -17,7 +17,19 @@ actor KubernetesClient {
     let baseURL: URL
     private let token: String
     let namespace: String
-    private let session: URLSession
+    /// The pinned `URLSession` used for every K8s API request.
+    ///
+    /// Exposed (non-private) so sibling adapters — e.g.
+    /// `RunnerPoolReconciler` calling the `RunnerPool` CRD endpoints
+    /// the client itself doesn't wrap — can reuse the exact same
+    /// `ClusterTLSDelegate` that pins the in-cluster CA. Building a
+    /// second plain `URLSession(configuration: .ephemeral)` on the
+    /// side sends the ServiceAccount bearer over an unpinned
+    /// channel, defeating the fail-closed CA check below.
+    ///
+    /// Immutable (`let`) so the handoff is Sendable and free of
+    /// actor-isolation churn. Callers only ever read from it.
+    let session: URLSession
     private let tlsDelegate: ClusterTLSDelegate
     private let logger = Logger(subsystem: "com.spooktacular.controller", category: "k8s-client")
 
