@@ -463,6 +463,7 @@ N/A — no SOAP, no GraphQL.
 | Merkle audit signing key generated inside Secure Enclave (non-exportable; STH forgery requires hardware, not just process compromise) | V7.2.2 | Remediated (`AuditSinkFactory.loadOrCreateSEPSigningKey` + `MerkleAuditSink` takes `any P256Signer`) |
 | Host-to-agent auth swapped from shared static tokens to per-request P-256 signatures (nonce-replay-protected; body-hash-bound) | V2.10.1 | Remediated (`SignedRequestVerifier` + `GuestAgentClient.sign`) |
 | Operator-to-API auth retired static Bearer token (`SPOOK_API_TOKEN`) in favor of the same signed-request primitive; `spook sign-request` as the ergonomic CLI / scripting helper | V2.10.1 | Remediated (`HTTPAPIServer` + `SPOOK_API_PUBLIC_KEYS_DIR` + `spook sign-request`) |
+| Workload-identity OIDC federation — Spooktacular mints ES256 JWTs for its managed VMs so workloads get short-lived AWS STS credentials via `AssumeRoleWithWebIdentity` (no long-lived IAM access keys in VM images) | V2.10.1 / V6.2 | Shipped (`WorkloadTokenIssuer` + `/.well-known/openid-configuration` + `/.well-known/jwks.json`) |
 | Per-operator trust allowlist (non-repudiation via cryptographic attribution) | V2.7.5 | Remediated (`SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` + multi-key verifier) |
 | Per-action MFA on admin CLI commands | V4.3.1 | Remediated (`AdminPresenceGate`) |
 | Federated admin tokens require stepped-up `acr` | V2.7.4 | Remediated (`OIDCTokenVerifier.insufficientACR`) |

@@ -118,6 +118,14 @@ public actor HTTPAPIServer {
     /// hex SHA-256 of the public key's x963 representation.
     private let actorIdentityByKeyFingerprint: [String: String]
 
+    /// Optional workload-identity token issuer. When set, the
+    /// server serves the OIDC discovery document at
+    /// `/.well-known/openid-configuration` and the JWKS at
+    /// `/.well-known/jwks.json` so AWS STS (and other OIDC
+    /// federation consumers) can bootstrap trust and verify
+    /// tokens this server mints for its VMs.
+    private let tokenIssuer: WorkloadTokenIssuer?
+
     /// Whether the server is running in insecure development mode.
     /// When `true`, TLS and API token requirements are bypassed.
     /// **Not suitable for production.** Use `--insecure` flag only
@@ -260,6 +268,7 @@ public actor HTTPAPIServer {
         tenantRegistry: (any TenantRegistry)? = nil,
         signatureVerifier: SignedRequestVerifier? = nil,
         actorIdentityByKeyFingerprint: [String: String] = [:],
+        tokenIssuer: WorkloadTokenIssuer? = nil,
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -298,6 +307,7 @@ public actor HTTPAPIServer {
 
         self.signatureVerifier = signatureVerifier
         self.actorIdentityByKeyFingerprint = actorIdentityByKeyFingerprint
+        self.tokenIssuer = tokenIssuer
 
         if insecureMode {
             Log.httpAPI.warning("⚠️  SERVER RUNNING IN INSECURE MODE — no TLS, no signature verification")
@@ -781,8 +791,11 @@ public actor HTTPAPIServer {
     /// - `/v1/vms/:name/stop` -- stop a VM
     /// - `/v1/vms/:name/ip` -- resolve VM IP
     ///
-    /// When `SPOOK_API_TOKEN` is configured, all routes except `/health`
-    /// require a matching `Authorization: Bearer <token>` header.
+    /// Every route except `/health` and `/.well-known/*` requires
+    /// per-request signature verification (see `SignedRequestVerifier`).
+    /// The OIDC discovery + JWKS paths are public by design — any
+    /// workload-federation consumer (AWS STS, GCP, Azure) must be
+    /// able to fetch them without credentials.
     private func routeRequest(_ request: HTTPRequest) async -> HTTPResponse {
         let components = request.path
             .split(separator: "/")
@@ -790,6 +803,20 @@ public actor HTTPAPIServer {
 
         if request.method == "GET" && request.path == "/health" {
             return handleHealth()
+        }
+
+        // Public OIDC discovery surface. These MUST be unauthenticated
+        // — AWS STS (and every other OIDC federation consumer) fetches
+        // them over plain HTTPS to bootstrap trust.
+        if request.method == "GET" {
+            if request.path == "/.well-known/openid-configuration",
+               let issuer = tokenIssuer {
+                return handleOIDCDiscovery(issuer: issuer)
+            }
+            if request.path == "/.well-known/jwks.json",
+               let issuer = tokenIssuer {
+                return handleJWKS(issuer: issuer)
+            }
         }
 
         // Resolve caller identity.
@@ -1280,6 +1307,26 @@ public actor HTTPAPIServer {
     /// is running.
     private func handleHealth() -> HTTPResponse {
         HTTPResponse.ok(HealthResponse(service: "spooktacular", version: "0.1.0"))
+    }
+
+    /// Handles `GET /.well-known/openid-configuration`.
+    ///
+    /// Returns the minimal OIDC discovery document AWS STS
+    /// consults when federating with this issuer. Unauthenticated
+    /// by design — every OIDC federation consumer fetches this
+    /// to bootstrap trust.
+    private func handleOIDCDiscovery(issuer: WorkloadTokenIssuer) -> HTTPResponse {
+        HTTPResponse.ok(issuer.discovery())
+    }
+
+    /// Handles `GET /.well-known/jwks.json`.
+    ///
+    /// Returns the JSON Web Key Set containing this issuer's
+    /// EC public key(s) in the format AWS STS (and other
+    /// OIDC verifiers) expect. Unauthenticated — the keys are
+    /// public by definition.
+    private func handleJWKS(issuer: WorkloadTokenIssuer) -> HTTPResponse {
+        HTTPResponse.ok(issuer.jwks())
     }
 
     /// Handles `GET /metrics`.

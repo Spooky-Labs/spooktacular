@@ -116,6 +116,14 @@ public enum SecurityControlInventory {
             notes: "Operator pins acr values (e.g., urn:mace:incommon:iap:silver) per-provider. Tokens missing acr or not in the allowlist are rejected before authorization."
         ),
         SecurityControl(
+            name: "Workload-identity OIDC federation (ES256 JWT issuer, SEP-bound)",
+            category: "Authentication & Identity",
+            standard: "OpenID Connect Core 1.0; AWS STS AssumeRoleWithWebIdentity (ECDSA support announced 2024-11-22); RFC 7518 §3.4 (ES256)",
+            implementation: "Sources/SpookApplication/WorkloadTokenIssuer.swift (ES256 mint, raw r||s signature per RFC 7518, JWKS + discovery document) + Sources/SpookInfrastructureApple/HTTPAPIServer.swift (/.well-known/openid-configuration + /.well-known/jwks.json)",
+            test: "Tests/SpooktacularKitTests/WorkloadTokenIssuerTests.swift",
+            notes: "Spooktacular can federate directly with AWS STS. Signing key is SEP-bound; VMs get short-lived IAM credentials via AssumeRoleWithWebIdentity with no long-lived secrets. The most common ES256 JWT bug (DER vs raw signature) is pinned by test."
+        ),
+        SecurityControl(
             name: "Per-request signed host-to-agent auth (retires shared static tokens)",
             category: "Authentication & Identity",
             standard: "OWASP ASVS V2.10 (no unchanging service credentials); OWASP API Top 10 2023 A02 (broken authentication)",

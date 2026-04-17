@@ -1,6 +1,5 @@
 import CryptoKit
 import Foundation
-import LocalAuthentication
 
 /// Anything that can produce a compact 64-byte P-256 ECDSA
 /// signature for a given payload.

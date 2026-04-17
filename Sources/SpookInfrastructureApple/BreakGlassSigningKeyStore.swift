@@ -2,6 +2,7 @@ import CryptoKit
 import Foundation
 import LocalAuthentication
 import Security
+import SpookApplication
 
 /// Manages break-glass signing keys bound to the macOS Secure
 /// Enclave.

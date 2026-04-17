@@ -319,6 +319,44 @@ extension Spook {
                 }
             }
 
+            // Workload-identity OIDC issuer. When both
+            // SPOOK_OIDC_ISSUER_URL and an SEP / PEM signing key
+            // are configured, spook serves as a federated
+            // identity provider for its managed VMs — operators
+            // can bind IAM roles to VMs and workloads inside
+            // the VM get short-lived AWS/GCP/Azure credentials
+            // via standard OIDC federation (sts:AssumeRoleWithWebIdentity).
+            var oidcIssuer: WorkloadTokenIssuer?
+            if let issuerURL = env["SPOOK_OIDC_ISSUER_URL"] {
+                let signer: (any P256Signer)?
+                if let label = env["SPOOK_OIDC_ISSUER_KEY_LABEL"] {
+                    // SEP-bound (recommended).
+                    do {
+                        signer = try AuditSinkFactory.loadOrCreateSEPSigningKey(
+                            label: "oidc-issuer-\(label)"
+                        )
+                    } catch {
+                        print(Style.error("✗ Cannot load OIDC issuer SEP key: \(error.localizedDescription)"))
+                        throw ExitCode.failure
+                    }
+                } else if let path = env["SPOOK_OIDC_ISSUER_KEY_PATH"] {
+                    // Software fallback for non-SEP hosts.
+                    do {
+                        signer = try AuditSinkFactory.loadOrCreateSoftwareSigningKey(at: path)
+                    } catch {
+                        print(Style.error("✗ Cannot load OIDC issuer software key: \(error.localizedDescription)"))
+                        throw ExitCode.failure
+                    }
+                } else {
+                    print(Style.warning("SPOOK_OIDC_ISSUER_URL is set but neither SPOOK_OIDC_ISSUER_KEY_LABEL (SEP-bound, recommended) nor SPOOK_OIDC_ISSUER_KEY_PATH (software) is configured — workload federation disabled."))
+                    signer = nil
+                }
+                if let signer {
+                    oidcIssuer = WorkloadTokenIssuer(issuerURL: issuerURL, signer: signer)
+                    print(Style.info("Workload-identity OIDC issuer enabled: \(issuerURL) (kid: \(oidcIssuer!.kid))"))
+                }
+            }
+
             let server: HTTPAPIServer
             do {
                 server = try HTTPAPIServer(
@@ -331,6 +369,7 @@ extension Spook {
                     auditSink: auditSink,
                     signatureVerifier: sigVerifier,
                     actorIdentityByKeyFingerprint: actorIdentityByFingerprint,
+                    tokenIssuer: oidcIssuer,
                     insecureMode: insecure
                 )
             } catch let error as HTTPAPIServerError {

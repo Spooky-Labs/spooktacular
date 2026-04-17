@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import SpookApplication
 import SpookCore
 
 /// Type alias retained for readability at break-glass call
