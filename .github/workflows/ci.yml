@@ -41,7 +41,12 @@ jobs:
           swiftlint version
 
       - name: Lint
-        run: swiftlint --strict --config .swiftlint.yml
+        # No `--config` flag: per the SwiftLint README, passing
+        # `--config` disables nested-config discovery, which
+        # means `Tests/.swiftlint.yml` (where the tests-scoped
+        # rule relaxations live) would be ignored. Letting
+        # SwiftLint auto-discover both files merges them.
+        run: swiftlint --strict
 
   test-and-build:
     name: Test & Build
