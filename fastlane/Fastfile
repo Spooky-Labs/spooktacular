@@ -21,14 +21,49 @@ APP_FEEDBACK_EMAIL      = ENV["FASTLANE_APP_FEEDBACK_EMAIL"]      || APPLE_ID
 
 platform :mac do
 
+  # Run fastlane's canonical pre-lane discipline exactly once, in
+  # the place the docs tell us to.
+  #
+  # `ensure_bundle_exec` — per
+  # https://docs.fastlane.tools/actions/ensure_bundle_exec — forces
+  # every invocation to go through `bundle exec fastlane`, so the
+  # pinned Gemfile.lock resolves dependencies identically on CI
+  # and on a contributor's laptop. No-op when already under
+  # bundler; fails loudly otherwise.
+  #
+  # `setup_ci` — per
+  # https://docs.fastlane.tools/actions/setup_ci — creates a
+  # temporary keychain so `match` can import certificates without
+  # prompting, switches `match` to read-only, and sets up log
+  # paths. Without it, builds can freeze forever on a hidden
+  # keychain prompt. Guarded on `CI` so a developer running
+  # `bundle exec fastlane beta` locally isn't forced into a
+  # throwaway keychain.
+  before_all do
+    ensure_bundle_exec
+    setup_ci if ENV["CI"]
+  end
+
   # ──────────────────────────────────────────────────
   # Test
   # ──────────────────────────────────────────────────
 
-  desc "Run all unit tests"
+  desc "Run all unit tests (parallel) with a false-green guard"
   lane :test do
     Dir.chdir(PROJECT_ROOT) do
-      sh("swift", "test")
+      # `swift test` exits 0 on no-tests-ran (e.g. if a compile
+      # crash silently skips the entire suite), which lets false-
+      # green slip past CI. We tee the output and then require the
+      # summary line — any deviation aborts the lane.
+      output = sh("swift", "test", "--parallel", log: true)
+      unless output.include?("Test run with") || output.include?("Executed ")
+        UI.user_error!(
+          "swift test produced no test-run summary — this is the " \
+          "false-green pattern where a compile crash silently yields " \
+          "exit 0 and zero tests. Inspect the log above for the real " \
+          "failure."
+        )
+      end
     end
   end
 
@@ -73,8 +108,8 @@ platform :mac do
 
   desc "Sync code-signing certificates and profiles via match"
   lane :signing do
-    setup_ci if ENV["CI"]
-
+    # `setup_ci` already ran via `before_all`; match picks up the
+    # temporary keychain automatically.
     api_key = get_api_key
     match(
       api_key: api_key,
@@ -213,6 +248,88 @@ platform :mac do
         add_id_info_uses_idfa: false
       }
     )
+  end
+
+  # ──────────────────────────────────────────────────
+  # Promote — TestFlight → App Store
+  # ──────────────────────────────────────────────────
+
+  desc "Promote an existing TestFlight build to App Store review (no rebuild)"
+  #
+  # Invoked on tag push. The signed + notarized binary already lives
+  # in TestFlight — uploaded by the `:beta` lane on merge to main —
+  # so we reuse it via `deliver(skip_binary_upload: true)` rather
+  # than rebuilding and re-uploading. This keeps the App Store bits
+  # byte-identical to what beta testers validated.
+  #
+  # Usage:
+  #   bundle exec fastlane promote version:1.2.3
+  #   bundle exec fastlane promote version:1.2.3 build_number:47
+  #   bundle exec fastlane promote version:1.2.3 auto_release:true
+  #
+  # If `build_number` is omitted, the latest TestFlight build for
+  # the given version is used.
+  lane :promote do |options|
+    api_key = get_api_key
+
+    version = options[:version] || ENV["APP_VERSION"]
+    UI.user_error!("version: parameter or APP_VERSION env required (e.g., version:1.2.3)") if version.nil? || version.empty?
+
+    build_number = options[:build_number] || latest_testflight_build_number(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      version: version,
+      platform: "osx"
+    )
+
+    UI.message("Promoting TestFlight build #{build_number} (v#{version}) to App Store review")
+
+    deliver(
+      api_key: api_key,
+      app_identifier: APP_IDENTIFIER,
+      app_platform: "osx",
+      team_id: TEAM_ID,
+
+      # Point at the existing TestFlight binary — no re-upload.
+      app_version: version.to_s,
+      build_number: build_number.to_s,
+      skip_binary_upload: true,
+
+      # Refresh metadata + screenshots on every promotion so App
+      # Store copy stays in sync with the site + repo.
+      skip_metadata: false,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
+
+      metadata_path: "./metadata",
+      screenshots_path: "./screenshots",
+      app_rating_config_path: "./metadata/age_rating_config.json",
+
+      primary_category: "DEVELOPER_TOOLS",
+      secondary_category: "BUSINESS",
+
+      submit_for_review: true,
+      automatic_release: options[:auto_release] || false,
+      phased_release: true,
+      force: true,
+
+      app_review_information: {
+        first_name: CONTACT_FIRST_NAME,
+        last_name: CONTACT_LAST_NAME,
+        phone_number: CONTACT_PHONE,
+        email_address: APP_REVIEW_EMAIL,
+        demo_user: "",
+        demo_password: "",
+        notes: review_notes
+      },
+
+      submission_information: {
+        export_compliance_uses_encryption: false,
+        add_id_info_uses_idfa: false
+      }
+    )
+
+    UI.success("TestFlight build #{build_number} (v#{version}) submitted for App Store review")
   end
 
   # ──────────────────────────────────────────────────

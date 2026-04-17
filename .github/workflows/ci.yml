@@ -1,3 +1,9 @@
+# CI runs on every PR against main and on every push to main.
+#
+# The pipeline is five parallel jobs, each a thin driver over
+# Fastlane lanes or SwiftPM. No imperative shell logic lives here —
+# anything worth reproducing on a contributor's laptop lives in
+# the Fastfile or a script under `scripts/`.
 name: CI
 
 on:
@@ -10,19 +16,20 @@ concurrency:
   group: ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
-# Shell steps below all re-assert `set -Eeuo pipefail` so a
-# failing intermediate command (e.g. `grep` returning non-zero
-# on a missing pattern) aborts the step instead of masking a
-# bad artifact.
 defaults:
   run:
     shell: bash
 
+# Fastlane documents this as required on every CI runner: the
+# toolchain refuses to progress past match / pilot / deliver calls
+# unless the locale is a UTF-8 one.
+#
+# https://docs.fastlane.tools/best-practices/continuous-integration/
+env:
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+
 jobs:
-  # ──────────────────────────────────────────────────────────
-  # 1. Lint — fails the build on any SwiftLint violation.
-  #    Runs first + cheapest; gives PR authors fast feedback.
-  # ──────────────────────────────────────────────────────────
   lint:
     name: SwiftLint (strict)
     runs-on: macos-26
@@ -31,25 +38,14 @@ jobs:
 
       - name: Install SwiftLint
         run: |
-          set -Eeuo pipefail
-          # Homebrew is pre-provisioned on macos-26 runners; the
-          # step below is idempotent and costs ~10s when cached.
           if ! command -v swiftlint >/dev/null 2>&1; then
             brew install swiftlint
           fi
           swiftlint version
 
-      - name: Lint (fail on any violation)
-        run: |
-          set -Eeuo pipefail
-          # `--strict` promotes every `warning`-severity rule to
-          # error, matching the Clean Code quality bar documented
-          # in CONTRIBUTING.md. The workflow fails on any hit.
-          swiftlint --strict --config .swiftlint.yml
+      - name: Lint
+        run: swiftlint --strict --config .swiftlint.yml
 
-  # ──────────────────────────────────────────────────────────
-  # 2. Unit tests + release build + .app bundle.
-  # ──────────────────────────────────────────────────────────
   test-and-build:
     name: Test & Build
     runs-on: macos-26
@@ -57,46 +53,38 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - name: Run unit tests
-        run: |
-          set -Eeuo pipefail
-          swift test --parallel 2>&1 | tee test-output.txt
-          # The `grep` below fails the step if the test summary
-          # is absent — a silent Swift compile crash previously
-          # produced zero test output and the step still went
-          # green because `swift test` exits 0 on no tests.
-          grep -q "Test run with" test-output.txt
+      # One action does four things: reads `.ruby-version`, installs
+      # that Ruby, reads `Gemfile.lock`'s `BUNDLED WITH` to install
+      # the matching Bundler, runs `bundle install`, caches gems.
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      # `fastlane test` owns the false-green guard (swift test exits
+      # 0 on no-tests-ran after a compile crash) so the guard lives
+      # in one place instead of every CI provider.
+      - name: fastlane test
+        run: bundle exec fastlane test | tee test-output.txt
 
       - name: Build release binary
-        run: |
-          set -Eeuo pipefail
-          swift build -c release
+        run: swift build -c release
 
       - name: Build .app bundle
         run: |
-          set -Eeuo pipefail
           chmod +x build-app.sh
           ./build-app.sh release
 
       - name: Verify .app structure
         run: |
-          set -Eeuo pipefail
           test -f Spooktacular.app/Contents/Info.plist
           test -f Spooktacular.app/Contents/MacOS/Spooktacular
           test -f Spooktacular.app/Contents/MacOS/spook
-          echo "✓ App bundle verified"
 
       - name: Validate README claims against reality
         run: |
-          set -Eeuo pipefail
           chmod +x scripts/ci/validate-readme-claims.sh
           scripts/ci/validate-readme-claims.sh test-output.txt
 
-  # ──────────────────────────────────────────────────────────
-  # 3. DocC — every public symbol in SpooktacularKit must
-  #    carry a doc comment. The `--warnings-as-errors` flag
-  #    fails the workflow on any undocumented-symbol warning.
-  # ──────────────────────────────────────────────────────────
   docs:
     name: DocC (warnings as errors)
     runs-on: macos-26
@@ -104,34 +92,12 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - name: Generate DocC with --warnings-as-errors
+      - name: Generate DocC
         run: |
-          set -Eeuo pipefail
-          swift package \
-            generate-documentation \
+          swift package generate-documentation \
             --target SpooktacularKit \
             --warnings-as-errors
 
-  # ──────────────────────────────────────────────────────────
-  # 4. Xcode project + UI tests.
-  #
-  #    SwiftPM cannot host an XCUITest bundle (Apple limitation),
-  #    so UI tests must be driven via `xcodebuild test`. Xcode
-  #    natively opens `Package.swift` as a workspace, so
-  #    `xcodebuild` can build a scheme directly — no explicit
-  #    `.xcodeproj` is required for the build step.
-  #
-  #    The UI-test step is best-effort on hosted `macos-26`
-  #    runners because the UI test bundle is not yet wired into
-  #    Package.swift (SwiftPM limitation). The step runs inside
-  #    a `continue-on-error: true`-less invocation so any
-  #    regression surfaces, but relies on
-  #    `scripts/generate-xcode-project.sh` producing a scheme
-  #    that covers `SpooktacularUITests`. The hosting workflow
-  #    is expected to be migrated to a self-hosted macOS runner
-  #    alongside the VZ-coupled integration scenarios called
-  #    out in `Tests/SpooktacularKitTests/VMLifecycleIntegrationTests.swift`.
-  # ──────────────────────────────────────────────────────────
   xcode-and-ui-tests:
     name: Xcode + UI Tests
     runs-on: macos-26
@@ -139,36 +105,62 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - name: Generate Xcode project helper output
+      - name: Generate Xcode helper output
         run: |
-          set -Eeuo pipefail
           chmod +x scripts/generate-xcode-project.sh
           ./scripts/generate-xcode-project.sh
 
-      - name: Build Spooktacular scheme via Package.swift
+      # Xcode opens Package.swift natively — no .xcodeproj needed.
+      # This job catches the "builds with swift build but breaks in
+      # Xcode" regression class.
+      - name: Build Spooktacular scheme
         run: |
-          set -Eeuo pipefail
-          # Xcode natively opens `Package.swift` as a workspace.
-          # This verifies the SwiftPM-integrated Xcode build is
-          # green on `macos-26` with the macOS 26 SDK.
           xcodebuild \
             -scheme Spooktacular \
             -destination 'platform=macOS' \
             build
 
-      - name: Run UI tests (XCUITest screenshots)
+      - name: Run UI tests
         run: |
-          set -Eeuo pipefail
-          # Relies on the accessibility identifiers the SwiftUI
-          # views publish (vmNameField, inspectorToggle,
-          # vmStartButton, inspectorPane). `continue-on-error`
-          # is deliberately unset — screenshot regressions must
-          # fail the build. If the SpooktacularUITests scheme is
-          # absent (SwiftPM limitation) the step errors loudly
-          # instead of silently passing, and the README's UI-test
-          # claim must be updated.
           xcodebuild \
             -scheme Spooktacular \
             -destination 'platform=macOS' \
             -only-testing:SpooktacularUITests \
             test
+
+  # PR-only. Generates App Store imagery so reviewers can see the
+  # shipping copy without leaving GitHub. Artifact retention is 14
+  # days — long enough for review cycles, short enough to keep the
+  # actions storage bill sane.
+  screenshots:
+    name: Screenshots
+    if: github.event_name == 'pull_request'
+    runs-on: macos-26
+    needs: [lint]
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: fastlane screenshots
+        run: bundle exec fastlane screenshots
+
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-pr-${{ github.event.pull_request.number }}
+          path: fastlane/screenshots/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Summarize on the Actions run
+        run: |
+          {
+            echo "## 📸 Screenshots for PR #${{ github.event.pull_request.number }}"
+            echo ""
+            echo "Download **screenshots-pr-${{ github.event.pull_request.number }}** from this run's Artifacts."
+            echo ""
+            find fastlane/screenshots -maxdepth 3 -type f \( -name '*.png' -o -name '*.jpg' \) | sort | sed 's|^|- `|; s|$|`|'
+          } >> "$GITHUB_STEP_SUMMARY"
