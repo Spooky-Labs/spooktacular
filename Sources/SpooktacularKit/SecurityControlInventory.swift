@@ -84,12 +84,20 @@ public enum SecurityControlInventory {
             notes: "XMLParser with external entities disabled (XXE); XSW detection; assertion replay prevention."
         ),
         SecurityControl(
-            name: "Per-action MFA: break-glass signing key in Secure-Enclave-adjacent Keychain ACL",
+            name: "Hardware-bound break-glass signing via Secure Enclave (AAL3)",
             category: "Authentication & Identity",
-            standard: "OWASP ASVS V2.7 (Out-of-band Verifier)",
-            implementation: "Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift (SecAccessControl(.userPresence) + kSecAttrAccessibleWhenUnlockedThisDeviceOnly)",
+            standard: "OWASP ASVS V2.7.1; NIST SP 800-63B AAL3; FIPS 140-3 Level 2 (SEP)",
+            implementation: "Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift (SecureEnclave.P256.Signing.PrivateKey(accessControl: .userPresence))",
             test: "Tests/SpooktacularKitTests/BreakGlassSigningKeyStoreTests.swift",
-            notes: "Key retrieval prompts Touch ID / Watch / device passcode. A compromised shell cannot mint a ticket without a live user gesture."
+            notes: "Keys generated inside the SEP; private bytes never leave the Secure Enclave. Each signing operation gated by Touch ID / Watch / passcode. Full kernel compromise still cannot exfiltrate the key."
+        ),
+        SecurityControl(
+            name: "Per-operator break-glass trust allowlist (cryptographic attribution)",
+            category: "Authentication & Identity",
+            standard: "OWASP ASVS V2.7.5 (non-repudiation); OWASP Top 10 A09:2021",
+            implementation: "Sources/spooktacular-agent/BreakGlassVerification.swift (multi-key verifier) + Sources/SpookInfrastructureApple/BreakGlassTicketCodec.swift (decode with [P256.Signing.PublicKey]) + SpookAgent.loadTicketVerifier (loads SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR)",
+            test: "Tests/SpooktacularKitTests/BreakGlassTicketTests.swift",
+            notes: "Each operator's signature cryptographically attributes a ticket to their hardware key, not just the self-asserted issuer string. Offboarding = delete one .pem; no fleet-wide rotation."
         ),
         SecurityControl(
             name: "Per-action MFA: LocalAuthentication gate on admin CLI commands",

@@ -2,6 +2,40 @@ import Foundation
 import CryptoKit
 import SpookCore
 
+/// Anything that can produce a compact 64-byte P-256 ECDSA
+/// signature for a given payload.
+///
+/// Two concrete signers implement this:
+///
+/// - `SecureEnclave.P256.Signing.PrivateKey` (via the adapter in
+///   ``BreakGlassSigningKeyStore``) — the production signer.
+///   The key is generated inside the Secure Enclave and never
+///   leaves. Signing requires a fresh `.userPresence` gesture.
+/// - `P256.Signing.PrivateKey` — a software signer, used for
+///   automated tests and for genuinely headless environments
+///   that can't accommodate SEP / biometry.
+///
+/// Callers don't need to care which they hold. The protocol
+/// sits above both so code above it stays testable without
+/// hardware.
+public protocol BreakGlassSigner: Sendable {
+    /// Returns the 64-byte `r ‖ s` raw representation of the
+    /// P-256 ECDSA signature over `data`.
+    func signature(for data: Data) throws -> Data
+
+    /// The matching public key, for export / distribution.
+    var publicKey: P256.Signing.PublicKey { get }
+}
+
+/// Convenience: software `P256.Signing.PrivateKey` is a signer.
+/// Used in tests and in legacy file-backed CLI mode.
+extension P256.Signing.PrivateKey: BreakGlassSigner {
+    public func signature(for data: Data) throws -> Data {
+        let sig = try self.signature(for: data) as P256.Signing.ECDSASignature
+        return sig.rawRepresentation
+    }
+}
+
 /// Serializes and verifies ``BreakGlassTicket`` values to the
 /// compact `bgt:<base64url-payload>.<base64url-signature>`
 /// wire format.
@@ -9,26 +43,36 @@ import SpookCore
 /// Deliberately **not** a JWT:
 ///
 /// - No `alg` header — the `bgt:` prefix is the only type tag,
-///   and verification is hard-coded to Ed25519. OWASP's JWT
+///   and verification is hard-coded to P-256 ECDSA. OWASP's JWT
 ///   Cheat Sheet §"Explicitly use only one algorithm" treats
 ///   algorithm pinning at verification as the gold standard;
 ///   omitting the header eliminates the attack surface entirely.
 /// - Canonical JSON encoding (`.sortedKeys`) — the signed bytes
 ///   are the same on every host, so a minted ticket signed on
 ///   host A verifies on host B without ambiguity.
-/// - 1-hour maximum TTL enforced at issuance — OWASP
-///   §"Short-lived tokens" and NIST SP 800-63B §5.1.9.1 both
-///   cap emergency credentials aggressively. Operators who
-///   want longer-lived access are using the wrong primitive.
+/// - 1-hour maximum TTL enforced at issuance.
+///
+/// ## Why P-256 (and not Ed25519)
+///
+/// Ed25519 is cryptographically equivalent to P-256 ECDSA for
+/// this use case and has nicer properties in isolation
+/// (deterministic signatures, no nonce-reuse risk in the naive
+/// software implementation). We use P-256 here specifically
+/// because the macOS Secure Enclave supports exactly P-256 for
+/// asymmetric operations and **does not** support Ed25519. The
+/// hardware-bound signing that closes OWASP ASVS V2.7 is only
+/// achievable via P-256 on Apple platforms. The SEP handles
+/// nonce generation correctly (per Apple's documentation) so
+/// the classical ECDSA nonce-reuse concern is inapplicable.
 ///
 /// ## Key material
 ///
-/// The `signingKey` passed to `encode` is an Ed25519 private
-/// key. The matching public key is pinned on every agent that
-/// verifies tickets. Key rotation is an operator-scheduled
-/// ceremony — there is no online key-exchange path; compromised
-/// keys are rotated by replacing both halves + re-issuing any
-/// in-flight tickets.
+/// An operator's signing key is generated inside the Secure
+/// Enclave on their workstation — see
+/// ``BreakGlassSigningKeyStore``. The matching public key is
+/// exported as PEM SPKI and added to the fleet's trust
+/// allowlist (one public key per operator). Agents iterate the
+/// allowlist on verify and accept the first match.
 public enum BreakGlassTicketCodec {
 
     /// The wire-format prefix. Hoisted to ``BreakGlassTicket/wirePrefix``
@@ -37,9 +81,7 @@ public enum BreakGlassTicketCodec {
     /// importing this module.
     public static var prefix: String { BreakGlassTicket.wirePrefix }
 
-    /// Policy ceiling on ticket TTL. OWASP recommends short
-    /// lifetimes for emergency credentials; one hour is the
-    /// widely-cited upper bound for break-glass sessions.
+    /// Policy ceiling on ticket TTL.
     public static let maxTTL: TimeInterval = 3600
 
     /// Canonical JSON encoder — `.sortedKeys` + ISO-8601 dates
@@ -60,11 +102,12 @@ public enum BreakGlassTicketCodec {
 
     // MARK: - Encode
 
-    /// Signs and serializes a ticket. Throws ``BreakGlassTicketError/ttlTooLong``
-    /// if `expiresAt - issuedAt` exceeds ``maxTTL``.
+    /// Signs and serializes a ticket. Throws
+    /// ``BreakGlassTicketError/ttlTooLong`` if
+    /// `expiresAt - issuedAt` exceeds ``maxTTL``.
     public static func encode(
         _ ticket: BreakGlassTicket,
-        signingKey: Curve25519.Signing.PrivateKey
+        signer: any BreakGlassSigner
     ) throws -> String {
         let ttl = ticket.expiresAt.timeIntervalSince(ticket.issuedAt)
         guard ttl > 0, ttl <= maxTTL else {
@@ -72,35 +115,46 @@ public enum BreakGlassTicketCodec {
         }
 
         let payload = try encoder.encode(ticket)
-        let signature = try signingKey.signature(for: payload)
+        let signature = try signer.signature(for: payload)
         return prefix
             + base64URLEncode(payload)
             + "."
-            + base64URLEncode(Data(signature))
+            + base64URLEncode(signature)
     }
 
     // MARK: - Decode + verify
 
-    /// Decodes and verifies a ticket. Returns the parsed ticket
-    /// if and only if:
+    /// Decodes and verifies a ticket against a trust allowlist
+    /// of operator public keys. Returns the parsed ticket if
+    /// and only if:
     ///
     /// 1. The envelope starts with `bgt:` and has exactly one
     ///    `.` separator.
     /// 2. Both base64url segments decode cleanly.
-    /// 3. The signature verifies against `publicKey`.
+    /// 3. The signature verifies against **at least one** key
+    ///    in `publicKeys`.
     /// 4. `issuer` is in `allowedIssuers`.
     /// 5. The ticket is neither expired nor not-yet-valid.
+    /// 6. `maxUses` is within policy bounds.
     ///
-    /// Most failure modes throw ``BreakGlassTicketError/invalidTicket``
-    /// — an intentionally coarse error to prevent oracles from
-    /// leaking which check failed. Expiry is distinct because
-    /// it's a legitimate retry signal for the caller.
+    /// Signature verification is OWASP step-1: we check it
+    /// *before* decoding the payload so a malformed-but-trusted
+    /// claim cannot influence code paths.
+    ///
+    /// Most failure modes throw
+    /// ``BreakGlassTicketError/invalidTicket`` — an intentionally
+    /// coarse error to prevent oracles from leaking which check
+    /// failed. Expiry is distinct because it's a legitimate
+    /// retry signal for the caller.
     public static func decode(
         _ raw: String,
-        publicKey: Curve25519.Signing.PublicKey,
+        publicKeys: [P256.Signing.PublicKey],
         allowedIssuers: Set<String>,
         now: Date = Date()
     ) throws -> BreakGlassTicket {
+        guard !publicKeys.isEmpty else {
+            throw BreakGlassTicketError.invalidTicket
+        }
         guard raw.hasPrefix(prefix) else {
             throw BreakGlassTicketError.malformedEnvelope
         }
@@ -114,12 +168,26 @@ public enum BreakGlassTicketCodec {
             throw BreakGlassTicketError.malformedEnvelope
         }
 
-        // Step 1 (OWASP): verify the signature BEFORE decoding
-        // the payload. Decoding first + verifying later is the
-        // textbook JWT mistake — a malformed-but-trusted claim
-        // can influence code paths before the signature check
-        // rejects it.
-        guard publicKey.isValidSignature(signatureData, for: payloadData) else {
+        // P-256 raw signatures are exactly 64 bytes (r ‖ s).
+        // Reject anything else before we even attempt verification.
+        guard signatureData.count == 64 else {
+            throw BreakGlassTicketError.invalidTicket
+        }
+        let ecdsa: P256.Signing.ECDSASignature
+        do {
+            ecdsa = try P256.Signing.ECDSASignature(rawRepresentation: signatureData)
+        } catch {
+            throw BreakGlassTicketError.invalidTicket
+        }
+
+        // Try each trusted key until one accepts the signature.
+        // For a small roster (typically < 10 operators) this is
+        // cheap and avoids the complexity of embedding a key-id
+        // in the wire format.
+        let signatureValid = publicKeys.contains { key in
+            key.isValidSignature(ecdsa, for: payloadData)
+        }
+        guard signatureValid else {
             throw BreakGlassTicketError.invalidTicket
         }
 
@@ -130,10 +198,6 @@ public enum BreakGlassTicketCodec {
             throw BreakGlassTicketError.invalidTicket
         }
 
-        // Issuer allowlist — defeats the "attacker with their
-        // own Ed25519 key mints a ticket" attack. Signature
-        // validity is necessary but not sufficient; the issuer
-        // must be in the operator-approved set.
         guard allowedIssuers.contains(ticket.issuer) else {
             throw BreakGlassTicketError.invalidTicket
         }
@@ -142,8 +206,6 @@ public enum BreakGlassTicketCodec {
             throw BreakGlassTicketError.expired
         }
 
-        // Reject absurd maxUses — protects the cache from DoS
-        // via a valid-signed ticket with maxUses = Int.max.
         guard ticket.maxUses >= 1, ticket.maxUses <= 100 else {
             throw BreakGlassTicketError.invalidTicket
         }

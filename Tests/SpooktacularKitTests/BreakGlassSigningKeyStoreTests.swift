@@ -5,34 +5,38 @@ import CryptoKit
 
 /// Tests for ``BreakGlassSigningKeyStore``.
 ///
-/// The store's hot path — `store(_:label:)` + `load(label:reason:)`
-/// — requires a live user gesture (Touch ID or the login password)
-/// because it writes and retrieves items protected by a
-/// `SecAccessControl` with `.userPresence`. Unit tests on headless
-/// CI can't provide that gesture, so the Keychain round-trip is
-/// covered by manual / integration testing. What we can pin here
-/// is the deterministic surface:
+/// The store's hot path — `store(label:)` + `loadSigner(...)` —
+/// requires both a Secure Enclave *and* a live user gesture
+/// (Touch ID or the login password). Neither is available under
+/// `swift test` on headless CI, so round-trip is covered by
+/// manual / integration testing. What we can pin here is the
+/// deterministic surface:
 ///
 /// - The error taxonomy covers the operator-visible failure modes.
 /// - Invalid inputs are rejected before the Keychain is touched.
 /// - `exists(label:)` returns `false` for an unused label without
-///   prompting — important because the CLI uses it to prevent
-///   accidental overwrites.
+///   prompting.
 @Suite("BreakGlassSigningKeyStore", .tags(.security, .cryptography))
 struct BreakGlassSigningKeyStoreTests {
 
     @Test("Empty label is rejected on store")
     func emptyLabelOnStore() {
-        let key = Curve25519.Signing.PrivateKey()
         #expect(throws: BreakGlassSigningKeyStoreError.self) {
-            try BreakGlassSigningKeyStore.store(key, label: "")
+            _ = try BreakGlassSigningKeyStore.store(label: "")
         }
     }
 
-    @Test("Empty label is rejected on load")
-    func emptyLabelOnLoad() {
+    @Test("Empty label is rejected on loadSigner")
+    func emptyLabelOnLoad() async {
+        await #expect(throws: BreakGlassSigningKeyStoreError.self) {
+            _ = try await BreakGlassSigningKeyStore.loadSigner(label: "", reason: "test")
+        }
+    }
+
+    @Test("Empty label is rejected on publicKey")
+    func emptyLabelOnPublicKey() {
         #expect(throws: BreakGlassSigningKeyStoreError.self) {
-            _ = try BreakGlassSigningKeyStore.load(label: "", reason: "test")
+            _ = try BreakGlassSigningKeyStore.publicKey(label: "")
         }
     }
 
@@ -45,8 +49,6 @@ struct BreakGlassSigningKeyStoreTests {
 
     @Test("exists returns false for an unused label without prompting")
     func existsForUnusedLabel() {
-        // Use a high-entropy label to guarantee absence across
-        // successive test runs even on a developer machine.
         let label = "spooktacular-test-\(UUID().uuidString)"
         #expect(BreakGlassSigningKeyStore.exists(label: label) == false)
     }
@@ -61,9 +63,18 @@ struct BreakGlassSigningKeyStoreTests {
         #expect(declined.errorDescription?.contains("cancelled") == true
              || declined.errorDescription?.contains("failed") == true)
 
-        let dup = BreakGlassSigningKeyStoreError.alreadyExists(label: "fleet-default")
-        #expect(dup.errorDescription?.contains("fleet-default") == true)
+        let dup = BreakGlassSigningKeyStoreError.alreadyExists(label: "alice-mbp")
+        #expect(dup.errorDescription?.contains("alice-mbp") == true)
         #expect(dup.recoverySuggestion?.contains("rotate") == true)
+
+        // Spot-check the SEP-unavailable case since it's the one
+        // reviewers will ask about for non-Apple-Silicon hosts.
+        let noSEP = BreakGlassSigningKeyStoreError.secureEnclaveUnavailable(
+            underlying: NSError(domain: "test", code: 0)
+        )
+        #expect(noSEP.errorDescription?.contains("Secure Enclave") == true)
+        #expect(noSEP.recoverySuggestion?.contains("T2") == true
+             || noSEP.recoverySuggestion?.contains("Apple Silicon") == true)
     }
 
     @Test("Service tag namespaces the item under a predictable prefix")

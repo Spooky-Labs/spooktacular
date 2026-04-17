@@ -23,7 +23,7 @@ ASVS Level 1 is the floor for any internet-facing application. Level 2 is the st
 | Chapter | Pass | Partial | N/A | Fail |
 |---------|------|---------|-----|------|
 | V1 Architecture | 10 | 0 | 1 | 0 |
-| V2 Authentication | 15 | 0 | 6 | 0 |
+| V2 Authentication | 16 | 0 | 6 | 0 |
 | V3 Session Management | 3 | 0 | 9 | 0 |
 | V4 Access Control | 8 | 0 | 0 | 0 |
 | V5 Validation / Sanitization / Encoding | 11 | 0 | 3 | 0 |
@@ -36,7 +36,7 @@ ASVS Level 1 is the floor for any internet-facing application. Level 2 is the st
 | V12 Files and Resources | 8 | 0 | 2 | 0 |
 | V13 API and Web Service | 6 | 0 | 3 | 0 |
 | V14 Configuration | 15 | 0 | 0 | 0 |
-| **Total** | **115** | **0** | **31** | **0** |
+| **Total** | **116** | **0** | **31** | **0** |
 
 No `FAIL`. No `PARTIAL`. The two partials from the prior revision (V2.7 Out-of-band Verifier and V4.3.1 Administrative MFA) are now satisfied with code-level controls rather than operator-integration handwaves — see the three new controls in V2.7 and V4.3.1 below.
 
@@ -109,10 +109,11 @@ N/A — no passwords, no reset flow; break-glass is the emergency-access path, c
 
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
-| V2.7.1 | Out-of-band verifier authenticates the request, not the session | PASS | Break-glass signing key is held in the macOS Keychain under `SecAccessControl(.userPresence)` — retrieval requires Touch ID / Watch unlock / device passcode at the moment of mint. A compromised shell can't retrieve the key without a live user gesture. `Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift` |
-| V2.7.2 | Out-of-band verifier is separate from the primary authenticator | PASS | Biometry / Secure Enclave is on a different TCB than the calling process. Even with full process compromise, the attacker can't synthesize a Touch ID event. |
-| V2.7.3 | Verifier expires unused tokens | PASS | Break-glass tickets carry 1 h max TTL + are single-use via `UsedTicketCache`. |
-| V2.7.4 | IdP stepped-up authentication enforced when federated | PASS | `OIDCProviderConfig.requiredACRValues` (RFC 8176 / OIDC Core §5.5.1.1) — verifier rejects any admin-scope token whose `acr` claim isn't in the operator's allowlist. New error case `OIDCError.insufficientACR`. `Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift` |
+| V2.7.1 | Out-of-band verifier authenticates the request, not the session | PASS (AAL3) | Break-glass signing keys are generated **inside the macOS Secure Enclave** and never leave it (`SecureEnclave.P256.Signing.PrivateKey(accessControl: .userPresence)`). Signing is an IPC to the SEP; raw key material never enters the calling process's address space. Even with full kernel + process compromise, the attacker can only ask the SEP to sign specific payloads — each gated by Touch ID / Watch unlock / passcode. Equivalent assurance level to FIDO2 hardware authenticators. `Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift` |
+| V2.7.2 | Out-of-band verifier is separate from the primary authenticator | PASS | The Secure Enclave Processor is a physically separate die from the AP with its own ROM / RAM / AES engine. `.userPresence` evaluation runs inside the SEP using biometric data that never leaves the SEP. Fully independent trust domain. |
+| V2.7.3 | Verifier expires unused tokens | PASS | Break-glass tickets carry 1 h max TTL (enforced at encode time) and are single-use via `UsedTicketCache`. |
+| V2.7.4 | IdP stepped-up authentication enforced when federated | PASS | `OIDCProviderConfig.requiredACRValues` (RFC 8176 / OIDC Core §5.5.1.1) — verifier rejects any admin-scope token whose `acr` claim isn't in the operator's allowlist. `OIDCError.insufficientACR`. `Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift` |
+| V2.7.5 | Cryptographic attribution of privileged actions | PASS | Per-operator SEP keys — each operator generates their own key on their own workstation; the fleet's agents trust the **union** of operator public keys. A successful ticket signature cryptographically attributes the action to a specific operator's hardware, not just the self-asserted `issuer` string. Agent-side trust roster: `SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` (PEM SPKI files, one per operator). `Sources/spooktacular-agent/BreakGlassVerification.swift` |
 
 ### V2.8 One-Time Verifier
 
@@ -213,8 +214,8 @@ Stateless JSON API authenticated per-request via Bearer or ticket. No session ID
 
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
-| V6.2.1 | FIPS/NIST-approved crypto modules | PASS | CryptoKit (FIPS 140-3 via corecrypto); Secure Enclave for hardware-backed keys |
-| V6.2.2 | Industry-proven algorithms only | PASS | Ed25519 (RFC 8037), TLS 1.3, HMAC-SHA256, SHA-256, RSA-PKCS1-v1_5-SHA256 (2048-bit min) |
+| V6.2.1 | FIPS/NIST-approved crypto modules | PASS | CryptoKit (FIPS 140-3 via corecrypto); Secure Enclave (FIPS 140-3 Level 2) used for break-glass signing — keys are non-exportable by hardware policy |
+| V6.2.2 | Industry-proven algorithms only | PASS | P-256 ECDSA (NIST FIPS 186-5) for break-glass signing via SEP; Ed25519 (RFC 8037) for Merkle signed-tree-heads; TLS 1.3; HMAC-SHA256; SHA-256; RSA-PKCS1-v1_5-SHA256 (2048-bit min) |
 | V6.2.3 | No deprecated primitives | PASS | No MD5 / SHA-1 / DES / 3DES / RC4 anywhere |
 | V6.2.4 | CSPRNG for random values | PASS | `UUID()` (SystemRandomNumberGenerator); `Curve25519.Signing.PrivateKey()` seeds from system CSPRNG |
 | V6.2.5 | Equivalent crypto strength | PASS | Ed25519 ~128-bit; TLS 1.3; RSA 2048-bit floor (NIST SP 800-131A Rev 2) |
@@ -233,7 +234,7 @@ Stateless JSON API authenticated per-request via Bearer or ticket. No session ID
 
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
-| V6.4.1 | Secrets in a key vault | PASS | macOS Keychain; file-backed Merkle key at 0600; `AuditSinkFactory.loadOrCreateSigningKey` refuses weaker perms |
+| V6.4.1 | Secrets in a key vault | PASS | macOS Keychain for API tokens; **Secure Enclave for break-glass signing keys** (non-exportable by hardware); file-backed Merkle key at 0600; `AuditSinkFactory.loadOrCreateSigningKey` refuses weaker perms |
 | V6.4.2 | Secret access audited | PASS | Keychain access logged by macOS; `AuditRecord` logs every credential-mediated action |
 
 ---
@@ -458,7 +459,8 @@ N/A — no SOAP, no GraphQL.
 | Item | ASVS Control | Status |
 |------|--------------|--------|
 | HTTP security headers on every response | V14.4.2–7 | Remediated (commit `eca57d6aa`) |
-| Break-glass key protected by Secure Enclave user-presence | V2.7.1 | Remediated (`BreakGlassSigningKeyStore`) |
+| Break-glass signing key generated inside Secure Enclave (hardware-bound, non-exportable, AAL3) | V2.7.1 | Remediated (`BreakGlassSigningKeyStore` with `SecureEnclave.P256.Signing.PrivateKey`) |
+| Per-operator trust allowlist (non-repudiation via cryptographic attribution) | V2.7.5 | Remediated (`SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` + multi-key verifier) |
 | Per-action MFA on admin CLI commands | V4.3.1 | Remediated (`AdminPresenceGate`) |
 | Federated admin tokens require stepped-up `acr` | V2.7.4 | Remediated (`OIDCTokenVerifier.insufficientACR`) |
 

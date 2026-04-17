@@ -251,30 +251,65 @@ enum SpookAgent {
     /// or returns `nil` if the operator hasn't configured one.
     ///
     /// Required env vars:
-    ///   - `SPOOK_BREAKGLASS_PUBLIC_KEY` — path to a raw 32-byte
-    ///     Ed25519 public key (the output of
-    ///     `spook break-glass keygen --public-key`)
+    ///   - `SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` — directory
+    ///     containing one or more PEM-encoded P-256 public keys
+    ///     (files ending in `.pem` or `.pub`). Each file names
+    ///     one trusted operator. The verifier accepts a ticket
+    ///     if its signature matches any one of these keys.
     ///   - `SPOOK_BREAKGLASS_ISSUERS` — comma-separated list of
-    ///     operator identities that may mint tickets
+    ///     operator identities that may mint tickets. Checked
+    ///     as a secondary allowlist alongside the cryptographic
+    ///     key match.
     ///   - `SPOOK_BREAKGLASS_TENANT` — the tenant this agent
     ///     belongs to; tickets issued for another tenant are
-    ///     rejected even if otherwise valid
+    ///     rejected even if otherwise valid.
     ///
     /// Any missing var → `nil` (ticket path disabled).
     /// Malformed key material → `nil` + a fault log so the
     /// operator sees the misconfiguration at boot rather than
-    /// discovering it mid-incident.
+    /// discovering it mid-incident. An empty keys directory
+    /// also disables the ticket path (better than silently
+    /// accepting nothing).
     private static func loadTicketVerifier() -> BreakGlassTicketVerifier? {
         let env = ProcessInfo.processInfo.environment
-        guard let keyPath = env["SPOOK_BREAKGLASS_PUBLIC_KEY"],
+        guard let keysDir = env["SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR"],
               let issuersRaw = env["SPOOK_BREAKGLASS_ISSUERS"],
               let tenantRaw = env["SPOOK_BREAKGLASS_TENANT"]
         else { return nil }
 
-        guard let keyData = try? Data(contentsOf: URL(filePath: keyPath)),
-              let pubKey = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData)
-        else {
-            log.fault("SPOOK_BREAKGLASS_PUBLIC_KEY at '\(keyPath, privacy: .public)' missing or malformed — ticket path disabled")
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: keysDir, isDirectory: &isDir), isDir.boolValue else {
+            log.fault("SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR at '\(keysDir, privacy: .public)' is not a directory — ticket path disabled")
+            return nil
+        }
+
+        let contents: [String]
+        do {
+            contents = try fm.contentsOfDirectory(atPath: keysDir)
+        } catch {
+            log.fault("Cannot enumerate \(keysDir, privacy: .public): \(error.localizedDescription, privacy: .public) — ticket path disabled")
+            return nil
+        }
+
+        var publicKeys: [P256.Signing.PublicKey] = []
+        for name in contents where name.hasSuffix(".pem") || name.hasSuffix(".pub") {
+            let path = (keysDir as NSString).appendingPathComponent(name)
+            guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+                log.error("Unreadable break-glass key file: \(name, privacy: .public) — skipping")
+                continue
+            }
+            do {
+                let key = try P256.Signing.PublicKey(pemRepresentation: text)
+                publicKeys.append(key)
+            } catch {
+                log.error("Malformed PEM in \(name, privacy: .public): \(error.localizedDescription, privacy: .public) — skipping")
+                continue
+            }
+        }
+
+        guard !publicKeys.isEmpty else {
+            log.fault("SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR at '\(keysDir, privacy: .public)' has no valid PEM files — ticket path disabled")
             return nil
         }
 
@@ -286,8 +321,10 @@ enum SpookAgent {
             return nil
         }
 
+        log.info("Break-glass verifier ready: \(publicKeys.count, privacy: .public) trusted operator key(s) loaded")
+
         return BreakGlassTicketVerifier(
-            publicKey: pubKey,
+            publicKeys: publicKeys,
             allowedIssuers: issuers,
             tenant: TenantID(tenantRaw),
             cache: UsedTicketCache()

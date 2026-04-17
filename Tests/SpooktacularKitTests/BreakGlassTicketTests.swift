@@ -6,16 +6,17 @@ import CryptoKit
 @testable import SpookInfrastructureApple
 
 /// Covers the OWASP-aligned break-glass ticket contract:
-/// signature verification, expiry, TTL cap, single-use via the
-/// denylist, issuer allowlist, and the coarse-grained error
-/// taxonomy that prevents oracle attacks.
-@Suite("BreakGlass ticket", .tags(.security))
+/// P-256 ECDSA signature verification, expiry, TTL cap,
+/// single-use via the denylist, issuer allowlist, the
+/// multi-key trust allowlist (one key per operator), and the
+/// coarse-grained error taxonomy that prevents oracle attacks.
+@Suite("BreakGlass ticket", .tags(.security, .cryptography))
 struct BreakGlassTicketTests {
 
     // MARK: - Helpers
 
-    private static func makeKeyPair() -> (Curve25519.Signing.PrivateKey, Curve25519.Signing.PublicKey) {
-        let priv = Curve25519.Signing.PrivateKey()
+    private static func makeSoftwareSigner() -> (P256.Signing.PrivateKey, P256.Signing.PublicKey) {
+        let priv = P256.Signing.PrivateKey()
         return (priv, priv.publicKey)
     }
 
@@ -24,7 +25,7 @@ struct BreakGlassTicketTests {
         tenant: TenantID = .default,
         maxUses: Int = 1,
         reason: String? = nil,
-        ttl: TimeInterval = 900  // 15 minutes
+        ttl: TimeInterval = 900
     ) -> BreakGlassTicket {
         let now = Date()
         return BreakGlassTicket(
@@ -42,11 +43,11 @@ struct BreakGlassTicketTests {
 
     @Test("round-trip — encode then decode preserves every field")
     func roundTrip() throws {
-        let (priv, pub) = Self.makeKeyPair()
+        let (priv, pub) = Self.makeSoftwareSigner()
         let ticket = Self.validTicket(reason: "emergency: runner-01 stuck")
-        let wire = try BreakGlassTicketCodec.encode(ticket, signingKey: priv)
+        let wire = try BreakGlassTicketCodec.encode(ticket, signer: priv)
         let decoded = try BreakGlassTicketCodec.decode(
-            wire, publicKey: pub, allowedIssuers: ["sre@acme"]
+            wire, publicKeys: [pub], allowedIssuers: ["sre@acme"]
         )
         // ISO-8601 JSON dates truncate sub-second precision, so
         // we compare dates with a ≤1s tolerance. All other
@@ -62,19 +63,72 @@ struct BreakGlassTicketTests {
 
     @Test("wire format carries the `bgt:` prefix and exactly one `.` separator")
     func wireFormatShape() throws {
-        let (priv, _) = Self.makeKeyPair()
-        let wire = try BreakGlassTicketCodec.encode(Self.validTicket(), signingKey: priv)
+        let (priv, _) = Self.makeSoftwareSigner()
+        let wire = try BreakGlassTicketCodec.encode(Self.validTicket(), signer: priv)
         #expect(wire.hasPrefix("bgt:"))
         let body = wire.dropFirst(4)
         #expect(body.split(separator: ".").count == 2)
+    }
+
+    // MARK: - Multi-key allowlist
+
+    @Test("signature verified by any key in the allowlist — first match wins")
+    func multiKeyAllowlistAccepts() throws {
+        let (alice, alicePub) = Self.makeSoftwareSigner()
+        let (_, bobPub) = Self.makeSoftwareSigner()
+        let (_, carolPub) = Self.makeSoftwareSigner()
+
+        let wire = try BreakGlassTicketCodec.encode(
+            Self.validTicket(issuer: "alice@acme"), signer: alice
+        )
+        // Alice signs; agent's trust roster is [bob, carol, alice]
+        // — order independent. Must accept.
+        let decoded = try BreakGlassTicketCodec.decode(
+            wire,
+            publicKeys: [bobPub, carolPub, alicePub],
+            allowedIssuers: ["alice@acme"]
+        )
+        #expect(decoded.issuer == "alice@acme")
+    }
+
+    @Test("signature from an untrusted key rejected even when allowlist non-empty")
+    func multiKeyAllowlistRejectsUnknownKey() throws {
+        let (attacker, _) = Self.makeSoftwareSigner()
+        let (_, alicePub) = Self.makeSoftwareSigner()
+        let (_, bobPub) = Self.makeSoftwareSigner()
+
+        let wire = try BreakGlassTicketCodec.encode(
+            Self.validTicket(issuer: "alice@acme"), signer: attacker
+        )
+        // The attacker's signature is cryptographically valid
+        // relative to their own key, but their key isn't in the
+        // allowlist — reject.
+        #expect(throws: BreakGlassTicketError.invalidTicket) {
+            try BreakGlassTicketCodec.decode(
+                wire,
+                publicKeys: [alicePub, bobPub],
+                allowedIssuers: ["alice@acme"]
+            )
+        }
+    }
+
+    @Test("empty allowlist fails closed")
+    func emptyAllowlistRejects() throws {
+        let (priv, _) = Self.makeSoftwareSigner()
+        let wire = try BreakGlassTicketCodec.encode(Self.validTicket(), signer: priv)
+        #expect(throws: BreakGlassTicketError.invalidTicket) {
+            try BreakGlassTicketCodec.decode(
+                wire, publicKeys: [], allowedIssuers: ["sre@acme"]
+            )
+        }
     }
 
     // MARK: - Signature-tampering rejection
 
     @Test("tampered payload (flipped bit) fails verification")
     func tamperedPayloadRejected() throws {
-        let (priv, pub) = Self.makeKeyPair()
-        var wire = try BreakGlassTicketCodec.encode(Self.validTicket(), signingKey: priv)
+        let (priv, pub) = Self.makeSoftwareSigner()
+        var wire = try BreakGlassTicketCodec.encode(Self.validTicket(), signer: priv)
         // Flip a character in the payload segment.
         let idx = wire.index(wire.startIndex, offsetBy: 10)
         let orig = wire[idx]
@@ -83,20 +137,19 @@ struct BreakGlassTicketTests {
 
         #expect(throws: BreakGlassTicketError.invalidTicket) {
             try BreakGlassTicketCodec.decode(
-                wire, publicKey: pub, allowedIssuers: ["sre@acme"]
+                wire, publicKeys: [pub], allowedIssuers: ["sre@acme"]
             )
         }
     }
 
-    @Test("signed with a different key is rejected")
-    func wrongKeyRejected() throws {
-        let (priv, _) = Self.makeKeyPair()
-        let (_, otherPub) = Self.makeKeyPair()
-        let wire = try BreakGlassTicketCodec.encode(Self.validTicket(), signingKey: priv)
-
-        #expect(throws: BreakGlassTicketError.invalidTicket) {
+    @Test("signature length not 64 bytes rejected as invalidTicket")
+    func badSignatureLengthRejected() throws {
+        // Base64 "AA" decodes to 1 byte of 0x00, far short of 64.
+        let bogus = "bgt:e30.AA"
+        let (_, pub) = Self.makeSoftwareSigner()
+        #expect(throws: BreakGlassTicketError.self) {
             try BreakGlassTicketCodec.decode(
-                wire, publicKey: otherPub, allowedIssuers: ["sre@acme"]
+                bogus, publicKeys: [pub], allowedIssuers: []
             )
         }
     }
@@ -105,15 +158,15 @@ struct BreakGlassTicketTests {
 
     @Test("issuer not in the allowlist is rejected even with valid signature")
     func untrustedIssuerRejected() throws {
-        let (priv, pub) = Self.makeKeyPair()
+        let (priv, pub) = Self.makeSoftwareSigner()
         let ticket = Self.validTicket(issuer: "attacker@evil.example")
-        let wire = try BreakGlassTicketCodec.encode(ticket, signingKey: priv)
+        let wire = try BreakGlassTicketCodec.encode(ticket, signer: priv)
 
         // Even though the signature is valid, `attacker@evil` isn't
         // on the agent's allowlist — reject.
         #expect(throws: BreakGlassTicketError.invalidTicket) {
             try BreakGlassTicketCodec.decode(
-                wire, publicKey: pub, allowedIssuers: ["sre@acme"]
+                wire, publicKeys: [pub], allowedIssuers: ["sre@acme"]
             )
         }
     }
@@ -122,44 +175,44 @@ struct BreakGlassTicketTests {
 
     @Test("expired ticket surfaces BreakGlassTicketError.expired")
     func expiredRejected() throws {
-        let (priv, pub) = Self.makeKeyPair()
+        let (priv, pub) = Self.makeSoftwareSigner()
         let now = Date()
         let ticket = BreakGlassTicket(
             jti: UUID().uuidString,
             issuer: "sre@acme",
             tenant: .default,
             issuedAt: now.addingTimeInterval(-3500),
-            expiresAt: now.addingTimeInterval(-120),  // past even with skew
+            expiresAt: now.addingTimeInterval(-120),
             maxUses: 1,
             reason: nil
         )
-        let wire = try BreakGlassTicketCodec.encode(ticket, signingKey: priv)
+        let wire = try BreakGlassTicketCodec.encode(ticket, signer: priv)
 
         #expect(throws: BreakGlassTicketError.expired) {
             try BreakGlassTicketCodec.decode(
-                wire, publicKey: pub, allowedIssuers: ["sre@acme"]
+                wire, publicKeys: [pub], allowedIssuers: ["sre@acme"]
             )
         }
     }
 
     @Test("ticket issued far-future (beyond clock-skew) is rejected as expired")
     func notYetValidRejected() throws {
-        let (priv, pub) = Self.makeKeyPair()
+        let (priv, pub) = Self.makeSoftwareSigner()
         let now = Date()
         let ticket = BreakGlassTicket(
             jti: UUID().uuidString,
             issuer: "sre@acme",
             tenant: .default,
-            issuedAt: now.addingTimeInterval(3600),  // 1h in future
+            issuedAt: now.addingTimeInterval(3600),
             expiresAt: now.addingTimeInterval(3600 + 900),
             maxUses: 1,
             reason: nil
         )
-        let wire = try BreakGlassTicketCodec.encode(ticket, signingKey: priv)
+        let wire = try BreakGlassTicketCodec.encode(ticket, signer: priv)
 
         #expect(throws: BreakGlassTicketError.expired) {
             try BreakGlassTicketCodec.decode(
-                wire, publicKey: pub, allowedIssuers: ["sre@acme"]
+                wire, publicKeys: [pub], allowedIssuers: ["sre@acme"]
             )
         }
     }
@@ -168,19 +221,19 @@ struct BreakGlassTicketTests {
 
     @Test("TTL beyond 1h policy maximum is rejected at encode time")
     func ttlCeilingEnforced() {
-        let (priv, _) = Self.makeKeyPair()
+        let (priv, _) = Self.makeSoftwareSigner()
         let now = Date()
         let tooLong = BreakGlassTicket(
             jti: UUID().uuidString,
             issuer: "sre@acme",
             tenant: .default,
             issuedAt: now,
-            expiresAt: now.addingTimeInterval(3600 + 60), // 61 min
+            expiresAt: now.addingTimeInterval(3600 + 60),
             maxUses: 1,
             reason: nil
         )
         #expect(throws: BreakGlassTicketError.self) {
-            _ = try BreakGlassTicketCodec.encode(tooLong, signingKey: priv)
+            _ = try BreakGlassTicketCodec.encode(tooLong, signer: priv)
         }
     }
 
@@ -188,11 +241,11 @@ struct BreakGlassTicketTests {
 
     @Test("missing `bgt:` prefix returns malformedEnvelope")
     func noPrefixRejected() {
-        let (_, pub) = Self.makeKeyPair()
+        let (_, pub) = Self.makeSoftwareSigner()
         #expect(throws: BreakGlassTicketError.malformedEnvelope) {
             try BreakGlassTicketCodec.decode(
                 "not-a-ticket.garbage",
-                publicKey: pub,
+                publicKeys: [pub],
                 allowedIssuers: []
             )
         }
@@ -200,17 +253,17 @@ struct BreakGlassTicketTests {
 
     @Test("envelope without exactly one `.` returns malformedEnvelope")
     func malformedEnvelope() {
-        let (_, pub) = Self.makeKeyPair()
+        let (_, pub) = Self.makeSoftwareSigner()
         for broken in ["bgt:", "bgt:no-separator", "bgt:a.b.c"] {
             #expect(throws: BreakGlassTicketError.malformedEnvelope) {
                 try BreakGlassTicketCodec.decode(
-                    broken, publicKey: pub, allowedIssuers: []
+                    broken, publicKeys: [pub], allowedIssuers: []
                 )
             }
         }
     }
 
-    // MARK: - UsedTicketCache
+    // MARK: - UsedTicketCache (unchanged from Ed25519 era)
 
     @Test("tryConsume — first call succeeds, second on same JTI fails")
     func singleUseEnforced() {
@@ -263,7 +316,7 @@ struct BreakGlassTicketTests {
         let cache = UsedTicketCache()
         _ = cache.tryConsume(
             jti: UUID().uuidString,
-            expiresAt: Date().addingTimeInterval(-1),  // already expired
+            expiresAt: Date().addingTimeInterval(-1),
             maxUses: 1
         )
         _ = cache.tryConsume(
@@ -289,5 +342,17 @@ struct BreakGlassTicketTests {
             #expect(c.errorDescription?.isEmpty == false)
             #expect(c.recoverySuggestion?.isEmpty == false)
         }
+    }
+
+    // MARK: - PEM public-key distribution
+
+    @Test("public key round-trips via PEM SPKI — the fleet-distribution format")
+    func publicKeyPEMRoundTrip() throws {
+        let (_, pub) = Self.makeSoftwareSigner()
+        let pem = pub.pemRepresentation
+        #expect(pem.contains("BEGIN PUBLIC KEY"))
+        let reconstructed = try P256.Signing.PublicKey(pemRepresentation: pem)
+        // Public keys equate by their x963 representation.
+        #expect(reconstructed.x963Representation == pub.x963Representation)
     }
 }
