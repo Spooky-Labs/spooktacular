@@ -176,16 +176,4 @@ public enum ProvisioningMode: String, Sendable, Codable, Equatable,
             """
         }
     }
-
-    /// The recommended mode for a given VM source type.
-    public static func recommended(
-        forIPSW: Bool = false,
-        forOCI: Bool = false,
-        sshAvailable: Bool = false
-    ) -> ProvisioningMode {
-        if forIPSW { return .diskInject }
-        if forOCI { return .agent }
-        if sshAvailable { return .ssh }
-        return .sharedFolder
-    }
 }

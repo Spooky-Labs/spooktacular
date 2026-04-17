@@ -90,14 +90,6 @@ public enum IdPConfig: Sendable, Codable {
     }
 }
 
-/// Registry of identity providers for plug-and-play multi-IdP support.
-public protocol IdPRegistry: Sendable {
-    func register(_ config: IdPConfig) async throws
-    func remove(issuer: String) async throws
-    func verifierFor(issuer: String) async -> (any FederatedIdentityVerifier)?
-    func allProviders() async -> [IdPConfig]
-}
-
 // MARK: - Immutable Audit Store
 
 /// Append-only storage backend for audit records.

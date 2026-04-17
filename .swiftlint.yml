@@ -45,7 +45,7 @@ custom_rules:
   plaintext_secret:
     name: "Plaintext Secret"
     regex: 'password.*=.*"[^"]+"|(api|auth).*token.*=.*"[^"]+"'
-    message: "Possible plaintext secret. Use SecretStore or Keychain."
+    message: "Possible plaintext secret. Store in the macOS Keychain and read via SecItemCopyMatching."
     severity: error
 
   force_http:

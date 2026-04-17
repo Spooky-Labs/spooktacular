@@ -48,19 +48,6 @@ public struct HostPoolID: Hashable, Codable, Sendable, CustomStringConvertible {
     public static let `default` = HostPoolID("default")
 }
 
-/// A unique identifier for a runner group.
-///
-/// Maps to GitHub's runner group concept. In multi-tenant mode,
-/// runner groups are scoped to a tenant.
-public struct RunnerGroupID: Hashable, Codable, Sendable, CustomStringConvertible {
-    public let rawValue: String
-    public init(_ rawValue: String) { self.rawValue = rawValue }
-    public var description: String { rawValue }
-
-    /// The default runner group.
-    public static let `default` = RunnerGroupID("Default")
-}
-
 // MARK: - Authorization Context
 
 /// The full authorization context for any control-plane request.

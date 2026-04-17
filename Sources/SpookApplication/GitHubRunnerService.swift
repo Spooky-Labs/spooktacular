@@ -8,36 +8,6 @@ struct RegistrationTokenResponse: Codable, Sendable {
     let token: String
 }
 
-/// Decodes the `GET /actions/runners` response.
-struct RunnerListResponse: Codable, Sendable {
-    let runners: [RunnerSummary]
-}
-
-// MARK: - Public Models
-
-/// A summary of a GitHub Actions self-hosted runner.
-///
-/// This struct maps to the runner objects returned by the
-/// [GitHub Actions REST API](https://docs.github.com/en/rest/actions/self-hosted-runners).
-public struct RunnerSummary: Codable, Sendable {
-    /// The unique runner ID assigned by GitHub.
-    public let id: Int
-    /// The human-readable runner name.
-    public let name: String
-    /// The runner status, typically `"online"` or `"offline"`.
-    public let status: String
-    /// Whether the runner is currently executing a job.
-    public let busy: Bool
-    /// The labels assigned to this runner.
-    public let labels: [RunnerLabel]
-
-    /// A label attached to a GitHub Actions runner.
-    public struct RunnerLabel: Codable, Sendable {
-        /// The label name (e.g., `"self-hosted"`, `"macOS"`).
-        public let name: String
-    }
-}
-
 // MARK: - Errors
 
 /// Errors produced by ``GitHubRunnerService``.
@@ -72,7 +42,6 @@ public enum GitHubServiceError: Error, LocalizedError, Sendable {
 /// let service = GitHubRunnerService(auth: auth)
 ///
 /// let token = try await service.createRegistrationToken(scope: "repos/myorg/myrepo")
-/// let runners = try await service.listRunners(scope: "repos/myorg/myrepo")
 /// ```
 public actor GitHubRunnerService {
     private let auth: any GitHubAuthProvider
@@ -121,19 +90,6 @@ public actor GitHubRunnerService {
         let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners/\(runnerId)")!
         let (_, _) = try await request(url: url, method: .delete)
         log.info("Removed runner \(runnerId) from \(scope)")
-    }
-
-    /// Lists all self-hosted runners for the given scope.
-    ///
-    /// - Parameter scope: The API scope, e.g. `"repos/OWNER/REPO"` or `"orgs/ORG"`.
-    /// - Returns: An array of ``RunnerSummary`` objects.
-    /// - Throws: ``GitHubServiceError`` on failure.
-    public func listRunners(scope: String) async throws -> [RunnerSummary] {
-        let url = URL(string: "\(Self.apiBase)/\(scope)/actions/runners")!
-        let (data, _) = try await request(url: url, method: .get)
-        let response = try JSONDecoder().decode(RunnerListResponse.self, from: data)
-        log.info("Listed \(response.runners.count) runners for \(scope)")
-        return response.runners
     }
 
     // MARK: - Private

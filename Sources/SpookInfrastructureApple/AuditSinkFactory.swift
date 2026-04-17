@@ -93,12 +93,6 @@ public enum AuditSinkFactory {
         return sink
     }
 
-    /// Builds from environment variables (backward compatible).
-    public static func fromEnvironment() throws -> (any AuditSink)? {
-        let config = SpooktacularConfig.fromEnvironment().audit
-        return try build(config: config)
-    }
-
     // MARK: - Signing key persistence
 
     /// Loads an Ed25519 signing key from disk, creating it on first

@@ -25,38 +25,6 @@ struct GitHubRunnerServiceTests {
         #expect(decoded.token == "LLBMS-FAKE")
     }
 
-    @Test("RunnerListResponse decodes with labels")
-    func decodeList() throws {
-        let json = """
-        {
-          "total_count": 1,
-          "runners": [
-            {
-              "id": 42,
-              "name": "macos-arm64-01",
-              "status": "online",
-              "busy": false,
-              "labels": [
-                {"name": "self-hosted"},
-                {"name": "macOS"}
-              ]
-            }
-          ]
-        }
-        """
-        let data = Data(json.utf8)
-        let decoded = try JSONDecoder().decode(RunnerListResponse.self, from: data)
-        #expect(decoded.runners.count == 1)
-        let runner = decoded.runners[0]
-        #expect(runner.id == 42)
-        #expect(runner.name == "macos-arm64-01")
-        #expect(runner.status == "online")
-        #expect(runner.busy == false)
-        #expect(runner.labels.count == 2)
-        #expect(runner.labels[0].name == "self-hosted")
-        #expect(runner.labels[1].name == "macOS")
-    }
-
     @Test("Error has description")
     func errorDesc() {
         let invalidResponse = GitHubServiceError.invalidResponse
