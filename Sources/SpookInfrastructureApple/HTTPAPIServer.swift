@@ -131,6 +131,11 @@ public actor HTTPAPIServer {
     /// JWTs.
     private let iamBindingStore: (any VMIAMBindingStore)?
 
+    /// Optional OpenTelemetry span exporter. When set, each API
+    /// request emits a server-kind span with method / path /
+    /// status code attributes.
+    private let otelExporter: (any OTelExporter)?
+
     /// Whether the server is running in insecure development mode.
     /// When `true`, TLS and API token requirements are bypassed.
     /// **Not suitable for production.** Use `--insecure` flag only
@@ -275,6 +280,7 @@ public actor HTTPAPIServer {
         actorIdentityByKeyFingerprint: [String: String] = [:],
         tokenIssuer: WorkloadTokenIssuer? = nil,
         iamBindingStore: (any VMIAMBindingStore)? = nil,
+        otelExporter: (any OTelExporter)? = nil,
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -315,6 +321,7 @@ public actor HTTPAPIServer {
         self.actorIdentityByKeyFingerprint = actorIdentityByKeyFingerprint
         self.tokenIssuer = tokenIssuer
         self.iamBindingStore = iamBindingStore
+        self.otelExporter = otelExporter
 
         if insecureMode {
             Log.httpAPI.warning("⚠️  SERVER RUNNING IN INSECURE MODE — no TLS, no signature verification")
@@ -748,8 +755,56 @@ public actor HTTPAPIServer {
             return
         }
 
+        let spanStart = Date()
         let response = await routeRequest(request)
         sendResponse(response, on: connection)
+
+        // OTel span emission — best-effort, drops silently on
+        // any export failure. We emit AFTER the response ships
+        // so tracing latency never contributes to client-visible
+        // latency.
+        if let exporter = otelExporter {
+            let span = OTelSpan(
+                traceId: OTelSpan.newTraceID(),
+                spanId: OTelSpan.newSpanID(),
+                name: "\(request.method) \(Self.routeTemplate(from: request.path))",
+                kind: .server,
+                startTime: spanStart,
+                endTime: Date(),
+                attributes: [
+                    "http.method": .string(request.method),
+                    "http.target": .string(request.path),
+                    "http.status_code": .int(Int64(response.statusCode)),
+                    "spooktacular.tenant": .string(tenantID.rawValue),
+                ],
+                status: response.statusCode < 400 ? .ok : .error(message: "HTTP \(response.statusCode)")
+            )
+            Task { await exporter.export(spans: [span]) }
+        }
+    }
+
+    /// Turns a request path into a span-name-friendly template.
+    /// `/v1/vms/runner-01/start` → `/v1/vms/:name/start`.
+    /// Without this every unique VM name would create a new
+    /// span name in the trace UI (cardinality explosion).
+    private static func routeTemplate(from path: String) -> String {
+        let parts = path.split(separator: "/").map(String.init)
+        // /v1/vms/{name}...
+        if parts.count >= 3, parts[0] == "v1", parts[1] == "vms" {
+            var template = "/v1/vms/:name"
+            for i in 3..<parts.count {
+                template += "/" + parts[i]
+            }
+            return template
+        }
+        // /v1/iam/{tenant}/{vm}
+        if parts.count >= 4, parts[0] == "v1", parts[1] == "iam" {
+            return "/v1/iam/:tenant/:vm"
+        }
+        if parts.count >= 3, parts[0] == "v1", parts[1] == "iam" {
+            return "/v1/iam/:tenant"
+        }
+        return path
     }
 
     /// Sends an HTTP response on the connection and then closes it.

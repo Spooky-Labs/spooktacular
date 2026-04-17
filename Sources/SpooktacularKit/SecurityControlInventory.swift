@@ -232,6 +232,38 @@ public enum SecurityControlInventory {
             notes: "API tokens, TLS private keys, GitHub PATs. kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly enforced."
         ),
         SecurityControl(
+            name: "VM → IAM role binding (workload identity federation)",
+            category: "Authentication & Identity",
+            standard: "OpenID Connect Core 1.0; AWS STS AssumeRoleWithWebIdentity; OWASP ASVS V2.10 (no unchanging credentials)",
+            implementation: "Sources/SpookCore/VMIAMBinding.swift + Sources/SpookInfrastructureApple/JSONVMIAMBindingStore.swift + Sources/SpookInfrastructureApple/HTTPAPIServer.swift (/v1/iam, /v1/vms/:name/identity-token) + Sources/spook/Commands/IAM.swift + Sources/spooktacular-agent/WorkloadTokenCache.swift",
+            test: "Tests/SpooktacularKitTests/VMIAMBindingTests.swift",
+            notes: "Operators bind a VM to a cloud IAM role; the controller mints short-lived ES256 JWTs via the SEP-bound WorkloadTokenIssuer; VMs get temporary cloud credentials via standard OIDC federation. No long-lived access keys in VM images."
+        ),
+        SecurityControl(
+            name: "Tenant quota enforcement on VM create / clone",
+            category: "Authorization",
+            standard: "SOC 2 CC6.1 (logical access) + resource fairness",
+            implementation: "Sources/SpookInfrastructureApple/HTTPAPIServer.swift (evaluateTenantQuota) + Sources/SpookCore/TenantQuota.swift",
+            test: "Tests/SpooktacularKitTests/TenantQuotaTests.swift",
+            notes: "Counts active VMs per tenant at create / clone time; returns 403 with denial reason when the quota is exceeded. Per-server scoping; distributed counter is a follow-up for multi-instance deployments."
+        ),
+        SecurityControl(
+            name: "SIEM webhook audit forwarder (live streaming to Splunk / Datadog / CloudWatch)",
+            category: "Audit & Logging",
+            standard: "SOC 2 CC7.2 (detection + monitoring); NIST SP 800-53 AU-6 (audit review)",
+            implementation: "Sources/SpookInfrastructureApple/WebhookAuditSink.swift",
+            test: "Tests/SpooktacularKitTests/WebhookAuditSinkTests.swift",
+            notes: "Generic JSON-over-HTTPS webhook with optional HMAC-SHA256 signing. Tees off the primary audit sink so collector outages never cause audit loss. Retry with exponential backoff; drop + os_log fault after 3 attempts."
+        ),
+        SecurityControl(
+            name: "OpenTelemetry trace exporter (OTLP-HTTP-JSON)",
+            category: "Observability",
+            standard: "OpenTelemetry Protocol (OTLP) — opentelemetry.io/docs/specs/otlp",
+            implementation: "Sources/SpookApplication/OTLPExporter.swift + Sources/SpookInfrastructureApple/HTTPAPIServer.swift (span emission on every request)",
+            test: "Tests/SpooktacularKitTests/OTLPExporterTests.swift",
+            notes: "Spooktacular emits a server-kind span per API request with method / path-template / status / tenant attributes. Works with Tempo, Honeycomb, Datadog APM, AWS X-Ray (via ADOT Collector). Best-effort export — collector stalls never back up the API path."
+        ),
+        SecurityControl(
             name: "Hardware-bound Merkle audit signing via Secure Enclave",
             category: "Data at Rest",
             standard: "NIST SP 800-53 AU-9 / AU-10; FIPS 140-3 Level 2 (SEP); RFC 6962",

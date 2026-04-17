@@ -396,6 +396,27 @@ extension Spook {
                 print(Style.warning("Host-identity key unavailable: \(error.localizedDescription) — agent-bound operations will fail until resolved."))
             }
 
+            // OpenTelemetry exporter. When SPOOK_OTLP_ENDPOINT
+            // is set, every API request emits an OTLP-HTTP-JSON
+            // span to the configured collector (Grafana Tempo,
+            // Honeycomb, Datadog APM, AWS X-Ray via ADOT, etc.).
+            // Absent endpoint → no-op. Export is best-effort;
+            // collector stalls never back up the API path.
+            let otelExporter: (any OTelExporter)?
+            if let endpointStr = env["SPOOK_OTLP_ENDPOINT"],
+               let endpoint = URL(string: endpointStr) {
+                let headers = env["SPOOK_OTLP_HEADERS"]
+                    .flatMap(parseOTLPHeaders) ?? [:]
+                otelExporter = OTLPHTTPJSONExporter(config: .init(
+                    endpoint: endpoint,
+                    serviceName: env["SPOOK_OTLP_SERVICE_NAME"] ?? "spooktacular",
+                    extraHeaders: headers
+                ))
+                print(Style.info("OpenTelemetry traces → \(endpoint)"))
+            } else {
+                otelExporter = nil
+            }
+
             // VM → IAM role bindings. Loaded alongside tenancy
             // / RBAC config so the IAM CRUD endpoints have a
             // persistent store. Absence is non-fatal — the
@@ -425,6 +446,7 @@ extension Spook {
                     actorIdentityByKeyFingerprint: actorIdentityByFingerprint,
                     tokenIssuer: oidcIssuer,
                     iamBindingStore: iamBindingStore,
+                    otelExporter: otelExporter,
                     insecureMode: insecure
                 )
             } catch let error as HTTPAPIServerError {
@@ -685,4 +707,20 @@ enum TLSLoadingError: Error, LocalizedError {
             "Ensure the private key matches the certificate. Generate a new pair if needed."
         }
     }
+}
+
+/// Parses `Header1: val1; Header2: val2` — the env-var shape
+/// for OTLP extra headers (authorization tokens, tenant IDs).
+/// Silently ignores malformed entries.
+private func parseOTLPHeaders(_ raw: String) -> [String: String] {
+    var result: [String: String] = [:]
+    for entry in raw.split(separator: ";") {
+        let parts = entry.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { continue }
+        let name = parts[0].trimmingCharacters(in: .whitespaces)
+        let value = parts[1].trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty && !value.isEmpty else { continue }
+        result[name] = value
+    }
+    return result
 }
