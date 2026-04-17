@@ -46,11 +46,15 @@ In Pilot mode, the security model assumes the operator controls both the host an
 
 These are **known limitations**, not bugs:
 
-- **Federated identity supports OIDC (JWT) and SAML 2.0**: OIDC uses JWKS-based RS256 signature verification. SAML uses X.509 certificate-based XML signature verification via Security.framework. Group-to-scope and group-to-tenant mapping is configurable via `OIDCProviderConfig` and `SAMLProviderConfig`.
-- **FIPS 140-2 key storage via Secure Enclave**: FIPS 140-2 key storage is available via Apple's Secure Enclave on Apple Silicon (`FIPSKeyStore`). Keys are generated and used inside the Secure Enclave hardware — private keys never leave the enclave. On systems without Secure Enclave (e.g., VMs, CI), falls back to Keychain-backed software keys.
-- **Distributed locking is Kubernetes-only**: `KubernetesLeaseLock` provides lease-based coordination via K8s Lease objects with optimistic concurrency. Non-Kubernetes deployments still use per-host `flock(2)`.
-- **Tamper-evident audit (RFC 6962 / NIST SP 800-53 AU-9/AU-10)**: `MerkleAuditSink` uses a Merkle tree structure aligned with [RFC 6962](https://www.rfc-editor.org/rfc/rfc6962.html) (Certificate Transparency). Leaf hashes use `SHA256(0x00 || data)`, interior nodes use `SHA256(0x01 || left || right)`. Signed Tree Heads (Ed25519) provide non-repudiation per [NIST AU-10](https://csf.tools/reference/nist-sp-800-53/r5/au/au-9/). Inclusion proofs verify specific records in O(log n). However, the log is not backed by an append-only storage layer — for SOC 2 Type II compliance, forward Merkle-rooted records to immutable storage (S3 Object Lock, WORM, or a transparency log like [Sigstore Rekor](https://github.com/sigstore/rekor)).
-- **Blast radius of a compromised token**: A break-glass token grants shell execution inside the guest, but only on port 9472. Runner and read-only tokens cannot reach exec even if replayed against other ports. Use the narrowest token tier that meets your needs.
+- **Federated identity supports OIDC (JWT) and SAML 2.0**: OIDC uses JWKS-based RS256 signature verification with `nbf`, `exp`, `iat`, `aud`, and `iss` validation, 60s clock-skew tolerance, and a 2048-bit RSA minimum (NIST SP 800-131A). SAML 2.0 uses X.509 certificate-based XML signature verification via Security.framework with a `SAMLReplayCache` to reject assertion replays and signature-wrapping attacks (OWASP SAML Cheat Sheet). Group-to-scope and group-to-tenant mapping is configurable via `OIDCProviderConfig` and `SAMLProviderConfig`.
+- **FIPS 140-2 key storage via Secure Enclave**: FIPS 140-2 key storage is available via Apple's Secure Enclave on Apple Silicon (`FIPSKeyStore`). Keys are generated and used inside the Secure Enclave hardware — private keys never leave the enclave. `createSigningKeyReportingBacking()` returns whether the key is `.secureEnclave` or a `.software` fallback so production deployments can enforce hardware-only policy. On systems without Secure Enclave (e.g., VMs, CI), falls back to Keychain-backed software keys with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` + `.privateKeyUsage`.
+- **Distributed locking — three backends, factory-selected**: `DistributedLockFactory.makeFromEnvironment()` picks the lock implementation based on deployment context:
+  - `SPOOK_DYNAMO_TABLE` set → `DynamoDBDistributedLock` — cross-region strong-consistency via DynamoDB Global Tables + conditional writes. Fortune-20 multi-region fleets where K8s Leases can't bridge regions. SigV4 signing is hand-rolled (zero AWS SDK dependency).
+  - `SPOOK_K8S_API` set → `KubernetesLeaseLock` — cluster-scoped coordination via K8s Lease objects with optimistic concurrency (`resourceVersion`).
+  - Default → `FileDistributedLock` — `flock(2)` over `SPOOK_LOCK_DIR` (local or NFS). Single-host and shared-filesystem deployments.
+  The chosen backend is logged at startup so operators can detect unintended downgrades (a DynamoDB-expected deployment falling back to file lock would be a catastrophic multi-region coordination failure).
+- **Tamper-evident audit with immutable storage (RFC 6962 + S3 Object Lock + NIST SP 800-53 AU-9/AU-10)**: `MerkleAuditSink` uses an RFC 6962 Merkle tree. Leaf hashes use `SHA256(0x00 || data)`, interior nodes use `SHA256(0x01 || left || right)`. Signed Tree Heads sign the RFC 6962 §3.5 `TreeHeadSignature` structure (version byte 0x00 + signature_type 0x01 + milliseconds timestamp + tree_size + root) with Ed25519, so external CT-style verifiers validate tree heads without a Spooktacular-specific format. Inclusion proofs verify specific records in O(log n). The full sink chain composes: `OSLog` | `JSONFileAuditSink` → optional `AppendOnlyFileAuditStore` (BSD `UF_APPEND` via `chflags`, kernel-verified on init) → optional `MerkleAuditSink` → optional `S3ObjectLockAuditStore` (WORM, AWS S3 Object Lock in Compliance mode, SigV4 signing). The Merkle signing key is generated with `open(2) O_CREAT | O_EXCL | O_NOFOLLOW, 0600` atomically and persisted at `SPOOK_AUDIT_SIGNING_KEY` so signed tree heads verify across restarts.
+- **Blast radius of a compromised token**: A break-glass token grants shell execution inside the guest, but only on port 9472. Runner and read-only tokens cannot reach exec even if replayed against other ports. Child processes spawned from break-glass exec have `SPOOK_AGENT_*` and `SPOOK_AUDIT_*` stripped from their environment so a caller can't read the agent's own credentials. Use the narrowest token tier that meets your needs.
 
 ### Who should use Spooktacular
 
@@ -63,11 +67,15 @@ These are **known limitations**, not bugs:
 - Environments requiring FIPS 140-2 Level 2+ hardware-backed key custody **on virtualized deployments**. Apple Silicon hosts get Secure Enclave; CI runners inside VMs fall back to Keychain-backed software keys.
 - Deployments requiring federated identity beyond OIDC/SAML — certificate-based, OIDC, and SAML 2.0 identity are supported
 
-Signed tree heads now persist across process restarts (set
-`SPOOK_AUDIT_SIGNING_KEY` to a path that survives restarts).
-Combined with `AppendOnlyFileAuditStore` (BSD `UF_APPEND`, kernel-
-verified on init) and `S3ObjectLockAuditStore` (WORM object lock),
-the audit chain supports SOC 2 Type II controls.
+Signed tree heads persist across process restarts (set
+`SPOOK_AUDIT_SIGNING_KEY` to a path that survives restarts; the file
+is created with mode 0600 via `open(2) O_EXCL | O_NOFOLLOW` to avoid
+any TOCTOU window in the default umask). Combined with
+`AppendOnlyFileAuditStore` (BSD `UF_APPEND`, kernel-verified on init)
+and `S3ObjectLockAuditStore` (WORM S3 Object Lock in Compliance
+mode, SigV4 hand-rolled), the audit chain supports SOC 2 Type II
+controls end-to-end with no external immutable-storage forwarding
+required.
 
 ## Deployment Models
 
@@ -90,8 +98,8 @@ Spooktacular supports three deployment topologies, each with different security 
 | **Host scheduling** | Any available node | Tenant-partitioned host pools (`TenantIsolationPolicy`) |
 | **Warm-pool reuse** | Allowed with scrub validation | Same-tenant only, cross-tenant forbidden (`canReuse()`) |
 | **Break-glass shell** | Available with admin controls | Disabled by default, explicit per-tenant opt-in |
-| **Audit** | os.Logger + optional JSONL export | Hash-chained JSONL (`HashChainAuditSink`) + SIEM forwarding |
-| **Locking** | Per-host flock(2) | K8s Lease-based distributed locking (`KubernetesLeaseLock`) |
+| **Audit** | os.Logger + optional JSONL export + optional S3 Object Lock | Merkle-signed JSONL (`MerkleAuditSink`) + append-only file + S3 Object Lock + SIEM forwarding |
+| **Locking** | `FileDistributedLock` (flock over local/NFS) | `DistributedLockFactory`: DynamoDB (cross-region, Global Tables), Kubernetes Lease, or file — selected via `SPOOK_DYNAMO_TABLE` / `SPOOK_K8S_API` / `SPOOK_LOCK_DIR` |
 
 **Both deployment classes are supported.** Single-tenant is the recommended starting point. Multi-tenant adds OIDC identity, tenant-partitioned scheduling, hash-chained audit, and K8s distributed locking.
 
@@ -109,8 +117,27 @@ Spooktacular supports three deployment topologies, each with different security 
 ### Credential Rotation
 
 - **API tokens**: Rotate via Keychain (`security delete-generic-password` + `security add-generic-password`). No restart required — server reads token on each request.
-- **TLS certificates**: Replace cert/key files on disk. Server detects changes via `DispatchSource` file watcher and reloads automatically (zero-downtime rotation).
+- **TLS certificates**: Replace cert/key files on disk. Server detects changes via `DispatchSource` file watcher and reloads automatically (zero-downtime rotation). The reloaded listener enforces the same TLS 1.3 floor as the initial one.
 - **Guest agent tokens**: Update the token file at `/Volumes/My Shared Files/.agent-token` or the `SPOOK_AGENT_TOKEN` environment variable. Agent reads on each request.
+- **Merkle audit signing key**: Rotate by replacing the file at `SPOOK_AUDIT_SIGNING_KEY` (mode 0600). The loader refuses to start if permissions are weaker than 0600, so `chmod 600` the replacement before restart. Tree heads signed with the prior key remain valid until re-signed — distribute the old public key to long-lived verifiers before rotation.
+
+### Runtime Admin API
+
+The HTTP API exposes runtime administration for roles, role assignments, and tenants — gated by RBAC so operators can grant, revoke, and list without editing JSON on disk and restarting:
+
+| Endpoint | Method | Required permission | Built-in role that grants it |
+|----------|--------|---------------------|------------------------------|
+| `/v1/roles` | GET | `role:list` | `security-admin` |
+| `/v1/roles/{actor}` | GET | `role:list` | `security-admin` |
+| `/v1/roles/assign` | POST | `role:assign` | `security-admin` |
+| `/v1/roles/revoke` | POST | `role:revoke` | `security-admin` |
+| `/v1/tenants` | GET | `tenant:list` | `security-admin`, `platform-admin` |
+| `/v1/tenants/{id}` | GET | `tenant:list` | `security-admin`, `platform-admin` |
+| `/v1/tenants` | POST | `tenant:create` | `platform-admin` |
+| `/v1/tenants/{id}` | PATCH / PUT | `tenant:update` | `platform-admin` |
+| `/v1/tenants/{id}` | DELETE | `tenant:delete` | `platform-admin` |
+
+Every admin call emits a structured `AuditRecord` with the authenticated caller's identity, tenant, and correlation ID — including failed authorization attempts.
 
 ### Incident Response
 
@@ -121,12 +148,13 @@ Spooktacular supports three deployment topologies, each with different security 
 
 ### Deployment Support Matrix
 
-| Topology | Supported | Identity Model | Audit |
-|----------|-----------|---------------|-------|
-| Single host, single team | Yes | Bearer token + optional TLS | os.Logger |
-| Multi-host, single team | Yes | Mandatory mTLS + bearer token | os.Logger |
-| EC2 Mac fleet | Yes | mTLS + IMDS identity | os.Logger + CloudWatch forwarding |
-| Multi-tenant | Supported | Certificate identity + tenant isolation | JSONL SIEM export (SPOOK_AUDIT_FILE) |
+| Topology | Supported | Identity Model | Audit | Lock Backend |
+|----------|-----------|---------------|-------|--------------|
+| Single host, single team | Yes | Bearer token + optional TLS | OSLog / JSONL | `FileDistributedLock` (local) |
+| Multi-host, single team | Yes | Mandatory mTLS + bearer token | JSONL + append-only + Merkle | `FileDistributedLock` (NFS) |
+| EC2 Mac fleet | Yes | mTLS + IMDS identity | JSONL + append-only + Merkle + S3 Object Lock | `DynamoDBDistributedLock` |
+| Kubernetes-managed | Yes | mTLS + ServiceAccount | Merkle + S3 Object Lock | `KubernetesLeaseLock` |
+| Multi-tenant (cross-region) | Supported | OIDC/SAML + tenant isolation | Merkle + S3 Object Lock + SIEM | `DynamoDBDistributedLock` (Global Tables) |
 
 ## Reporting a Vulnerability
 

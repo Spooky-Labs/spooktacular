@@ -1,0 +1,62 @@
+#
+# Prometheus scrape config for a Spooktacular deployment.
+#
+# Deployment assumption: `spook serve` is reachable at
+# https://spook-01.example.com:8484 and is running in production mode
+# (TLS-required, bearer-token-required). Prometheus authenticates with
+# the same mTLS client certificate your CI uses.
+#
+# For local-dev hosts started with --insecure, drop the `tls_config`
+# and `authorization` blocks below; the HTTP listener will accept
+# plaintext and ignore the bearer.
+#
+# Scrape interval: 15s — matches the default alert evaluation cadence
+# and keeps per-target load below one request/second.
+#
+# Relabel rules: we drop the default `instance` label in favor of an
+# explicit `host` label so multi-host fleets show one entry per Mac
+# without Prometheus's synthetic `instance=<ip>:<port>` clutter.
+#
+
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  scrape_timeout:      10s
+
+rule_files:
+  - /etc/prometheus/rules.d/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: spooktacular
+    scheme: https
+    metrics_path: /metrics
+    authorization:
+      # spook serve reads SPOOK_API_TOKEN from the Keychain; put the
+      # bearer here or use a credentials_file pointing at /etc/secrets/.
+      credentials_file: /etc/prometheus/secrets/spook-api-token
+    tls_config:
+      cert_file: /etc/prometheus/certs/client.crt
+      key_file:  /etc/prometheus/certs/client.key
+      ca_file:   /etc/prometheus/certs/ca.crt
+      # server_name must match the SAN on the spook serve certificate.
+      server_name: spook-01.example.com
+      insecure_skip_verify: false
+    static_configs:
+      - targets:
+          - spook-01.example.com:8484
+          - spook-02.example.com:8484
+          - spook-03.example.com:8484
+        labels:
+          fleet: production
+          region: us-east-1
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: ([^:]+):.*
+        target_label: host
+      - action: labeldrop
+        regex: instance

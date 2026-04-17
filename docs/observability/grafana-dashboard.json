@@ -1,0 +1,257 @@
+{
+  "title": "Spooktacular — Fleet Overview",
+  "uid": "spooktacular-fleet",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["spooktacular", "mac-ci"],
+  "timezone": "browser",
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(spooktacular_running_vms, host)",
+        "refresh": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Capacity",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Running VMs",
+      "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(spooktacular_running_vms{host=~\"$host\"})", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 80 },
+              { "color": "red", "value": 95 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Max VMs (kernel cap)",
+      "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(spooktacular_max_vms{host=~\"$host\"})", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "gauge",
+      "title": "Free disk (GiB)",
+      "gridPos": { "x": 12, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "min(spooktacular_free_disk_gb{host=~\"$host\"})", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decgbytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "orange", "value": 50 },
+              { "color": "green",  "value": 100 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Clones / starts / stops / deletes (rate 5m)",
+      "gridPos": { "x": 18, "y": 1, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "rate(spooktacular_clones_total{host=~\"$host\"}[5m])",  "refId": "A", "legendFormat": "clone" },
+        { "expr": "rate(spooktacular_starts_total{host=~\"$host\"}[5m])",  "refId": "B", "legendFormat": "start" },
+        { "expr": "rate(spooktacular_stops_total{host=~\"$host\"}[5m])",   "refId": "C", "legendFormat": "stop" },
+        { "expr": "rate(spooktacular_deletes_total{host=~\"$host\"}[5m])", "refId": "D", "legendFormat": "delete" }
+      ]
+    },
+
+    {
+      "id": 10,
+      "type": "row",
+      "title": "API Health",
+      "gridPos": { "x": 0, "y": 5, "w": 24, "h": 1 }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Request rate by endpoint",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum by (method, path) (rate(spooktacular_api_requests_total{host=~\"$host\"}[5m]))", "refId": "A", "legendFormat": "{{method}} {{path}}" }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "API error rate (%)",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "100 * sum by (host) (rate(spooktacular_api_errors_total{host=~\"$host\"}[5m])) / clamp_min(sum by (host) (rate(spooktacular_api_requests_total{host=~\"$host\"}[5m])), 1)",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+
+    {
+      "id": 20,
+      "type": "row",
+      "title": "VM Lifecycle Latencies (mean over 10m)",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 1 }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Boot mean (s)",
+      "gridPos": { "x": 0, "y": 13, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(spooktacular_boot_duration_seconds_sum{host=~\"$host\"}[10m]) / clamp_min(rate(spooktacular_boot_duration_seconds_count{host=~\"$host\"}[10m]), 1)",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "SSH-ready mean (s)",
+      "gridPos": { "x": 8, "y": 13, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(spooktacular_ssh_ready_duration_seconds_sum{host=~\"$host\"}[10m]) / clamp_min(rate(spooktacular_ssh_ready_duration_seconds_count{host=~\"$host\"}[10m]), 1)",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Clone mean (s)",
+      "gridPos": { "x": 16, "y": 13, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(spooktacular_clone_duration_seconds_sum{host=~\"$host\"}[10m]) / clamp_min(rate(spooktacular_clone_duration_seconds_count{host=~\"$host\"}[10m]), 1)",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Runner SLOs",
+      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 1 }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Time-to-green (boot → GitHub-registered, mean)",
+      "gridPos": { "x": 0, "y": 20, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(spooktacular_runner_registration_duration_seconds_sum{host=~\"$host\"}[10m]) / clamp_min(rate(spooktacular_runner_registration_duration_seconds_count{host=~\"$host\"}[10m]), 1)",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green",  "value": null },
+              { "color": "orange", "value": 300 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "Cleanup failures (total, 1h)",
+      "gridPos": { "x": 12, "y": 20, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(spooktacular_cleanup_failures_total{host=~\"$host\"}[1h]))",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red",   "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 33,
+      "type": "timeseries",
+      "title": "Scrub mean (s)",
+      "gridPos": { "x": 18, "y": 20, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(spooktacular_scrub_duration_seconds_sum{host=~\"$host\"}[10m]) / clamp_min(rate(spooktacular_scrub_duration_seconds_count{host=~\"$host\"}[10m]), 1)",
+          "refId": "A",
+          "legendFormat": "{{host}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ]
+}

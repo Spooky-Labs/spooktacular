@@ -1,0 +1,154 @@
+#
+# Alert rules for Spooktacular.
+#
+# Severity guide:
+#   page      — on-call must act within 15 minutes
+#   ticket    — engineering picks up next business day
+#
+# Every rule has a `runbook_url` label pointing at a page in
+# docs/DISASTER_RECOVERY.md; the alertmanager template surfaces
+# that URL to the on-call to avoid "alert with no context" fatigue.
+#
+
+groups:
+  # -------------------------------------------------------------------
+  - name: capacity
+    rules:
+      - alert: SpooktacularCapacityExhausted
+        expr: spooktacular_running_vms >= spooktacular_max_vms
+        for: 5m
+        labels:
+          severity: ticket
+          component: scheduler
+        annotations:
+          summary: "Host {{ $labels.host }} is running at kernel VM ceiling"
+          description: |
+            {{ $labels.host }} has {{ $value }} VMs running at the
+            Apple Silicon limit of {{ $labels.max }}. New runners
+            queue until one completes; sustained saturation means
+            the fleet is undersized for demand.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#capacity-saturation
+
+      - alert: SpooktacularDiskLow
+        expr: spooktacular_free_disk_gb < 50
+        for: 10m
+        labels:
+          severity: page
+          component: storage
+        annotations:
+          summary: "Host {{ $labels.host }} has < 50 GiB free — next clone will fail"
+          description: |
+            Each clone reserves ~30 GiB. At {{ $value }} GiB free the
+            host is one clone away from refusing operations. Investigate
+            orphaned snapshots or stale base images.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#disk-pressure
+
+  # -------------------------------------------------------------------
+  - name: api-health
+    rules:
+      - alert: SpooktacularAPIErrorRateHigh
+        expr: |
+          sum by (host) (rate(spooktacular_api_errors_total[5m]))
+          /
+          clamp_min(sum by (host) (rate(spooktacular_api_requests_total[5m])), 1)
+          > 0.05
+        for: 10m
+        labels:
+          severity: page
+          component: http-api
+        annotations:
+          summary: "API error rate on {{ $labels.host }} > 5% for 10m"
+          description: |
+            Production API is returning 4xx/5xx at {{ $value | humanizePercentage }}.
+            Check the audit log (structured JSONL at $SPOOK_AUDIT_FILE)
+            and the /health endpoint before accepting operator traffic.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#api-error-spike
+
+      - alert: SpooktacularAPIUnreachable
+        expr: up{job="spooktacular"} == 0
+        for: 2m
+        labels:
+          severity: page
+          component: http-api
+        annotations:
+          summary: "Prometheus cannot reach spook serve on {{ $labels.host }}"
+          description: |
+            Likely causes: process crash, TLS cert expiry, bearer
+            token rotation without Prometheus refresh. Confirm with
+            `curl -k https://{{ $labels.host }}:8484/health`.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#api-unreachable
+
+  # -------------------------------------------------------------------
+  - name: vm-lifecycle
+    rules:
+      - alert: SpooktacularBootLatencyRegression
+        expr: |
+          rate(spooktacular_boot_duration_seconds_sum[10m])
+          /
+          clamp_min(rate(spooktacular_boot_duration_seconds_count[10m]), 1)
+          > 180
+        for: 15m
+        labels:
+          severity: ticket
+          component: lifecycle
+        annotations:
+          summary: "Mean boot time > 3m on {{ $labels.host }}"
+          description: |
+            SLO is < 120s (p95); current mean is {{ $value }}s. Likely
+            suspects: stale Rosetta cache, disk contention, or a
+            regressed provisioning script.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#slow-boot
+
+      - alert: SpooktacularCleanupFailures
+        expr: increase(spooktacular_cleanup_failures_total[10m]) > 0
+        for: 0m  # fire immediately
+        labels:
+          severity: page
+          component: lifecycle
+        annotations:
+          summary: "VM cleanup failed on {{ $labels.host }}"
+          description: |
+            A warm-pool VM failed its scrub or delete. Leaking VMs
+            means cross-tenant data residue risk on next reuse.
+            Cordon the host and investigate before scheduling more
+            workloads.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#cleanup-failure
+
+      - alert: SpooktacularScrubLatencyHigh
+        expr: |
+          rate(spooktacular_scrub_duration_seconds_sum[10m])
+          /
+          clamp_min(rate(spooktacular_scrub_duration_seconds_count[10m]), 1)
+          > 60
+        for: 15m
+        labels:
+          severity: ticket
+          component: lifecycle
+        annotations:
+          summary: "Mean scrub time > 60s on {{ $labels.host }}"
+          description: |
+            SLO is < 45s. Slow scrubs delay runner reuse and can mask
+            actual scrub-validation failures. Correlate with
+            spooktacular_cleanup_failures_total.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#slow-scrub
+
+  # -------------------------------------------------------------------
+  - name: runner-slo
+    rules:
+      - alert: SpooktacularTimeToGreenHigh
+        expr: |
+          rate(spooktacular_runner_registration_duration_seconds_sum[10m])
+          /
+          clamp_min(rate(spooktacular_runner_registration_duration_seconds_count[10m]), 1)
+          > 300
+        for: 15m
+        labels:
+          severity: ticket
+          component: runners
+        annotations:
+          summary: "Time-to-green (boot → GitHub-registered) > 5m on {{ $labels.host }}"
+          description: |
+            Runners are taking longer than the 300s SLO to become
+            available for jobs. Check GitHub API latency and the
+            provisioning logs for slow brew/xcode-select steps.
+          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#time-to-green

@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 import SpookCore
 import SpookApplication
+import os
 
 // MARK: - Merkle Tree Audit Sink
 
@@ -146,6 +147,40 @@ public actor MerkleAuditSink: AuditSink {
             rootHash: root.hexString,
             signature: signature.withUnsafeBytes { Data($0) }.base64EncodedString()
         )
+    }
+
+    /// Returns a Signed Tree Head if one can be produced; otherwise
+    /// emits the root hash unsigned and logs the signing failure.
+    ///
+    /// Use this from long-running pipelines (periodic STH emitters,
+    /// background audit exporters) where a crash on a transient
+    /// signing error would take down an entire audit subsystem —
+    /// exactly the outcome an append-only audit design exists to
+    /// prevent. The unsigned fallback is marked with an empty
+    /// `signature` field so downstream verifiers can distinguish it
+    /// from a valid STH and route it to a quarantine queue instead
+    /// of trusting it for non-repudiation.
+    ///
+    /// The throwing variant ``signedTreeHead()`` remains the correct
+    /// call when the caller wants signing failure to propagate —
+    /// e.g. an interactive `spook audit sign` invocation where the
+    /// operator should see the error immediately.
+    public func signedTreeHeadOrUnsigned() -> SignedTreeHead {
+        do {
+            return try signedTreeHead()
+        } catch {
+            let root = treeRoot()
+            let treeSize = leaves.count
+            Log.audit.error(
+                "STH signing failed (tree size \(treeSize, privacy: .public)): \(error.localizedDescription, privacy: .public) — emitting unsigned STH"
+            )
+            return SignedTreeHead(
+                treeSize: treeSize,
+                timestamp: Date(),
+                rootHash: root.hexString,
+                signature: ""
+            )
+        }
     }
 
     // MARK: - Inclusion Proof (RFC 6962)

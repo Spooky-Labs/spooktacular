@@ -115,6 +115,16 @@ public enum BuiltInRole {
                 Permission(resource: "pool", action: "delete"),
                 Permission(resource: "host", action: "drain"),
                 Permission(resource: "runner-group", action: "manage"),
+                // Tenant lifecycle via /v1/tenants. Ownership of
+                // tenant creation is a platform-level (not
+                // per-tenant) decision, but the permission still
+                // lives in the tenant-scoped role set so callers
+                // can't invoke these endpoints cross-tenant without
+                // an assignment in the target tenant.
+                Permission(resource: "tenant", action: "list"),
+                Permission(resource: "tenant", action: "create"),
+                Permission(resource: "tenant", action: "update"),
+                Permission(resource: "tenant", action: "delete"),
              ]))
     }
 
@@ -131,6 +141,11 @@ public enum BuiltInRole {
                 Permission(resource: "role", action: "list"),
                 Permission(resource: "role", action: "assign"),
                 Permission(resource: "role", action: "revoke"),
+                // Read-only view of the tenant roster for audit
+                // reviews. Mutation stays exclusive to platform-admin
+                // so a security reviewer can't inadvertently
+                // reshape the tenancy while investigating.
+                Permission(resource: "tenant", action: "list"),
                 // Break-glass is a distinct permission gate on top
                 // of the tenancy policy's allow decision. Without
                 // it, any authenticated actor that requested

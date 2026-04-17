@@ -187,6 +187,14 @@ public actor HTTPAPIServer {
     /// is the only one that can mutate through them.
     private let roleStore: (any RoleStore)?
 
+    /// Optional tenant registry used to serve `/v1/tenants`.
+    ///
+    /// When present, operators with `tenant:list` can enumerate
+    /// tenants and those with `tenant:create/update/delete` can
+    /// mutate them at runtime — rather than editing config on disk
+    /// and restarting. `nil` disables the endpoints.
+    private let tenantRegistry: (any TenantRegistry)?
+
     /// Dispatch source monitoring the TLS certificate file for changes.
     ///
     /// Retained here to keep the file-system event source alive for the
@@ -234,6 +242,7 @@ public actor HTTPAPIServer {
         auditSink: (any AuditSink)? = nil,
         identityVerifier: (any FederatedIdentityVerifier)? = nil,
         roleStore: (any RoleStore)? = nil,
+        tenantRegistry: (any TenantRegistry)? = nil,
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -261,6 +270,7 @@ public actor HTTPAPIServer {
         self.auditSink = auditSink
         self.identityVerifier = identityVerifier
         self.roleStore = roleStore
+        self.tenantRegistry = tenantRegistry
         self.insecureMode = insecureMode
         self.maxConcurrentConnections = Int(ProcessInfo.processInfo.environment["SPOOK_MAX_CONNECTIONS"] ?? "") ?? 50
         self.maxRequestsPerMinute = Int(ProcessInfo.processInfo.environment["SPOOK_RATE_LIMIT"] ?? "") ?? 120
@@ -877,6 +887,14 @@ public actor HTTPAPIServer {
             )
             return response
         }
+        if components.count >= 2, components[0] == "v1", components[1] == "tenants" {
+            let response = await handleTenantAPI(request: request, components: components)
+            await emitAPIAudit(
+                method: request.method, path: request.path,
+                statusCode: response.statusCode, actorIdentity: actorIdentity
+            )
+            return response
+        }
 
         guard components.count >= 2,
               components[0] == "v1",
@@ -935,6 +953,7 @@ public actor HTTPAPIServer {
         if path.hasPrefix("/v1/vms") { return "vm" }
         if path.hasPrefix("/v1/audit") { return "audit" }
         if path.hasPrefix("/v1/roles") { return "role" }
+        if path.hasPrefix("/v1/tenants") { return "tenant" }
         if path == "/metrics" { return "metrics" }
         return "api"
     }
@@ -1042,6 +1061,116 @@ public actor HTTPAPIServer {
         return HTTPResponse.error(message: "Not found.", statusCode: 404)
     }
 
+    // MARK: - Tenant Admin API
+
+    /// Handles `/v1/tenants*` — runtime tenant lifecycle management.
+    ///
+    /// - `GET    /v1/tenants`        — list every registered tenant
+    /// - `GET    /v1/tenants/{id}`   — fetch one tenant
+    /// - `POST   /v1/tenants`        — create (body: TenantDefinition JSON)
+    /// - `PATCH  /v1/tenants/{id}`   — replace (body: TenantDefinition JSON)
+    /// - `DELETE /v1/tenants/{id}`   — remove (fails if tenant has
+    ///                                 active VMs — enforced by the
+    ///                                 registry)
+    ///
+    /// The RBAC pre-check in `routeRequest` has already validated
+    /// that the caller holds `tenant:list/create/update/delete` — we
+    /// don't re-check here. What we DO guard against is `nil`
+    /// registry (404) and malformed bodies (400), so
+    /// misconfiguration surfaces as a crisp HTTP error rather than
+    /// an actor crash.
+    private func handleTenantAPI(
+        request: HTTPRequest,
+        components: [String]
+    ) async -> HTTPResponse {
+        guard let registry = tenantRegistry else {
+            return HTTPResponse.error(
+                message: "Tenant registry not configured on this server.",
+                statusCode: 404
+            )
+        }
+
+        // GET /v1/tenants — list
+        if request.method == "GET" && components.count == 2 {
+            let all = await registry.allTenants()
+            return HTTPResponse.ok(all)
+        }
+
+        // GET /v1/tenants/{id}
+        if request.method == "GET" && components.count == 3 {
+            guard let t = await registry.tenant(id: components[2]) else {
+                return HTTPResponse.error(message: "Tenant not found.", statusCode: 404)
+            }
+            return HTTPResponse.ok(t)
+        }
+
+        // POST /v1/tenants — create
+        if request.method == "POST" && components.count == 2 {
+            guard let body = request.body,
+                  let tenant = try? JSONDecoder().decode(TenantDefinition.self, from: body) else {
+                return HTTPResponse.error(
+                    message: "Create requires a TenantDefinition JSON body.",
+                    statusCode: 400
+                )
+            }
+            do {
+                try await registry.register(tenant)
+                return HTTPResponse.ok(tenant)
+            } catch {
+                return HTTPResponse.error(
+                    message: "Create failed: \(error.localizedDescription)",
+                    statusCode: 500
+                )
+            }
+        }
+
+        // PATCH/PUT /v1/tenants/{id} — replace by id
+        if (request.method == "PATCH" || request.method == "PUT") && components.count == 3 {
+            let id = components[2]
+            guard let body = request.body,
+                  let incoming = try? JSONDecoder().decode(TenantDefinition.self, from: body) else {
+                return HTTPResponse.error(
+                    message: "Update requires a TenantDefinition JSON body.",
+                    statusCode: 400
+                )
+            }
+            // Refuse id-in-body / id-in-path mismatch: silently
+            // renaming the tenant you thought you were patching is
+            // precisely the kind of "helpful" behavior that bites
+            // operators in prod.
+            guard incoming.id == id else {
+                return HTTPResponse.error(
+                    message: "Path id '\(id)' does not match body id '\(incoming.id)'.",
+                    statusCode: 400
+                )
+            }
+            do {
+                try await registry.update(incoming)
+                return HTTPResponse.ok(incoming)
+            } catch {
+                return HTTPResponse.error(
+                    message: "Update failed: \(error.localizedDescription)",
+                    statusCode: 500
+                )
+            }
+        }
+
+        // DELETE /v1/tenants/{id}
+        if request.method == "DELETE" && components.count == 3 {
+            do {
+                try await registry.remove(id: components[2])
+                return HTTPResponse.ok(["removed": true])
+            } catch {
+                return HTTPResponse.error(
+                    message: "Remove failed: \(error.localizedDescription)",
+                    statusCode: 500
+                )
+            }
+        }
+
+        return HTTPResponse.error(message: "Not found.", statusCode: 404)
+    }
+
     /// Maps an HTTP method + path to an action for RBAC evaluation.
     ///
     /// Role-admin paths are checked **before** the generic verb map
@@ -1062,6 +1191,8 @@ public actor HTTPAPIServer {
             if path.hasSuffix("/start") { return "start" }
             if path.hasSuffix("/stop") { return "stop" }
             return "create"
+        case "PATCH": return "update"
+        case "PUT": return "update"
         case "DELETE": return "delete"
         default: return "unknown"
         }
