@@ -1,6 +1,5 @@
 import Foundation
 import CryptoKit
-import Security
 import SpookCore
 import SpookApplication
 
@@ -22,29 +21,23 @@ import SpookApplication
 ///
 /// ## Merkle signing key selection
 ///
-/// When Merkle is enabled, the factory resolves a signer in this
-/// order:
+/// When Merkle is enabled, the factory delegates to
+/// ``P256KeyStore``, picking between SEP-bound and software
+/// paths based on which of the two config fields is set:
 ///
-/// 1. `config.merkleSigningKeyLabel` — Secure-Enclave-bound P-256
-///    key stored in the Keychain under the given label. Production
-///    default on any host with an SEP (Apple Silicon or Intel Mac
-///    with T2). Private key material never leaves the SEP; tree
-///    heads are signed via IPC to the Secure Enclave Processor.
-/// 2. `config.merkleSigningKeyPath` — PEM-encoded software P-256
-///    private key at file mode 0600. Fallback for CI environments,
-///    unit tests, and hosts without a Secure Enclave.
+/// 1. `config.merkleSigningKeyLabel` — SEP-bound key under the
+///    `com.spooktacular.merkle-audit` service namespace. The
+///    daemon signs continuously so no presence gate is used.
+/// 2. `config.merkleSigningKeyPath` — PEM-encoded software key
+///    at file mode 0600. Fallback for non-SEP hosts and tests.
 ///
-/// Requiring exactly one of the two is intentional: silent
-/// fall-through to an ephemeral key would produce STHs that don't
-/// verify after restart, which is strictly worse than refusing to
-/// start with a clear error.
+/// Requiring exactly one is intentional: silent fall-through
+/// to an ephemeral key would produce STHs that don't verify
+/// after restart.
 public enum AuditSinkFactory {
 
     /// Builds an audit sink chain from the given configuration.
-    ///
-    /// - Parameter config: The audit configuration.
-    /// - Returns: A composed `AuditSink`, or an OSLog fallback if nothing is configured.
-    public static func build(config: AuditConfig) throws -> (any AuditSink)? {
+    public static func build(config: AuditConfig) async throws -> (any AuditSink)? {
         // Base sink
         var sink: (any AuditSink)?
         if let filePath = config.filePath {
@@ -63,7 +56,7 @@ public enum AuditSinkFactory {
 
         // Merkle tree tamper-evidence — SEP-bound in production.
         if config.merkleEnabled, let base = sink {
-            let signer = try resolveMerkleSigner(config: config)
+            let signer = try await resolveMerkleSigner(config: config)
             sink = MerkleAuditSink(wrapping: base, signer: signer)
         }
 
@@ -83,7 +76,6 @@ public enum AuditSinkFactory {
             }
         }
 
-        // If nothing configured, use OSLog as default
         if sink == nil {
             sink = OSLogAuditSink()
         }
@@ -91,11 +83,9 @@ public enum AuditSinkFactory {
         return sink
     }
 
-    // MARK: - Merkle signer resolution
-
     /// Resolves the Merkle signing key from the configuration.
     /// Requires exactly one of the label / path options to be set.
-    public static func resolveMerkleSigner(config: AuditConfig) throws -> any P256Signer {
+    public static func resolveMerkleSigner(config: AuditConfig) async throws -> any P256Signer {
         let hasLabel = config.merkleSigningKeyLabel != nil
         let hasPath = config.merkleSigningKeyPath != nil
         switch (hasLabel, hasPath) {
@@ -104,151 +94,17 @@ public enum AuditSinkFactory {
         case (true, true):
             throw AuditSinkFactoryError.merkleKeyAmbiguous
         case (true, false):
-            return try loadOrCreateSEPSigningKey(label: config.merkleSigningKeyLabel!)
+            guard let label = config.merkleSigningKeyLabel, !label.isEmpty else {
+                throw AuditSinkFactoryError.merkleKeyLabelEmpty
+            }
+            return try await P256KeyStore.loadOrCreateSEP(
+                service: P256KeyStore.Service.merkleAudit,
+                label: label,
+                presenceGated: false
+            )
         case (false, true):
-            return try loadOrCreateSoftwareSigningKey(at: config.merkleSigningKeyPath!)
+            return try P256KeyStore.loadOrCreateSoftware(at: config.merkleSigningKeyPath!)
         }
-    }
-
-    // MARK: - SEP-bound signer (production)
-
-    /// Keychain attribute service tag for the Merkle signing key.
-    public static let merkleKeychainService = "com.spooktacular.merkle-audit"
-
-    /// Loads the SEP-bound P-256 signer for the given Keychain
-    /// label, generating a fresh one on first use.
-    ///
-    /// The key is generated **inside** the Secure Enclave without
-    /// a user-presence ACL — the daemon needs to sign tree heads
-    /// continuously, so prompting per signature would be
-    /// unworkable. Absence of `.userPresence` is not absence of
-    /// hardware binding: the key bytes still never leave the SEP,
-    /// they just don't require a live operator gesture to use.
-    /// This matches how Apple Pay's device account numbers work
-    /// for server-side settlement transactions.
-    ///
-    /// Keychain persistence:
-    /// - Opaque SEP blob (`key.dataRepresentation`) is stored
-    ///   under `merkleKeychainService` + `label` as a generic
-    ///   password. The blob is only reconstructible on the SEP
-    ///   that generated it — copy to another Mac and the key is
-    ///   gone.
-    /// - Accessibility: `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`
-    ///   so the daemon can sign from launch at boot after the
-    ///   first manual unlock of the host.
-    public static func loadOrCreateSEPSigningKey(label: String) throws -> any P256Signer {
-        guard !label.isEmpty else {
-            throw AuditSinkFactoryError.merkleKeyLabelEmpty
-        }
-
-        // Try to load the existing blob.
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: merkleKeychainService,
-            kSecAttrAccount as String: label,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-
-        if status == errSecSuccess {
-            guard let data = item as? Data else {
-                throw AuditSinkFactoryError.merkleKeyMalformed(label: label)
-            }
-            do {
-                let key = try SecureEnclave.P256.Signing.PrivateKey(
-                    dataRepresentation: data
-                )
-                return SEPSigner(key)
-            } catch {
-                throw AuditSinkFactoryError.merkleKeyMalformed(label: label)
-            }
-        }
-        if status != errSecItemNotFound {
-            throw AuditSinkFactoryError.merkleKeychainFailure(status: status)
-        }
-
-        // First run — generate and persist.
-        let key: SecureEnclave.P256.Signing.PrivateKey
-        do {
-            key = try SecureEnclave.P256.Signing.PrivateKey()
-        } catch {
-            throw AuditSinkFactoryError.secureEnclaveUnavailable(underlying: error)
-        }
-
-        let attrs: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: merkleKeychainService,
-            kSecAttrAccount as String: label,
-            kSecValueData as String: key.dataRepresentation,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-            kSecAttrDescription as String: "Spooktacular Merkle audit SEP-bound P-256 key",
-            kSecAttrLabel as String: "Spooktacular Merkle audit (\(label))"
-        ]
-        let addStatus = SecItemAdd(attrs as CFDictionary, nil)
-        guard addStatus == errSecSuccess else {
-            throw AuditSinkFactoryError.merkleKeychainFailure(status: addStatus)
-        }
-        return SEPSigner(key)
-    }
-
-    // MARK: - Software signer (tests / non-SEP hosts)
-
-    /// Loads a PEM-encoded P-256 signing key from disk, creating
-    /// it on first run with restrictive permissions.
-    ///
-    /// File layout: PEM-encoded P-256 private key. On creation
-    /// the file is written with mode 0600; if it already exists
-    /// with weaker permissions the loader refuses to proceed.
-    ///
-    /// Not the production default — use ``loadOrCreateSEPSigningKey(label:)``
-    /// when a Secure Enclave is available. This path exists for
-    /// hosts without an SEP (bare-metal Linux controllers in
-    /// non-Apple deployments) and for unit-test isolation.
-    public static func loadOrCreateSoftwareSigningKey(at path: String) throws -> any P256Signer {
-        let url = URL(filePath: path)
-        let fm = FileManager.default
-
-        if fm.fileExists(atPath: path) {
-            let attrs = try fm.attributesOfItem(atPath: path)
-            let mode = (attrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
-            guard mode & 0o077 == 0 else {
-                throw AuditSinkFactoryError.merkleKeyPermissionsTooOpen(path: path, mode: mode)
-            }
-            let pem = try String(contentsOf: url, encoding: .utf8)
-            return try P256.Signing.PrivateKey(pemRepresentation: pem)
-        }
-
-        let dir = url.deletingLastPathComponent()
-        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        let newKey = P256.Signing.PrivateKey()
-
-        // O_CREAT | O_EXCL | O_NOFOLLOW — atomic create at 0600
-        // that refuses to traverse a symlink swap.
-        try path.withCString { cPath in
-            let fd = open(cPath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-            guard fd >= 0 else {
-                throw AuditSinkFactoryError.merkleKeyCreateFailed(path: path, errno: errno)
-            }
-            defer { close(fd) }
-            let data = Data(newKey.pemRepresentation.utf8)
-            try data.withUnsafeBytes { buffer in
-                var remaining = buffer.count
-                var base = buffer.baseAddress
-                while remaining > 0 {
-                    let written = write(fd, base, remaining)
-                    if written < 0 {
-                        if errno == EINTR { continue }
-                        throw AuditSinkFactoryError.merkleKeyCreateFailed(path: path, errno: errno)
-                    }
-                    remaining -= written
-                    base = base?.advanced(by: written)
-                }
-            }
-            fsync(fd)
-        }
-        return newKey
     }
 }
 
@@ -259,11 +115,6 @@ public enum AuditSinkFactoryError: Error, LocalizedError, Sendable {
     case merkleKeyRequired
     case merkleKeyAmbiguous
     case merkleKeyLabelEmpty
-    case merkleKeyPermissionsTooOpen(path: String, mode: UInt16)
-    case merkleKeyCreateFailed(path: String, errno: Int32)
-    case merkleKeyMalformed(label: String)
-    case merkleKeychainFailure(status: OSStatus)
-    case secureEnclaveUnavailable(underlying: Error)
 
     public var errorDescription: String? {
         switch self {
@@ -273,20 +124,6 @@ public enum AuditSinkFactoryError: Error, LocalizedError, Sendable {
             return "Both SPOOK_AUDIT_SIGNING_KEY_LABEL and SPOOK_AUDIT_SIGNING_KEY_PATH are set — choose exactly one. Prefer the label (Secure Enclave) in production."
         case .merkleKeyLabelEmpty:
             return "SPOOK_AUDIT_SIGNING_KEY_LABEL is set but empty."
-        case .merkleKeyPermissionsTooOpen(let path, let mode):
-            return String(
-                format: "Merkle signing key at '%@' has permissions 0%o. Expected 0600 (owner-only). `chmod 600 %@` then retry.",
-                path, mode, path
-            )
-        case .merkleKeyCreateFailed(let path, let err):
-            let msg = String(cString: strerror(err))
-            return "Failed to create Merkle signing key at '\(path)': \(msg) (errno \(err))."
-        case .merkleKeyMalformed(let label):
-            return "Keychain entry for Merkle signing key '\(label)' is not a valid Secure Enclave key blob. It may have been tampered with or generated on a different SEP."
-        case .merkleKeychainFailure(let status):
-            return "Keychain operation failed with OSStatus \(status) while loading the Merkle signing key."
-        case .secureEnclaveUnavailable(let err):
-            return "Secure Enclave unavailable on this host: \(err.localizedDescription). Use SPOOK_AUDIT_SIGNING_KEY_PATH (software fallback) on hosts without an SEP."
         }
     }
 }

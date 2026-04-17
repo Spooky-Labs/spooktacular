@@ -243,9 +243,13 @@ extension Spook {
                 )
                 let signer: any P256Signer
                 do {
-                    signer = try AuditSinkFactory.resolveMerkleSigner(config: auditConfig)
+                    signer = try await AuditSinkFactory.resolveMerkleSigner(config: auditConfig)
                 } catch let err as AuditSinkFactoryError {
                     print(Style.error("✗ \(err.localizedDescription)"))
+                    throw ExitCode.failure
+                } catch let err as KeyStoreError {
+                    print(Style.error("✗ \(err.localizedDescription)"))
+                    if let hint = err.recoverySuggestion { print(Style.dim("  \(hint)")) }
                     throw ExitCode.failure
                 }
                 auditSink = MerkleAuditSink(wrapping: base, signer: signer)
@@ -332,8 +336,10 @@ extension Spook {
                 if let label = env["SPOOK_OIDC_ISSUER_KEY_LABEL"] {
                     // SEP-bound (recommended).
                     do {
-                        signer = try AuditSinkFactory.loadOrCreateSEPSigningKey(
-                            label: "oidc-issuer-\(label)"
+                        signer = try await P256KeyStore.loadOrCreateSEP(
+                            service: P256KeyStore.Service.oidcIssuer,
+                            label: label,
+                            presenceGated: false
                         )
                     } catch {
                         print(Style.error("✗ Cannot load OIDC issuer SEP key: \(error.localizedDescription)"))
@@ -342,7 +348,7 @@ extension Spook {
                 } else if let path = env["SPOOK_OIDC_ISSUER_KEY_PATH"] {
                     // Software fallback for non-SEP hosts.
                     do {
-                        signer = try AuditSinkFactory.loadOrCreateSoftwareSigningKey(at: path)
+                        signer = try P256KeyStore.loadOrCreateSoftware(at: path)
                     } catch {
                         print(Style.error("✗ Cannot load OIDC issuer software key: \(error.localizedDescription)"))
                         throw ExitCode.failure
@@ -355,6 +361,39 @@ extension Spook {
                     oidcIssuer = WorkloadTokenIssuer(issuerURL: issuerURL, signer: signer)
                     print(Style.info("Workload-identity OIDC issuer enabled: \(issuerURL) (kid: \(oidcIssuer!.kid))"))
                 }
+            }
+
+            // Host-identity signing key. Used whenever this
+            // control plane speaks to a guest agent (vsock
+            // signed requests). Distinct from the OIDC issuer
+            // key (rotation is independent; no trust overlap).
+            //
+            // SPOOK_HOST_IDENTITY_KEY_LABEL selects the SEP
+            // label; otherwise we use "default". Daemon use —
+            // no presence gate. The public key is logged at
+            // startup so operators know what to install in each
+            // agent's SPOOK_HOST_PUBLIC_KEYS_DIR trust
+            // directory.
+            let hostKeyLabel = env["SPOOK_HOST_IDENTITY_KEY_LABEL"] ?? "default"
+            do {
+                let hostSigner = try await P256KeyStore.loadOrCreateSEP(
+                    service: P256KeyStore.Service.hostIdentity,
+                    label: hostKeyLabel,
+                    presenceGated: false
+                )
+                let fingerprint = SignedRequestVerifier.hexSHA256(
+                    hostSigner.publicKey.x963Representation
+                )
+                print(Style.info("Host identity: service=\(P256KeyStore.Service.hostIdentity) label=\(hostKeyLabel) fingerprint=\(String(fingerprint.prefix(16)))…"))
+                print(Style.dim("  Host public key (install into each agent's SPOOK_HOST_PUBLIC_KEYS_DIR):"))
+                print(hostSigner.publicKey.pemRepresentation)
+            } catch {
+                // Host identity is advisory at this point — we
+                // log the failure but don't block startup. The
+                // OIDC + API signed-request paths remain
+                // functional; only agent-bound operations would
+                // be affected.
+                print(Style.warning("Host-identity key unavailable: \(error.localizedDescription) — agent-bound operations will fail until resolved."))
             }
 
             let server: HTTPAPIServer

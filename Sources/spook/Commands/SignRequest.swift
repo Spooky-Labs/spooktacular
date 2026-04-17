@@ -75,7 +75,7 @@ extension Spook {
         var path: String
 
         @Option(name: .customLong("keychain-label"),
-                help: "Load the signing key from the macOS Keychain (SEP-bound). Prompts for Touch ID / passcode.")
+                help: "Load the operator-identity signing key from the macOS Keychain (SEP-bound). Prompts for Touch ID / passcode. Provisioned via `spook identity keygen --type operator`.")
         var keychainLabel: String?
 
         @Option(name: .customLong("signing-key"),
@@ -127,11 +127,13 @@ extension Spook {
             } else {
                 let label = keychainLabel!
                 do {
-                    signer = try await BreakGlassSigningKeyStore.loadSigner(
+                    signer = try await P256KeyStore.loadOrCreateSEP(
+                        service: P256KeyStore.Service.operatorIdentity,
                         label: label,
-                        reason: "Sign API request: \(method) \(self.path)"
+                        presenceGated: true,
+                        authenticationPrompt: "Sign API request: \(method) \(self.path)"
                     )
-                } catch let err as BreakGlassSigningKeyStoreError {
+                } catch let err as KeyStoreError {
                     print(Style.error("✗ \(err.localizedDescription)"))
                     if let hint = err.recoverySuggestion { print(Style.dim("  \(hint)")) }
                     throw ExitCode.failure

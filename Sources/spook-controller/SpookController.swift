@@ -148,7 +148,7 @@ struct SpookController {
             )
             let signer: any P256Signer
             do {
-                signer = try AuditSinkFactory.resolveMerkleSigner(config: auditConfig)
+                signer = try await AuditSinkFactory.resolveMerkleSigner(config: auditConfig)
             } catch {
                 logger.fault("Cannot load Merkle signing key: \(error.localizedDescription, privacy: .public)")
                 exit(1)

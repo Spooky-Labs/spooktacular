@@ -44,7 +44,7 @@ Code changes that fell out of this audit:
 
 - **V14.4** — HTTP responses now carry the full ASVS header set (`Sources/SpookInfrastructureApple/HTTPResponse.swift:serialize()` + `Tests/SpooktacularKitTests/HTTPSecurityHeadersTests.swift`).
 - **V2.7 / V4.3.1** — per-action MFA: break-glass signing key in the Keychain with `SecAccessControl(.userPresence)`, `LAContext`-gated admin CLI commands, and IdP `acr`-claim enforcement on federated tokens. See:
-  - `Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift` + `Tests/SpooktacularKitTests/BreakGlassSigningKeyStoreTests.swift`
+  - `Sources/SpookInfrastructureApple/P256KeyStore.swift` (break-glass uses `Service.breakGlass` + `presenceGated: true`) + `Tests/SpooktacularKitTests/P256KeyStoreTests.swift`
   - `Sources/SpookInfrastructureApple/AdminPresenceGate.swift` + `Tests/SpooktacularKitTests/AdminPresenceGateTests.swift`
   - `Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift` (`insufficientACR` + config `requiredACRValues`) + `Tests/SpooktacularKitTests/OIDCACRTests.swift`
 
@@ -459,8 +459,9 @@ N/A — no SOAP, no GraphQL.
 | Item | ASVS Control | Status |
 |------|--------------|--------|
 | HTTP security headers on every response | V14.4.2–7 | Remediated (commit `eca57d6aa`) |
-| Break-glass signing key generated inside Secure Enclave (hardware-bound, non-exportable, AAL3) | V2.7.1 | Remediated (`BreakGlassSigningKeyStore` with `SecureEnclave.P256.Signing.PrivateKey`) |
-| Merkle audit signing key generated inside Secure Enclave (non-exportable; STH forgery requires hardware, not just process compromise) | V7.2.2 | Remediated (`AuditSinkFactory.loadOrCreateSEPSigningKey` + `MerkleAuditSink` takes `any P256Signer`) |
+| Break-glass signing key generated inside Secure Enclave (hardware-bound, non-exportable, AAL3) | V2.7.1 | Remediated (unified `P256KeyStore` with `Service.breakGlass` + `.userPresence`) |
+| Unified P-256 key-store primitive covering all SEP-bound signing purposes (break-glass, operator identity, host identity, OIDC issuer, Merkle audit) with per-purpose service namespaces so rotation + audit are decoupled | V6.4 / V10.3 | Remediated (`P256KeyStore` + `spook identity` CLI) |
+| Merkle audit signing key generated inside Secure Enclave (non-exportable; STH forgery requires hardware, not just process compromise) | V7.2.2 | Remediated (`P256KeyStore` with `Service.merkleAudit` + `MerkleAuditSink` takes `any P256Signer`) |
 | Host-to-agent auth swapped from shared static tokens to per-request P-256 signatures (nonce-replay-protected; body-hash-bound) | V2.10.1 | Remediated (`SignedRequestVerifier` + `GuestAgentClient.sign`) |
 | Operator-to-API auth retired static Bearer token (`SPOOK_API_TOKEN`) in favor of the same signed-request primitive; `spook sign-request` as the ergonomic CLI / scripting helper | V2.10.1 | Remediated (`HTTPAPIServer` + `SPOOK_API_PUBLIC_KEYS_DIR` + `spook sign-request`) |
 | Workload-identity OIDC federation — Spooktacular mints ES256 JWTs for its managed VMs so workloads get short-lived AWS STS credentials via `AssumeRoleWithWebIdentity` (no long-lived IAM access keys in VM images) | V2.10.1 / V6.2 | Shipped (`WorkloadTokenIssuer` + `/.well-known/openid-configuration` + `/.well-known/jwks.json`) |

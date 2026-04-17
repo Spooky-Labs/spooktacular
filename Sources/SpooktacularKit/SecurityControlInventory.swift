@@ -87,8 +87,8 @@ public enum SecurityControlInventory {
             name: "Hardware-bound break-glass signing via Secure Enclave (AAL3)",
             category: "Authentication & Identity",
             standard: "OWASP ASVS V2.7.1; NIST SP 800-63B AAL3; FIPS 140-3 Level 2 (SEP)",
-            implementation: "Sources/SpookInfrastructureApple/BreakGlassSigningKeyStore.swift (SecureEnclave.P256.Signing.PrivateKey(accessControl: .userPresence))",
-            test: "Tests/SpooktacularKitTests/BreakGlassSigningKeyStoreTests.swift",
+            implementation: "Sources/SpookInfrastructureApple/P256KeyStore.swift (unified store; break-glass uses Service.breakGlass with presenceGated: true)",
+            test: "Tests/SpooktacularKitTests/P256KeyStoreTests.swift",
             notes: "Keys generated inside the SEP; private bytes never leave the Secure Enclave. Each signing operation gated by Touch ID / Watch / passcode. Full kernel compromise still cannot exfiltrate the key."
         ),
         SecurityControl(
@@ -119,7 +119,7 @@ public enum SecurityControlInventory {
             name: "Workload-identity OIDC federation (ES256 JWT issuer, SEP-bound)",
             category: "Authentication & Identity",
             standard: "OpenID Connect Core 1.0; AWS STS AssumeRoleWithWebIdentity (ECDSA support announced 2024-11-22); RFC 7518 §3.4 (ES256)",
-            implementation: "Sources/SpookApplication/WorkloadTokenIssuer.swift (ES256 mint, raw r||s signature per RFC 7518, JWKS + discovery document) + Sources/SpookInfrastructureApple/HTTPAPIServer.swift (/.well-known/openid-configuration + /.well-known/jwks.json)",
+            implementation: "Sources/SpookApplication/WorkloadTokenIssuer.swift + Sources/SpookInfrastructureApple/HTTPAPIServer.swift",
             test: "Tests/SpooktacularKitTests/WorkloadTokenIssuerTests.swift",
             notes: "Spooktacular can federate directly with AWS STS. Signing key is SEP-bound; VMs get short-lived IAM credentials via AssumeRoleWithWebIdentity with no long-lived secrets. The most common ES256 JWT bug (DER vs raw signature) is pinned by test."
         ),
@@ -235,7 +235,7 @@ public enum SecurityControlInventory {
             name: "Hardware-bound Merkle audit signing via Secure Enclave",
             category: "Data at Rest",
             standard: "NIST SP 800-53 AU-9 / AU-10; FIPS 140-3 Level 2 (SEP); RFC 6962",
-            implementation: "Sources/SpookInfrastructureApple/AuditSinkFactory.swift (loadOrCreateSEPSigningKey — SecureEnclave.P256.Signing.PrivateKey, no .userPresence for daemon use)",
+            implementation: "Sources/SpookInfrastructureApple/P256KeyStore.swift + Sources/SpookInfrastructureApple/AuditSinkFactory.swift (resolveMerkleSigner — Service.merkleAudit, daemon use, no presence gate)",
             test: "Tests/SpooktacularKitTests/AuditPipelineTests.swift",
             notes: "STH signing key generated inside and bound to the SEP — non-exportable. Full process / kernel compromise still cannot forge tree heads; SEP only signs what the daemon asks. P-256 ECDSA wire format."
         ),
@@ -243,7 +243,7 @@ public enum SecurityControlInventory {
             name: "Atomic 0600 software-key creation (non-SEP fallback, no TOCTOU)",
             category: "Data at Rest",
             standard: "CWE-362 mitigation",
-            implementation: "Sources/SpookInfrastructureApple/AuditSinkFactory.swift (loadOrCreateSoftwareSigningKey — open(2) O_CREAT|O_EXCL|O_NOFOLLOW, 0600)",
+            implementation: "Sources/SpookInfrastructureApple/P256KeyStore.swift (loadOrCreateSoftware — open(2) O_CREAT|O_EXCL|O_NOFOLLOW, 0600)",
             test: "Tests/SpooktacularKitTests/EnterpriseReadinessTests.swift",
             notes: "Software-keyed fallback for CI / non-Apple hosts without an SEP. Closes the umask-default TOCTOU window; PEM-encoded P-256."
         ),

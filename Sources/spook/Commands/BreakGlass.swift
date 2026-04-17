@@ -98,10 +98,23 @@ extension Spook {
                 let publicKeyPEM: String
 
                 if let label = keychainLabel {
+                    if P256KeyStore.exists(service: P256KeyStore.Service.breakGlass, label: label) {
+                        print(Style.error("✗ A break-glass key already exists under label '\(label)'."))
+                        print(Style.dim("  Delete it explicitly before rotating."))
+                        throw ExitCode.failure
+                    }
                     do {
-                        let pub = try BreakGlassSigningKeyStore.store(label: label)
+                        _ = try await P256KeyStore.loadOrCreateSEP(
+                            service: P256KeyStore.Service.breakGlass,
+                            label: label,
+                            presenceGated: true,
+                            authenticationPrompt: "Generate break-glass signing key '\(label)'"
+                        )
+                        let pub = try P256KeyStore.publicKey(
+                            service: P256KeyStore.Service.breakGlass, label: label
+                        )
                         publicKeyPEM = pub.pemRepresentation
-                    } catch let err as BreakGlassSigningKeyStoreError {
+                    } catch let err as KeyStoreError {
                         print(Style.error("✗ \(err.localizedDescription)"))
                         if let hint = err.recoverySuggestion { print(Style.dim("  \(hint)")) }
                         throw ExitCode.failure
@@ -283,11 +296,13 @@ extension Spook {
                 } else {
                     let label = keychainLabel!
                     do {
-                        signer = try await BreakGlassSigningKeyStore.loadSigner(
+                        signer = try await P256KeyStore.loadOrCreateSEP(
+                            service: P256KeyStore.Service.breakGlass,
                             label: label,
-                            reason: "Mint a break-glass ticket for tenant '\(tenant)'" + (reason.map { " — \($0)" } ?? "")
+                            presenceGated: true,
+                            authenticationPrompt: "Mint a break-glass ticket for tenant '\(tenant)'" + (reason.map { " — \($0)" } ?? "")
                         )
-                    } catch let err as BreakGlassSigningKeyStoreError {
+                    } catch let err as KeyStoreError {
                         print(Style.error("✗ \(err.localizedDescription)"))
                         if let hint = err.recoverySuggestion { print(Style.dim("  \(hint)")) }
                         throw ExitCode.failure

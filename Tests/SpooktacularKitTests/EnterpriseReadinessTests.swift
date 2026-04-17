@@ -33,7 +33,7 @@ struct EnterpriseReadinessTests {
                 s3Bucket: "acme-audit",
                 s3Region: "us-west-2"
             )
-            let sink = try AuditSinkFactory.build(config: config)
+            let sink = try await AuditSinkFactory.build(config: config)
             // The factory now returns a DualAuditSink when both the
             // base (OSLog fallback) and S3 are present. Previously
             // it returned OSLog alone and silently ignored the
@@ -48,9 +48,9 @@ struct EnterpriseReadinessTests {
         }
 
         @Test("no s3Bucket leaves OSLog-only chain (no regression)")
-        func noBucketNoS3() throws {
+        func noBucketNoS3() async throws {
             let config = AuditConfig()
-            let sink = try AuditSinkFactory.build(config: config)
+            let sink = try await AuditSinkFactory.build(config: config)
             let mirror = String(describing: type(of: sink!))
             #expect(
                 mirror.contains("OSLogAuditSink"),
