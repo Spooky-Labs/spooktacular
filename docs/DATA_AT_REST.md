@@ -100,6 +100,19 @@ spook bundle protect <name> --none    # opt out explicitly
 - `FileProtectionType` on macOS is a no-op without FileVault. Operators running without FileVault get the declaration but not the enforcement — `spook doctor` flags this.
 - VM lifetime involves many writes (snapshots, clones, disk image resizes). Every write path in `SpookInfrastructureApple` that creates a new file inside a bundle must preserve the protection class. We audit this with a test: any new file created inside a protected bundle inherits the class.
 
+## Adjacent control: provisioning-script cleanup
+
+Runner registration tokens, remote-desktop credentials, and user-data scripts are staged on host disk via `ScriptFile.writeToCache` (mode 0700, `~/Library/Caches/com.spooktacular/provisioning/<uuid>/`). Once the VM has consumed the script — disk-inject copy finished, SSH `./config.sh` returned — the host-side file is no longer needed.
+
+`spook create` now calls `ScriptFile.cleanup(scriptURL:)` in a `defer` block that runs on every exit path (success, throw, cancellation). The cleanup shrinks the on-disk window from "host lifetime" to "duration of the `spook create` invocation" — typically seconds to minutes. Combined with the 1-hour single-use TTL on GitHub registration tokens, exfiltration after the VM consumes the script yields a burned token.
+
+Exceptions where cleanup is **skipped** on purpose:
+
+- `--no-provision` flag set: the operator will run `spook start --user-data <path>` later, so the file must stay. A separate cleanup sweep is not needed because operator-supplied paths are their own retention concern.
+- Operator-supplied `--user-data <path>`: we never delete operator-owned files. Only template-generated scripts (`ownsScript = true`) are cleaned up.
+
+This is a belt to CUFUA's suspenders: even on hosts where FileVault is off and CUFUA is a no-op, the script bytes don't sit around on disk.
+
 ## Rotation / migration
 
 - Existing bundles from before this release: run `spook bundle protect --all` once. Idempotent.

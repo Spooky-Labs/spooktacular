@@ -319,6 +319,12 @@ extension Spook {
                 }
 
                 var provisionScript: URL?
+                // Track whether we OWN the script (template-generated,
+                // lives in ~/Library/Caches/com.spooktacular/provisioning/)
+                // or whether it's operator-supplied via `--user-data
+                // <path>`. We only clean up the ones we own; deleting
+                // an operator's file would be surprising.
+                var ownsScript = false
 
                 if githubRunner {
                     guard let repo = githubRepo else {
@@ -346,26 +352,51 @@ extension Spook {
                     provisionScript = try GitHubRunnerTemplate.generate(
                         repo: repo, token: token, ephemeral: ephemeral
                     )
+                    ownsScript = true
                 } else if remoteDesktop {
                     provisionScript = try RemoteDesktopTemplate.generate()
+                    ownsScript = true
                 } else if openclaw {
                     provisionScript = try OpenClawTemplate.generate()
+                    ownsScript = true
                 } else if let path = userData {
                     provisionScript = URL(filePath: path)
                 }
 
                 if let script = provisionScript {
+                    // Cleanup policy: only delete the host-side script
+                    // AFTER the VM has actually consumed it (disk
+                    // injection copied it, SSH executed it). The
+                    // `--no-provision` path leaves the script on disk
+                    // intentionally — the operator will hand it to a
+                    // later `spook start --user-data <path>`. In all
+                    // consuming cases, shrink the on-disk window from
+                    // "host lifetime" to "this command's duration."
+                    // GitHub registration tokens are 1-hour single-use,
+                    // so once the VM's `./config.sh --token` runs, the
+                    // secret is burned regardless. See
+                    // docs/DATA_AT_REST.md § "Known limits."
+                    var consumedScript = false
+                    defer {
+                        if ownsScript && consumedScript {
+                            ScriptFile.cleanup(scriptURL: script)
+                        }
+                    }
+
                     switch provision {
                     case .diskInject:
                         print(Style.info("Injecting user-data script into guest disk..."))
                         try DiskInjector.inject(script: script, into: bundle)
                         print(Style.success("✓ Script injected. It will run automatically on first boot."))
+                        consumedScript = true
 
                     case .ssh:
                         if noProvision {
                             Log.provision.info("Skipping SSH provisioning (--no-provision)")
                             print(Style.info("Script generated. Skipping auto-provisioning (--no-provision)."))
                             print(Style.dim("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh"))
+                            // Do NOT mark consumed — the operator needs
+                            // the path later.
                         } else {
                             Log.provision.info("Starting SSH auto-provisioning for '\(name, privacy: .public)'")
                             try await autoProvisionViaSSH(
@@ -373,6 +404,7 @@ extension Spook {
                                 script: script,
                                 macAddress: macAddress
                             )
+                            consumedScript = true
                         }
 
                     case .agent, .sharedFolder:

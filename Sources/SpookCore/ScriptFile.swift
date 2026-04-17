@@ -30,6 +30,32 @@ import Foundation
 /// retention is a caller concern, not ours.
 public enum ScriptFile {
 
+    /// Deletes the per-invocation cache directory that held a
+    /// script written via ``writeToCache(script:fileName:)``.
+    ///
+    /// The cache layout is
+    /// `~/Library/Caches/com.spooktacular/provisioning/<uuid>/<filename>`
+    /// — this helper removes the `<uuid>/` container so the
+    /// script bytes, their enclosing directory, and any sibling
+    /// files the caller wrote alongside them are all unlinked in
+    /// one call.
+    ///
+    /// Intended to be called from a `defer` immediately after the
+    /// VM consumes the script. Silent on failure: a missing dir
+    /// (already cleaned, never existed, removed by another
+    /// process) is not an error — we're best-effort, not an
+    /// audit surface.
+    ///
+    /// The host-side window the script lives on disk shrinks from
+    /// "process lifetime" to "provisioning run duration" — which,
+    /// combined with the 1-hour single-use TTL on GitHub
+    /// registration tokens, makes exfiltration-after-the-fact
+    /// worthless.
+    public static func cleanup(scriptURL: URL) {
+        let dir = scriptURL.deletingLastPathComponent()
+        try? FileManager.default.removeItem(at: dir)
+    }
+
     /// Writes a shell script to a per-user cache directory with
     /// owner-only permissions (mode 0700 on both directory and
     /// file).

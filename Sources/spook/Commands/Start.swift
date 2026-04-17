@@ -132,6 +132,11 @@ extension Spook {
                             script: SharedFolderProvisioner.watcherInstallScript(),
                             fileName: "install-watcher.sh"
                         )
+                        // DiskInjector copies the script bytes into the
+                        // VM's disk image — once injected, the host-side
+                        // copy is no longer needed and becomes just
+                        // another potential on-disk secret surface.
+                        defer { ScriptFile.cleanup(scriptURL: watcherScript) }
                         try DiskInjector.inject(script: watcherScript, into: bundle)
                     }
                     print(Style.success("✓ Script placed in shared folder. Watcher daemon injected."))
