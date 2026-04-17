@@ -32,6 +32,7 @@ struct Spook: AsyncParsableCommand {
             BreakGlass.self,
             IAM.self,
             Identity.self,
+            Incident.self,
             SignRequest.self,
             SecurityControls.self,
         ],
