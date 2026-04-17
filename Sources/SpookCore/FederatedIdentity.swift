@@ -102,17 +102,46 @@ public struct OIDCProviderConfig: Sendable, Codable {
     /// Map OIDC groups to tenant IDs.
     public let groupTenantMapping: [String: String]
 
+    /// File path to a static JWKS JSON document.
+    ///
+    /// When set, the verifier loads the provider's keys from disk
+    /// instead of calling the issuer's `/.well-known/openid-configuration`
+    /// and `jwks_uri` over the network. This is the strongest defense
+    /// against an on-path attacker manipulating the JWKS fetch — the
+    /// keys live at rest on the host, signed into config management,
+    /// and rotate on the operator's schedule rather than the IdP's
+    /// network availability.
+    ///
+    /// Expected format is the standard JWKS document:
+    /// `{"keys":[{"kid":"…","kty":"RSA","n":"…","e":"AQAB"}, …]}`.
+    /// `nil` disables pinning; discovery is used.
+    public let staticJWKSPath: String?
+
+    /// Override URL for the JWKS endpoint.
+    ///
+    /// When set, the verifier skips discovery and fetches the JWKS
+    /// directly from this URL. Useful when an operator fronts the
+    /// IdP with an internal mirror whose TLS chain is controlled by
+    /// their own PKI — the discovery doc's `jwks_uri` might point at
+    /// an external host outside the perimeter, defeating network
+    /// segmentation.
+    public let jwksURLOverride: String?
+
     public init(
         issuerURL: String,
         clientID: String,
         audience: String? = nil,
         groupScopeMapping: [String: AuthScope] = [:],
-        groupTenantMapping: [String: String] = [:]
+        groupTenantMapping: [String: String] = [:],
+        staticJWKSPath: String? = nil,
+        jwksURLOverride: String? = nil
     ) {
         self.issuerURL = issuerURL
         self.clientID = clientID
         self.audience = audience
         self.groupScopeMapping = groupScopeMapping
         self.groupTenantMapping = groupTenantMapping
+        self.staticJWKSPath = staticJWKSPath
+        self.jwksURLOverride = jwksURLOverride
     }
 }

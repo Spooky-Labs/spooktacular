@@ -201,9 +201,47 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
         return keys
     }
 
-    /// Fetches the provider's JWKS by first reading the OpenID Connect discovery document.
+    /// Fetches (or loads) the provider's JWKS using — in priority
+    /// order — the pinned static file, the configured URL override,
+    /// or OpenID Connect discovery.
+    ///
+    /// ## Resolution order
+    ///
+    /// 1. `config.staticJWKSPath` — load JWKS from disk. The
+    ///    strongest defense against a network attacker: the keys
+    ///    are at rest on the host, signed into config management,
+    ///    and never touch the wire at verification time.
+    /// 2. `config.jwksURLOverride` — fetch directly from the given
+    ///    URL, skipping discovery. For operators mirroring an IdP
+    ///    through their own PKI.
+    /// 3. Discovery fallback — `{issuer}/.well-known/openid-configuration`
+    ///    → `jwks_uri` → GET. The original behavior; still correct
+    ///    when the IdP and the verifier are on the same trusted
+    ///    network segment.
     private func fetchJWKS() async throws -> [[String: Any]] {
-        // 1. Fetch .well-known/openid-configuration
+        // Tier 1: static file — bypass the network entirely.
+        if let path = config.staticJWKSPath {
+            let url = URL(filePath: path)
+            guard let data = try? Data(contentsOf: url),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let keys = json["keys"] as? [[String: Any]] else {
+                throw OIDCError.staticJWKSUnreadable(path: path)
+            }
+            return keys
+        }
+
+        // Tier 2: explicit URL override — skip discovery, fetch directly.
+        if let override = config.jwksURLOverride,
+           let jwksURL = URL(string: override) {
+            let response = try await http.execute(DomainHTTPRequest(method: .get, url: jwksURL))
+            guard let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any],
+                  let keys = json["keys"] as? [[String: Any]] else {
+                throw OIDCError.jwksFetchFailed
+            }
+            return keys
+        }
+
+        // Tier 3: discovery fallback.
         let configURL = URL(string: "\(config.issuerURL)/.well-known/openid-configuration")!
         let configResponse = try await http.execute(DomainHTTPRequest(method: .get, url: configURL))
         guard let configJSON = try? JSONSerialization.jsonObject(with: configResponse.body) as? [String: Any],
@@ -212,7 +250,6 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             throw OIDCError.jwksFetchFailed
         }
 
-        // 2. Fetch JWKS
         let jwksResponse = try await http.execute(DomainHTTPRequest(method: .get, url: jwksURL))
         guard let jwksJSON = try? JSONSerialization.jsonObject(with: jwksResponse.body) as? [String: Any],
               let keys = jwksJSON["keys"] as? [[String: Any]] else {
@@ -328,6 +365,8 @@ public enum OIDCError: Error, LocalizedError, Sendable {
     case tokenExpired
     /// Failed to fetch the provider's JWKS endpoint.
     case jwksFetchFailed
+    /// The pinned static JWKS file is missing, unreadable, or malformed.
+    case staticJWKSUnreadable(path: String)
     /// JWT signature verification failed against provider's JWKS.
     case signatureVerificationFailed
     /// JWT uses an unsupported or dangerous algorithm (e.g., none, HS256).
@@ -344,6 +383,8 @@ public enum OIDCError: Error, LocalizedError, Sendable {
         case .audienceMismatch: "Token audience does not match configured client"
         case .tokenExpired: "Token has expired"
         case .jwksFetchFailed: "Failed to fetch JWKS from identity provider"
+        case .staticJWKSUnreadable(let path):
+            "Pinned JWKS at '\(path)' is missing, unreadable, or not a valid JWKS JSON document"
         case .signatureVerificationFailed: "JWT signature verification failed against provider's JWKS"
         case .unsupportedAlgorithm(let alg): "JWT uses unsupported algorithm '\(alg)'. Only RS256 is permitted."
         }

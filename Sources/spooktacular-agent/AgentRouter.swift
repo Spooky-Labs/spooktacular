@@ -356,7 +356,17 @@ func routeRequest(
         response = handleSetClipboard(request)
         statusCode = 200
     case ("POST", "/api/v1/exec"):
-        response = handleExec(request)
+        // Defense-in-depth: re-assert the break-glass tier at the
+        // handler boundary. The router already performs a tier
+        // check above (lines ~314-335), but a future edit to the
+        // scope table or a mis-routed fall-through could let a
+        // runner/readonly caller reach this case. `handleExec`
+        // itself now refuses anything below `.breakGlass` so the
+        // single remaining enforcement point is co-located with
+        // the dangerous operation — a custom client that bypasses
+        // the port-tier gate still can't escalate to shell access
+        // without a matching break-glass token.
+        response = handleExec(request, authTier: authTier)
         statusCode = 200
     case ("GET", "/api/v1/apps"):
         response = handleListApps()
@@ -542,8 +552,29 @@ private func handleSetClipboard(_ request: AgentHTTPRequest) -> Data {
 /// stderr, and the exit code. An optional timeout (in seconds)
 /// terminates the process if it exceeds the limit.
 ///
-/// - Parameter request: Must contain a JSON body with a `command` field.
-private func handleExec(_ request: AgentHTTPRequest) -> Data {
+/// - Parameters:
+///   - request: Must contain a JSON body with a `command` field.
+///   - authTier: The resolved ``AuthTier`` for this request, as
+///     determined by the router's token check. The handler refuses
+///     any call that did not authenticate at ``AuthTier/breakGlass``
+///     even if it somehow reached this dispatch — a defense-in-depth
+///     check that co-locates the enforcement with the dangerous
+///     operation so a routing regression can't silently expose
+///     shell exec.
+private func handleExec(_ request: AgentHTTPRequest, authTier: AuthTier) -> Data {
+    // Defense-in-depth tier assertion. The router already checks
+    // this upstream, but a custom client that crafts a
+    // handler-level bypass (e.g. via a future code path that
+    // dispatches without the scope gate) must not reach /bin/bash
+    // without a break-glass token in hand.
+    guard authTier == .breakGlass else {
+        log.error("Rejected /api/v1/exec at handler tier gate: presented tier \(authTier.rawValue, privacy: .public)")
+        return errorResponse(
+            message: "Shell execution requires a break-glass token.",
+            statusCode: 403
+        )
+    }
+
     guard let body = request.body,
           let execReq = try? jsonDecoder.decode(ExecRequest.self, from: body) else {
         return errorResponse(message: "Request body must contain 'command' field.", statusCode: 400)
