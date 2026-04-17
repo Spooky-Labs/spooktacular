@@ -254,11 +254,13 @@ Spooktacular supports **single-tenant** and **multi-tenant** deployment modes:
 
 - **Mandatory mTLS** in production — controller refuses to start without certificates
 - **Three vsock channels** — read-only (9470), runner (9471), break-glass (9472) with transport-layer scope enforcement
-- **OIDC federated identity** — `OIDCTokenVerifier` for JWT validation with group-to-tenant mapping
-- **Merkle tree audit** — RFC 6962-aligned with signed tree heads (Ed25519) and inclusion proofs
-- **Distributed locking** — K8s Lease-based coordination for multi-host scheduling
+- **OIDC + SAML federated identity** — JWKS pinning via `staticJWKSPath` / `jwksURLOverride`; strict RS256 + `nbf/iat/exp/aud/iss` + replay cache
+- **Merkle tree audit** — RFC 6962-aligned with signed tree heads (Ed25519), append-only kernel flag, optional S3 Object Lock
+- **Distributed locking** — DynamoDB Global Tables, Kubernetes Lease, or file-based; selected via environment
 
-See [SECURITY.md](SECURITY.md) for deployment classes, architectural invariants, and standards references.
+**Production checklist** — follow [`docs/DEPLOYMENT_HARDENING.md`](docs/DEPLOYMENT_HARDENING.md) for the 18-item pre-flight, the reference LaunchDaemon plist, and verification commands. Run `spook doctor --strict` to verify every control in one command.
+
+See [`SECURITY.md`](SECURITY.md) for the full security model, [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for STRIDE per asset, and [`docs/observability/`](docs/observability/) for Prometheus + Grafana kit.
 
 ## Audit & SIEM
 

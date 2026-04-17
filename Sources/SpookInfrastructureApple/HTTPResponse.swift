@@ -106,6 +106,30 @@ struct HTTPResponse: Sendable {
         return HTTPResponse(statusCode: statusCode, body: body, contentType: "application/json; charset=utf-8")
     }
 
+    /// Creates a sanitized 500 Internal Server Error response.
+    ///
+    /// The body carries a stable `"Internal error. Correlation ID:
+    /// <uuid>."` message. The underlying error is neither encoded
+    /// nor rendered into the response body — use `Log.httpAPI.error`
+    /// at the call site with the same correlation ID so operators
+    /// can pivot from the HTTP response to the server logs without
+    /// leaking stack details, filesystem paths, Keychain codes, or
+    /// `SecItem` error strings to the caller.
+    ///
+    /// Callers get back the correlation ID so they can log it
+    /// alongside the underlying error:
+    ///
+    /// ```swift
+    /// let (response, correlationID) = HTTPResponse.internalError()
+    /// logger.error("handleFoo failed [\(correlationID, privacy: .public)]: \(error.localizedDescription, privacy: .public)")
+    /// return response
+    /// ```
+    static func internalError() -> (response: HTTPResponse, correlationID: String) {
+        let id = UUID().uuidString
+        let msg = "Internal error. Correlation ID: \(id). Consult server logs."
+        return (HTTPResponse.error(message: msg, statusCode: 500), id)
+    }
+
     /// Creates a plain-text response with a custom content type.
     ///
     /// - Parameters:

@@ -802,8 +802,16 @@ public actor HTTPAPIServer {
                 let identity = try await verifier.verify(token: bearer)
                 actorIdentity = identity.actorIdentity
             } catch {
+                // Generic 401 — surfacing the verifier's
+                // error string leaks JWKS URLs, audience mismatches,
+                // and kid-lookup failures to unauthenticated callers,
+                // which is exactly the intel an attacker probing
+                // the trust model needs.
+                logger.notice(
+                    "JWT verification failed for caller: \(error.localizedDescription, privacy: .public)"
+                )
                 let response = HTTPResponse.error(
-                    message: "Unauthorized: \(error.localizedDescription)",
+                    message: "Unauthorized.",
                     statusCode: 401
                 )
                 await emitAPIAudit(
@@ -948,6 +956,23 @@ public actor HTTPAPIServer {
     ///   - method: The HTTP method (e.g., `"GET"`, `"POST"`).
     ///   - path: The request path (e.g., `"/v1/vms/runner-1/start"`).
     ///   - statusCode: The HTTP status code of the response.
+    // MARK: - Sanitized 500 helper
+
+    /// Converts an internal error to a correlation-ID-tagged 500
+    /// response, logging the underlying error at `.error` alongside
+    /// the same ID so operators can pivot from the HTTP response
+    /// back to the server logs without the response body ever
+    /// exposing `SecItem` codes, Keychain internals, filesystem
+    /// paths, or other leaks. Call this in every `catch` that
+    /// bubbles an infrastructure error up to a 5xx boundary.
+    private func internalError(_ context: String, _ error: any Error) -> HTTPResponse {
+        let (response, id) = HTTPResponse.internalError()
+        logger.error(
+            "\(context, privacy: .public) [\(id, privacy: .public)]: \(error.localizedDescription, privacy: .public)"
+        )
+        return response
+    }
+
     /// Maps an API path to a resource type for RBAC evaluation.
     func inferResource(from path: String) -> String {
         if path.hasPrefix("/v1/vms") { return "vm" }
@@ -989,10 +1014,7 @@ public actor HTTPAPIServer {
                 let roles = try await store.allRoles(tenant: tenantID)
                 return HTTPResponse.ok(roles)
             } catch {
-                return HTTPResponse.error(
-                    message: "Could not list roles: \(error.localizedDescription)",
-                    statusCode: 500
-                )
+                return internalError("Could not list roles", error)
             }
         }
         if request.method == "GET" && components.count == 3 {
@@ -1001,10 +1023,7 @@ public actor HTTPAPIServer {
                 let roles = try await store.rolesForActor(actor, tenant: tenantID)
                 return HTTPResponse.ok(roles)
             } catch {
-                return HTTPResponse.error(
-                    message: "Could not load assignments: \(error.localizedDescription)",
-                    statusCode: 500
-                )
+                return internalError("Could not load assignments", error)
             }
         }
 
@@ -1035,10 +1054,7 @@ public actor HTTPAPIServer {
                 try await store.assign(assignment)
                 return HTTPResponse.ok(["assigned": true])
             } catch {
-                return HTTPResponse.error(
-                    message: "Assign failed: \(error.localizedDescription)",
-                    statusCode: 500
-                )
+                return internalError("Assign role failed", error)
             }
         }
         if request.method == "POST" && components.count == 3 && components[2] == "revoke" {
@@ -1051,10 +1067,7 @@ public actor HTTPAPIServer {
                 try await store.revoke(actor: actor, role: role, tenant: TenantID(tenantRaw))
                 return HTTPResponse.ok(["revoked": true])
             } catch {
-                return HTTPResponse.error(
-                    message: "Revoke failed: \(error.localizedDescription)",
-                    statusCode: 500
-                )
+                return internalError("Revoke role failed", error)
             }
         }
 
@@ -1117,10 +1130,7 @@ public actor HTTPAPIServer {
                 try await registry.register(tenant)
                 return HTTPResponse.ok(tenant)
             } catch {
-                return HTTPResponse.error(
-                    message: "Create failed: \(error.localizedDescription)",
-                    statusCode: 500
-                )
+                return internalError("Create tenant failed", error)
             }
         }
 
@@ -1148,10 +1158,7 @@ public actor HTTPAPIServer {
                 try await registry.update(incoming)
                 return HTTPResponse.ok(incoming)
             } catch {
-                return HTTPResponse.error(
-                    message: "Update failed: \(error.localizedDescription)",
-                    statusCode: 500
-                )
+                return internalError("Update tenant failed", error)
             }
         }
 
@@ -1161,10 +1168,7 @@ public actor HTTPAPIServer {
                 try await registry.remove(id: components[2])
                 return HTTPResponse.ok(["removed": true])
             } catch {
-                return HTTPResponse.error(
-                    message: "Remove failed: \(error.localizedDescription)",
-                    statusCode: 500
-                )
+                return internalError("Remove tenant failed", error)
             }
         }
 
@@ -1400,11 +1404,7 @@ public actor HTTPAPIServer {
             logger.notice("[\(self.tenantID.description, privacy: .public)] Cloned VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)' via API")
             return HTTPResponse.ok(vmStatus(name: name, bundle: clonedBundle), statusCode: 201)
         } catch {
-            logger.error("Failed to clone VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-            return HTTPResponse.error(
-                message: "Failed to clone VM: \(error.localizedDescription)",
-                statusCode: 500
-            )
+            return internalError("Clone VM '\(sourceName)' → '\(name)' failed", error)
         }
     }
 
@@ -1447,11 +1447,7 @@ public actor HTTPAPIServer {
                 withIntermediateDirectories: true
             )
         } catch {
-            logger.error("Failed to create logs directory: \(error.localizedDescription, privacy: .public)")
-            return HTTPResponse.error(
-                message: "Failed to create logs directory: \(error.localizedDescription)",
-                statusCode: 500
-            )
+            return internalError("Create logs directory failed", error)
         }
 
         let logFileURL = logsDirectory.appendingPathComponent("\(name).log")
@@ -1461,11 +1457,7 @@ public actor HTTPAPIServer {
             logFileHandle = try FileHandle(forWritingTo: logFileURL)
             logFileHandle.seekToEndOfFile()
         } catch {
-            logger.error("Failed to open log file for VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-            return HTTPResponse.error(
-                message: "Failed to open log file: \(error.localizedDescription)",
-                statusCode: 500
-            )
+            return internalError("Open log file for VM '\(name)' failed", error)
         }
 
         let process = Process()
@@ -1484,12 +1476,8 @@ public actor HTTPAPIServer {
                 log: logFileURL.path
             ))
         } catch {
-            logger.error("Failed to start VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             try? logFileHandle.close()
-            return HTTPResponse.error(
-                message: "Failed to start VM: \(error.localizedDescription)",
-                statusCode: 500
-            )
+            return internalError("Start VM '\(name)' failed", error)
         }
     }
 
@@ -1556,11 +1544,7 @@ public actor HTTPAPIServer {
             logger.notice("[\(self.tenantID.description, privacy: .public)] Deleted VM '\(name, privacy: .public)' via API")
             return HTTPResponse.ok(VMDeleteResponse(name: name, deleted: true))
         } catch {
-            logger.error("Failed to delete VM '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
-            return HTTPResponse.error(
-                message: "Failed to delete VM: \(error.localizedDescription)",
-                statusCode: 500
-            )
+            return internalError("Delete VM '\(name)' failed", error)
         }
     }
 
@@ -1603,10 +1587,7 @@ public actor HTTPAPIServer {
                 )
             }
         } catch {
-            return HTTPResponse.error(
-                message: "IP resolution failed: \(error.localizedDescription)",
-                statusCode: 500
-            )
+            return internalError("IP resolution for VM '\(name)' failed", error)
         }
     }
 

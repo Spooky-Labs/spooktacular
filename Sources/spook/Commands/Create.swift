@@ -153,8 +153,20 @@ extension Spook {
         @Option(help: "GitHub repository (org/repo) for --github-runner.")
         var githubRepo: String?
 
-        @Option(help: "GitHub runner registration token for --github-runner.")
+        @Option(help: """
+            GitHub runner registration token. Falls back to \
+            SPOOK_GITHUB_TOKEN if unset. AVOID this flag in \
+            production — the token becomes visible in `ps`, shell \
+            history, and launchctl output. Prefer --github-token-file \
+            or the SPOOK_GITHUB_TOKEN environment variable.
+            """)
         var githubToken: String?
+
+        @Option(
+            name: .customLong("github-token-file"),
+            help: "Path to a file containing the GitHub runner registration token. Contents are read once and trimmed."
+        )
+        var githubTokenFile: String?
 
         @Flag(
             help: """
@@ -299,10 +311,26 @@ extension Spook {
                 var provisionScript: URL?
 
                 if githubRunner {
-                    guard let repo = githubRepo, let token = githubToken else {
-                        print(Style.error("✗ --github-runner requires --github-repo and --github-token."))
-                        print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token <token>"))
+                    guard let repo = githubRepo else {
+                        print(Style.error("✗ --github-runner requires --github-repo."))
+                        print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token-file /etc/spooktacular/runner-token"))
                         throw ExitCode.failure
+                    }
+                    let token: String
+                    do {
+                        token = try Self.resolveGitHubToken(
+                            flagValue: githubToken,
+                            filePath: githubTokenFile
+                        )
+                    } catch {
+                        print(Style.error("✗ \(error.localizedDescription)"))
+                        if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
+                            print(Style.dim("  \(suggestion)"))
+                        }
+                        throw ExitCode.failure
+                    }
+                    if githubToken != nil {
+                        print(Style.warning("⚠ --github-token is visible in `ps`, shell history, and launchd output. Prefer --github-token-file or SPOOK_GITHUB_TOKEN for production."))
                     }
                     provisionScript = try GitHubRunnerTemplate.generate(
                         repo: repo, token: token, ephemeral: ephemeral
@@ -509,6 +537,82 @@ extension Spook {
             try? await vm.stop(graceful: false)
             logger.notice("VM stopped after Setup Assistant automation")
             print(Style.success("✓ VM stopped."))
+        }
+
+        // MARK: - GitHub token resolution
+
+        /// Resolves the runner-registration token from one of three
+        /// sources, in priority order:
+        ///
+        /// 1. `--github-token-file <path>` — token read from file,
+        ///    trimmed of whitespace. Does not land in `ps` output.
+        /// 2. `SPOOK_GITHUB_TOKEN` environment variable — visible to
+        ///    the launching shell only, not propagated to
+        ///    subprocesses by default.
+        /// 3. `--github-token <value>` — CLI flag, visible in `ps`,
+        ///    shell history, and `launchctl print`. The caller gets
+        ///    a warning when this path is taken.
+        ///
+        /// Throws `GitHubTokenError.missing` when none of the three
+        /// sources produced a value, with a recovery hint pointing
+        /// the operator at the file-based path.
+        static func resolveGitHubToken(
+            flagValue: String?,
+            filePath: String?
+        ) throws -> String {
+            if let filePath {
+                let raw: String
+                do {
+                    raw = try String(contentsOf: URL(filePath: filePath), encoding: .utf8)
+                } catch {
+                    throw GitHubTokenError.unreadableFile(path: filePath, underlying: error)
+                }
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else {
+                    throw GitHubTokenError.emptyFile(path: filePath)
+                }
+                return trimmed
+            }
+            if let env = ProcessInfo.processInfo.environment["SPOOK_GITHUB_TOKEN"],
+               !env.isEmpty {
+                return env
+            }
+            if let flagValue, !flagValue.isEmpty {
+                return flagValue
+            }
+            throw GitHubTokenError.missing
+        }
+    }
+}
+
+// MARK: - GitHub token errors
+
+/// Diagnostics for `Create.resolveGitHubToken` — every case carries
+/// a recovery hint so the CLI can render an actionable message.
+enum GitHubTokenError: Error, LocalizedError {
+    case missing
+    case emptyFile(path: String)
+    case unreadableFile(path: String, underlying: any Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .missing:
+            "No GitHub runner registration token supplied."
+        case .emptyFile(let path):
+            "GitHub token file at '\(path)' is empty."
+        case .unreadableFile(let path, let err):
+            "Cannot read GitHub token file at '\(path)': \(err.localizedDescription)"
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .missing:
+            "Provide --github-token-file <path>, set SPOOK_GITHUB_TOKEN, or (development only) pass --github-token <value>."
+        case .emptyFile:
+            "Write the token to the file with trailing newline stripped, then chmod 600."
+        case .unreadableFile:
+            "Check the file exists and the daemon user can read it: `ls -l <path>`."
         }
     }
 }

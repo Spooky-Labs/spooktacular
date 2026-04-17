@@ -54,9 +54,39 @@ struct ProductionPreflightTests {
             hasAuthorizationService: true,
             hasAuditSink: false
         )
-        #expect(throws: ProductionPreflightError.multiTenantRequiresAudit) {
+        #expect(throws: ProductionPreflightError.productionRequiresAudit) {
             try p.validate()
         }
+    }
+
+    @Test("single-tenant production also requires an audit sink")
+    func singleTenantProductionRequiresAudit() {
+        // The original gate exempted single-tenant from the audit
+        // requirement — which silently covered the most common
+        // enterprise deployment shape. This test pins the corrected
+        // behavior so a future regression is caught immediately.
+        let p = ProductionPreflight(
+            tenancyMode: .singleTenant,
+            insecure: false,
+            hasAuthorizationService: true,
+            hasAuditSink: false
+        )
+        #expect(throws: ProductionPreflightError.productionRequiresAudit) {
+            try p.validate()
+        }
+    }
+
+    @Test("--insecure opts out of the audit requirement")
+    func insecureBypassesAudit() throws {
+        // Explicit acknowledgement via --insecure is the documented
+        // escape hatch; we must not force audit on a dev laptop.
+        let p = ProductionPreflight(
+            tenancyMode: .singleTenant,
+            insecure: true,
+            hasAuthorizationService: false,
+            hasAuditSink: false
+        )
+        try p.validate()
     }
 
     @Test("fully configured multi-tenant passes")
@@ -75,7 +105,7 @@ struct ProductionPreflightTests {
         let cases: [ProductionPreflightError] = [
             .insecureModeInMultiTenant,
             .multiTenantRequiresAuthorization,
-            .multiTenantRequiresAudit,
+            .productionRequiresAudit,
         ]
         for err in cases {
             #expect(err.errorDescription?.isEmpty == false,

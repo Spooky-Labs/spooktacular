@@ -67,16 +67,27 @@ public struct SpooktacularConfig: Sendable, Codable {
         self.server = server
     }
 
-    /// Loads configuration from environment variables (backward compatible).
+    /// Loads configuration from environment variables.
+    ///
+    /// Canonical names are `SPOOK_`-prefixed. Historical un-prefixed
+    /// aliases (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`) are
+    /// accepted as a fallback so existing deployments don't break,
+    /// but the prefixed form wins when both are set. A future
+    /// release may drop the un-prefixed aliases; today's operators
+    /// should migrate to `SPOOK_TLS_*_PATH`.
     public static func fromEnvironment() -> SpooktacularConfig {
         let env = ProcessInfo.processInfo.environment
+        // `SPOOK_` wins, fall back to legacy un-prefixed name.
+        func tlsPath(_ prefixed: String, _ legacy: String) -> String? {
+            env[prefixed] ?? env[legacy]
+        }
         return SpooktacularConfig(
             tenancyMode: env["SPOOK_TENANCY_MODE"] == "multi-tenant" ? .multiTenant : .singleTenant,
             rbac: RBACConfig(configPath: env["SPOOK_RBAC_CONFIG"]),
             tls: TLSConfig(
-                certPath: env["TLS_CERT_PATH"],
-                keyPath: env["TLS_KEY_PATH"],
-                caPath: env["TLS_CA_PATH"]
+                certPath: tlsPath("SPOOK_TLS_CERT_PATH", "TLS_CERT_PATH"),
+                keyPath:  tlsPath("SPOOK_TLS_KEY_PATH",  "TLS_KEY_PATH"),
+                caPath:   tlsPath("SPOOK_TLS_CA_PATH",   "TLS_CA_PATH")
             ),
             audit: AuditConfig(
                 filePath: env["SPOOK_AUDIT_FILE"],
@@ -86,7 +97,12 @@ public struct SpooktacularConfig: Sendable, Codable {
                 s3Bucket: env["SPOOK_AUDIT_S3_BUCKET"],
                 s3Region: env["SPOOK_AUDIT_S3_REGION"],
                 s3Prefix: env["SPOOK_AUDIT_S3_PREFIX"],
-                s3RetentionDays: env["SPOOK_AUDIT_S3_RETENTION_DAYS"].flatMap(Int.init),
+                // `SPOOK_AUDIT_S3_RETENTION_DAYS` is the canonical
+                // name; the hardening doc previously mentioned
+                // `SPOOK_AUDIT_S3_LOCK_DAYS` — accept both so docs
+                // and code stay in sync during the transition.
+                s3RetentionDays: (env["SPOOK_AUDIT_S3_RETENTION_DAYS"] ?? env["SPOOK_AUDIT_S3_LOCK_DAYS"])
+                    .flatMap(Int.init),
                 s3BatchSize: env["SPOOK_AUDIT_S3_BATCH_SIZE"].flatMap(Int.init)
             ),
             server: ServerConfig(

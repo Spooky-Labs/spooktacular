@@ -70,7 +70,7 @@ export SPOOK_AUDIT_SIGNING_KEY=/etc/spooktacular/secrets/merkle.key   # mode 060
 # S3 Object Lock WORM copy
 export SPOOK_AUDIT_S3_BUCKET=acme-spooktacular-audit-prod-us-east-1
 export SPOOK_AUDIT_S3_REGION=us-east-1
-export SPOOK_AUDIT_S3_LOCK_DAYS=2555       # 7-year retention (SOC 2 Type II)
+export SPOOK_AUDIT_S3_RETENTION_DAYS=2555  # 7-year retention (SOC 2 Type II)
 
 # ─── RBAC & federated identity ───────────────────────────────────
 export SPOOK_RBAC_CONFIG=/etc/spooktacular/rbac.json
@@ -226,7 +226,7 @@ If the line reads `File(dir=…)` in a multi-host fleet, stop the host and fix t
         <string>acme-spooktacular-audit-prod-us-east-1</string>
         <key>SPOOK_AUDIT_S3_REGION</key>
         <string>us-east-1</string>
-        <key>SPOOK_AUDIT_S3_LOCK_DAYS</key>
+        <key>SPOOK_AUDIT_S3_RETENTION_DAYS</key>
         <string>2555</string>
 
         <key>SPOOK_RBAC_CONFIG</key>

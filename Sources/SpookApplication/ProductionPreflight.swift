@@ -54,14 +54,23 @@ public struct ProductionPreflight: Sendable {
 
     /// Throws the first precondition violation encountered.
     ///
-    /// Order matters: `insecure` in multi-tenant is reported first
-    /// because it subsumes the other failures (an insecure server
-    /// has no meaningful authorization story even if a roleStore
-    /// were loaded). After that, missing RBAC is reported before
-    /// missing audit because a compromised caller who gets through
-    /// without authorization leaves no record of having done so —
-    /// the two together are strictly worse than either alone, but
-    /// solving RBAC first is the higher-leverage fix.
+    /// Ordering rationale:
+    ///
+    /// 1. `insecure` in multi-tenant is reported first because it
+    ///    subsumes the other failures — an insecure server has no
+    ///    meaningful authorization story even if a roleStore were
+    ///    loaded.
+    /// 2. Missing authorization is next: a caller who gets through
+    ///    an un-RBAC'd path does so with no record of having done
+    ///    so, and an audit sink can't observe a request that never
+    ///    hit the authorization gate.
+    /// 3. Audit is required for **any** non-insecure production
+    ///    boot — not just multi-tenant. A single-tenant Fortune-20
+    ///    deployment with no durable record of cross-host actions
+    ///    is an audit finding on day one. Operators who genuinely
+    ///    want to run without durable audit must pass `--insecure`
+    ///    explicitly and accept the warning banner; there is no
+    ///    silent fallback.
     public func validate() throws {
         if tenancyMode == .multiTenant && insecure {
             throw ProductionPreflightError.insecureModeInMultiTenant
@@ -69,8 +78,15 @@ public struct ProductionPreflight: Sendable {
         if tenancyMode == .multiTenant && !hasAuthorizationService {
             throw ProductionPreflightError.multiTenantRequiresAuthorization
         }
-        if tenancyMode == .multiTenant && !hasAuditSink {
-            throw ProductionPreflightError.multiTenantRequiresAudit
+        // Audit is required for every production (non-insecure)
+        // deployment, regardless of tenancy mode. Previously this
+        // check only fired in multi-tenant — which silently
+        // exempted the most common enterprise deployment shape
+        // (single-tenant with federated identity) from the
+        // fail-closed audit guarantee the hardening guide
+        // advertises.
+        if !insecure && !hasAuditSink {
+            throw ProductionPreflightError.productionRequiresAudit
         }
     }
 }
@@ -88,8 +104,8 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
     /// Multi-tenant mode with no configured `AuthorizationService`.
     case multiTenantRequiresAuthorization
 
-    /// Multi-tenant mode with no configured `AuditSink`.
-    case multiTenantRequiresAudit
+    /// Any non-insecure production boot with no configured `AuditSink`.
+    case productionRequiresAudit
 
     public var errorDescription: String? {
         switch self {
@@ -97,8 +113,8 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
             "Refusing to start: --insecure is not permitted in multi-tenant mode."
         case .multiTenantRequiresAuthorization:
             "Refusing to start: multi-tenant mode requires a configured AuthorizationService (RBAC)."
-        case .multiTenantRequiresAudit:
-            "Refusing to start: multi-tenant mode requires an audit sink. No SPOOK_AUDIT_FILE / SPOOK_AUDIT_IMMUTABLE_PATH / SPOOK_AUDIT_MERKLE was configured."
+        case .productionRequiresAudit:
+            "Refusing to start: production deployments require an audit sink. No SPOOK_AUDIT_FILE / SPOOK_AUDIT_IMMUTABLE_PATH / SPOOK_AUDIT_MERKLE was configured."
         }
     }
 
@@ -108,8 +124,8 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
             "Drop --insecure, provide --tls-cert / --tls-key, and set SPOOK_API_TOKEN (or federated identity). Multi-tenant mode cannot run without TLS + authentication."
         case .multiTenantRequiresAuthorization:
             "Provide SPOOK_RBAC_CONFIG pointing at a JSONRoleStore file, or drop back to SPOOK_TENANCY_MODE=single-tenant."
-        case .multiTenantRequiresAudit:
-            "Set at minimum SPOOK_AUDIT_FILE. For SOC 2 Type II, combine with SPOOK_AUDIT_IMMUTABLE_PATH, SPOOK_AUDIT_MERKLE=1 + SPOOK_AUDIT_SIGNING_KEY, and SPOOK_AUDIT_S3_BUCKET (Object Lock)."
+        case .productionRequiresAudit:
+            "Set at minimum SPOOK_AUDIT_FILE. For SOC 2 Type II, combine with SPOOK_AUDIT_IMMUTABLE_PATH, SPOOK_AUDIT_MERKLE=1 + SPOOK_AUDIT_SIGNING_KEY, and SPOOK_AUDIT_S3_BUCKET (Object Lock). Operators who genuinely need to run without audit must pass --insecure explicitly."
         }
     }
 }

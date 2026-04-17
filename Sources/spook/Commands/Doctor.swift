@@ -44,10 +44,21 @@ extension Spook {
                 Use this command after installation or when diagnosing \
                 VM startup failures.
 
+                Default output covers local-host readiness. Pass \
+                --strict to additionally verify every production \
+                control documented in docs/DEPLOYMENT_HARDENING.md — \
+                mTLS, RBAC, IdP, audit chain, signing key permissions, \
+                lock backend, tenancy. A non-zero exit in --strict \
+                mode means the deployment is not hardened.
+
                 EXAMPLES:
                   spook doctor
+                  spook doctor --strict
                 """
         )
+
+        @Flag(help: "Additionally verify every production control from DEPLOYMENT_HARDENING.md.")
+        var strict: Bool = false
 
         func run() async throws {
             print(Style.bold("Spooktacular Doctor"))
@@ -110,6 +121,16 @@ extension Spook {
             printResult(capacityResult)
             count(capacityResult, passed: &passed, failed: &failed, warned: &warned)
 
+            if strict {
+                print()
+                print(Style.bold("Production controls (--strict)"))
+                print("------------------------------")
+                for result in strictProductionChecks() {
+                    printResult(result)
+                    count(result, passed: &passed, failed: &failed, warned: &warned)
+                }
+            }
+
             // Summary
             print()
             let summary = "\(passed) passed, \(failed) failed, \(warned) warning"
@@ -118,6 +139,166 @@ extension Spook {
 
             if failed > 0 {
                 throw ExitCode.failure
+            }
+        }
+
+        // MARK: - Strict mode: production controls
+
+        /// Deterministic, filesystem + env-var checks covering every
+        /// production control in `docs/DEPLOYMENT_HARDENING.md`. Kept
+        /// synchronous and free of network I/O so `--strict` runs in
+        /// under a second and is safe to invoke from CI.
+        private func strictProductionChecks() -> [CheckResult] {
+            let env = ProcessInfo.processInfo.environment
+            var results: [CheckResult] = []
+
+            // mTLS CA path
+            let caPath = env["SPOOK_TLS_CA_PATH"] ?? env["TLS_CA_PATH"]
+            if let caPath, FileManager.default.fileExists(atPath: caPath) {
+                results.append(CheckResult(status: .pass, message: "mTLS CA: \(caPath)"))
+            } else {
+                results.append(CheckResult(status: .fail, message: "mTLS CA not set — export SPOOK_TLS_CA_PATH to enable client-cert verification"))
+            }
+
+            // RBAC
+            if let rbacPath = env["SPOOK_RBAC_CONFIG"], FileManager.default.fileExists(atPath: rbacPath) {
+                results.append(CheckResult(status: .pass, message: "RBAC config: \(rbacPath)"))
+            } else {
+                results.append(CheckResult(status: .fail, message: "SPOOK_RBAC_CONFIG missing — RBAC disabled, everything authorized"))
+            }
+
+            // IdP
+            if let idpPath = env["SPOOK_IDP_CONFIG"], FileManager.default.fileExists(atPath: idpPath) {
+                results.append(CheckResult(status: .pass, message: "Federated IdP config: \(idpPath)"))
+            } else {
+                results.append(CheckResult(status: .warning, message: "SPOOK_IDP_CONFIG missing — federated identity disabled"))
+            }
+
+            // Audit JSONL
+            if let auditPath = env["SPOOK_AUDIT_FILE"] {
+                let dir = URL(filePath: auditPath).deletingLastPathComponent().path
+                if FileManager.default.isWritableFile(atPath: dir) {
+                    results.append(CheckResult(status: .pass, message: "Audit JSONL: \(auditPath) (writable)"))
+                } else {
+                    results.append(CheckResult(status: .fail, message: "Audit JSONL path's directory is not writable: \(dir)"))
+                }
+            } else {
+                results.append(CheckResult(status: .fail, message: "SPOOK_AUDIT_FILE missing — structured audit disabled"))
+            }
+
+            // Append-only audit file kernel flag
+            if let immutable = env["SPOOK_AUDIT_IMMUTABLE_PATH"] {
+                results.append(checkAppendOnlyFlag(path: immutable))
+            } else {
+                results.append(CheckResult(status: .warning, message: "SPOOK_AUDIT_IMMUTABLE_PATH missing — kernel-enforced append-only audit disabled"))
+            }
+
+            // Merkle signing key
+            if env["SPOOK_AUDIT_MERKLE"] == "1" {
+                if let keyPath = env["SPOOK_AUDIT_SIGNING_KEY"] {
+                    results.append(checkSigningKeyPerms(path: keyPath))
+                } else {
+                    results.append(CheckResult(status: .fail, message: "SPOOK_AUDIT_MERKLE=1 but SPOOK_AUDIT_SIGNING_KEY is unset"))
+                }
+            } else {
+                results.append(CheckResult(status: .warning, message: "Merkle tamper-evidence disabled (SPOOK_AUDIT_MERKLE!=1)"))
+            }
+
+            // Distributed lock backend
+            if env["SPOOK_DYNAMO_TABLE"]?.isEmpty == false {
+                results.append(CheckResult(status: .pass, message: "Distributed lock: DynamoDB (cross-region)"))
+            } else if env["SPOOK_K8S_API"]?.isEmpty == false {
+                results.append(CheckResult(status: .pass, message: "Distributed lock: Kubernetes Lease"))
+            } else {
+                results.append(CheckResult(status: .warning, message: "Distributed lock: file/flock (single-host only — fleets ≥2 hosts MUST set SPOOK_DYNAMO_TABLE or SPOOK_K8S_API)"))
+            }
+
+            // Tenancy mode
+            let mode = env["SPOOK_TENANCY_MODE"] ?? "single-tenant"
+            results.append(CheckResult(status: .pass, message: "Tenancy mode: \(mode)"))
+
+            // Insecure flag not set
+            if env["SPOOK_INSECURE_CONTROLLER"] == "1" {
+                results.append(CheckResult(status: .fail, message: "SPOOK_INSECURE_CONTROLLER=1 — mTLS bypass active, do NOT ship this way"))
+            } else {
+                results.append(CheckResult(status: .pass, message: "Insecure-controller bypass is OFF"))
+            }
+
+            // Hardened Runtime + notarization on the spook binary
+            results.append(checkCodesignHardening())
+
+            return results
+        }
+
+        /// Verifies `UF_APPEND` is set on the target file, or — if
+        /// the file does not yet exist — that its directory is
+        /// writable so the audit store can create + flag it.
+        private func checkAppendOnlyFlag(path: String) -> CheckResult {
+            let fm = FileManager.default
+            guard fm.fileExists(atPath: path) else {
+                let dir = URL(filePath: path).deletingLastPathComponent().path
+                if fm.isWritableFile(atPath: dir) {
+                    return CheckResult(status: .warning, message: "Append-only audit file does not exist yet; will be created at \(path) on first write")
+                }
+                return CheckResult(status: .fail, message: "Append-only audit file's directory is not writable: \(dir)")
+            }
+            // Use stat(2) to read st_flags — the Swift URL API does
+            // not expose UF_APPEND directly.
+            var s = stat()
+            guard path.withCString({ stat($0, &s) }) == 0 else {
+                return CheckResult(status: .fail, message: "Cannot stat \(path): errno \(errno)")
+            }
+            if (s.st_flags & UInt32(UF_APPEND)) != 0 {
+                return CheckResult(status: .pass, message: "Append-only audit file: \(path) (UF_APPEND set)")
+            }
+            return CheckResult(status: .fail, message: "Audit file exists but UF_APPEND is NOT set: \(path) — run `chflags uappnd \(path)` or restart spook serve to let the store set it")
+        }
+
+        /// Confirms the Merkle signing key is present and mode 0600.
+        private func checkSigningKeyPerms(path: String) -> CheckResult {
+            let fm = FileManager.default
+            guard fm.fileExists(atPath: path) else {
+                return CheckResult(status: .warning, message: "Merkle signing key does not exist yet; will be created at \(path) on first start (mode 0600)")
+            }
+            guard let attrs = try? fm.attributesOfItem(atPath: path),
+                  let mode = (attrs[.posixPermissions] as? NSNumber)?.uint16Value else {
+                return CheckResult(status: .fail, message: "Cannot read permissions on \(path)")
+            }
+            if mode & 0o077 == 0 {
+                return CheckResult(status: .pass, message: String(format: "Merkle signing key: %@ (mode 0%o)", path, mode))
+            }
+            return CheckResult(status: .fail, message: String(format: "Merkle signing key at %@ has mode 0%o — must be 0600; `chmod 600 %@`", path, mode, path))
+        }
+
+        /// Runs `codesign -d --verbose=4 <spook>` and checks for the
+        /// Hardened Runtime flag and a non-ad-hoc Team ID. A failure
+        /// here doesn't block local dev but does block any SOC 2 /
+        /// App Store Connect review.
+        private func checkCodesignHardening() -> CheckResult {
+            let spookPath = ProcessInfo.processInfo.arguments[0]
+            let process = Process()
+            process.executableURL = URL(filePath: "/usr/bin/codesign")
+            process.arguments = ["-d", "--verbose=4", spookPath]
+            let out = Pipe()
+            process.standardError = out
+            process.standardOutput = out
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                return CheckResult(status: .warning, message: "Could not invoke /usr/bin/codesign: \(error.localizedDescription)")
+            }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8) ?? ""
+            let hasRuntime = text.contains("flags=") && text.contains("runtime")
+            let hasTeamID = text.contains("TeamIdentifier=") && !text.contains("TeamIdentifier=not set")
+            switch (hasRuntime, hasTeamID) {
+            case (true, true):
+                return CheckResult(status: .pass, message: "Hardened Runtime + Team ID present on spook binary")
+            case (true, false):
+                return CheckResult(status: .warning, message: "Hardened Runtime set but Team ID absent (ad-hoc or dev signing)")
+            case (false, _):
+                return CheckResult(status: .fail, message: "spook binary is NOT notarized with Hardened Runtime — will fail Gatekeeper on distribution")
             }
         }
 

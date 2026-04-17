@@ -185,9 +185,13 @@ struct SpookController {
         let insecure = env["SPOOK_INSECURE_CONTROLLER"] == "1"
         let tlsProvider: KeychainTLSProvider?
 
-        if let certPath = env["TLS_CERT_PATH"],
-           let keyPath = env["TLS_KEY_PATH"],
-           let caPath = env["TLS_CA_PATH"] {
+        // Accept the canonical `SPOOK_`-prefixed names documented in
+        // DEPLOYMENT_HARDENING.md; fall back to the legacy
+        // un-prefixed names so in-place upgrades don't break.
+        let certPath = env["SPOOK_TLS_CERT_PATH"] ?? env["TLS_CERT_PATH"]
+        let keyPath  = env["SPOOK_TLS_KEY_PATH"]  ?? env["TLS_KEY_PATH"]
+        let caPath   = env["SPOOK_TLS_CA_PATH"]   ?? env["TLS_CA_PATH"]
+        if let certPath, let keyPath, let caPath {
             do {
                 tlsProvider = try KeychainTLSProvider(certPath: certPath, keyPath: keyPath, caPath: caPath)
                 logger.notice("mTLS enabled: controller will present client certificate to nodes")
@@ -199,7 +203,7 @@ struct SpookController {
             tlsProvider = nil
             logger.warning("⚠️  INSECURE MODE: No mTLS configured. Controller-to-node traffic is NOT authenticated. Do NOT use in production.")
         } else {
-            logger.fault("mTLS is required. Set TLS_CERT_PATH, TLS_KEY_PATH, and TLS_CA_PATH, or set SPOOK_INSECURE_CONTROLLER=1 for development.")
+            logger.fault("mTLS is required. Set SPOOK_TLS_CERT_PATH, SPOOK_TLS_KEY_PATH, and SPOOK_TLS_CA_PATH, or set SPOOK_INSECURE_CONTROLLER=1 for development.")
             return
         }
 

@@ -68,10 +68,12 @@ extension Spook {
         @Option(help: "Path to the spook binary for spawning VM processes.")
         var spookPath: String = ProcessInfo.processInfo.environment["SPOOK_PATH"] ?? HTTPAPIServer.defaultSpookPath
 
-        @Option(name: .customLong("tls-cert"), help: "Path to a PEM-encoded TLS certificate file.")
+        @Option(name: .customLong("tls-cert"),
+                help: "Path to a PEM-encoded TLS certificate file. Falls back to SPOOK_TLS_CERT_PATH.")
         var tlsCert: String?
 
-        @Option(name: .customLong("tls-key"), help: "Path to a PEM-encoded TLS private key file.")
+        @Option(name: .customLong("tls-key"),
+                help: "Path to a PEM-encoded TLS private key file. Falls back to SPOOK_TLS_KEY_PATH.")
         var tlsKey: String?
 
         @Flag(help: "Run without TLS or a required API token. Not recommended for production.")
@@ -91,15 +93,26 @@ extension Spook {
                 throw ExitCode.failure
             }
 
+            // CLI flags win, but fall back to the env-var names
+            // documented in docs/DEPLOYMENT_HARDENING.md so the
+            // reference LaunchDaemon plist actually produces a TLS
+            // listener. Before this fallback, the plist's env vars
+            // were silently ignored and `spook serve` either bound
+            // plaintext or died with `tlsRequired` — either way, a
+            // documented-happy-path regression.
+            let env = ProcessInfo.processInfo.environment
+            let resolvedTLSCert = tlsCert ?? env["SPOOK_TLS_CERT_PATH"]
+            let resolvedTLSKey  = tlsKey  ?? env["SPOOK_TLS_KEY_PATH"]
+
             // Validate flag combinations.
-            let hasCert = tlsCert != nil
-            let hasKey = tlsKey != nil
+            let hasCert = resolvedTLSCert != nil
+            let hasKey = resolvedTLSKey != nil
             if hasCert != hasKey {
-                print(Style.error("Both --tls-cert and --tls-key must be provided together."))
+                print(Style.error("Both --tls-cert and --tls-key (or SPOOK_TLS_CERT_PATH / SPOOK_TLS_KEY_PATH) must be provided together."))
                 throw ExitCode.failure
             }
             if insecure && hasCert {
-                print(Style.error("--insecure and TLS flags (--tls-cert, --tls-key) are mutually exclusive."))
+                print(Style.error("--insecure and TLS configuration are mutually exclusive."))
                 throw ExitCode.failure
             }
 
@@ -112,7 +125,7 @@ extension Spook {
             // enforces 1.3 in `KeychainTLSProvider`, but that's a
             // separate control surface.
             var tlsOptions: NWProtocolTLS.Options?
-            if let certPath = tlsCert, let keyPath = tlsKey {
+            if let certPath = resolvedTLSCert, let keyPath = resolvedTLSKey {
                 let identity = try Self.loadTLSIdentity(certPath: certPath, keyPath: keyPath)
                 let options = NWProtocolTLS.Options()
                 sec_protocol_options_set_min_tls_protocol_version(
@@ -124,9 +137,6 @@ extension Spook {
                 )
                 tlsOptions = options
             }
-
-            // Wire enterprise stack from environment variables
-            let env = ProcessInfo.processInfo.environment
 
             // Tenancy mode
             let tenancyMode: TenancyMode = env["SPOOK_TENANCY_MODE"] == "multi-tenant"
