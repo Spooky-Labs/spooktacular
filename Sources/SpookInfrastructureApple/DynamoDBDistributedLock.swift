@@ -114,18 +114,15 @@ public actor DynamoDBDistributedLock: DistributedLockService {
             name: name, holder: holder,
             acquiredAt: now, duration: duration, version: 1
         )
-        let item = try itemRepresentation(for: lease)
-        let payload: [String: Any] = [
-            "TableName": tableName,
-            "Item": item,
-            "ConditionExpression": "attribute_not_exists(#n) OR expiresAt < :now",
-            "ExpressionAttributeNames": ["#n": "name"],
-            "ExpressionAttributeValues": [
-                ":now": ["N": "\(Int(now.timeIntervalSince1970))"],
-            ],
-        ]
+        let request = PutItemRequest(
+            tableName: tableName,
+            item: leaseItem(lease),
+            conditionExpression: "attribute_not_exists(#n) OR expiresAt < :now",
+            expressionAttributeNames: ["#n": "name"],
+            expressionAttributeValues: [":now": .number("\(Int(now.timeIntervalSince1970))")]
+        )
         do {
-            _ = try await post(action: "PutItem", payload: payload)
+            _ = try await post(action: "PutItem", body: request)
             return lease
         } catch DynamoDBLockError.conditionalCheckFailed {
             return nil
@@ -145,18 +142,17 @@ public actor DynamoDBDistributedLock: DistributedLockService {
             acquiredAt: now, duration: duration,
             version: lease.version + 1
         )
-        let item = try itemRepresentation(for: renewed)
-        let payload: [String: Any] = [
-            "TableName": tableName,
-            "Item": item,
-            "ConditionExpression": "version = :v AND holder = :h",
-            "ExpressionAttributeValues": [
-                ":v": ["N": "\(lease.version)"],
-                ":h": ["S": lease.holder],
-            ],
-        ]
+        let request = PutItemRequest(
+            tableName: tableName,
+            item: leaseItem(renewed),
+            conditionExpression: "version = :v AND holder = :h",
+            expressionAttributeValues: [
+                ":v": .number("\(lease.version)"),
+                ":h": .string(lease.holder),
+            ]
+        )
         do {
-            _ = try await post(action: "PutItem", payload: payload)
+            _ = try await post(action: "PutItem", body: request)
             return renewed
         } catch DynamoDBLockError.conditionalCheckFailed {
             throw DynamoDBLockError.leaseLost(name: lease.name)
@@ -167,17 +163,17 @@ public actor DynamoDBDistributedLock: DistributedLockService {
     /// A failed compare-and-swap means someone else already took
     /// over; releasing anyway would invite a split-brain window.
     public func release(_ lease: DistributedLease) async throws {
-        let payload: [String: Any] = [
-            "TableName": tableName,
-            "Key": ["name": ["S": lease.name]],
-            "ConditionExpression": "version = :v AND holder = :h",
-            "ExpressionAttributeValues": [
-                ":v": ["N": "\(lease.version)"],
-                ":h": ["S": lease.holder],
-            ],
-        ]
+        let request = DeleteItemRequest(
+            tableName: tableName,
+            key: ["name": .string(lease.name)],
+            conditionExpression: "version = :v AND holder = :h",
+            expressionAttributeValues: [
+                ":v": .number("\(lease.version)"),
+                ":h": .string(lease.holder),
+            ]
+        )
         do {
-            _ = try await post(action: "DeleteItem", payload: payload)
+            _ = try await post(action: "DeleteItem", body: request)
         } catch DynamoDBLockError.conditionalCheckFailed {
             // Another holder has the lease — nothing to release.
             logger.notice("DynamoDB release: lease \(lease.name, privacy: .public) already held by someone else")
@@ -186,17 +182,21 @@ public actor DynamoDBDistributedLock: DistributedLockService {
 
     // MARK: - Item representation
 
-    /// Produces the DynamoDB JSON item for a lease. DynamoDB's wire
-    /// format demands type-annotated values (`"S"`, `"N"`, `"BOOL"`),
-    /// so we build them by hand rather than encoding
-    /// `DistributedLease` directly with JSONEncoder.
-    private func itemRepresentation(for lease: DistributedLease) throws -> [String: Any] {
-        return [
-            "name":       ["S": lease.name],
-            "holder":     ["S": lease.holder],
-            "acquiredAt": ["N": "\(Int(lease.acquiredAt.timeIntervalSince1970))"],
-            "expiresAt":  ["N": "\(Int(lease.expiresAt.timeIntervalSince1970))"],
-            "version":    ["N": "\(lease.version)"],
+    /// Builds the typed DynamoDB item for a lease.
+    ///
+    /// `DDBAttribute` encodes to the type-annotated wire form
+    /// (`{"S":"foo"}` / `{"N":"42"}`) the DynamoDB API demands,
+    /// so the rest of the code path can stay in Swift-native
+    /// types. This replaces the prior `[String: [String: String]]`
+    /// free-form dictionaries which had no compile-time guarantee
+    /// that a required attribute like `expiresAt` was present.
+    private func leaseItem(_ lease: DistributedLease) -> [String: DDBAttribute] {
+        [
+            "name":       .string(lease.name),
+            "holder":     .string(lease.holder),
+            "acquiredAt": .number("\(Int(lease.acquiredAt.timeIntervalSince1970))"),
+            "expiresAt":  .number("\(Int(lease.expiresAt.timeIntervalSince1970))"),
+            "version":    .number("\(lease.version)"),
         ]
     }
 
@@ -206,8 +206,8 @@ public actor DynamoDBDistributedLock: DistributedLockService {
     /// decoded JSON body. Surfaces `ConditionalCheckFailedException`
     /// as a typed Swift error so callers can distinguish contention
     /// from genuine failures.
-    private func post(action: String, payload: [String: Any]) async throws -> Data {
-        let body = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+    private func post<Body: Encodable>(action: String, body: Body) async throws -> Data {
+        let body = try encoder.encode(body)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.httpBody = body
@@ -216,18 +216,21 @@ public actor DynamoDBDistributedLock: DistributedLockService {
         request.setValue("\(body.count)", forHTTPHeaderField: "Content-Length")
         request.setValue(endpoint.host, forHTTPHeaderField: "Host")
 
-        let amzDate = Self.amzDateFormatter.string(from: Date())
-        let shortDate = Self.shortDateFormatter.string(from: Date())
-        request.setValue(amzDate, forHTTPHeaderField: "X-Amz-Date")
+        let now = Date()
+        request.setValue(SigV4Signer.amzDate(now), forHTTPHeaderField: "X-Amz-Date")
         if let token = sessionToken {
             request.setValue(token, forHTTPHeaderField: "X-Amz-Security-Token")
         }
 
-        let auth = try signRequest(
-            request: request, body: body,
-            amzDate: amzDate, shortDate: shortDate
+        // Shared signer with S3ObjectLockAuditStore; the two AWS
+        // adapters stay in lockstep on canonical-request rules
+        // because they go through the same code path.
+        let signer = SigV4Signer(
+            credentials: .init(accessKeyID: accessKeyID, secretAccessKey: secretAccessKey, sessionToken: sessionToken),
+            region: region,
+            service: "dynamodb"
         )
-        request.setValue(auth, forHTTPHeaderField: "Authorization")
+        request.setValue(signer.signature(for: request, body: body, date: now), forHTTPHeaderField: "Authorization")
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -245,75 +248,100 @@ public actor DynamoDBDistributedLock: DistributedLockService {
         }
         return data
     }
+}
 
-    /// Builds the SigV4 `Authorization` header. Trims and
-    /// whitespace-collapses header values per §3.2, same as the
-    /// S3 audit store does.
-    private func signRequest(
-        request: URLRequest,
-        body: Data,
-        amzDate: String,
-        shortDate: String
-    ) throws -> String {
-        var headers: [(String, String)] = []
-        for (key, value) in request.allHTTPHeaderFields ?? [:] {
-            let normalized = value
-                .trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            headers.append((key.lowercased(), normalized))
+// MARK: - DynamoDB wire-format helpers
+
+/// A single DynamoDB attribute value.
+///
+/// DynamoDB's wire protocol requires type-annotated values:
+/// `{"S":"foo"}` for strings, `{"N":"42"}` for numbers (note that
+/// numbers are transmitted as strings). Representing this as an
+/// enum gives compile-time coverage of the two cases we use and
+/// makes the encode path symmetric — no more stringly-typed
+/// `[String: [String: String]]` with an invariant the compiler
+/// can't check.
+enum DDBAttribute: Codable, Sendable, Equatable {
+    case string(String)
+    case number(String)
+
+    private enum CodingKeys: String, CodingKey {
+        case s = "S"
+        case n = "N"
+    }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let s = try c.decodeIfPresent(String.self, forKey: .s) {
+            self = .string(s); return
         }
-        headers.sort { $0.0 < $1.0 }
-        let signedHeaders = headers.map(\.0).joined(separator: ";")
-        let canonicalHeaders = headers.map { "\($0.0):\($0.1)\n" }.joined()
-
-        let payloadHash = SHA256.hash(data: body).map { String(format: "%02x", $0) }.joined()
-        let canonicalRequest = [
-            "POST",
-            "/",
-            "",
-            canonicalHeaders,
-            signedHeaders,
-            payloadHash,
-        ].joined(separator: "\n")
-
-        let scope = "\(shortDate)/\(region)/dynamodb/aws4_request"
-        let stringToSign = [
-            "AWS4-HMAC-SHA256",
-            amzDate,
-            scope,
-            SHA256.hash(data: Data(canonicalRequest.utf8)).map { String(format: "%02x", $0) }.joined(),
-        ].joined(separator: "\n")
-
-        let kDate = Self.hmacSHA256(key: Data("AWS4\(secretAccessKey)".utf8), data: Data(shortDate.utf8))
-        let kRegion = Self.hmacSHA256(key: kDate, data: Data(region.utf8))
-        let kService = Self.hmacSHA256(key: kRegion, data: Data("dynamodb".utf8))
-        let kSigning = Self.hmacSHA256(key: kService, data: Data("aws4_request".utf8))
-        let signature = Self.hmacSHA256(key: kSigning, data: Data(stringToSign.utf8))
-            .map { String(format: "%02x", $0) }.joined()
-
-        return "AWS4-HMAC-SHA256 Credential=\(accessKeyID)/\(scope), SignedHeaders=\(signedHeaders), Signature=\(signature)"
+        if let n = try c.decodeIfPresent(String.self, forKey: .n) {
+            self = .number(n); return
+        }
+        throw DecodingError.dataCorruptedError(
+            forKey: .s, in: c,
+            debugDescription: "DynamoDB attribute must carry an S or N key"
+        )
     }
 
-    private static func hmacSHA256(key: Data, data: Data) -> Data {
-        Data(HMAC<SHA256>.authenticationCode(for: data, using: SymmetricKey(data: key)))
+    func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .string(let s): try c.encode(s, forKey: .s)
+        case .number(let n): try c.encode(n, forKey: .n)
+        }
+    }
+}
+
+/// Typed `PutItem` request body. The custom `CodingKeys` match
+/// DynamoDB's PascalCase wire names without the need for a custom
+/// `JSONEncoder.keyEncodingStrategy` (which would also affect
+/// nested `DDBAttribute` keys we want in upper-case).
+struct PutItemRequest: Encodable, Sendable {
+    let tableName: String
+    let item: [String: DDBAttribute]
+    let conditionExpression: String?
+    let expressionAttributeNames: [String: String]?
+    let expressionAttributeValues: [String: DDBAttribute]?
+
+    init(
+        tableName: String,
+        item: [String: DDBAttribute],
+        conditionExpression: String? = nil,
+        expressionAttributeNames: [String: String]? = nil,
+        expressionAttributeValues: [String: DDBAttribute]? = nil
+    ) {
+        self.tableName = tableName
+        self.item = item
+        self.conditionExpression = conditionExpression
+        self.expressionAttributeNames = expressionAttributeNames
+        self.expressionAttributeValues = expressionAttributeValues
     }
 
-    /// Shared formatters; DateFormatter allocation isn't free.
-    private static let amzDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
+    enum CodingKeys: String, CodingKey {
+        case tableName = "TableName"
+        case item = "Item"
+        case conditionExpression = "ConditionExpression"
+        case expressionAttributeNames = "ExpressionAttributeNames"
+        case expressionAttributeValues = "ExpressionAttributeValues"
+    }
+}
 
-    private static let shortDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
+/// Typed `DeleteItem` request body. Mirrors `PutItemRequest` in
+/// structure but uses the DynamoDB `Key` field (the lease's
+/// identifying attributes) rather than the full item.
+struct DeleteItemRequest: Encodable, Sendable {
+    let tableName: String
+    let key: [String: DDBAttribute]
+    let conditionExpression: String?
+    let expressionAttributeValues: [String: DDBAttribute]?
+
+    enum CodingKeys: String, CodingKey {
+        case tableName = "TableName"
+        case key = "Key"
+        case conditionExpression = "ConditionExpression"
+        case expressionAttributeValues = "ExpressionAttributeValues"
+    }
 }
 
 // MARK: - Errors
@@ -337,6 +365,22 @@ public enum DynamoDBLockError: Error, LocalizedError, Sendable, Equatable {
             "Lease for '\(name)' was lost to another holder; renewal rejected."
         case .httpError(let statusCode, let body):
             "DynamoDB HTTP \(statusCode): \(body)"
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .missingCredentials:
+            "Export AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, or run on an EC2 instance with an attached IAM role (the credential provider will pick it up)."
+        case .invalidResponse:
+            "The DynamoDB endpoint returned a non-HTTP response. Verify SPOOK_DYNAMO_ENDPOINT (if set), DNS, and network reachability."
+        case .conditionalCheckFailed:
+            "Expected — another holder owns the lease. Retry after a short backoff; this is not an error."
+        case .leaseLost:
+            "Another holder took the lease during a renew. Shorten the renew interval or investigate why your process paused past the TTL."
+        case .httpError(let code, _):
+            code == 400 ? "Check SPOOK_DYNAMO_TABLE schema and IAM permissions — 400 typically means a malformed request or missing dynamodb:PutItem."
+                : "HTTP \(code) from DynamoDB. Consult the response body + AWS CloudTrail for details."
         }
     }
 }

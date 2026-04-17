@@ -3,11 +3,100 @@ import Security
 import SpookCore
 import SpookApplication
 
+// MARK: - JWT and JWKS schemas
+
+/// The protected header of a JWT.
+///
+/// Typed decoding replaces `[String: Any]` + `as? String` casts.
+/// `kid` is required (we use it to select the verifying key from
+/// the JWKS) and `alg` is strictly compared against `"RS256"` —
+/// every other algorithm is rejected before we reach the
+/// signature-verification step.
+struct JWTHeader: Decodable, Sendable {
+    let alg: String
+    let kid: String
+    let typ: String?
+}
+
+/// A JWT's `aud` claim, which the JWT spec permits to be either a
+/// single string or an array of strings. A custom-decoded enum
+/// hides the branching from the validation code above and makes
+/// the "missing aud" case a clean failure path.
+enum JWTAudience: Sendable {
+    case single(String)
+    case multiple([String])
+
+    func contains(_ expected: String) -> Bool {
+        switch self {
+        case .single(let s): s == expected
+        case .multiple(let arr): arr.contains(expected)
+        }
+    }
+}
+
+extension JWTAudience: Decodable {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let s = try? container.decode(String.self) { self = .single(s); return }
+        if let a = try? container.decode([String].self) { self = .multiple(a); return }
+        throw DecodingError.typeMismatch(
+            JWTAudience.self,
+            .init(codingPath: decoder.codingPath,
+                  debugDescription: "aud must be a string or an array of strings")
+        )
+    }
+}
+
+/// Claims that OIDC / JWT verification reads directly.
+///
+/// Raw claims beyond this schema are preserved in
+/// `FederatedIdentity.claims` via a second pass over the raw
+/// JSON — the typed struct is for the validation/extraction path,
+/// not the full claim bag.
+struct JWTClaims: Decodable, Sendable {
+    let iss: String
+    let sub: String
+    let exp: TimeInterval
+    let iat: TimeInterval?
+    let nbf: TimeInterval?
+    let aud: JWTAudience
+    let name: String?
+    let preferredUsername: String?
+    let email: String?
+    let groups: [String]?
+    let roles: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case iss, sub, exp, iat, nbf, aud, name, email, groups, roles
+        case preferredUsername = "preferred_username"
+    }
+}
+
+/// A single key from a JSON Web Key Set (RFC 7517).
+///
+/// Only RSA keys (`kty == "RSA"`) are used; `n` and `e` are the
+/// base64url-encoded modulus and public exponent. Optional `alg`
+/// lets the IdP advertise its signing algorithm, which we still
+/// cross-check against the JWT header's `alg` before verification.
+struct JWK: Codable, Sendable {
+    let kid: String?
+    let kty: String?
+    let alg: String?
+    let use: String?
+    let n: String?
+    let e: String?
+}
+
+/// The JSON Web Key Set document returned by the IdP.
+struct JWKSDocument: Codable, Sendable {
+    let keys: [JWK]
+}
+
 // MARK: - JWKS Cache
 
 /// Cached JSON Web Key Set with a time-to-live.
 struct JWKSCache: Sendable {
-    let keys: [[String: String]]
+    let keys: [JWK]
     let fetchedAt: Date
     let ttl: TimeInterval
 
@@ -56,11 +145,16 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
             guard part.count < 10_240 else { throw OIDCError.malformedToken }
         }
 
-        // 2. Decode header to extract kid and alg
-        guard let headerData = base64URLDecode(String(parts[0])),
-              let header = try? JSONSerialization.jsonObject(with: headerData) as? [String: Any],
-              let kid = header["kid"] as? String,
-              let alg = header["alg"] as? String else {
+        // 2. Decode header via typed struct — kid and alg are
+        // required by our validator and the Decodable conformance
+        // makes that unambiguous.
+        guard let headerData = base64URLDecode(String(parts[0])) else {
+            throw OIDCError.malformedToken
+        }
+        let header: JWTHeader
+        do {
+            header = try Self.decoder.decode(JWTHeader.self, from: headerData)
+        } catch {
             throw OIDCError.malformedToken
         }
 
@@ -68,13 +162,13 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
         // Only RS256 is permitted. Reject ALL other algorithms explicitly.
         // See: https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/
         let allowedAlgorithms: Swift.Set<String> = ["RS256"]
-        guard allowedAlgorithms.contains(alg) else {
-            throw OIDCError.unsupportedAlgorithm(alg)
+        guard allowedAlgorithms.contains(header.alg) else {
+            throw OIDCError.unsupportedAlgorithm(header.alg)
         }
 
         // 4. Verify cryptographic signature against JWKS
         let keys = try await getJWKS()
-        guard let matchingKey = keys.first(where: { $0["kid"] as? String == kid }) else {
+        guard let matchingKey = keys.first(where: { $0.kid == header.kid }) else {
             throw OIDCError.signatureVerificationFailed
         }
 
@@ -85,119 +179,108 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
 
         try verifyRS256(signedInput: signedInput, signature: signatureData, jwk: matchingKey)
 
-        // 4. Decode payload
-        guard let payloadData = base64URLDecode(String(parts[1])),
-              let claims = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any]
-        else { throw OIDCError.malformedToken }
+        // 5. Decode payload claims via the typed struct.
+        guard let payloadData = base64URLDecode(String(parts[1])) else {
+            throw OIDCError.malformedToken
+        }
+        let claims: JWTClaims
+        do {
+            claims = try Self.decoder.decode(JWTClaims.self, from: payloadData)
+        } catch {
+            // A decode failure here is usually a missing required
+            // claim — `iss`, `sub`, or `exp`. Surface the specific
+            // claim when the decoder told us which one, otherwise
+            // fall back to `malformedToken` so the caller sees a
+            // consistent taxonomy.
+            if case let DecodingError.keyNotFound(key, _)? = error as? DecodingError {
+                throw OIDCError.missingRequiredClaim(key.stringValue)
+            }
+            throw OIDCError.malformedToken
+        }
 
-        // 5. Validate issuer
-        guard let iss = claims["iss"] as? String, iss == config.issuerURL
-        else { throw OIDCError.issuerMismatch }
+        // 6. Validate issuer
+        guard claims.iss == config.issuerURL else { throw OIDCError.issuerMismatch }
 
-        // 6. Validate audience — unconditional.
+        // 7. Validate audience — unconditional.
         //
-        // OIDC Core §3.1.3.7 requires audience validation. Previously
-        // the check was skipped when `config.audience` was nil — in a
-        // shared-issuer setup (GitHub Actions: every org shares
-        // `https://token.actions.githubusercontent.com`) this meant
-        // tokens issued for a different service with the same issuer
-        // passed unchallenged. Fall back to `config.clientID` as the
-        // expected audience, matching OIDC Core §3.1.3.7's guidance
-        // that the Client's own identifier is the canonical audience.
+        // OIDC Core §3.1.3.7 requires audience validation. Fall
+        // back to `config.clientID` so shared-issuer IdPs (GitHub
+        // Actions, Azure AD multi-tenant) can't cross-verify for
+        // unrelated clients.
         let expectedAud = config.audience ?? config.clientID
-        let aud = claims["aud"]
-        let audMatch: Bool
-        if let audString = aud as? String {
-            audMatch = audString == expectedAud
-        } else if let audArray = aud as? [String] {
-            audMatch = audArray.contains(expectedAud)
-        } else {
-            audMatch = false
+        guard claims.aud.contains(expectedAud) else {
+            throw OIDCError.audienceMismatch
         }
-        guard audMatch else { throw OIDCError.audienceMismatch }
 
-        // 7. Validate temporal claims: exp (required), iat, nbf.
-        //
-        // - `exp` is REQUIRED per OIDC Core §2. Missing ⇒ reject.
-        // - `iat` in the future (beyond skew) suggests clock
-        //   manipulation.
-        // - `nbf` per RFC 7519 §4.1.5 is optional, but when present
-        //   MUST be honored — GitHub Actions OIDC tokens and many
-        //   enterprise IdPs rely on it for pre-activation tokens.
-        //
-        // The 60s clock-skew window applies symmetrically to all
-        // three. Any larger window creates a region where revoked
-        // or pre-activation tokens still authenticate.
-        guard let expTimestamp = claims["exp"] as? TimeInterval else {
-            throw OIDCError.missingRequiredClaim("exp")
-        }
-        let exp = Date(timeIntervalSince1970: expTimestamp)
+        // 8. Validate temporal claims: exp (required), iat, nbf.
+        // `exp` is required by the type; iat / nbf are optional.
+        // 60s skew applies symmetrically to all three.
+        let exp = Date(timeIntervalSince1970: claims.exp)
         let clockSkew: TimeInterval = 60
         let now = Date()
         guard now < exp.addingTimeInterval(clockSkew) else {
             throw OIDCError.tokenExpired
         }
-        if let iatTimestamp = claims["iat"] as? TimeInterval {
+        if let iatTimestamp = claims.iat {
             let iat = Date(timeIntervalSince1970: iatTimestamp)
             guard iat < now.addingTimeInterval(clockSkew) else {
                 throw OIDCError.tokenIssuedInFuture
             }
         }
-        if let nbfTimestamp = claims["nbf"] as? TimeInterval {
+        if let nbfTimestamp = claims.nbf {
             let nbf = Date(timeIntervalSince1970: nbfTimestamp)
             guard now >= nbf.addingTimeInterval(-clockSkew) else {
                 throw OIDCError.tokenNotYetValid
             }
         }
 
-        // 8. Extract identity. OIDC Core §5.1 requires `sub`. An
-        // empty string was previously accepted — that collapses all
-        // tokens without a subject to the same anonymous principal.
-        guard let sub = claims["sub"] as? String, !sub.isEmpty else {
+        // 9. Extract identity. Empty `sub` was previously accepted;
+        // the typed struct now treats absent `sub` as a decode error
+        // (handled above) and we reject an empty string here.
+        guard !claims.sub.isEmpty else {
             throw OIDCError.missingRequiredClaim("sub")
         }
-        let name = claims["name"] as? String ?? claims["preferred_username"] as? String
-        let email = claims["email"] as? String
-        let groups: [String]
-        if let g = claims["groups"] as? [String] {
-            groups = g
-        } else if let roles = claims["roles"] as? [String] {
-            groups = roles
-        } else {
-            groups = []
-        }
+        let displayName = claims.name ?? claims.preferredUsername
+        let groups = claims.groups ?? claims.roles ?? []
 
-        // 9. Map claims to strings for storage
-        var stringClaims: [String: String] = [:]
-        for (k, v) in claims {
-            if let s = v as? String { stringClaims[k] = s }
-        }
+        // 10. Preserve the raw string-valued claims for consumers
+        // that inspect `FederatedIdentity.claims`. The typed struct
+        // above covers the validation-relevant claims; anything
+        // else the IdP shipped gets carried through.
+        let stringClaims = Self.extractStringClaims(from: payloadData)
 
         return FederatedIdentity(
-            issuer: iss, subject: sub, displayName: name,
-            email: email, groups: groups, expiresAt: exp,
+            issuer: claims.iss, subject: claims.sub, displayName: displayName,
+            email: claims.email, groups: groups, expiresAt: exp,
             claims: stringClaims
         )
+    }
+
+    // Shared across every verify() call, no per-request allocation.
+    private static let decoder = JSONDecoder()
+
+    /// Extracts all top-level string-valued claims from a JWT
+    /// payload for pass-through to `FederatedIdentity.claims`.
+    ///
+    /// Kept as a second JSON decode instead of baking it into
+    /// `JWTClaims` because claim names vary wildly across IdPs
+    /// (Azure AD alone adds ~30 claim keys) and a typed mapping
+    /// would either be incomplete or enormous.
+    private static func extractStringClaims(from data: Data) -> [String: String] {
+        guard let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return [:] }
+        return dict.compactMapValues { $0 as? String }
     }
 
     // MARK: - JWKS Fetching
 
     /// Returns the cached JWKS keys, refreshing from the provider if expired or absent.
-    private func getJWKS() async throws -> [[String: Any]] {
+    private func getJWKS() async throws -> [JWK] {
         if let cache = jwksCache, !cache.isExpired {
-            // Convert cached [String: String] to [String: Any] for compatibility
-            return cache.keys.map { $0 as [String: Any] }
+            return cache.keys
         }
         let keys = try await fetchJWKS()
-        // Store as [String: String] for Sendable conformance in the cache
-        let stringKeys: [[String: String]] = keys.map { dict in
-            var result: [String: String] = [:]
-            for (k, v) in dict {
-                if let s = v as? String { result[k] = s }
-            }
-            return result
-        }
-        jwksCache = JWKSCache(keys: stringKeys, fetchedAt: Date(), ttl: 3600)
+        jwksCache = JWKSCache(keys: keys, fetchedAt: Date(), ttl: 3600)
         return keys
     }
 
@@ -218,51 +301,46 @@ public actor OIDCTokenVerifier: FederatedIdentityVerifier {
     ///    → `jwks_uri` → GET. The original behavior; still correct
     ///    when the IdP and the verifier are on the same trusted
     ///    network segment.
-    private func fetchJWKS() async throws -> [[String: Any]] {
+    private func fetchJWKS() async throws -> [JWK] {
         // Tier 1: static file — bypass the network entirely.
         if let path = config.staticJWKSPath {
-            let url = URL(filePath: path)
-            guard let data = try? Data(contentsOf: url),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let keys = json["keys"] as? [[String: Any]] else {
+            guard let data = try? Data(contentsOf: URL(filePath: path)),
+                  let doc = try? Self.decoder.decode(JWKSDocument.self, from: data) else {
                 throw OIDCError.staticJWKSUnreadable(path: path)
             }
-            return keys
+            return doc.keys
         }
 
         // Tier 2: explicit URL override — skip discovery, fetch directly.
         if let override = config.jwksURLOverride,
            let jwksURL = URL(string: override) {
             let response = try await http.execute(DomainHTTPRequest(method: .get, url: jwksURL))
-            guard let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any],
-                  let keys = json["keys"] as? [[String: Any]] else {
+            guard let doc = try? Self.decoder.decode(JWKSDocument.self, from: response.body) else {
                 throw OIDCError.jwksFetchFailed
             }
-            return keys
+            return doc.keys
         }
 
         // Tier 3: discovery fallback.
+        struct Discovery: Decodable { let jwks_uri: String }
         let configURL = URL(string: "\(config.issuerURL)/.well-known/openid-configuration")!
         let configResponse = try await http.execute(DomainHTTPRequest(method: .get, url: configURL))
-        guard let configJSON = try? JSONSerialization.jsonObject(with: configResponse.body) as? [String: Any],
-              let jwksURI = configJSON["jwks_uri"] as? String,
-              let jwksURL = URL(string: jwksURI) else {
+        guard let discovery = try? Self.decoder.decode(Discovery.self, from: configResponse.body),
+              let jwksURL = URL(string: discovery.jwks_uri) else {
             throw OIDCError.jwksFetchFailed
         }
-
         let jwksResponse = try await http.execute(DomainHTTPRequest(method: .get, url: jwksURL))
-        guard let jwksJSON = try? JSONSerialization.jsonObject(with: jwksResponse.body) as? [String: Any],
-              let keys = jwksJSON["keys"] as? [[String: Any]] else {
+        guard let doc = try? Self.decoder.decode(JWKSDocument.self, from: jwksResponse.body) else {
             throw OIDCError.jwksFetchFailed
         }
-        return keys
+        return doc.keys
     }
 
     // MARK: - Signature Verification
 
     /// Verifies an RS256 (RSASSA-PKCS1-v1_5 with SHA-256) signature using Security.framework.
-    private func verifyRS256(signedInput: Data, signature: Data, jwk: [String: Any]) throws {
-        guard let nB64 = jwk["n"] as? String, let eB64 = jwk["e"] as? String,
+    private func verifyRS256(signedInput: Data, signature: Data, jwk: JWK) throws {
+        guard let nB64 = jwk.n, let eB64 = jwk.e,
               let n = base64URLDecode(nB64), let e = base64URLDecode(eB64) else {
             throw OIDCError.signatureVerificationFailed
         }

@@ -148,22 +148,31 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
         request.httpMethod = "PUT"
         request.httpBody = data
 
-        let payloadHash = sha256Hex(data)
+        // Inline SHA-256 hex — S3 requires `x-amz-content-sha256`
+        // set BEFORE the signer reads the header list, so we
+        // can't hide it inside the signer.
+        let payloadHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
         let now = Date()
 
         request.setValue(host, forHTTPHeaderField: "Host")
         request.setValue("application/x-ndjson", forHTTPHeaderField: "Content-Type")
         request.setValue(payloadHash, forHTTPHeaderField: "x-amz-content-sha256")
-        request.setValue(amzDate(now), forHTTPHeaderField: "x-amz-date")
+        request.setValue(SigV4Signer.amzDate(now), forHTTPHeaderField: "x-amz-date")
         request.setValue("COMPLIANCE", forHTTPHeaderField: "x-amz-object-lock-mode")
         request.setValue(retainStr, forHTTPHeaderField: "x-amz-object-lock-retain-until-date")
         if let token = sessionToken {
             request.setValue(token, forHTTPHeaderField: "x-amz-security-token")
         }
 
-        // SigV4 signing
-        let authorization = signV4(request: request, body: data, now: now)
-        request.setValue(authorization, forHTTPHeaderField: "Authorization")
+        // SigV4 signing — shared with DynamoDBDistributedLock so
+        // the two AWS adapters can't drift on canonical-header or
+        // signing-key derivation bugs.
+        let signer = SigV4Signer(
+            credentials: .init(accessKeyID: accessKeyID, secretAccessKey: secretAccessKey, sessionToken: sessionToken),
+            region: region,
+            service: "s3"
+        )
+        request.setValue(signer.signature(for: request, body: data, date: now), forHTTPHeaderField: "Authorization")
 
         let (_, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse,
@@ -171,104 +180,6 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             throw S3AuditError.uploadFailed(code)
         }
-    }
-
-    // MARK: - AWS SigV4
-
-    private func signV4(request: URLRequest, body: Data, now: Date) -> String {
-        let dateStamp = shortDate(now)
-        let amzDateStr = amzDate(now)
-        let scope = "\(dateStamp)/\(region)/s3/aws4_request"
-
-        // Canonical headers (sorted).
-        //
-        // AWS SigV4 §3.2 requires values to be trimmed and internal
-        // sequential whitespace collapsed before signing. Without this,
-        // S3 rejects requests where any header value contains
-        // leading/trailing/internal extra whitespace.
-        var headers: [(String, String)] = []
-        for (key, value) in request.allHTTPHeaderFields ?? [:] {
-            let normalizedValue = value
-                .trimmingCharacters(in: .whitespaces)
-                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            headers.append((key.lowercased(), normalizedValue))
-        }
-        headers.sort { $0.0 < $1.0 }
-        let signedHeaders = headers.map(\.0).joined(separator: ";")
-        let canonicalHeaders = headers.map { "\($0.0):\($0.1)\n" }.joined()
-
-        // Canonical request
-        let path = request.url?.path ?? "/"
-        let query = request.url?.query ?? ""
-        let payloadHash = sha256Hex(body)
-        let canonicalRequest = [
-            request.httpMethod ?? "PUT",
-            path,
-            query,
-            canonicalHeaders,
-            signedHeaders,
-            payloadHash
-        ].joined(separator: "\n")
-
-        // String to sign
-        let stringToSign = [
-            "AWS4-HMAC-SHA256",
-            amzDateStr,
-            scope,
-            sha256Hex(Data(canonicalRequest.utf8))
-        ].joined(separator: "\n")
-
-        // Signing key
-        let kDate = hmacSHA256(key: Data("AWS4\(secretAccessKey)".utf8), data: Data(dateStamp.utf8))
-        let kRegion = hmacSHA256(key: kDate, data: Data(region.utf8))
-        let kService = hmacSHA256(key: kRegion, data: Data("s3".utf8))
-        let kSigning = hmacSHA256(key: kService, data: Data("aws4_request".utf8))
-
-        let signature = hmacSHA256(key: kSigning, data: Data(stringToSign.utf8))
-            .map { String(format: "%02x", $0) }.joined()
-
-        return "AWS4-HMAC-SHA256 Credential=\(accessKeyID)/\(scope), SignedHeaders=\(signedHeaders), Signature=\(signature)"
-    }
-
-    private func sha256Hex(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private func hmacSHA256(key: Data, data: Data) -> Data {
-        let mac = HMAC<SHA256>.authenticationCode(for: data, using: SymmetricKey(data: key))
-        return Data(mac)
-    }
-
-    /// Cached formatter for the `X-Amz-Date` header format
-    /// (`yyyyMMdd'T'HHmmss'Z'`).
-    ///
-    /// `DateFormatter` is expensive to allocate — enough to show up in
-    /// profiles when auditing at any real rate. Cached as a stored
-    /// property since this type is already an `actor`, guaranteeing
-    /// exclusive access at each call site.
-    private let amzDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
-
-    /// Cached formatter for SigV4's date stamp (`yyyyMMdd`).
-    private let shortDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyyMMdd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
-
-    private func amzDate(_ date: Date) -> String {
-        amzDateFormatter.string(from: date)
-    }
-
-    private func shortDate(_ date: Date) -> String {
-        shortDateFormatter.string(from: date)
     }
 }
 
