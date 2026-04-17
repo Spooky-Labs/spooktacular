@@ -142,4 +142,13 @@ public enum AppendOnlyError: Error, LocalizedError, Sendable {
             "Could not set UF_APPEND on \(p). The filesystem or ACLs may not support BSD file flags — choose a different audit path or disable SPOOK_AUDIT_IMMUTABLE."
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .cannotOpenFile(let p):
+            "Verify the parent directory exists and the daemon user can write to it: `ls -ld \(URL(filePath: p).deletingLastPathComponent().path)`. Create it with `mkdir -p` + `chown` if missing."
+        case .kernelFlagFailed:
+            "Move SPOOK_AUDIT_IMMUTABLE_PATH to an APFS volume — UF_APPEND requires BSD file flags. SMB/NFS/external-disk paths often silently reject `chflags`."
+        }
+    }
 }

@@ -78,4 +78,13 @@ public enum IdPError: Error, LocalizedError, Sendable {
         case .unrecognizedTokenFormat: "Token format not recognized (expected JWT or base64 SAML)"
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .issuerNotRegistered(let iss):
+            "Add an entry for `\(iss)` to SPOOK_IDP_CONFIG, then restart. The registry loads at startup — runtime registration via the admin API is a separate endpoint."
+        case .unrecognizedTokenFormat:
+            "Token must be a three-part base64url JWT (OIDC) or a base64-encoded SAML XML assertion. Wrap SAML in `Authorization: Bearer <base64(saml-response)>`; do NOT URL-encode."
+        }
+    }
 }

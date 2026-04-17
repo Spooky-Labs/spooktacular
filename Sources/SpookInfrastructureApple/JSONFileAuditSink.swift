@@ -65,4 +65,11 @@ public enum AuditSinkError: Error, LocalizedError, Sendable {
             "Cannot open audit file for writing: \(path)"
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .cannotOpenFile(let path):
+            "Check the directory exists and is writable by the daemon user: `ls -ld \(URL(filePath: path).deletingLastPathComponent().path)`. If the path sits under /var/log, the directory may need to be created with `mkdir -p` + `chown <daemon-user>`."
+        }
+    }
 }

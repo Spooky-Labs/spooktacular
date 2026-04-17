@@ -195,4 +195,17 @@ public enum S3AuditError: Error, LocalizedError, Sendable {
             "S3 PutObject failed with HTTP \(code)"
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .missingCredentials:
+            "Export AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY or attach an IAM role to the EC2 host. For local dev, consider `aws configure` + exporting the profile."
+        case .uploadFailed(let code):
+            switch code {
+            case 403: "Check that the IAM principal has `s3:PutObject` + `s3:PutObjectRetention` on the bucket and that Object Lock is enabled."
+            case 400: "Check SPOOK_AUDIT_S3_BUCKET name and SPOOK_AUDIT_S3_REGION — 400 often means the region's endpoint doesn't host that bucket."
+            default: "HTTP \(code) from S3. Inspect CloudTrail for the failed PutObject call; the `Errors.S3.InvalidArgument` → bucket misconfiguration is the most common cause."
+            }
+        }
+    }
 }

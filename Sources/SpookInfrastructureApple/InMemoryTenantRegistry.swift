@@ -79,4 +79,11 @@ public enum TenantRegistryError: Error, LocalizedError, Sendable {
         case .notFound(let id): "Tenant not found: \(id)"
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .notFound:
+            "List tenants with `GET /v1/tenants` or `spook rbac list-tenants` to confirm the id exists. Tenants are registered via `POST /v1/tenants` or SPOOK_TENANT_CONFIG."
+        }
+    }
 }

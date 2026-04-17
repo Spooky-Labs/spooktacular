@@ -546,4 +546,39 @@ public enum SAMLError: Error, LocalizedError, Sendable, Equatable {
             "SAML IdP RSA key is \(bits) bits; minimum is 2048 per NIST SP 800-131A"
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .invalidCertificate:
+            "Verify the IdP's X.509 certificate is PEM-encoded and not expired. If rotating certs, make sure the new cert is installed before the IdP starts emitting assertions signed by it."
+        case .malformedResponse:
+            "Check that the caller posted the raw base64-decoded SAML Response (not URL-encoded, not double-encoded). Test with a known-good assertion from the IdP's sandbox."
+        case .issuerMismatch:
+            "Confirm the IdP's Entity ID matches `SAMLProviderConfig.issuer` exactly — case and trailing-slash included."
+        case .assertionExpired:
+            "The assertion's `NotOnOrAfter` has passed. Extend the IdP's assertion lifetime or re-authenticate."
+        case .conditionNotYetValid:
+            "Clock skew > 60s between IdP and this host. Enable NTP on both endpoints."
+        case .audienceMismatch:
+            "The assertion's `<Audience>` doesn't match `SAMLProviderConfig.audience`. Update the IdP's SP configuration to emit the correct audience URI."
+        case .destinationMismatch:
+            "The Response `Destination` attribute must match the server's SAML ACS URL. Align the IdP's Assertion Consumer Service URL with `SAMLProviderConfig.destination`."
+        case .missingSignature:
+            "The IdP must sign every assertion. Turn on assertion signing in the IdP's SP-trust configuration (response-only signing is NOT sufficient)."
+        case .malformedSignature:
+            "The `<Signature>` element is present but missing required children (SignedInfo / Reference / SignatureValue). Inspect the raw XML with `xmllint --format`."
+        case .unsupportedAlgorithm:
+            "We accept only `http://www.w3.org/2001/04/xmlenc#sha256` + RSA-SHA256. Configure the IdP to sign with SHA-256; SHA-1 has been retired."
+        case .digestMismatch:
+            "The `<DigestValue>` doesn't match the canonicalized Assertion. Usually means whitespace was re-serialized somewhere after signing — verify the IdP doesn't re-pretty-print the SAML."
+        case .signatureVerificationFailed:
+            "RSA-SHA256 verification failed. Confirm the IdP's public cert in `SAMLProviderConfig.certificate` matches the private key it signs with."
+        case .signatureWrappingDetected:
+            "The signed Reference URI points at a different element than the validated Assertion — classic XSW attack. Reject the assertion; do NOT relax this check."
+        case .assertionReplayed:
+            "The assertion's ID was seen before within its validity window. Either the caller is replaying a valid assertion (reject) or the IdP is issuing duplicate IDs (misconfiguration)."
+        case .weakKey(let bits):
+            "IdP's RSA key is \(bits) bits. Generate a new 2048-bit (or larger) signing key at the IdP; leave this check intact — NIST SP 800-131A forbids RSA-1024 in production."
+        }
+    }
 }

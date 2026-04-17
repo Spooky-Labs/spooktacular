@@ -467,4 +467,33 @@ public enum OIDCError: Error, LocalizedError, Sendable {
         case .unsupportedAlgorithm(let alg): "JWT uses unsupported algorithm '\(alg)'. Only RS256 is permitted."
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .malformedToken:
+            "The bearer isn't a valid three-part base64url JWT. If a client is generating tokens, make sure each segment is base64url-encoded and that the header uses `{\"alg\":\"RS256\",\"kid\":\"...\"}`."
+        case .issuerMismatch:
+            "Confirm `OIDCProviderConfig.issuerURL` matches the `iss` claim the IdP emits. The string must match exactly — trailing slashes, scheme case, and port all count."
+        case .missingRequiredClaim(let claim):
+            "The IdP must include `\(claim)` on every token. If this is an Azure AD configuration, review the access-token claims mapping in the app registration."
+        case .tokenIssuedInFuture:
+            "Clock skew between the IdP and this host is > 60s. Enable NTP on this host (`sudo sntp -sS time.apple.com`) or adjust the IdP's clock."
+        case .tokenNotYetValid:
+            "Token has an `nbf` in the future — the IdP schedules pre-activation tokens. Caller should wait until nbf passes; check for systemic clock skew if persistent."
+        case .weakKey(let bits):
+            "The IdP's RSA key is \(bits) bits, below the NIST SP 800-131A minimum of 2048. Ask the IdP operator to rotate to a 2048-bit or larger key; RSA-1024 has been disallowed since 2015."
+        case .audienceMismatch:
+            "Token `aud` didn't match. Check `OIDCProviderConfig.audience` — or `clientID` when audience is nil — against the `aud` the IdP emits for this client."
+        case .tokenExpired:
+            "The token's `exp` has passed. Caller should re-authenticate to obtain a fresh token."
+        case .jwksFetchFailed:
+            "Could not fetch JWKS from the IdP. Verify network reachability to the configured `issuerURL`, or set `OIDCProviderConfig.staticJWKSPath` to pin a local JWKS document."
+        case .staticJWKSUnreadable(let path):
+            "Ensure `\(path)` exists, is readable by the daemon user, and contains a JWKS document: `{\"keys\":[{\"kid\":\"...\",\"kty\":\"RSA\",\"n\":\"...\",\"e\":\"AQAB\"}]}`."
+        case .signatureVerificationFailed:
+            "Signature did not verify. Usually means a kid mismatch (the JWKS doesn't have the key that signed the token — cache TTL may be too long) or a tampered token."
+        case .unsupportedAlgorithm:
+            "Only RS256 is accepted — an IdP emitting HS256/none/ES256 either points at the wrong service or is vulnerable to algorithm-confusion attacks. Do not relax this check."
+        }
+    }
 }

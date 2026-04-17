@@ -25,6 +25,24 @@ public enum GitHubServiceError: Error, LocalizedError, Sendable {
             return "GitHub API error \(statusCode): \(body)"
         }
     }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .invalidResponse:
+            return "GitHub returned a non-HTTP response. Check that `api.github.com` resolves and is reachable; corporate proxies often strip API traffic."
+        case .apiError(let statusCode, _):
+            switch statusCode {
+            case 401:
+                return "Token authentication failed. The PAT may be revoked, expired, or missing `admin:repo_hook` / `repo` scope. Regenerate at github.com/settings/tokens."
+            case 403:
+                return "Rate-limited or missing scope. Check `X-RateLimit-Remaining` and confirm the PAT includes the `admin:org` (org-level) or `repo` (repo-level) scope required for registration tokens."
+            case 404:
+                return "Repo or org not found under the configured scope. Confirm the path format is `owner/repo` or `orgs/org` — not a URL."
+            default:
+                return "HTTP \(statusCode) from GitHub. Inspect the response body and https://status.github.com."
+            }
+        }
+    }
 }
 
 // MARK: - Service

@@ -365,6 +365,19 @@ enum ControllerError: Error, LocalizedError, Sendable {
         case .apiError(let m):           "K8s API error: \(m)"
         }
     }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .missingEnvironment(let v):
+            "Set `\(v)` in the controller's Deployment spec. `KUBERNETES_SERVICE_HOST` and `_PORT` are auto-injected by kubelet; if missing, you're not running in-cluster."
+        case .missingFile(let p):
+            "Expected file at `\(p)`. If this is a ServiceAccount token/CA, ensure the ServiceAccount is mounted (`automountServiceAccountToken: true`) on the Pod spec."
+        case .invalidURL:
+            "The constructed Kubernetes API URL is invalid. Check that `KUBERNETES_SERVICE_HOST` is a hostname or IPv4/IPv6 literal and `KUBERNETES_SERVICE_PORT` is numeric."
+        case .apiError:
+            "The K8s API rejected the request. Inspect the controller's ServiceAccount RBAC (`kubectl auth can-i` from the pod); 403s are typically missing verbs on `macosvms` or `runnerpools`."
+        }
+    }
 }
 
 // MARK: - Tenant Configuration
