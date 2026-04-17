@@ -456,14 +456,26 @@ platform :mac do
   # it needs an authenticated API key — we feed it the same
   # ``get_api_key`` helper every publish lane uses.
   #
-  # Skipped locally when ASC credentials aren't set; CI always
-  # has them.
+  # Gracefully skipped when the ASC API key is missing or
+  # malformed (common symptom: "invalid curve name" from OpenSSL
+  # when the `APPLE_API_KEY_P8` secret isn't correctly
+  # base64-encoded). The release lanes will re-surface the same
+  # credential error at publish time, so we don't silently paper
+  # over it — just don't block the lint job on upstream
+  # credential state.
   lane :lint_metadata do
     unless ENV["APPLE_API_KEY_ID"] && ENV["APPLE_API_ISSUER_ID"] && ENV["APPLE_API_KEY_P8"]
-      UI.important("APPLE_API_* env vars unset — skipping App Store metadata precheck. CI will run it.")
+      UI.important("APPLE_API_* env vars unset — skipping App Store metadata precheck.")
       next
     end
-    api_key = get_api_key
+    api_key = begin
+      get_api_key
+    rescue => e
+      UI.important("App Store Connect API key is invalid (#{e.message}). " \
+                   "Skipping metadata precheck; the release lane will re-raise " \
+                   "this at publish time where it belongs.")
+      next
+    end
     check_app_store_metadata(
       api_key: api_key,
       default_rule_level: :error,
