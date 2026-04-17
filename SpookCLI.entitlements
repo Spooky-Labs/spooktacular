@@ -2,6 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!--
+        The CLI is a standalone command-line tool that creates VM
+        bundles in operator-chosen paths, runs network servers, and
+        manages arbitrary IPSW/disk images. Declaring the App Sandbox
+        explicitly false (rather than omitting the key) documents the
+        intent: Hardened Runtime is on, but the sandbox is not.
+        Without this, codesign's resolved entitlements are ambiguous
+        to reviewers — present keys assert capability, absent keys
+        are silent.
+    -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
     <key>com.apple.security.virtualization</key>
     <true/>
     <key>com.apple.security.network.client</key>

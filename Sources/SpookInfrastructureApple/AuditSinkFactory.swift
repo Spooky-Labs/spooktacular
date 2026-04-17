@@ -132,8 +132,43 @@ public enum AuditSinkFactory {
             let dir = url.deletingLastPathComponent()
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             let newKey = Curve25519.Signing.PrivateKey()
-            try newKey.rawRepresentation.write(to: url, options: [.atomic])
-            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+
+            // Create with 0600 atomically via open(2). The previous
+            // `Data.write(.atomic)` + `FileManager.setAttributes`
+            // sequence was a TOCTOU window: the backing tempfile was
+            // created with umask-default permissions (typically 0644)
+            // and only chmod'd to 0600 after the rename, so any
+            // concurrent reader in the same directory could race and
+            // read 32 bytes of raw Ed25519 private key.
+            //
+            // O_EXCL guards against a symlink swap that would redirect
+            // us to an attacker-chosen path, and O_NOFOLLOW refuses to
+            // traverse a symlink at the final component.
+            try path.withCString { cPath in
+                let fd = open(cPath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+                guard fd >= 0 else {
+                    throw AuditSinkFactoryError.merkleKeyCreateFailed(path: path, errno: errno)
+                }
+                defer { close(fd) }
+                try newKey.rawRepresentation.withUnsafeBytes { buffer in
+                    var remaining = buffer.count
+                    var base = buffer.baseAddress
+                    while remaining > 0 {
+                        let written = write(fd, base, remaining)
+                        if written < 0 {
+                            if errno == EINTR { continue }
+                            throw AuditSinkFactoryError.merkleKeyCreateFailed(path: path, errno: errno)
+                        }
+                        remaining -= written
+                        base = base?.advanced(by: written)
+                    }
+                }
+                // fsync so the key survives a power loss immediately
+                // after creation — otherwise a crash could leave the
+                // directory entry without its contents and brick the
+                // next startup.
+                fsync(fd)
+            }
             return newKey
         }
     }
@@ -145,6 +180,7 @@ public enum AuditSinkFactory {
 public enum AuditSinkFactoryError: Error, LocalizedError, Sendable {
     case merkleKeyRequired
     case merkleKeyPermissionsTooOpen(path: String, mode: UInt16)
+    case merkleKeyCreateFailed(path: String, errno: Int32)
 
     public var errorDescription: String? {
         switch self {
@@ -155,6 +191,9 @@ public enum AuditSinkFactoryError: Error, LocalizedError, Sendable {
                 format: "Merkle signing key at '%@' has permissions 0%o. Expected 0600 (owner-only). `chmod 600 %@` then retry.",
                 path, mode, path
             )
+        case .merkleKeyCreateFailed(let path, let err):
+            let msg = String(cString: strerror(err))
+            return "Failed to create Merkle signing key at '\(path)': \(msg) (errno \(err))."
         }
     }
 }

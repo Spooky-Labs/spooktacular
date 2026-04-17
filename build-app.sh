@@ -86,9 +86,19 @@ fi
 echo "Code signing with identity: $SIGN_IDENTITY"
 # Sign inner binaries first, then the main executable, then the bundle.
 # Never use --deep — it masks signing order bugs.
-codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$CLI_ENTITLEMENTS" "$MACOS_DIR/$CLI_NAME"
-codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$MACOS_DIR/$APP_NAME"
-codesign --force --sign "$SIGN_IDENTITY" --options runtime --entitlements "$ENTITLEMENTS" "$BUNDLE_DIR"
+#
+# --timestamp requests a secure timestamp from Apple's RFC 3161 TSA
+# (timestamp.apple.com). Notarization rejects signatures without one,
+# and a trusted timestamp keeps the signature verifiable even after
+# the signing certificate expires. Ad-hoc builds (identity "-") skip
+# the timestamp because the TSA will not stamp unsigned objects.
+TIMESTAMP_FLAG=""
+if [ "$SIGN_IDENTITY" != "-" ]; then
+    TIMESTAMP_FLAG="--timestamp"
+fi
+codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$CLI_ENTITLEMENTS" "$MACOS_DIR/$CLI_NAME"
+codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$ENTITLEMENTS" "$MACOS_DIR/$APP_NAME"
+codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$ENTITLEMENTS" "$BUNDLE_DIR"
 
 echo ""
 echo "✓ App bundle created: $BUNDLE_DIR"

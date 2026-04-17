@@ -175,7 +175,15 @@ public struct FIPSKeyStore: Sendable {
         guard status == errSecSuccess else {
             throw FIPSError.keyNotFound(tag)
         }
-        let privateKey = item as! SecKey
+        // Keychain has been known to return items whose dynamic type
+        // doesn't match what the query asked for (e.g. when a stale
+        // entry has the wrong class). `as! SecKey` would crash the
+        // whole process in that case — strictly worse than surfacing
+        // a signing error and letting the caller retry or alert.
+        guard let item, CFGetTypeID(item) == SecKeyGetTypeID() else {
+            throw FIPSError.keyNotFound(tag)
+        }
+        let privateKey = item as! SecKey  // now guarded by CFGetTypeID
 
         var error: Unmanaged<CFError>?
         guard let signature = SecKeyCreateSignature(

@@ -564,6 +564,19 @@ private func handleExec(_ request: AgentHTTPRequest) -> Data {
     process.executableURL = URL(filePath: "/bin/bash")
     process.arguments = ["-c", execReq.command]
 
+    // Scrub SPOOK_AGENT_* from the child's environment. The agent
+    // reads its auth tokens out of these variables at startup, so
+    // leaking them into an exec'd shell hands a break-glass caller
+    // the agent's own credentials — equivalent to giving them the
+    // keys to impersonate every tier of the guest API. We also drop
+    // SPOOK_AUDIT_SIGNING_KEY for the same reason.
+    let parentEnv = ProcessInfo.processInfo.environment
+    var childEnv: [String: String] = [:]
+    for (key, value) in parentEnv where !key.hasPrefix("SPOOK_AGENT_") && !key.hasPrefix("SPOOK_AUDIT_") {
+        childEnv[key] = value
+    }
+    process.environment = childEnv
+
     let stdoutPipe = Pipe()
     let stderrPipe = Pipe()
     process.standardOutput = stdoutPipe
@@ -586,8 +599,21 @@ private func handleExec(_ request: AgentHTTPRequest) -> Data {
     }
 
     if group.wait(timeout: deadline) == .timedOut {
+        // Graceful SIGTERM first; a well-behaved child exits within
+        // a few seconds and we can read whatever it already wrote.
         process.terminate()
-        process.waitUntilExit()
+
+        // Escalate to SIGKILL after a 5-second grace window. Without
+        // this, a child that installs a SIGTERM handler (or ignores
+        // the signal entirely) pins the exec slot forever — the
+        // previous `waitUntilExit()` was an unbounded block that
+        // let one rogue command DoS every subsequent exec call.
+        let killDeadline = DispatchTime.now() + .seconds(5)
+        if group.wait(timeout: killDeadline) == .timedOut {
+            log.error("Exec child ignored SIGTERM, escalating to SIGKILL (pid \(process.processIdentifier))")
+            kill(process.processIdentifier, SIGKILL)
+            process.waitUntilExit()
+        }
         return errorResponse(message: "Command timed out after \(timeout) seconds.", statusCode: 500)
     }
 

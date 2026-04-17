@@ -147,7 +147,7 @@ public enum VsockProvisioner {
                 )
                 if !result.stderr.isEmpty {
                     Log.provision.error(
-                        "stderr: \(result.stderr, privacy: .public)"
+                        "stderr: \(result.stderr, privacy: .private(mask: .hash))"
                     )
                 }
                 throw VsockProvisionerError.scriptFailed(
@@ -157,7 +157,7 @@ public enum VsockProvisioner {
 
             if !result.stdout.isEmpty {
                 Log.provision.info(
-                    "stdout: \(result.stdout, privacy: .public)"
+                    "stdout: \(result.stdout, privacy: .private(mask: .hash))"
                 )
             }
 

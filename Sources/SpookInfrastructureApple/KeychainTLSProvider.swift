@@ -246,8 +246,15 @@ public final class KeychainTLSProvider: NSObject, TLSIdentityProvider, URLSessio
             throw TLSProviderError.identityNotFound(identityStatus)
         }
 
-        // swiftlint:disable:next force_cast
-        return identity as! SecIdentity
+        // Confirm the Keychain actually returned a SecIdentity.
+        // A mismatched dynamic type would crash `as!`, which on a
+        // first-run path that handles user-supplied cert/key bytes
+        // is a denial-of-service footgun. Surface the confusion as a
+        // typed error so callers can alert instead.
+        guard CFGetTypeID(identity) == SecIdentityGetTypeID() else {
+            throw TLSProviderError.identityNotFound(identityStatus)
+        }
+        return identity as! SecIdentity  // now guarded by CFGetTypeID
     }
 
     /// Removes Keychain items associated with a specific client certificate.
