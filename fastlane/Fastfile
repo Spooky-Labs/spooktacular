@@ -348,10 +348,52 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # Screenshots — Capture App Store screenshots
+  # UI Tests — XCUITest via `scan`, then extract screenshot
+  # attachments from the .xcresult bundle.
   # ──────────────────────────────────────────────────
 
-  desc "Capture and process App Store screenshots"
+  desc "Run UI tests and extract XCTAttachment screenshots into fastlane/screenshots/en-US/"
+  #
+  # This lane works headlessly — no display required — because
+  # XCUITest captures each screen via `XCTAttachment` inside the
+  # test run (see Tests/SpooktacularUITests/ScreenshotTests.swift).
+  # CI (GitHub Actions macos-26) and a developer's laptop follow
+  # the same path, so screenshots produced on a PR look the same
+  # as the ones a dev would commit locally.
+  lane :ui_tests do
+    scan(
+      scheme: "Spooktacular",
+      destination: "platform=macOS",
+      only_testing: ["SpooktacularUITests"],
+      result_bundle: true,
+      output_directory: "./fastlane/test_output",
+      output_types: "html,junit",
+      fail_build: true
+    )
+
+    Dir.chdir(PROJECT_ROOT) do
+      xcresult = Dir.glob("fastlane/test_output/*.xcresult").first
+      UI.user_error!("no .xcresult bundle produced by scan") if xcresult.nil?
+      sh("./scripts/extract-xcresult-screenshots.sh",
+         xcresult,
+         "./fastlane/screenshots/en-US")
+    end
+  end
+
+  # ──────────────────────────────────────────────────
+  # Screenshots — App Store artwork pipeline (local dev)
+  # ──────────────────────────────────────────────────
+
+  desc "Capture, process, and frame App Store screenshots (requires an interactive macOS session)"
+  #
+  # Local-dev counterpart to `:ui_tests`. Uses
+  # `scripts/capture-screenshots.sh` (screencapture + osascript) to
+  # produce un-framed App Store-sized PNGs, then runs frameit to
+  # wrap them in device chrome for App Store submission.
+  #
+  # Skipped on CI because screencapture requires a display.
+  # Reviewers should use the `ui_tests` lane output, which is
+  # uploaded as a PR artifact.
   lane :screenshots do
     build
 
@@ -361,7 +403,7 @@ platform :mac do
     end
 
     frameit(
-      path: "./screenshots",
+      path: "./fastlane/screenshots",
       white: false,
       force_orientation_block: proc { |_| :portrait }
     )

@@ -1,6 +1,6 @@
 # CI runs on every PR against main and on every push to main.
 #
-# The pipeline is five parallel jobs, each a thin driver over
+# The pipeline is four parallel jobs, each a thin driver over
 # Fastlane lanes or SwiftPM. No imperative shell logic lives here —
 # anything worth reproducing on a contributor's laptop lives in
 # the Fastfile or a script under `scripts/`.
@@ -20,10 +20,7 @@ defaults:
   run:
     shell: bash
 
-# Fastlane documents this as required on every CI runner: the
-# toolchain refuses to progress past match / pilot / deliver calls
-# unless the locale is a UTF-8 one.
-#
+# Fastlane requires a UTF-8 locale on CI —
 # https://docs.fastlane.tools/best-practices/continuous-integration/
 env:
   LANG: en_US.UTF-8
@@ -53,16 +50,13 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      # One action does four things: reads `.ruby-version`, installs
-      # that Ruby, reads `Gemfile.lock`'s `BUNDLED WITH` to install
-      # the matching Bundler, runs `bundle install`, caches gems.
+      # Reads `.ruby-version`, installs that Ruby, reads
+      # `Gemfile.lock`'s `BUNDLED WITH` to install the matching
+      # Bundler, runs `bundle install`, caches gems.
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
 
-      # `fastlane test` owns the false-green guard (swift test exits
-      # 0 on no-tests-ran after a compile crash) so the guard lives
-      # in one place instead of every CI provider.
       - name: fastlane test
         run: bundle exec fastlane test | tee test-output.txt
 
@@ -98,8 +92,16 @@ jobs:
             --target SpooktacularKit \
             --warnings-as-errors
 
+  # Xcode scheme build + UI tests. The UI tests capture App Store
+  # screenshots via `XCTAttachment` in ScreenshotTests.swift —
+  # those come out inside the `.xcresult` bundle. We extract the
+  # PNGs and upload them as a PR artifact so reviewers see the
+  # shipping imagery without leaving GitHub.
+  #
+  # Xcode natively opens `Package.swift` as a workspace, so no
+  # explicit `.xcodeproj` is required to build or test.
   xcode-and-ui-tests:
-    name: Xcode + UI Tests
+    name: Xcode + UI Tests + Screenshots
     runs-on: macos-26
     needs: [lint]
     steps:
@@ -110,9 +112,6 @@ jobs:
           chmod +x scripts/generate-xcode-project.sh
           ./scripts/generate-xcode-project.sh
 
-      # Xcode opens Package.swift natively — no .xcodeproj needed.
-      # This job catches the "builds with swift build but breaks in
-      # Xcode" regression class.
       - name: Build Spooktacular scheme
         run: |
           xcodebuild \
@@ -120,47 +119,39 @@ jobs:
             -destination 'platform=macOS' \
             build
 
-      - name: Run UI tests
-        run: |
-          xcodebuild \
-            -scheme Spooktacular \
-            -destination 'platform=macOS' \
-            -only-testing:SpooktacularUITests \
-            test
-
-  # PR-only. Generates App Store imagery so reviewers can see the
-  # shipping copy without leaving GitHub. Artifact retention is 14
-  # days — long enough for review cycles, short enough to keep the
-  # actions storage bill sane.
-  screenshots:
-    name: Screenshots
-    if: github.event_name == 'pull_request'
-    runs-on: macos-26
-    needs: [lint]
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
+      # Drive tests through fastlane's `scan` action via a wrapper
+      # lane so the result-bundle path + the PNG-extraction script
+      # live next to every other lane. The lane writes to
+      # `fastlane/test_output/` (scan default) and extracts
+      # screenshots into `fastlane/screenshots/en-US/`.
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
 
-      - name: fastlane screenshots
-        run: bundle exec fastlane screenshots
+      - name: fastlane ui_tests (UI tests + screenshot extraction)
+        run: bundle exec fastlane ui_tests
 
-      - name: Upload screenshots artifact
+      - name: Upload screenshots (PR only)
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: screenshots-pr-${{ github.event.pull_request.number }}
-          path: fastlane/screenshots/
-          if-no-files-found: error
+          path: fastlane/screenshots/en-US/
+          if-no-files-found: warn
           retention-days: 14
 
-      - name: Summarize on the Actions run
+      - name: Summarize screenshots on the Actions run
+        if: github.event_name == 'pull_request'
         run: |
           {
             echo "## 📸 Screenshots for PR #${{ github.event.pull_request.number }}"
             echo ""
-            echo "Download **screenshots-pr-${{ github.event.pull_request.number }}** from this run's Artifacts."
-            echo ""
-            find fastlane/screenshots -maxdepth 3 -type f \( -name '*.png' -o -name '*.jpg' \) | sort | sed 's|^|- `|; s|$|`|'
+            count=$(find fastlane/screenshots/en-US -maxdepth 1 -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$count" = "0" ]; then
+              echo "_No screenshots were captured. Check the UI-test output above._"
+            else
+              echo "Captured **$count** screenshots. Download the **screenshots-pr-${{ github.event.pull_request.number }}** artifact from this run."
+              echo ""
+              find fastlane/screenshots/en-US -maxdepth 1 -type f -name '*.png' | sort | sed 's|^|- `|; s|$|`|'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

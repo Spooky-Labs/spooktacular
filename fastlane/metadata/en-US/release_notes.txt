@@ -1,45 +1,59 @@
-v0.1.0 - First Beta
+v0.1.0 — First public beta. Apple Silicon only. MIT licensed.
 
-VM Lifecycle
-- Create macOS VMs from IPSW restore images with automatic download
-- Unattended Setup Assistant automation (macOS 15 and macOS 26)
-- Instant APFS copy-on-write cloning with unique MachineIdentifier
-- Start, stop, and destroy VMs with PID tracking and graceful shutdown
-- Disk-level snapshot save and restore
+Run 2 macOS VMs per Mac — the maximum Apple's EULA allows.
 
-Provisioning
-- 4 modes: SSH, disk-inject, VirtIO socket (guest agent), shared-folder
-- SSH user-data execution with real-time output streaming
-- IP resolution via DHCP leases and ARP table
+VM LIFECYCLE
+• Create macOS VMs from IPSW restore images. Resumable downloads with SHA-256 content-addressed caching.
+• Unattended Setup Assistant on macOS 15 + 26.
+• APFS copy-on-write clones in ~48 ms.
+• Graceful and pull-the-cord stop as distinct, named operations.
 
-Templates
-- --github-runner: GitHub Actions runner with ephemeral mode (auto-destroy on stop)
-- --remote-desktop: Screen Sharing setup
-- --openclaw: OpenClaw environment
+PROVISIONING
+• SSH, disk-inject, VirtIO-socket guest agent, and shared-folder modes.
+• Guest agent exposes health/clipboard/exec/apps/files/ports on three scope-separated vsock channels (read-only / runner / break-glass).
 
-Kubernetes Operator
-- MacOSVM custom resource definition
-- Helm chart for deployment
-- Swift-based controller with full reconciliation loop
+GITHUB ACTIONS RUNNERS
+• Ephemeral, warm-pool, and persistent modes.
+• Registration-token hygiene and drain-before-delete on scale-down (default 5 min).
+• 10-check warm-pool scrub validator proves the guest is clean before reuse.
+• Workload-token refresher with ES256 JWTs and 24 h JWKS overlap.
+
+ENTERPRISE
+• OIDC + SAML federated identity with JWKS pinning and strict audience/iss/replay validation.
+• mTLS everywhere. Keychain cert/key pairing verified at import.
+• Multi-tenant RBAC with an audit record on every decision.
+• Break-glass tickets: Secure-Enclave-bound, per-JTI + per-fleet single-use via a distributed singleton.
+• Tenant quotas account for in-flight allocations.
+• Per-VM network egress generates pf(8) rules.
+
+AUDIT
+• RFC 6962 Merkle tree with Ed25519 signed tree heads. Append-only store with fsync on every write.
+• spook audit verify — inclusion-proof validator (P-256 + Ed25519).
+• Dual sinks (JSONL + S3 Object Lock) with HEAD-verify.
+• SIEM webhook forwarder with HMAC-signed deliveries.
+
+KUBERNETES
+• MacOSVM + RunnerPool CRDs with observedGeneration + conditions.
+• ValidatingWebhookConfiguration enforces tenant/namespace isolation and the 2-VM-per-host cap at admission.
+• Helm chart ships NetworkPolicy, PDB, ServiceMonitor, and PrometheusRule.
 
 HTTP API
-- 9 REST endpoints for VM lifecycle, provisioning, and status
+• REST control plane with request-ID correlation, standard error envelope, body-size caps, split read/write rate buckets, and slow-loris defense.
 
-Networking
-- NAT (default), bridged, and isolated networking modes
+UX
+• macOS 26 Liquid Glass. Resumable IPSW downloads, Cancel on long operations, substep progress, dynamic VoiceOver, workspace-window restoration.
+• 16-command CLI with --json and documented exit codes.
 
-Service
-- Per-VM LaunchDaemon service generation for headless operation
-- Shared folder mount persistence across reboots
+OBSERVABILITY
+• OpenTelemetry trace export on every API request. Prometheus with bounded cardinality. SLO catalog, Grafana dashboards, and alert rules as code.
 
-CLI
-- 14 commands with styled ANSI output
-- --json for automation, --field for scripting, NO_COLOR support
+EC2 MAC
+• Terraform module with SSM document, License Manager, Host Resource Group, ASG drain-on-terminate, and seven CloudWatch alarms.
 
-GUI
-- Native SwiftUI app with Liquid Glass design (macOS 26+)
-- Menu bar extra for quick access
-- Full VoiceOver and accessibility support
+QUALITY BAR
+• 822 tests across 224 suites.
+• SwiftLint strict + DocC warnings-as-errors + Xcode build + UI tests gating CI.
+• Clean Architecture enforced by build-time tests.
+• spook security-controls prints an audit-ready inventory of every shipped control with OWASP / NIST / ASVS citations.
 
-Testing
-- 424 tests across the full stack
+Full changelog in repo CHANGELOG.md.
