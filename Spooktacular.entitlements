@@ -16,5 +16,14 @@
     <true/>
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
+    <!--
+        Accept `--from-ipsw ~/Downloads/macOS.ipsw` directly on the
+        create-VM flow without routing through NSOpenPanel. Users
+        routinely download IPSWs into ~/Downloads and feed them
+        straight to the CLI / app; a file-picker detour degrades
+        the "zero-friction" UX.
+    -->
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
 </dict>
 </plist>
