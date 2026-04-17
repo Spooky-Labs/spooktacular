@@ -233,6 +233,14 @@ public enum SecurityControlInventory {
         // MARK: Supply Chain
 
         SecurityControl(
+            name: "HTTP security headers per OWASP ASVS V14.4",
+            category: "Supply Chain",
+            standard: "OWASP ASVS V14.4.2–V14.4.7",
+            implementation: "Sources/SpookInfrastructureApple/HTTPResponse.swift (serialize — X-Content-Type-Options, CSP, HSTS, X-Frame-Options, Referrer-Policy, Cache-Control)",
+            test: "Tests/SpooktacularKitTests/HTTPSecurityHeadersTests.swift",
+            notes: "Applied to every response regardless of status. CSP default-src 'none' is correct for a JSON-only API."
+        ),
+        SecurityControl(
             name: "Hardened Runtime + codesign timestamp",
             category: "Supply Chain",
             standard: "Apple notarization + RFC 3161",

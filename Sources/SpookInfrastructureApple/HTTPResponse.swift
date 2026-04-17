@@ -79,12 +79,67 @@ struct HTTPResponse: Sendable {
         }
     }
 
-    /// Serializes the response to raw HTTP/1.1 bytes.
+    /// Serializes the response to raw HTTP/1.1 bytes with a
+    /// default set of security headers per OWASP ASVS V14.4.
+    ///
+    /// The default set is conservative for a JSON-only control-
+    /// plane API — no scripts, no frames, no caching of sensitive
+    /// bodies, no referrer leakage. Operators who front the API
+    /// with an HTML UI or embed responses into a browser would
+    /// need to relax Content-Security-Policy and Cache-Control;
+    /// this server doesn't serve HTML so the strictest defaults
+    /// apply.
     func serialize() -> Data {
         var response = "HTTP/1.1 \(statusCode) \(statusText)\r\n"
         response += "Content-Type: \(contentType)\r\n"
         response += "Content-Length: \(body.count)\r\n"
         response += "Connection: close\r\n"
+
+        // OWASP ASVS V14.4.1 — Content-Type must carry a charset.
+        // The Content-Type values we emit already include the
+        // charset suffix (see HTTPResponse.ok / .error), so the
+        // separate assertion is implicit.
+
+        // ASVS V14.4.2 — API responses contain `X-Content-Type-Options: nosniff`.
+        // Prevents MIME-sniffing attacks where a browser
+        // re-interprets a JSON response as HTML / JavaScript.
+        response += "X-Content-Type-Options: nosniff\r\n"
+
+        // ASVS V14.4.3 — content-security-policy header.
+        // `default-src 'none'` for a JSON API means the browser
+        // should run no scripts, fetch no resources, render no
+        // frames based on this response. Correct posture for an
+        // API that never legitimately serves HTML/JS.
+        response += "Content-Security-Policy: default-src 'none'; frame-ancestors 'none'\r\n"
+
+        // ASVS V14.4.7 — `X-Frame-Options: DENY` (legacy but
+        // still enforced by some older browsers that ignore the
+        // CSP `frame-ancestors` directive above). Defense in
+        // depth against clickjacking of responses served into
+        // an iframe.
+        response += "X-Frame-Options: DENY\r\n"
+
+        // ASVS V14.4.5 — HSTS on TLS-only deployments. Informs
+        // any browser that stumbles into this endpoint over HTTP
+        // to upgrade. Harmless on plain-HTTP dev servers (the
+        // browser simply ignores it absent a prior HTTPS
+        // connection). One-year max-age matches the HSTS
+        // preload-list requirement.
+        response += "Strict-Transport-Security: max-age=31536000; includeSubDomains\r\n"
+
+        // ASVS V14.4.6 — Referrer-Policy. `no-referrer` ensures
+        // a response served into a browser tab doesn't leak the
+        // internal API URL to third-party destinations when the
+        // user subsequently clicks a link in rendered content.
+        response += "Referrer-Policy: no-referrer\r\n"
+
+        // Control-plane responses often carry sensitive tenant
+        // and identity data; an intermediary cache returning a
+        // stale response to the wrong caller is the failure mode
+        // `no-store` prevents. Not strictly an ASVS requirement,
+        // but obviously correct for a per-caller API.
+        response += "Cache-Control: no-store\r\n"
+
         response += "\r\n"
 
         var data = Data(response.utf8)
