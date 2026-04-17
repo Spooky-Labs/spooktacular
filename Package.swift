@@ -90,6 +90,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "spooktacular-agent",
+            dependencies: ["SpookCore", "SpookApplication"],
             path: "Sources/spooktacular-agent"
         ),
         .executableTarget(

@@ -7,6 +7,7 @@ This project follows [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Security
+- **Time-limited, single-use break-glass tickets** per NIST SP 800-53 AC-14, OWASP ASVS V2.10, and SOC 2 CC6.6. `BreakGlassTicket` value type signed with Ed25519 (RFC 8037). Compact `bgt:<base64url-payload>.<base64url-sig>` wire format with no `alg` header — eliminates JWT's algorithm-confusion attack surface rather than guarding against it. `UsedTicketCache` enforces single-use via an atomic JTI denylist; OWASP JWT Cheat Sheet rules documented inline. New `spook break-glass keygen` + `spook break-glass issue` CLI. Agent loads verifier via `SPOOK_BREAKGLASS_PUBLIC_KEY` / `_ISSUERS` / `_TENANT` env vars. Four-gate server-side enforcement: port-tier, credential-path selection, credential check, handler-tier re-assertion. 15 new tests.
 - **5-batch security hardening pass** closing all findings from successive enterprise audits:
   - Batch 1 (auth/authz): fixed CWE-862 in `FederatedAuthorization`, added `role:*` + `break-glass:invoke` permissions, TLS 1.3 floor on every NWProtocolTLS.Options site, closed K8s CA fallback silent trust, constant-time Bearer token comparison in guest agent
   - Batch 2 (OIDC/SAML): `nbf` validation with 60s skew, unconditional audience, RSA 2048-bit minimum (NIST SP 800-131A), `SAMLReplayCache`, empty-modulus guard

@@ -53,6 +53,14 @@ import Foundation
 /// | "Clock skew tolerance" | Symmetric 60s window |
 public struct BreakGlassTicket: Sendable, Codable, Equatable {
 
+    /// Wire-format prefix that disambiguates break-glass ticket
+    /// bearers from static Bearer tokens. Hoisted into SpookCore
+    /// (rather than the codec's module) so any target — including
+    /// the minimal guest-agent binary — can cheaply recognize a
+    /// ticket-shaped header without pulling in CryptoKit or the
+    /// rest of the infrastructure stack.
+    public static let wirePrefix = "bgt:"
+
     /// Unique ticket identifier — 128 bits of entropy from
     /// `UUID()` via `SystemRandomNumberGenerator`. Used as the
     /// denylist key for single-use enforcement and as the

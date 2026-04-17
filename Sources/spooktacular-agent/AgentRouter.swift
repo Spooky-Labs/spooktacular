@@ -25,6 +25,7 @@
 import AppKit
 import Foundation
 import os
+import SpookCore
 
 /// Constant-time string equality.
 ///
@@ -258,7 +259,8 @@ func routeRequest(
     channelScope: EndpointScope = .breakGlass,
     adminToken breakGlassToken: String? = nil,
     runnerToken: String? = nil,
-    readonlyToken: String? = nil
+    readonlyToken: String? = nil,
+    ticketVerifier: BreakGlassTicketVerifier? = nil
 ) -> Data {
 
     // --- Channel scope gate (transport-layer isolation) ---
@@ -273,10 +275,44 @@ func routeRequest(
     }
 
     // --- Auth gate ---
+    //
+    // Two credential paths converge on the same `authTier`:
+    //   1. `bgt:`-prefixed break-glass ticket (OWASP-aligned,
+    //      time-limited, single-use, Ed25519-signed)
+    //   2. static Bearer token from the Keychain (runner /
+    //      readonly / long-lived break-glass)
+    //
+    // Ticket failure does NOT fall through to the static path —
+    // letting a malformed/expired/consumed ticket "try again as
+    // a static token" would give an attacker two shots under
+    // different credential types.
     let hasAnyToken = breakGlassToken != nil || runnerToken != nil || readonlyToken != nil
-    let authTier: AuthTier
+    var authTier: AuthTier?
 
-    if hasAnyToken {
+    let rawAuth = request.headers["authorization"] ?? ""
+    let rawBearer = rawAuth.hasPrefix("Bearer ")
+        ? String(rawAuth.dropFirst("Bearer ".count))
+        : ""
+
+    if rawBearer.hasPrefix(BreakGlassTicket.wirePrefix) {
+        guard let verifier = ticketVerifier else {
+            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return response
+        }
+        switch verifier.verify(ticket: rawBearer) {
+        case .success(let ticket):
+            log.notice(
+                "Break-glass ticket consumed: jti=\(ticket.jti, privacy: .public) issuer=\(ticket.issuer, privacy: .public) reason=\(ticket.reason ?? "(none)", privacy: .public)"
+            )
+            authTier = .breakGlass
+        case .failure(let err):
+            log.warning("Break-glass ticket rejected: \(err.localizedDescription, privacy: .public)")
+            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return response
+        }
+    } else if hasAnyToken {
         let authHeader = request.headers["authorization"] ?? ""
 
         // Determine which token was presented.
@@ -308,37 +344,48 @@ func routeRequest(
             emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
             return response
         }
-
-        // Enforce scope restrictions
-        let scope = endpointScope(method: request.method, path: request.path)
-        switch authTier {
-        case .readonly:
-            if scope == .runner || scope == .breakGlass {
-                let message = scope == .breakGlass
-                    ? "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details."
-                    : "Forbidden. Read-only token cannot access mutation endpoints."
-                let response = errorResponse(message: message, statusCode: 403)
-                emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: authTier)
-                return response
-            }
-        case .runner:
-            if scope == .breakGlass {
-                let response = errorResponse(
-                    message: "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details.",
-                    statusCode: 403
-                )
-                emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: authTier)
-                return response
-            }
-        case .breakGlass:
-            break // Break-glass allows everything
-        }
     } else {
-        // No tokens configured — agent should have refused to start.
-        // Reject as a safety net.
+        // No static tokens configured AND no ticket presented —
+        // the agent should have refused to start without any
+        // credential source. Reject as a safety net.
         let response = errorResponse(message: "No authentication configured. Agent misconfigured.", statusCode: 500)
         emitAuditLog(method: request.method, path: request.path, statusCode: 500, tier: nil)
         return response
+    }
+
+    // By the time we reach here `authTier` is set — either via
+    // the ticket path or the static-token path. The alternative
+    // (Unauthorized / misconfigured) returned above.
+    guard let resolvedTier = authTier else {
+        // Defensive fallback — we should never hit this.
+        let response = errorResponse(message: "Unauthorized.", statusCode: 401)
+        emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+        return response
+    }
+
+    // Enforce scope restrictions
+    let scope = endpointScope(method: request.method, path: request.path)
+    switch resolvedTier {
+    case .readonly:
+        if scope == .runner || scope == .breakGlass {
+            let message = scope == .breakGlass
+                ? "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details."
+                : "Forbidden. Read-only token cannot access mutation endpoints."
+            let response = errorResponse(message: message, statusCode: 403)
+            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
+            return response
+        }
+    case .runner:
+        if scope == .breakGlass {
+            let response = errorResponse(
+                message: "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details.",
+                statusCode: 403
+            )
+            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
+            return response
+        }
+    case .breakGlass:
+        break // Break-glass allows everything
     }
 
     // --- Dispatch ---
@@ -366,7 +413,7 @@ func routeRequest(
         // the dangerous operation — a custom client that bypasses
         // the port-tier gate still can't escalate to shell access
         // without a matching break-glass token.
-        response = handleExec(request, authTier: authTier)
+        response = handleExec(request, authTier: resolvedTier)
         statusCode = 200
     case ("GET", "/api/v1/apps"):
         response = handleListApps()
@@ -397,7 +444,7 @@ func routeRequest(
         statusCode = 404
     }
 
-    emitAuditLog(method: request.method, path: request.path, statusCode: statusCode, tier: authTier)
+    emitAuditLog(method: request.method, path: request.path, statusCode: statusCode, tier: resolvedTier)
     return response
 }
 

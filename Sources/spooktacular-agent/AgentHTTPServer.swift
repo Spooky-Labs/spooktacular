@@ -68,6 +68,15 @@ enum AgentHTTPServer {
     /// endpoints are permitted. Mutation and admin endpoints return 403 Forbidden.
     nonisolated(unsafe) private static var readonlyToken: String?
 
+    /// The OWASP-aligned break-glass ticket verifier, or `nil` if
+    /// the agent is running without ticket support.
+    ///
+    /// When non-`nil`, authorization headers starting with the
+    /// `bgt:` prefix go through single-use Ed25519 ticket
+    /// verification instead of the static-token path. See
+    /// ``BreakGlassTicketVerifier`` for the threat model.
+    nonisolated(unsafe) static var ticketVerifier: BreakGlassTicketVerifier?
+
     /// Starts three vsock HTTP listeners in parallel — one per capability tier.
     ///
     /// Each listener binds to a separate vsock port and enforces a maximum
@@ -258,7 +267,8 @@ enum AgentHTTPServer {
             channelScope: channelScope,
             adminToken: adminToken,
             runnerToken: runnerToken,
-            readonlyToken: readonlyToken
+            readonlyToken: readonlyToken,
+            ticketVerifier: ticketVerifier
         )
         writeAll(fd: fd, data: response)
     }

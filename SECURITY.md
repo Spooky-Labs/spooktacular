@@ -61,11 +61,30 @@ These are **known limitations**, not bugs:
   The chosen backend is logged at startup so operators can detect unintended downgrades (a DynamoDB-expected deployment falling back to file lock would be a catastrophic multi-region coordination failure).
 - **Tamper-evident audit with immutable storage (RFC 6962 + S3 Object Lock + NIST SP 800-53 AU-9/AU-10)**: `MerkleAuditSink` uses an RFC 6962 Merkle tree. Leaf hashes use `SHA256(0x00 || data)`, interior nodes use `SHA256(0x01 || left || right)`. Signed Tree Heads sign the RFC 6962 §3.5 `TreeHeadSignature` structure (version byte 0x00 + signature_type 0x01 + milliseconds timestamp + tree_size + root) with Ed25519, so external CT-style verifiers validate tree heads without a Spooktacular-specific format. Inclusion proofs verify specific records in O(log n). The full sink chain composes: `OSLog` | `JSONFileAuditSink` → optional `AppendOnlyFileAuditStore` (BSD `UF_APPEND` via `chflags`, kernel-verified on init) → optional `MerkleAuditSink` → optional `S3ObjectLockAuditStore` (WORM, AWS S3 Object Lock in Compliance mode, SigV4 signing). The Merkle signing key is generated with `open(2) O_CREAT | O_EXCL | O_NOFOLLOW, 0600` atomically and persisted at `SPOOK_AUDIT_SIGNING_KEY` so signed tree heads verify across restarts.
 - **Blast radius of a compromised token**: A break-glass token grants shell execution inside the guest, but only on port 9472. Runner and read-only tokens cannot reach exec even if replayed against other ports. Child processes spawned from break-glass exec have `SPOOK_AGENT_*` and `SPOOK_AUDIT_*` stripped from their environment so a caller can't read the agent's own credentials. Use the narrowest token tier that meets your needs.
-- **Server-side break-glass token enforcement (three gates, all in the guest agent)**: Shell execution passes three independent server-side checks before `/bin/bash` ever runs:
+- **Server-side break-glass enforcement (four gates, all in the guest agent)**: Shell execution passes four independent server-side checks before `/bin/bash` ever runs:
   1. **Port-tier gate** — port 9472 is the only vsock port configured with `channelScope: .breakGlass`. Requests for `/api/v1/exec` on any other port are rejected at the transport layer with a 403. See `Sources/spooktacular-agent/AgentHTTPServer.swift` (`listenAll`) and `AgentRouter.endpointScope`.
-  2. **Token-tier check** — the router performs a constant-time Bearer comparison against the break-glass token (`constantTimeEqual`) and sets the caller's `AuthTier`. Readonly/runner tokens that reach port 9472 are rejected with a 403. See `Sources/spooktacular-agent/AgentRouter.swift` (`routeRequest`).
-  3. **Handler-tier defense-in-depth** — `handleExec(_:authTier:)` re-asserts `authTier == .breakGlass` at the handler boundary. A future routing regression, a custom vsock client, or a fallthrough in the scope table still cannot reach `/bin/bash` without a matching break-glass token. See `Sources/spooktacular-agent/AgentRouter.swift:handleExec`.
-  The three gates are independent — an attacker must simultaneously bypass transport-layer port isolation, fake a constant-time token comparison, AND defeat the handler-level assertion. Every `/exec` call (including denials) emits an `AuditRecord` via `SPOOK_AGENT_AUDIT_FILE` in enterprise mode.
+  2. **Credential-path selection** — headers starting with `bgt:` go through the ticket verifier; everything else goes through the static-token path. A failed ticket verification does NOT fall through to the static-token path (would give an attacker two shots per request). See `AgentRouter.routeRequest`.
+  3. **Credential check** — either (a) constant-time Bearer comparison for static tokens, or (b) full OWASP-aligned ticket verification: Ed25519 signature → typed claim decode → issuer allowlist → tenant match → expiry (60s skew) → `maxUses` bound → atomic single-use consume via `UsedTicketCache`. See `Sources/spooktacular-agent/BreakGlassVerification.swift`.
+  4. **Handler-tier defense-in-depth** — `handleExec(_:authTier:)` re-asserts `authTier == .breakGlass` at the handler boundary. A future routing regression, a custom vsock client, or a fallthrough in the scope table still cannot reach `/bin/bash` without a matching break-glass credential. See `AgentRouter.swift:handleExec`.
+  Every `/exec` call (including denials) emits an `AuditRecord` via `SPOOK_AGENT_AUDIT_FILE` in enterprise mode. Ticket consumptions additionally log `jti`, `issuer`, `tenant`, and `reason` at `.public` so the audit trail is complete — the ticket itself stays `.private`.
+- **Time-limited + single-use break-glass tickets (OWASP JWT Cheat Sheet aligned)**: Compact `bgt:<base64url-payload>.<base64url-sig>` tokens — like a JWT but **without** the algorithm header (eliminates JWT's algorithm-confusion surface rather than guarding against it). Ed25519 signatures (RFC 8037 / ASVS V6.2). TTL capped at 1 hour by policy. Single-use by default via `UsedTicketCache`'s JTI denylist. Issuer allowlist defeats "attacker mints their own key" attacks. Tenant-scoped: a ticket for tenant A can't be replayed against tenant B. Mapped against every OWASP JWT Cheat Sheet rule in `Sources/SpookCore/BreakGlassTicket.swift`'s doc comment. Operator workflow:
+  ```bash
+  # One-time fleet setup:
+  spook break-glass keygen \
+    --private-key /etc/spooktacular/secrets/bg-signing.key \
+    --public-key  /etc/spooktacular/bg-signing.pub
+
+  # Agents load the public key + issuer allowlist:
+  SPOOK_BREAKGLASS_PUBLIC_KEY=/etc/spooktacular/bg-signing.pub
+  SPOOK_BREAKGLASS_ISSUERS=sre@acme,oncall@acme
+  SPOOK_BREAKGLASS_TENANT=prod
+
+  # During an incident:
+  spook break-glass issue --tenant prod --issuer sre@acme \
+    --ttl 15m --signing-key /etc/spooktacular/secrets/bg-signing.key \
+    --reason "runner-17 stuck in draining"
+  # → bgt:eyJ...
+  ```
 - **Production preflight (fail-fast startup)**: In addition to the `HTTPAPIServer` TLS + bearer-token check, `spook serve` runs `ProductionPreflight.validate()` before binding the listener and refuses to start if a multi-tenant deployment is missing an audit sink OR an authorization service, or if `--insecure` is combined with `SPOOK_TENANCY_MODE=multi-tenant`. Every failure carries a recovery hint; there is no warn-and-continue path. See `Sources/SpookApplication/ProductionPreflight.swift`.
 
 ### Who should use Spooktacular

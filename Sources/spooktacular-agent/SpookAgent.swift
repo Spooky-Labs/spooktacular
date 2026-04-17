@@ -40,9 +40,12 @@
 /// ``VsockProvisioner/agentPort``. The wire format is now HTTP/1.1
 /// instead of the previous length-prefixed binary protocol.
 
+import CryptoKit
 import Foundation
 import os
 import Security
+import SpookApplication
+import SpookCore
 
 // MARK: - Constants
 
@@ -226,7 +229,14 @@ enum SpookAgent {
         }
 
         let tokens = loadTokens()
-        log.notice("spooktacular-agent starting: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort)")
+
+        // Load the OWASP-aligned break-glass ticket verifier if
+        // the operator configured one. Both env vars must be
+        // present; missing either means "no ticket path" rather
+        // than a half-active configuration.
+        AgentHTTPServer.ticketVerifier = loadTicketVerifier()
+
+        log.notice("spooktacular-agent starting: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort), tickets=\(AgentHTTPServer.ticketVerifier != nil ? "enabled" : "disabled")")
         AgentHTTPServer.listenAll(
             readonlyPort: readonlyPort,
             runnerPort: runnerPort,
@@ -234,6 +244,53 @@ enum SpookAgent {
             adminToken: tokens.admin,
             runnerToken: tokens.runner,
             readonlyToken: tokens.readOnly
+        )
+    }
+
+    /// Loads a `BreakGlassTicketVerifier` from the environment,
+    /// or returns `nil` if the operator hasn't configured one.
+    ///
+    /// Required env vars:
+    ///   - `SPOOK_BREAKGLASS_PUBLIC_KEY` — path to a raw 32-byte
+    ///     Ed25519 public key (the output of
+    ///     `spook break-glass keygen --public-key`)
+    ///   - `SPOOK_BREAKGLASS_ISSUERS` — comma-separated list of
+    ///     operator identities that may mint tickets
+    ///   - `SPOOK_BREAKGLASS_TENANT` — the tenant this agent
+    ///     belongs to; tickets issued for another tenant are
+    ///     rejected even if otherwise valid
+    ///
+    /// Any missing var → `nil` (ticket path disabled).
+    /// Malformed key material → `nil` + a fault log so the
+    /// operator sees the misconfiguration at boot rather than
+    /// discovering it mid-incident.
+    private static func loadTicketVerifier() -> BreakGlassTicketVerifier? {
+        let env = ProcessInfo.processInfo.environment
+        guard let keyPath = env["SPOOK_BREAKGLASS_PUBLIC_KEY"],
+              let issuersRaw = env["SPOOK_BREAKGLASS_ISSUERS"],
+              let tenantRaw = env["SPOOK_BREAKGLASS_TENANT"]
+        else { return nil }
+
+        guard let keyData = try? Data(contentsOf: URL(filePath: keyPath)),
+              let pubKey = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData)
+        else {
+            log.fault("SPOOK_BREAKGLASS_PUBLIC_KEY at '\(keyPath, privacy: .public)' missing or malformed — ticket path disabled")
+            return nil
+        }
+
+        let issuers = Set(issuersRaw.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty })
+        guard !issuers.isEmpty else {
+            log.fault("SPOOK_BREAKGLASS_ISSUERS is empty — ticket path disabled")
+            return nil
+        }
+
+        return BreakGlassTicketVerifier(
+            publicKey: pubKey,
+            allowedIssuers: issuers,
+            tenant: TenantID(tenantRaw),
+            cache: UsedTicketCache()
         )
     }
 }

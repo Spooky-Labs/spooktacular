@@ -31,11 +31,11 @@ import SpookCore
 /// in-flight tickets.
 public enum BreakGlassTicketCodec {
 
-    /// The wire-format prefix. Rejected as "not a break-glass
-    /// ticket" if the input doesn't start with this, so callers
-    /// can cheaply distinguish between static tokens and
-    /// tickets on the authorization header.
-    public static let prefix = "bgt:"
+    /// The wire-format prefix. Hoisted to ``BreakGlassTicket/wirePrefix``
+    /// so non-codec targets (guest agent, CLI shells) can
+    /// disambiguate tickets from static Bearer tokens without
+    /// importing this module.
+    public static var prefix: String { BreakGlassTicket.wirePrefix }
 
     /// Policy ceiling on ticket TTL. OWASP recommends short
     /// lifetimes for emergency credentials; one hour is the

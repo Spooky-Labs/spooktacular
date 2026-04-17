@@ -213,25 +213,25 @@ struct BreakGlassTicketTests {
     // MARK: - UsedTicketCache
 
     @Test("tryConsume — first call succeeds, second on same JTI fails")
-    func singleUseEnforced() async {
+    func singleUseEnforced() {
         let cache = UsedTicketCache()
         let jti = UUID().uuidString
         let expiry = Date().addingTimeInterval(900)
-        let first = await cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 1)
-        let second = await cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 1)
+        let first = cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 1)
+        let second = cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 1)
         #expect(first == true)
         #expect(second == false, "Single-use ticket must reject the second consume")
     }
 
     @Test("tryConsume — respects maxUses > 1")
-    func multiUseAllowed() async {
+    func multiUseAllowed() {
         let cache = UsedTicketCache()
         let jti = UUID().uuidString
         let expiry = Date().addingTimeInterval(900)
-        let a = await cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
-        let b = await cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
-        let c = await cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
-        let d = await cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
+        let a = cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
+        let b = cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
+        let c = cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
+        let d = cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 3)
         #expect(a && b && c)
         #expect(d == false, "4th consume must fail once maxUses is reached")
     }
@@ -245,7 +245,7 @@ struct BreakGlassTicketTests {
         let results = await withTaskGroup(of: Bool.self) { group in
             for _ in 0..<50 {
                 group.addTask {
-                    await cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 1)
+                    cache.tryConsume(jti: jti, expiresAt: expiry, maxUses: 1)
                 }
             }
             var values: [Bool] = []
@@ -259,24 +259,19 @@ struct BreakGlassTicketTests {
     }
 
     @Test("expired entries are pruned from the cache")
-    func expiredEntriesEvicted() async {
+    func expiredEntriesEvicted() {
         let cache = UsedTicketCache()
-        let pastJti = UUID().uuidString
-        _ = await cache.tryConsume(
-            jti: pastJti,
+        _ = cache.tryConsume(
+            jti: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(-1),  // already expired
             maxUses: 1
         )
-        // First call recorded the already-expired entry. A
-        // subsequent cleanup should evict it.
-        let freshJti = UUID().uuidString
-        _ = await cache.tryConsume(
-            jti: freshJti,
+        _ = cache.tryConsume(
+            jti: UUID().uuidString,
             expiresAt: Date().addingTimeInterval(900),
             maxUses: 1
         )
-        let count = await cache.entryCount
-        #expect(count <= 2, "Expired entries should be reaped on opportunistic cleanup")
+        #expect(cache.entryCount <= 2, "Expired entries should be reaped on opportunistic cleanup")
     }
 
     // MARK: - Error-hint coverage

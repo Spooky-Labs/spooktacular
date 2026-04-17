@@ -1,12 +1,17 @@
 import Foundation
 import SpookCore
 
-/// Actor-backed denylist of consumed break-glass ticket IDs.
+/// Synchronous, lock-guarded denylist of consumed break-glass
+/// ticket IDs.
 ///
-/// Implements OWASP JWT Cheat Sheet §"Implement a deny list" in
-/// the form most directly useful for break-glass: a single-use
-/// (or capped-use) guarantee the agent enforces atomically in
-/// its own process.
+/// Implements OWASP JWT Cheat Sheet §"Implement a deny list" for
+/// break-glass single-use enforcement. The API is intentionally
+/// synchronous so it can be called from the guest agent's
+/// non-async `routeRequest` without a cascade of `async`
+/// refactors. Correctness comes from a single `NSLock` that
+/// serializes every read/modify/write — a concurrent consume of
+/// the same JTI becomes the textbook race that the lock turns
+/// into one success + N-1 failures.
 ///
 /// ## Scope
 ///
@@ -27,7 +32,7 @@ import SpookCore
 ///   operators have never asked for.
 ///
 /// If cross-agent single-use becomes a real requirement, the
-/// cache's `tryConsume(_:)` surface is the right plug-in point
+/// cache's `tryConsume(...)` surface is the right plug-in point
 /// for a distributed implementation — the rest of the verifier
 /// doesn't care.
 ///
@@ -36,10 +41,9 @@ import SpookCore
 /// Entries are held until their `expiresAt` passes; because
 /// tickets have a 1-hour max TTL (enforced by the codec), the
 /// cache can never hold more than `issue-rate × 1h` entries. A
-/// fleet minting 100 tickets/hour steadies at ~100 cached JTIs —
-/// well under any memory pressure threshold. An upper hard cap
-/// still guards against pathological cases.
-public actor UsedTicketCache {
+/// hard upper cap (`maxEntries`) guards against pathological
+/// cases where an attacker mints many valid-signed tickets.
+public final class UsedTicketCache: @unchecked Sendable {
 
     /// Hard upper bound on tracked entries. Reached only under
     /// adversarial conditions (valid signatures + exhausted
@@ -56,6 +60,11 @@ public actor UsedTicketCache {
     }
 
     private var entries: [String: Entry] = [:]
+    // NSLock rather than os_unfair_lock because SpookApplication
+    // is Foundation-only by Clean Architecture invariant. The
+    // throughput difference is imperceptible at our call rate
+    // (single-digit tickets/minute at the absolute worst case).
+    private let lock = NSLock()
 
     public init(maxEntries: Int = 100_000) {
         self.maxEntries = maxEntries
@@ -67,24 +76,16 @@ public actor UsedTicketCache {
     /// use counter was incremented. Returns `false` when the
     /// ticket is already exhausted (including prior expiries
     /// still in the cache).
-    ///
-    /// - Parameters:
-    ///   - jti: The ticket's unique identifier.
-    ///   - expiresAt: The ticket's expiry — used for eviction
-    ///     and to ignore stale denylist entries.
-    ///   - maxUses: The ticket's policy cap. Usually 1.
     public func tryConsume(
         jti: String,
         expiresAt: Date,
         maxUses: Int
     ) -> Bool {
-        let now = Date()
+        lock.lock()
+        defer { lock.unlock() }
 
-        // Opportunistic cleanup — remove any entries whose
-        // expiresAt is in the past. Bounded to a small amount
-        // of work per call so a pathological cache doesn't
-        // impose an O(n) latency spike.
-        evictExpired(budget: 64, now: now)
+        let now = Date()
+        evictExpiredLocked(budget: 64, now: now)
 
         if let existing = entries[jti] {
             guard existing.usedCount < existing.maxUses,
@@ -95,11 +96,8 @@ public actor UsedTicketCache {
             return true
         }
 
-        // Defensive cap — a well-behaved fleet never hits this,
-        // but an attacker minting valid-signed tickets shouldn't
-        // be able to OOM the agent.
         if entries.count >= maxEntries {
-            evictOldest()
+            evictOldestLocked()
         }
 
         entries[jti] = Entry(
@@ -113,11 +111,15 @@ public actor UsedTicketCache {
 
     /// Returns the number of tracked entries. Test-only — not
     /// useful in production paths.
-    public var entryCount: Int { entries.count }
+    public var entryCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.count
+    }
 
-    // MARK: - Eviction
+    // MARK: - Eviction (lock-held)
 
-    private func evictExpired(budget: Int, now: Date) {
+    private func evictExpiredLocked(budget: Int, now: Date) {
         var removed = 0
         for (jti, entry) in entries {
             if removed >= budget { break }
@@ -128,7 +130,7 @@ public actor UsedTicketCache {
         }
     }
 
-    private func evictOldest() {
+    private func evictOldestLocked() {
         guard let oldest = entries.min(by: { $0.value.expiresAt < $1.value.expiresAt }) else {
             return
         }
