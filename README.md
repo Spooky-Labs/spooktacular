@@ -258,7 +258,7 @@ Spooktacular supports **single-tenant** and **multi-tenant** deployment modes:
 - **Merkle tree audit** — RFC 6962-aligned with signed tree heads (Ed25519), append-only kernel flag, optional S3 Object Lock
 - **Distributed locking** — DynamoDB Global Tables, Kubernetes Lease, or file-based; selected via environment
 
-**Production checklist** — follow [`docs/DEPLOYMENT_HARDENING.md`](docs/DEPLOYMENT_HARDENING.md) for the 18-item pre-flight, the reference LaunchDaemon plist, and verification commands. Run `spook doctor --strict` to verify every control in one command.
+**Production checklist** — follow [`docs/DEPLOYMENT_HARDENING.md`](docs/DEPLOYMENT_HARDENING.md) for the 18-item pre-flight, the reference LaunchDaemon plist, and verification commands. Run `spook doctor --strict` to verify every control at runtime, or `spook security-controls` to print an audit-ready inventory of every shipped control with OWASP / NIST / ASVS citations + code + test references.
 
 See [`SECURITY.md`](SECURITY.md) for the full security model, [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for STRIDE per asset, [`docs/DATA_AT_REST.md`](docs/DATA_AT_REST.md) for the VM bundle protection plan (OWASP ASVS V6.1.1 / V6.4.1 / V14.2.6), [`docs/EC2_MAC_DEPLOYMENT.md`](docs/EC2_MAC_DEPLOYMENT.md) for the EC2 Mac operator profile, and [`docs/observability/`](docs/observability/) for Prometheus + Grafana kit.
 
