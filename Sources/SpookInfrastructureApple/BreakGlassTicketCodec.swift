@@ -2,39 +2,9 @@ import Foundation
 import CryptoKit
 import SpookCore
 
-/// Anything that can produce a compact 64-byte P-256 ECDSA
-/// signature for a given payload.
-///
-/// Two concrete signers implement this:
-///
-/// - `SecureEnclave.P256.Signing.PrivateKey` (via the adapter in
-///   ``BreakGlassSigningKeyStore``) — the production signer.
-///   The key is generated inside the Secure Enclave and never
-///   leaves. Signing requires a fresh `.userPresence` gesture.
-/// - `P256.Signing.PrivateKey` — a software signer, used for
-///   automated tests and for genuinely headless environments
-///   that can't accommodate SEP / biometry.
-///
-/// Callers don't need to care which they hold. The protocol
-/// sits above both so code above it stays testable without
-/// hardware.
-public protocol BreakGlassSigner: Sendable {
-    /// Returns the 64-byte `r ‖ s` raw representation of the
-    /// P-256 ECDSA signature over `data`.
-    func signature(for data: Data) throws -> Data
-
-    /// The matching public key, for export / distribution.
-    var publicKey: P256.Signing.PublicKey { get }
-}
-
-/// Convenience: software `P256.Signing.PrivateKey` is a signer.
-/// Used in tests and in legacy file-backed CLI mode.
-extension P256.Signing.PrivateKey: BreakGlassSigner {
-    public func signature(for data: Data) throws -> Data {
-        let sig = try self.signature(for: data) as P256.Signing.ECDSASignature
-        return sig.rawRepresentation
-    }
-}
+/// Type alias retained for readability at break-glass call
+/// sites; the primitive is the shared ``P256Signer``.
+public typealias BreakGlassSigner = P256Signer
 
 /// Serializes and verifies ``BreakGlassTicket`` values to the
 /// compact `bgt:<base64url-payload>.<base64url-signature>`

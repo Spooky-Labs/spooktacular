@@ -156,7 +156,7 @@ public enum BreakGlassSigningKeyStore {
                 dataRepresentation: blob,
                 authenticationContext: context
             )
-            return SEPBreakGlassSigner(underlying: key)
+            return SEPSigner(key)
         } catch {
             throw BreakGlassSigningKeyStoreError.malformedKeyData
         }
@@ -246,24 +246,6 @@ public enum BreakGlassSigningKeyStore {
                 status, operation: "SecItemCopyMatching"
             )
         }
-    }
-}
-
-// MARK: - Signer adapter
-
-/// Hardware-bound implementation of ``BreakGlassSigner`` backed
-/// by a `SecureEnclave.P256.Signing.PrivateKey`. Signing happens
-/// inside the SEP; the raw key material never enters this
-/// process.
-private struct SEPBreakGlassSigner: BreakGlassSigner {
-    let underlying: SecureEnclave.P256.Signing.PrivateKey
-    var publicKey: P256.Signing.PublicKey { underlying.publicKey }
-    func signature(for data: Data) throws -> Data {
-        // `rawRepresentation` is r ‖ s (64 bytes) — the compact,
-        // wire-stable form. DER encoding would add variable
-        // length per signature; for a fixed-format envelope we
-        // want the fixed-size representation.
-        try underlying.signature(for: data).rawRepresentation
     }
 }
 

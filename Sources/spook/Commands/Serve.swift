@@ -236,13 +236,19 @@ extension Spook {
             }
             let auditSink: (any AuditSink)?
             if env["SPOOK_AUDIT_MERKLE"] == "1", let base = auditBase {
-                guard let keyPath = env["SPOOK_AUDIT_SIGNING_KEY"] else {
-                    print(Style.error("✗ SPOOK_AUDIT_MERKLE=1 requires SPOOK_AUDIT_SIGNING_KEY to point at a persistent key path."))
-                    print(Style.dim("  Without a stable key, signed tree heads don't verify across restarts."))
+                let auditConfig = AuditConfig(
+                    merkleEnabled: true,
+                    merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"],
+                    merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY_PATH"]
+                )
+                let signer: any P256Signer
+                do {
+                    signer = try AuditSinkFactory.resolveMerkleSigner(config: auditConfig)
+                } catch let err as AuditSinkFactoryError {
+                    print(Style.error("✗ \(err.localizedDescription)"))
                     throw ExitCode.failure
                 }
-                let key = try AuditSinkFactory.loadOrCreateSigningKey(at: keyPath)
-                auditSink = MerkleAuditSink(wrapping: base, signingKey: key)
+                auditSink = MerkleAuditSink(wrapping: base, signer: signer)
             } else {
                 auditSink = auditBase
             }

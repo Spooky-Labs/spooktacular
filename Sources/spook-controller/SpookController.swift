@@ -141,19 +141,23 @@ struct SpookController {
         // key.
         let auditSink: any AuditSink
         if tenancyMode == .multiTenant || env["SPOOK_AUDIT_MERKLE"] == "1" {
-            guard let keyPath = env["SPOOK_AUDIT_SIGNING_KEY"] else {
-                logger.fault("Merkle audit requires SPOOK_AUDIT_SIGNING_KEY to point at a persistent signing key path. Aborting.")
-                exit(1)
-            }
-            let signingKey: Curve25519.Signing.PrivateKey
+            let auditConfig = AuditConfig(
+                merkleEnabled: true,
+                merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"],
+                merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY_PATH"]
+            )
+            let signer: any P256Signer
             do {
-                signingKey = try AuditSinkFactory.loadOrCreateSigningKey(at: keyPath)
+                signer = try AuditSinkFactory.resolveMerkleSigner(config: auditConfig)
             } catch {
-                logger.fault("Cannot load Merkle signing key at \(keyPath, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                logger.fault("Cannot load Merkle signing key: \(error.localizedDescription, privacy: .public)")
                 exit(1)
             }
-            auditSink = MerkleAuditSink(wrapping: baseSink, signingKey: signingKey)
-            logger.notice("Audit: Merkle tree enabled (RFC 6962 tamper-evidence), key=\(keyPath, privacy: .public)")
+            auditSink = MerkleAuditSink(wrapping: baseSink, signer: signer)
+            let keySource = auditConfig.merkleSigningKeyLabel.map { "Keychain label '\($0)' (SEP-bound)" }
+                ?? auditConfig.merkleSigningKeyPath.map { "file '\($0)' (software)" }
+                ?? "(unset)"
+            logger.notice("Audit: Merkle tree enabled (RFC 6962 tamper-evidence, P-256 ECDSA), key=\(keySource, privacy: .public)")
         } else {
             auditSink = baseSink
         }

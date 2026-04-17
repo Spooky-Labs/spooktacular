@@ -216,12 +216,20 @@ public enum SecurityControlInventory {
             notes: "API tokens, TLS private keys, GitHub PATs. kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly enforced."
         ),
         SecurityControl(
-            name: "Atomic 0600 signing-key creation (no TOCTOU)",
+            name: "Hardware-bound Merkle audit signing via Secure Enclave",
+            category: "Data at Rest",
+            standard: "NIST SP 800-53 AU-9 / AU-10; FIPS 140-3 Level 2 (SEP); RFC 6962",
+            implementation: "Sources/SpookInfrastructureApple/AuditSinkFactory.swift (loadOrCreateSEPSigningKey — SecureEnclave.P256.Signing.PrivateKey, no .userPresence for daemon use)",
+            test: "Tests/SpooktacularKitTests/AuditPipelineTests.swift",
+            notes: "STH signing key generated inside and bound to the SEP — non-exportable. Full process / kernel compromise still cannot forge tree heads; SEP only signs what the daemon asks. P-256 ECDSA wire format."
+        ),
+        SecurityControl(
+            name: "Atomic 0600 software-key creation (non-SEP fallback, no TOCTOU)",
             category: "Data at Rest",
             standard: "CWE-362 mitigation",
-            implementation: "Sources/SpookInfrastructureApple/AuditSinkFactory.swift (loadOrCreateSigningKey — open(2) O_CREAT|O_EXCL|O_NOFOLLOW, 0600)",
+            implementation: "Sources/SpookInfrastructureApple/AuditSinkFactory.swift (loadOrCreateSoftwareSigningKey — open(2) O_CREAT|O_EXCL|O_NOFOLLOW, 0600)",
             test: "Tests/SpooktacularKitTests/EnterpriseReadinessTests.swift",
-            notes: "Closes the umask-default TOCTOU window the prior Data.write + chmod sequence had."
+            notes: "Software-keyed fallback for CI / non-Apple hosts without an SEP. Closes the umask-default TOCTOU window; PEM-encoded P-256."
         ),
 
         // MARK: Cross-Region Coordination

@@ -27,10 +27,10 @@ struct AuditPipelineTests {
     /// inner `CollectingAuditSink` alongside the Merkle sink.
     private static func populatedMerkleSink(
         count: Int,
-        key: Curve25519.Signing.PrivateKey = .init()
+        key: P256.Signing.PrivateKey = .init()
     ) async -> (merkle: MerkleAuditSink, inner: CollectingAuditSink) {
         let inner = CollectingAuditSink()
-        let merkle = MerkleAuditSink(wrapping: inner, signingKey: key)
+        let merkle = MerkleAuditSink(wrapping: inner, signer: key)
         for i in 0..<count {
             await merkle.record(sampleRecord(index: i))
         }
@@ -44,9 +44,9 @@ struct AuditPipelineTests {
 
         @Test("tree root changes after each record")
         func rootChanges() async {
-            let key = Curve25519.Signing.PrivateKey()
+            let key = P256.Signing.PrivateKey()
             let inner = CollectingAuditSink()
-            let sink = MerkleAuditSink(wrapping: inner, signingKey: key)
+            let sink = MerkleAuditSink(wrapping: inner, signer: key)
 
             let rootBefore = await sink.rootHash()
 
@@ -65,7 +65,7 @@ struct AuditPipelineTests {
         func inclusionProof(leafIndex: Int) async {
             // Use a power-of-2 tree size to avoid odd-leaf promotion
             // edge cases in the Merkle tree implementation.
-            let key = Curve25519.Signing.PrivateKey()
+            let key = P256.Signing.PrivateKey()
             let (sink, _) = await AuditPipelineTests.populatedMerkleSink(count: 8, key: key)
 
             // Retrieve the leaf hash from the internal leaves array.
@@ -93,7 +93,7 @@ struct AuditPipelineTests {
 
         @Test("signed tree head has valid RFC 6962-shaped signature")
         func signedTreeHead() async throws {
-            let key = Curve25519.Signing.PrivateKey()
+            let key = P256.Signing.PrivateKey()
             let publicKey = key.publicKey
             let (sink, _) = await AuditPipelineTests.populatedMerkleSink(count: 5, key: key)
 
@@ -101,7 +101,7 @@ struct AuditPipelineTests {
             #expect(sth.treeSize == 5)
             #expect(!sth.rootHash.isEmpty)
 
-            // Verify the Ed25519 signature.
+            // Verify the P-256 ECDSA signature.
             guard let sigData = Data(base64Encoded: sth.signature) else {
                 Issue.record("Signature is not valid Base64")
                 return
@@ -118,8 +118,9 @@ struct AuditPipelineTests {
             withUnsafeBytes(of: UInt64(sth.treeSize).bigEndian) { message.append(contentsOf: $0) }
             message.append(rootData)
 
-            let isValid = publicKey.isValidSignature(sigData, for: message)
-            #expect(isValid, "STH Ed25519 signature must verify with the public key")
+            let ecdsa = try P256.Signing.ECDSASignature(rawRepresentation: sigData)
+            let isValid = publicKey.isValidSignature(ecdsa, for: message)
+            #expect(isValid, "STH P-256 signature must verify with the public key")
         }
 
         @Test("tree size equals record count after N records", arguments: [1, 5, 10, 50, 100])

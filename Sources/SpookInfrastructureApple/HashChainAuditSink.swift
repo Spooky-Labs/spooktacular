@@ -35,15 +35,20 @@ import os
 /// ## Usage
 ///
 /// ```swift
-/// let key = Curve25519.Signing.PrivateKey()
-/// let sink = MerkleAuditSink(wrapping: jsonFileSink, signingKey: key)
+/// // Production: SEP-bound P-256 key, non-exportable
+/// let signer = try AuditSinkFactory.loadOrCreateSEPSigningKey(label: "audit-controller")
+/// let sink = MerkleAuditSink(wrapping: jsonFileSink, signer: signer)
+///
+/// // Tests / non-SEP hosts: software P-256
+/// let sink = MerkleAuditSink(wrapping: inner, signer: P256.Signing.PrivateKey())
+///
 /// await sink.record(auditEntry)
-/// let sth = await sink.signedTreeHead()
+/// let sth = try await sink.signedTreeHead()
 /// let proof = await sink.inclusionProof(forLeafAt: 5)
 /// ```
 public actor MerkleAuditSink: AuditSink {
     private let inner: any AuditSink
-    private let signingKey: Curve25519.Signing.PrivateKey
+    private let signer: any P256Signer
     private let encoder: JSONEncoder
     var leaves: [Data] = []
     private var tree: [[Data]] = []
@@ -52,10 +57,14 @@ public actor MerkleAuditSink: AuditSink {
     ///
     /// - Parameters:
     ///   - inner: The underlying sink that receives records (e.g., JSONL file).
-    ///   - signingKey: Ed25519 private key for signing tree heads.
-    public init(wrapping inner: any AuditSink, signingKey: Curve25519.Signing.PrivateKey) {
+    ///   - signer: A ``P256Signer`` that produces tree-head signatures.
+    ///     Production default is an SEP-bound signer from
+    ///     ``AuditSinkFactory/loadOrCreateSEPSigningKey(label:)`` —
+    ///     key material lives in the Secure Enclave and cannot be
+    ///     exfiltrated even with full process / kernel compromise.
+    public init(wrapping inner: any AuditSink, signer: any P256Signer) {
         self.inner = inner
-        self.signingKey = signingKey
+        self.signer = signer
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .iso8601
         enc.outputFormatting = [.sortedKeys]
@@ -98,10 +107,9 @@ public actor MerkleAuditSink: AuditSink {
     // MARK: - Signed Tree Head (NIST AU-10 Non-Repudiation)
 
     /// Produces a Signed Tree Head (STH) — the Merkle root signed
-    /// with the server's Ed25519 private key, byte-compatible with
-    /// RFC 6962 §3.5 `TreeHeadSignature` so external CT-style
-    /// verifiers can validate tree heads without reinventing our
-    /// signature format.
+    /// with the server's P-256 ECDSA private key (SEP-bound in
+    /// production), byte-compatible with RFC 6962 §3.5
+    /// `TreeHeadSignature` for the TBS structure.
     ///
     /// ## TBS bytes (the structure we sign)
     ///
@@ -113,12 +121,24 @@ public actor MerkleAuditSink: AuditSink {
     /// sha256_root_hash (32 bytes)
     /// ```
     ///
-    /// Earlier versions of this method signed a non-standard
-    /// concatenation (seconds instead of ms, no version /
-    /// signature-type domain separators). Any signed tree head
-    /// produced before this commit is non-verifiable by an RFC 6962
-    /// client — callers holding such signatures should treat them
-    /// as opaque blobs and rely on re-signing with the current key.
+    /// ## Signing algorithm
+    ///
+    /// P-256 ECDSA, 64-byte raw (r ‖ s) signature. In production
+    /// the key is Secure-Enclave-bound: the private material
+    /// never leaves the SEP, so a compromised controller process
+    /// cannot forge tree heads even with full code-execution
+    /// capability — the SEP will only sign what the server
+    /// requests, each request attributed to the specific hardware
+    /// that generated it. FIPS 140-3 Level 2 (SEP), AAL2 per
+    /// NIST SP 800-63B (no presence gate for daemon use).
+    ///
+    /// Earlier releases signed with Ed25519; any STH produced
+    /// before the P-256 migration uses a different key with a
+    /// different algorithm and is not verifiable with the current
+    /// public key. The public-key-per-controller rotation model
+    /// is the intended operational answer: external verifiers
+    /// pin the public key that was in force at the time of
+    /// issuance.
     public func signedTreeHead() throws -> SignedTreeHead {
         let root = treeRoot()
         let treeSize = leaves.count
@@ -132,20 +152,19 @@ public actor MerkleAuditSink: AuditSink {
         withUnsafeBytes(of: UInt64(treeSize).bigEndian) { message.append(contentsOf: $0) }
         message.append(root)
 
-        // Ed25519 signing is deterministic and should never fail for
-        // a valid key; a throw here indicates key corruption or an
-        // OS-level failure. Propagate so callers can decide whether
-        // to retry or fall back — previously a "SIGNING_FAILED"
-        // sentinel string looked like a valid-shape STH to
-        // downstream consumers, which is strictly worse than an
-        // exception.
-        let signature = try signingKey.signature(for: message)
+        // A throw here indicates SEP failure or (in software-key
+        // mode) key corruption. Propagate so callers can decide
+        // whether to retry or fall back — previously a
+        // "SIGNING_FAILED" sentinel string looked like a valid
+        // STH to downstream consumers, which is strictly worse
+        // than an exception.
+        let signature = try signer.signature(for: message)
 
         return SignedTreeHead(
             treeSize: treeSize,
             timestamp: timestamp,
             rootHash: root.hexString,
-            signature: signature.withUnsafeBytes { Data($0) }.base64EncodedString()
+            signature: signature.base64EncodedString()
         )
     }
 
@@ -284,9 +303,10 @@ private func merkleNodeHash(_ left: Data, _ right: Data) -> Data {
 
 /// A signed commitment to the state of the audit log at a point in time.
 ///
-/// Contains the Merkle root hash, tree size, timestamp, and an Ed25519
-/// signature. External verifiers can check the signature with the
-/// server's public key.
+/// Contains the Merkle root hash, tree size, timestamp, and a P-256
+/// ECDSA signature (64-byte raw representation, base64-encoded).
+/// External verifiers check the signature with the server's public
+/// key (published by the controller at startup / on rotation).
 public struct SignedTreeHead: Sendable, Codable {
     /// Number of records in the log.
     public let treeSize: Int
@@ -294,7 +314,7 @@ public struct SignedTreeHead: Sendable, Codable {
     public let timestamp: Date
     /// Hex-encoded Merkle root hash.
     public let rootHash: String
-    /// Base64-encoded Ed25519 signature.
+    /// Base64-encoded P-256 ECDSA signature (64 bytes raw, r ‖ s).
     public let signature: String
 }
 

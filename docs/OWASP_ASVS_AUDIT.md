@@ -255,7 +255,7 @@ Stateless JSON API authenticated per-request via Bearer or ticket. No session ID
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
 | V7.2.1 | Logs centralized + processed | PASS | `AuditSinkFactory` composes JSONL + append-only + Merkle + S3 Object Lock chain |
-| V7.2.2 | Logs protect against tampering | PASS | Merkle tree with Ed25519 STH (RFC 6962); `UF_APPEND` kernel flag; S3 Object Lock Compliance mode |
+| V7.2.2 | Logs protect against tampering | PASS | Merkle tree with SEP-bound P-256 STH (RFC 6962 TBS format, key non-exportable; FIPS 140-3 Level 2); `UF_APPEND` kernel flag; S3 Object Lock Compliance mode |
 
 ### V7.3 Log Protection
 
@@ -460,6 +460,7 @@ N/A — no SOAP, no GraphQL.
 |------|--------------|--------|
 | HTTP security headers on every response | V14.4.2–7 | Remediated (commit `eca57d6aa`) |
 | Break-glass signing key generated inside Secure Enclave (hardware-bound, non-exportable, AAL3) | V2.7.1 | Remediated (`BreakGlassSigningKeyStore` with `SecureEnclave.P256.Signing.PrivateKey`) |
+| Merkle audit signing key generated inside Secure Enclave (non-exportable; STH forgery requires hardware, not just process compromise) | V7.2.2 | Remediated (`AuditSinkFactory.loadOrCreateSEPSigningKey` + `MerkleAuditSink` takes `any P256Signer`) |
 | Per-operator trust allowlist (non-repudiation via cryptographic attribution) | V2.7.5 | Remediated (`SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` + multi-key verifier) |
 | Per-action MFA on admin CLI commands | V4.3.1 | Remediated (`AdminPresenceGate`) |
 | Federated admin tokens require stepped-up `acr` | V2.7.4 | Remediated (`OIDCTokenVerifier.insufficientACR`) |

@@ -73,8 +73,8 @@ struct EnterpriseIntegrationTests {
 
     @Test("MerkleAuditSink produces signed tree heads")
     func merkleSTH() async throws {
-        let key = Curve25519.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signingKey: key)
+        let key = P256.Signing.PrivateKey()
+        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
         let record = AuditRecord(
             actorIdentity: "t", tenant: .default, scope: .read,
             resource: "h", action: "check", outcome: .success
@@ -88,8 +88,8 @@ struct EnterpriseIntegrationTests {
 
     @Test("MerkleAuditSink tree grows monotonically")
     func merkleGrowth() async {
-        let key = Curve25519.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signingKey: key)
+        let key = P256.Signing.PrivateKey()
+        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
         for i in 0..<5 {
             let r = AuditRecord(
                 actorIdentity: "a\(i)", tenant: .default, scope: .read,
@@ -102,8 +102,8 @@ struct EnterpriseIntegrationTests {
 
     @Test("MerkleAuditSink inclusion proof is non-empty")
     func merkleInclusionProof() async {
-        let key = Curve25519.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signingKey: key)
+        let key = P256.Signing.PrivateKey()
+        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
         for i in 0..<4 {
             let r = AuditRecord(
                 actorIdentity: "a", tenant: .default, scope: .read,

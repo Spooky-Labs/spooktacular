@@ -93,7 +93,8 @@ public struct SpooktacularConfig: Sendable, Codable {
                 filePath: env["SPOOK_AUDIT_FILE"],
                 immutablePath: env["SPOOK_AUDIT_IMMUTABLE_PATH"],
                 merkleEnabled: env["SPOOK_AUDIT_MERKLE"] == "1",
-                merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY"],
+                merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"],
+                merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY_PATH"],
                 s3Bucket: env["SPOOK_AUDIT_S3_BUCKET"],
                 s3Region: env["SPOOK_AUDIT_S3_REGION"],
                 s3Prefix: env["SPOOK_AUDIT_S3_PREFIX"],
@@ -193,15 +194,28 @@ public struct AuditConfig: Sendable, Codable {
     public let immutablePath: String?
     public let merkleEnabled: Bool
 
-    /// Path to the persistent Ed25519 signing key used by
+    /// Keychain label for the SEP-bound P-256 signing key used by
     /// `MerkleAuditSink` to sign tree heads.
     ///
-    /// Without a stable key, signed tree heads generated before a
-    /// restart can't be verified afterward — which nullifies the
-    /// non-repudiation story that an enterprise auditor depends on.
-    /// Populated by `SPOOK_AUDIT_SIGNING_KEY`. When `merkleEnabled`
-    /// is true and this is `nil`, the factory refuses to build a
-    /// Merkle sink so operators don't silently get ephemeral keys.
+    /// Production default. The key is generated inside the Secure
+    /// Enclave on first use and stored under this label; subsequent
+    /// runs reconstruct the signer from the persisted SEP blob
+    /// without ever seeing the private bytes.
+    ///
+    /// Populated by `SPOOK_AUDIT_SIGNING_KEY_LABEL`. Mutually
+    /// exclusive with `merkleSigningKeyPath`.
+    public let merkleSigningKeyLabel: String?
+
+    /// Path to a PEM-encoded P-256 software signing key.
+    ///
+    /// Fallback for CI, unit tests, and hosts without a Secure
+    /// Enclave. Populated by `SPOOK_AUDIT_SIGNING_KEY_PATH`.
+    /// Mutually exclusive with `merkleSigningKeyLabel`.
+    ///
+    /// When `merkleEnabled` is true and neither this nor
+    /// `merkleSigningKeyLabel` is set, the factory refuses to
+    /// build a Merkle sink so operators don't silently get
+    /// ephemeral keys.
     public let merkleSigningKeyPath: String?
 
     public let s3Bucket: String?
@@ -223,6 +237,7 @@ public struct AuditConfig: Sendable, Codable {
 
     public init(filePath: String? = nil, immutablePath: String? = nil,
                 merkleEnabled: Bool = false,
+                merkleSigningKeyLabel: String? = nil,
                 merkleSigningKeyPath: String? = nil,
                 s3Bucket: String? = nil,
                 s3Region: String? = nil,
@@ -232,6 +247,7 @@ public struct AuditConfig: Sendable, Codable {
         self.filePath = filePath
         self.immutablePath = immutablePath
         self.merkleEnabled = merkleEnabled
+        self.merkleSigningKeyLabel = merkleSigningKeyLabel
         self.merkleSigningKeyPath = merkleSigningKeyPath
         self.s3Bucket = s3Bucket
         self.s3Region = s3Region
