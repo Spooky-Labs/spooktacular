@@ -46,13 +46,11 @@ public actor KubernetesLeaseLock: DistributedLockService {
 
         // Check if expired
         if let renewTime = spec["renewTime"] as? String,
-           let leaseDuration = spec["leaseDurationSeconds"] as? Int {
-            let formatter = ISO8601DateFormatter()
-            if let renewed = formatter.date(from: renewTime) {
-                let expires = renewed.addingTimeInterval(TimeInterval(leaseDuration))
-                if Date() < expires && currentHolder != holder {
-                    return nil // Held by someone else, not expired
-                }
+           let leaseDuration = spec["leaseDurationSeconds"] as? Int,
+           let renewed = try? Date(renewTime, strategy: .iso8601) {
+            let expires = renewed.addingTimeInterval(TimeInterval(leaseDuration))
+            if Date() < expires && currentHolder != holder {
+                return nil // Held by someone else, not expired
             }
         }
 
@@ -90,7 +88,7 @@ public actor KubernetesLeaseLock: DistributedLockService {
             "spec": [
                 "holderIdentity": holder,
                 "leaseDurationSeconds": Int(duration),
-                "renewTime": ISO8601DateFormatter().string(from: Date()),
+                "renewTime": Date().ISO8601Format(),
             ],
         ]
         var request = URLRequest(url: url)
@@ -120,7 +118,7 @@ public actor KubernetesLeaseLock: DistributedLockService {
             "spec": [
                 "holderIdentity": holder,
                 "leaseDurationSeconds": Int(duration),
-                "renewTime": ISO8601DateFormatter().string(from: Date()),
+                "renewTime": Date().ISO8601Format(),
             ],
         ]
         var request = URLRequest(url: url)

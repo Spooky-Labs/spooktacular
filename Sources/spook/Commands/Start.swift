@@ -109,9 +109,7 @@ extension Spook {
             }
 
             if let scriptPath = userData {
-                let scriptURL = URL(fileURLWithPath:
-                    NSString(string: scriptPath).expandingTildeInPath
-                )
+                let scriptURL = URL(filePath: scriptPath.expandingTilde)
 
                 switch provision {
                 case .diskInject:
@@ -209,9 +207,7 @@ extension Spook {
                     break
 
                 case .ssh:
-                    let scriptURL = URL(fileURLWithPath:
-                        NSString(string: scriptPath).expandingTildeInPath
-                    )
+                    let scriptURL = URL(filePath: scriptPath.expandingTilde)
                     guard FileManager.default.fileExists(atPath: scriptURL.path) else {
                         print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
                         print(Style.dim("  Verify the file path exists and is readable."))
@@ -234,9 +230,7 @@ extension Spook {
                     }
 
                 case .agent:
-                    let scriptURL = URL(fileURLWithPath:
-                        NSString(string: scriptPath).expandingTildeInPath
-                    )
+                    let scriptURL = URL(filePath: scriptPath.expandingTilde)
                     guard FileManager.default.fileExists(atPath: scriptURL.path) else {
                         print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
                         print(Style.dim("  Verify the file path exists and is readable."))

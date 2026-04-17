@@ -790,7 +790,7 @@ actor RunnerPoolReconciler {
 
                 // Read the token from the service account mount.
                 let tokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-                if let tokenData = FileManager.default.contents(atPath: tokenPath),
+                if let tokenData = try? Data(contentsOf: URL(filePath: tokenPath)),
                    let token = String(data: tokenData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
                     req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                 }
@@ -990,7 +990,7 @@ actor RunnerPoolReconciler {
         req.httpMethod = method
 
         let tokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-        if let tokenData = FileManager.default.contents(atPath: tokenPath),
+        if let tokenData = try? Data(contentsOf: URL(filePath: tokenPath)),
            let token = String(data: tokenData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }

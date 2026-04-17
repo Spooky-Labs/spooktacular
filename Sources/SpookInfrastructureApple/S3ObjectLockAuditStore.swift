@@ -133,13 +133,13 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
 
         let startSeq = sequenceNumber - UInt64(batch.count)
         let endSeq = sequenceNumber - 1
-        let ts = ISO8601DateFormatter().string(from: Date())
+        let ts = Date().ISO8601Format()
         let key = "\(prefix)\(startSeq)-\(endSeq)_\(ts).jsonl"
 
         let retainUntil = Calendar.current.date(
             byAdding: .day, value: retentionDays, to: Date()
         )!
-        let retainStr = ISO8601DateFormatter().string(from: retainUntil)
+        let retainStr = retainUntil.ISO8601Format()
 
         // Build and sign the S3 PutObject request
         let host = "\(bucket).s3.\(region).amazonaws.com"

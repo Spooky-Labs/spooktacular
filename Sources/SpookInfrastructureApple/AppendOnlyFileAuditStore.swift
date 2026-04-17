@@ -117,7 +117,7 @@ public actor AppendOnlyFileAuditStore: ImmutableAuditStore, AuditSink {
     }
 
     public func read(from: UInt64, count: Int) async throws -> [AuditRecord] {
-        guard let data = FileManager.default.contents(atPath: filePath) else { return [] }
+        let data = (try? Data(contentsOf: URL(filePath: filePath))) ?? Data()
         let lines = String(data: data, encoding: .utf8)?.split(separator: "\n") ?? []
         let start = Int(from)
         let end = min(start + count, lines.count)

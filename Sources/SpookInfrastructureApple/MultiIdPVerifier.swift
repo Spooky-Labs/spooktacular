@@ -52,12 +52,15 @@ public actor MultiIdPVerifier: FederatedIdentityVerifier {
     }
 
     private func extractSAMLIssuer(_ xml: String) -> String? {
+        // Swift `Regex` removes the NSRange ↔ Range<String.Index>
+        // bridge and carries the captured-group count in the type,
+        // so `match.1` is compile-checked to be the Issuer contents.
         for prefix in ["", "saml:", "saml2:"] {
-            let pattern = "<\(prefix)Issuer[^>]*>([^<]+)</\(prefix)Issuer>"
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: xml, range: NSRange(xml.startIndex..., in: xml)),
-               let range = Range(match.range(at: 1), in: xml) {
-                return String(xml[range])
+            guard let regex = try? Regex("<\(prefix)Issuer[^>]*>([^<]+)</\(prefix)Issuer>") else {
+                continue
+            }
+            if let match = xml.firstMatch(of: regex), match.count >= 2 {
+                return String(match.output[1].substring ?? "")
             }
         }
         return nil

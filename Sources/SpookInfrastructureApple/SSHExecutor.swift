@@ -69,7 +69,7 @@ public enum SSHExecutor {
         let env = ProcessInfo.processInfo.environment
         let mode = env["SPOOK_SSH_HOST_KEY_TRUST"]
         let path = env["SPOOK_SSH_KNOWN_HOSTS"]
-            ?? NSString("~/.spooktacular/known_hosts").expandingTildeInPath
+            ?? "~/.spooktacular/known_hosts".expandingTilde
 
         switch mode {
         case "strict":  return .strict(knownHostsPath: path)
@@ -296,8 +296,7 @@ public enum SSHExecutor {
     ///   an empty array if no key was provided.
     private static func keyArguments(for key: String?) -> [String] {
         guard let key else { return [] }
-        let expandedKey = NSString(string: key).expandingTildeInPath
-        return ["-i", expandedKey]
+        return ["-i", key.expandingTilde]
     }
 
     // MARK: - Process Helpers

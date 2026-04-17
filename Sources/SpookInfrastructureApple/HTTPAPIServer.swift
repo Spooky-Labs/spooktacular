@@ -1593,9 +1593,6 @@ public actor HTTPAPIServer {
 
     // MARK: - Helpers
 
-    /// Shared date formatter for API responses.
-    private nonisolated(unsafe) static let iso8601Formatter = ISO8601DateFormatter()
-
     /// Converts a VM bundle into a typed ``VMStatus`` for JSON serialization.
     private func vmStatus(name: String, bundle: VirtualMachineBundle) -> VMStatus {
         let spec = bundle.spec

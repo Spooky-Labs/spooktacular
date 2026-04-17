@@ -50,7 +50,7 @@ public actor FileDistributedLock: DistributedLockService {
         }
 
         // Write holder identity to the file for debugging
-        let info = "\(holder)\n\(ISO8601DateFormatter().string(from: Date()))\n"
+        let info = "\(holder)\n\(Date().ISO8601Format())\n"
         ftruncate(fd, 0)
         lseek(fd, 0, SEEK_SET)
         info.withCString { ptr in

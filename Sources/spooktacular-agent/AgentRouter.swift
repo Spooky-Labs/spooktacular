@@ -54,7 +54,7 @@ nonisolated(unsafe) private var agentAuditFile: FileHandle? = {
     }
     let fm = FileManager.default
     if !fm.fileExists(atPath: path) {
-        let dir = (path as NSString).deletingLastPathComponent
+        let dir = URL(filePath: path).deletingLastPathComponent().path
         try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
         fm.createFile(atPath: path, contents: nil)
     }
@@ -413,7 +413,7 @@ func routeRequest(
 ///   - statusCode: The HTTP status code of the response.
 ///   - tier: The authorization tier that handled this request, or `nil` for unauthenticated.
 private func emitAuditLog(method: String, path: String, statusCode: Int, tier: AuthTier?) {
-    let timestamp = ISO8601DateFormatter().string(from: Date())
+    let timestamp = Date().ISO8601Format()
     let tierLabel = tier?.rawValue ?? "none"
     auditLog.notice("AUDIT: \(method, privacy: .public) \(path, privacy: .public) → \(statusCode) [\(tierLabel, privacy: .public)] [\(timestamp, privacy: .public)]")
 
@@ -696,17 +696,30 @@ private func handleLaunchApp(_ request: AgentHTTPRequest) -> Data {
         return errorResponse(message: "Application '\(appReq.bundleID)' not found.", statusCode: 404)
     }
 
+    // NSWorkspace's callback `openApplication` is the cleanest
+    // fit for this synchronous vsock handler — the async overload
+    // would force the whole router async, cascading through every
+    // caller. The lock + `os_unfair_lock`-protected error slot is
+    // Swift 6-safe: `LaunchSlot` owns its state, the callback and
+    // the waiter never touch `launchError` concurrently, and we
+    // avoid the `nonisolated(unsafe)` footgun entirely.
+    final class LaunchSlot: @unchecked Sendable {
+        private let lock = NSLock()
+        private var err: (any Error)?
+        func set(_ error: (any Error)?) { lock.withLock { err = error } }
+        var value: (any Error)? { lock.withLock { err } }
+    }
+
     let config = NSWorkspace.OpenConfiguration()
     let semaphore = DispatchSemaphore(value: 0)
-    nonisolated(unsafe) var launchError: (any Error)?
-
+    let slot = LaunchSlot()
     NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
-        launchError = error
+        slot.set(error)
         semaphore.signal()
     }
     semaphore.wait()
 
-    if let error = launchError {
+    if let error = slot.value {
         return errorResponse(message: "Failed to launch: \(error.localizedDescription)", statusCode: 500)
     }
 

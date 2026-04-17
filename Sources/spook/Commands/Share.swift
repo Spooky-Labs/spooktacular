@@ -55,9 +55,7 @@ extension Spook.Share {
 
         @Argument(
             help: "Path to the host directory to share.",
-            transform: { (path: String) -> String in
-                NSString(string: path).expandingTildeInPath
-            }
+            transform: { $0.expandingTilde }
         )
         var path: String
 

@@ -175,9 +175,8 @@ actor KubernetesClient {
     /// - If the lease doesn't exist, creates it via POST.
     /// - `acquireTime` is only set on initial acquisition, not on renewals.
     func upsertLease(name: String, holderIdentity: String, durationSeconds: Int) async throws -> Bool {
-        let formatter = ISO8601DateFormatter()
         let now = Date()
-        let nowString = formatter.string(from: now)
+        let nowString = now.ISO8601Format()
         let url = baseURL.appendingPathComponent(
             "/apis/coordination.k8s.io/v1/namespaces/\(namespace)/leases/\(name)")
 
@@ -201,7 +200,8 @@ actor KubernetesClient {
 
             // Step 2: If held by another identity and not expired, back off.
             if let existingHolder, existingHolder != holderIdentity {
-                if let renewTimeString, let renewTime = formatter.date(from: renewTimeString) {
+                if let renewTimeString,
+                   let renewTime = try? Date(renewTimeString, strategy: .iso8601) {
                     let expiresAt = renewTime.addingTimeInterval(TimeInterval(durationSeconds))
                     if expiresAt > now {
                         logger.info("Lease '\(name, privacy: .public)' held by '\(existingHolder, privacy: .public)', not expired — backing off")
@@ -300,10 +300,18 @@ actor KubernetesClient {
     }
 
     private static func readFile(_ path: String) throws -> String {
-        guard let data = FileManager.default.contents(atPath: path),
-              let string = String(data: data, encoding: .utf8)
-        else { throw ControllerError.missingFile(path) }
-        return string.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let data = try Data(contentsOf: URL(filePath: path))
+            guard let string = String(data: data, encoding: .utf8) else {
+                throw ControllerError.missingFile(path)
+            }
+            return string.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            // Preserve the prior "missing file → typed error" contract;
+            // the caller differentiates on type, not on the underlying
+            // POSIX errno.
+            throw ControllerError.missingFile(path)
+        }
     }
 }
 
@@ -327,7 +335,7 @@ private final class ClusterTLSDelegate: NSObject, URLSessionDelegate, Sendable {
     private let caCertificates: [SecCertificate]
 
     init(caPath: String) {
-        if let data = FileManager.default.contents(atPath: caPath) {
+        if let data = try? Data(contentsOf: URL(filePath: caPath)) {
             caCertificates = Self.loadCertificates(from: data)
         } else {
             caCertificates = []

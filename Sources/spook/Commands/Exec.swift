@@ -37,7 +37,7 @@ extension Spook {
 
         @Option(
             help: "Path to the SSH private key.",
-            transform: { NSString(string: $0).expandingTildeInPath }
+            transform: { $0.expandingTilde }
         )
         var key: String = "~/.ssh/id_ed25519"
 

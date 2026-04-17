@@ -136,16 +136,15 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
     }
 
     private func extractConditions(within element: XMLCanonicalization.Element, destination: String?) -> SAMLConditions {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let isoNoFrac = ISO8601DateFormatter()
-        isoNoFrac.formatOptions = [.withInternetDateTime]
-
+        // `Date.ISO8601FormatStyle` accepts both the fractional-second
+        // and no-fractional-second RFC 3339 forms, so we no longer
+        // need to allocate two `ISO8601DateFormatter`s and fall
+        // through from one to the other.
         let conditionsElement = findFirst(localName: "Conditions", in: element)
         let notBefore = conditionsElement.flatMap { attribute(of: $0, named: "NotBefore") }
-            .flatMap { iso.date(from: $0) ?? isoNoFrac.date(from: $0) }
+            .flatMap { try? Date($0, strategy: .iso8601) }
         let notOnOrAfter = conditionsElement.flatMap { attribute(of: $0, named: "NotOnOrAfter") }
-            .flatMap { iso.date(from: $0) ?? isoNoFrac.date(from: $0) }
+            .flatMap { try? Date($0, strategy: .iso8601) }
 
         var audiences: [String] = []
         if let restriction = conditionsElement.flatMap({ findFirst(localName: "AudienceRestriction", in: $0) }) {
@@ -384,14 +383,9 @@ public actor SAMLAssertionVerifier: FederatedIdentityVerifier {
         let nameIDFormat = nameIDElement.flatMap { attribute(of: $0, named: "Format") }
 
         let authnStatement = findFirst(localName: "AuthnStatement", in: signedElement)
-        let sessionExpiry: Date?
-        if let raw = authnStatement.flatMap({ attribute(of: $0, named: "SessionNotOnOrAfter") }) {
-            let iso = ISO8601DateFormatter()
-            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            sessionExpiry = iso.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
-        } else {
-            sessionExpiry = nil
-        }
+        let sessionExpiry: Date? = authnStatement
+            .flatMap { attribute(of: $0, named: "SessionNotOnOrAfter") }
+            .flatMap { try? Date($0, strategy: .iso8601) }
 
         var attributes: [String: [String]] = [:]
         if let statement = findFirst(localName: "AttributeStatement", in: signedElement) {

@@ -93,7 +93,7 @@ public enum DiskInjector {
         let volumePath = try mountDataVolume(devicePath: devicePath)
 
         let scriptDestination = "\(volumePath)\(guestScriptPath)"
-        let scriptDirectory = (scriptDestination as NSString).deletingLastPathComponent
+        let scriptDirectory = URL(filePath: scriptDestination).parentPath
         try FileManager.default.createDirectory(
             atPath: scriptDirectory,
             withIntermediateDirectories: true
@@ -105,7 +105,7 @@ public enum DiskInjector {
         )
 
         let plistPath = "\(volumePath)/Library/LaunchDaemons/\(daemonLabel).plist"
-        let plistDirectory = (plistPath as NSString).deletingLastPathComponent
+        let plistDirectory = URL(filePath: plistPath).parentPath
         try FileManager.default.createDirectory(
             atPath: plistDirectory,
             withIntermediateDirectories: true
@@ -242,7 +242,7 @@ public enum DiskInjector {
                   designatedPhysicalStore == devicePath
                       || designatedPhysicalStore.hasPrefix(devicePrefix)
                       || devicePath.hasPrefix(
-                          (designatedPhysicalStore as NSString).deletingLastPathComponent + "/"
+                          URL(filePath: designatedPhysicalStore).parentPath + "/"
                       )
             else { continue }
 
