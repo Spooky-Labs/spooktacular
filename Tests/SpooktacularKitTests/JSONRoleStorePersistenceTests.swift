@@ -58,10 +58,14 @@ struct JSONRoleStorePersistenceTests {
         #expect(roles.isEmpty, "Revoked role should not come back after reload")
     }
 
-    @Test("nil configPath → no-op persist (in-memory only)")
-    func nilPathNoOp() async throws {
-        let store = try JSONRoleStore(configPath: nil)
-        // Must not throw and must not crash.
+    @Test("empty configPath → no-op persist (in-memory only)")
+    func emptyPathNoOp() async throws {
+        // The empty-string sentinel is the documented
+        // "in-memory-only" opt-out. Passing `nil` now defaults
+        // to SpooktacularPaths.rbacConfig — we DON'T test that
+        // path here because it would touch the real user's
+        // ~/.spooktacular/rbac.json.
+        let store = try JSONRoleStore(configPath: "")
         try await store.assign(RoleAssignment(
             actorIdentity: "oidc/carol@example.com",
             tenant: .default,

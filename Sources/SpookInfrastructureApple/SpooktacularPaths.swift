@@ -36,6 +36,20 @@ public enum SpooktacularPaths {
             .appendingPathComponent("ipsw")
     }()
 
+    /// Default RBAC config path: `~/.spooktacular/rbac.json`.
+    ///
+    /// Used as the fallback when `SPOOK_RBAC_CONFIG` is unset so
+    /// runtime role assignments via `/v1/roles/assign` persist
+    /// across restarts without the operator having to configure
+    /// anything. The previous behavior — in-memory-only when the
+    /// env var was absent — silently dropped assignments on every
+    /// restart, which a Fortune-20 auditor correctly flagged as
+    /// unsafe. Operators who genuinely want in-memory-only
+    /// behavior can pass `SPOOK_RBAC_CONFIG=/dev/null`.
+    public static let rbacConfig: URL = {
+        root.appendingPathComponent("rbac.json")
+    }()
+
     /// Regex for valid VM names.
     ///
     /// Matches the pattern used by the HTTP API

@@ -164,6 +164,11 @@ extension Spook {
             }
 
             // RBAC
+            // Passing the env var as-is: unset → nil → default
+            // path (~/.spooktacular/rbac.json); explicit empty
+            // string → in-memory only; any other value → that
+            // path. Handles operator intent without silent data
+            // loss on restart.
             let roleStore = try JSONRoleStore(configPath: env["SPOOK_RBAC_CONFIG"])
             let authService: (any AuthorizationService)?
             if !insecure {

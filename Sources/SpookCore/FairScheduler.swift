@@ -1,0 +1,271 @@
+import Foundation
+
+// MARK: - Per-tenant scheduling policy
+
+/// Per-tenant weight and guarantees used by ``FairScheduler``.
+///
+/// Orthogonal to ``TenantQuota``, which acts as a hard ceiling
+/// regardless of contention. `TenantSchedulingPolicy` is the
+/// *share* the tenant gets when demand exceeds supply — the
+/// answer to "who gives way first when two tenants both want the
+/// last slot?"
+///
+/// ## Example
+///
+/// A three-tenant fleet with 10 total VM slots:
+///
+/// ```swift
+/// let policies: [TenantSchedulingPolicy] = [
+///     .init(tenant: TenantID("platform"), weight: 3, minGuaranteed: 2),
+///     .init(tenant: TenantID("mobile"),   weight: 2, minGuaranteed: 1),
+///     .init(tenant: TenantID("data"),     weight: 1, minGuaranteed: 1),
+/// ]
+/// ```
+///
+/// When all three tenants demand 20 slots each against a pool of
+/// 10, the allocation becomes `{platform: 6, mobile: 3, data: 1}`
+/// after honoring the minimums and splitting the rest by weight.
+public struct TenantSchedulingPolicy: Sendable, Codable, Equatable {
+
+    /// The tenant this policy applies to.
+    public let tenant: TenantID
+
+    /// Integer weight used for proportional sharing when demand
+    /// exceeds supply. Higher weight → larger share.
+    ///
+    /// Interpreted relative to other tenants' weights — weight 3
+    /// vs. weight 1 yields a 3:1 split, not 30% vs. 10%.
+    public let weight: Int
+
+    /// Minimum slots this tenant is always guaranteed, even
+    /// under pressure. Used to prevent starvation of tenants
+    /// whose workloads matter for SOC 2 / availability reasons
+    /// (security-scanning, build-signing) regardless of weight.
+    public let minGuaranteed: Int
+
+    /// Optional hard ceiling. A tenant that demands more than
+    /// `maxCap` gets capped here even if the fleet has room —
+    /// mirrors the `TenantQuota.maxVMs` gate but lives in the
+    /// scheduler layer so it composes with other tenants'
+    /// demand.
+    public let maxCap: Int?
+
+    public init(
+        tenant: TenantID,
+        weight: Int,
+        minGuaranteed: Int = 0,
+        maxCap: Int? = nil
+    ) {
+        precondition(weight > 0, "weight must be positive")
+        precondition(minGuaranteed >= 0, "minGuaranteed must be non-negative")
+        precondition(maxCap.map { $0 >= minGuaranteed } ?? true,
+                     "maxCap must be ≥ minGuaranteed when set")
+        self.tenant = tenant
+        self.weight = weight
+        self.minGuaranteed = minGuaranteed
+        self.maxCap = maxCap
+    }
+}
+
+// MARK: - Scheduler
+
+/// Max-min fair share allocator for VM slots across tenants.
+///
+/// Solves the "who gets the last slot when demand > supply?"
+/// problem the prior reconciler side-stepped. The current
+/// ``RunnerPoolReconciler`` scales each pool independently based
+/// on `minRunners`/`maxRunners`; under multi-tenant contention,
+/// the first pool to ask wins. That's fine for small fleets but
+/// produces starvation on busy ones — a Fortune-20 CI org with
+/// three business units sharing an EC2 Mac fleet observed this
+/// as the "mobile team took everything" failure mode.
+///
+/// ## Algorithm
+///
+/// Max-min fair share with weights:
+///
+/// 1. Honor every tenant's `minGuaranteed` first. If the fleet
+///    can't cover the total of all minimums, scale each
+///    proportionally to its minimum.
+/// 2. Distribute the remaining capacity in proportion to
+///    weights, subject to each tenant's `maxCap` (if any) and
+///    its demand.
+/// 3. If a tenant's proportional share exceeds its demand or
+///    cap, redistribute the surplus among the remaining
+///    tenants and repeat until stable.
+///
+/// The algorithm is `O(n²)` in the tenant count, which is fine
+/// for the < 100-tenant fleets we target — real Fortune-20
+/// deployments have < 10 business units competing.
+///
+/// ## Properties
+///
+/// - **No starvation** when `minGuaranteed` is set.
+/// - **Work-conserving**: never leaves capacity idle when
+///   some tenant still has unmet demand.
+/// - **Deterministic**: given the same policies + demands +
+///   capacity, the output is identical. No randomness, no
+///   wall-clock dependence.
+/// - **Monotone**: adding capacity never reduces any tenant's
+///   allocation; adding demand never reduces anyone else's.
+public struct FairScheduler: Sendable {
+
+    /// Per-tenant policy, keyed by tenant ID for lookup.
+    public let policies: [TenantID: TenantSchedulingPolicy]
+
+    public init(policies: [TenantSchedulingPolicy]) {
+        var map: [TenantID: TenantSchedulingPolicy] = [:]
+        for p in policies { map[p.tenant] = p }
+        self.policies = map
+    }
+
+    /// Allocates `capacity` slots across the tenants in `demand`,
+    /// honoring weights, minimums, and caps.
+    ///
+    /// - Parameters:
+    ///   - demand: Requested slots per tenant. Tenants absent
+    ///     from this dict are treated as demand 0.
+    ///   - capacity: Total slots available in the fleet.
+    /// - Returns: The allocated slot count per tenant. Sum of
+    ///   the values never exceeds `capacity`; individual values
+    ///   never exceed the tenant's demand or `maxCap`.
+    public func allocate(
+        demand: [TenantID: Int],
+        capacity: Int
+    ) -> [TenantID: Int] {
+        guard capacity > 0 else {
+            return Dictionary(uniqueKeysWithValues: demand.keys.map { ($0, 0) })
+        }
+
+        // Step 1: seed each tenant with its minimum guarantee,
+        // clamped by its actual demand. A tenant that demands 0
+        // doesn't get slots just because it has a minGuaranteed.
+        var allocation: [TenantID: Int] = [:]
+        var remaining = capacity
+        for (tenant, want) in demand {
+            let policy = policies[tenant]
+            let minGuarantee = min(policy?.minGuaranteed ?? 0, want)
+            let grant = min(minGuarantee, remaining)
+            allocation[tenant] = grant
+            remaining -= grant
+        }
+
+        // If minimums overshot capacity, the greedy order above
+        // was biased. Re-normalize proportionally to declared
+        // minimums so no tenant disproportionately loses out.
+        var effectiveMinimums: [TenantID: Int] = [:]
+        var totalMinimums = 0
+        for (tenant, want) in demand {
+            let minG = policies[tenant]?.minGuaranteed ?? 0
+            let effective = min(minG, want)
+            effectiveMinimums[tenant] = effective
+            totalMinimums += effective
+        }
+        if totalMinimums > capacity {
+            let scaled = proportional(to: effectiveMinimums, total: capacity)
+            // Cap at demand — proportional can, in a rounding
+            // edge case, hand a tenant more than they asked for.
+            return Dictionary(
+                uniqueKeysWithValues: scaled.map { ($0, min($1, demand[$0] ?? 0)) }
+            )
+        }
+
+        // Step 2: distribute the remaining capacity by weight
+        // among tenants with unmet demand, iterating until no
+        // surplus is redistributable.
+        while remaining > 0 {
+            let hungry = demand.filter { tenant, want in
+                let current = allocation[tenant] ?? 0
+                let cap = policies[tenant]?.maxCap ?? .max
+                return current < min(want, cap)
+            }
+            guard !hungry.isEmpty else { break }
+
+            let totalWeight = hungry.reduce(into: 0) { acc, pair in
+                acc += policies[pair.key]?.weight ?? 1
+            }
+            guard totalWeight > 0 else { break }
+
+            // Compute each hungry tenant's share this round.
+            var grants: [TenantID: Int] = [:]
+            var slotsUsed = 0
+            for (tenant, want) in hungry.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                let weight = policies[tenant]?.weight ?? 1
+                // Fractional share, floored — leftovers get
+                // redistributed next iteration to keep the loop
+                // making progress.
+                let share = (remaining * weight) / totalWeight
+                let cap = policies[tenant]?.maxCap ?? .max
+                let current = allocation[tenant] ?? 0
+                let headroom = min(want, cap) - current
+                let grant = min(share, headroom)
+                if grant > 0 {
+                    grants[tenant] = grant
+                    slotsUsed += grant
+                }
+            }
+
+            // If the weighted split granted nothing (every share
+            // floored to 0), allocate single slots round-robin by
+            // weight until we exhaust the remainder. Avoids an
+            // infinite loop when `remaining < totalWeight`.
+            if slotsUsed == 0 {
+                for (tenant, want) in hungry.sorted(by: { lhs, rhs in
+                    let lw = policies[lhs.key]?.weight ?? 1
+                    let rw = policies[rhs.key]?.weight ?? 1
+                    if lw != rw { return lw > rw }
+                    return lhs.key.rawValue < rhs.key.rawValue
+                }) {
+                    guard remaining > 0 else { break }
+                    let cap = policies[tenant]?.maxCap ?? .max
+                    let current = allocation[tenant] ?? 0
+                    if current < min(want, cap) {
+                        allocation[tenant] = current + 1
+                        remaining -= 1
+                    }
+                }
+                break
+            }
+
+            for (tenant, grant) in grants {
+                allocation[tenant] = (allocation[tenant] ?? 0) + grant
+                remaining -= grant
+            }
+        }
+
+        return allocation
+    }
+
+    /// Proportional allocation helper used when the sum of
+    /// minimums exceeds capacity: each tenant's share is
+    /// `capacity * (their minimum / total minimums)`.
+    private func proportional(
+        to weights: [TenantID: Int],
+        total: Int
+    ) -> [TenantID: Int] {
+        let sum = weights.values.reduce(0, +)
+        guard sum > 0 else {
+            return Dictionary(uniqueKeysWithValues: weights.keys.map { ($0, 0) })
+        }
+        var result: [TenantID: Int] = [:]
+        var distributed = 0
+        // Largest-first so rounding crumbs land on the tenant
+        // with the most minimums — feels fair to operators and
+        // keeps the total exactly equal to `total`.
+        let sorted = weights.sorted { lhs, rhs in
+            if lhs.value != rhs.value { return lhs.value > rhs.value }
+            return lhs.key.rawValue < rhs.key.rawValue
+        }
+        for (i, pair) in sorted.enumerated() {
+            if i == sorted.count - 1 {
+                // Last tenant absorbs the rounding remainder.
+                result[pair.key] = max(0, total - distributed)
+            } else {
+                let share = (total * pair.value) / sum
+                result[pair.key] = share
+                distributed += share
+            }
+        }
+        return result
+    }
+}

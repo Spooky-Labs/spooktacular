@@ -52,8 +52,27 @@ public actor JSONRoleStore: RoleStore {
     /// authored — we never serialize the built-ins back to disk.
     private var customRoleIDs: Set<String> = []
 
+    /// Creates a role store, defaulting to the shared
+    /// `SpooktacularPaths.rbacConfig` path when no explicit
+    /// path is supplied. Pass `configPath: ""` to force
+    /// in-memory-only behavior (no persistence) — previously the
+    /// silent default when the env var was unset.
     public init(configPath: String? = nil, defaultTenant: TenantID = .default) throws {
-        self.configPath = configPath
+        // Empty string is the documented "in-memory-only" opt-out,
+        // distinct from `nil` which means "use the default path."
+        // This gives operators two clean intents: "use default"
+        // (nil) or "don't persist" ("") — with no silent data-loss
+        // path between them.
+        let resolved: String?
+        switch configPath {
+        case nil:
+            resolved = SpooktacularPaths.rbacConfig.path
+        case "":
+            resolved = nil
+        case .some(let p):
+            resolved = p
+        }
+        self.configPath = resolved
         self.defaultTenant = defaultTenant
 
         // Load built-in roles
@@ -66,8 +85,10 @@ public actor JSONRoleStore: RoleStore {
             roles[role.id] = role
         }
 
-        // Override with config file if provided
-        if let path = configPath,
+        // Override with config file if provided AND the file
+        // exists. A missing file at the default path is expected
+        // on first run — we materialize it lazily on first assign.
+        if let path = resolved,
            let data = try? Data(contentsOf: URL(filePath: path)) {
             let config = try JSONDecoder().decode(RBACFileConfig.self, from: data)
             for rc in config.roles {
@@ -122,6 +143,14 @@ public actor JSONRoleStore: RoleStore {
     /// observes the same state the actor held at write time.
     private func persist() throws {
         guard let configPath else { return }
+        // Materialize the parent directory on first write. The
+        // default path is ~/.spooktacular/rbac.json — the root
+        // may not exist on a fresh machine where `spook` has
+        // never run before.
+        let dir = URL(filePath: configPath).deletingLastPathComponent()
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true
+        )
 
         let roleConfigs = customRoleIDs.compactMap { id -> RBACFileConfig.RoleConfig? in
             guard let role = roles[id] else { return nil }
