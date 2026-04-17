@@ -77,7 +77,7 @@ struct WorkloadTokenIssuerTests {
         #expect(claims["sub"] as? String == "vm/ci-runner-17")
         #expect(claims["aud"] as? String == "sts.amazonaws.com")
         #expect(claims["tenant"] as? String == "acme")
-        #expect(claims["jti"] as? String != nil)
+        #expect(claims["jti"] is String)
 
         let iat = claims["iat"] as! Int
         let exp = claims["exp"] as! Int

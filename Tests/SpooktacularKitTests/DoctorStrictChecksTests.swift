@@ -147,7 +147,7 @@ struct DoctorStrictChecksTests {
     func item01MissingCertFails() {
         let result = Self.check01(env: [
             "SPOOK_TLS_CERT_PATH": "/nonexistent/cert.pem",
-            "SPOOK_TLS_KEY_PATH":  "/nonexistent/key.pem"
+            "SPOOK_TLS_KEY_PATH": "/nonexistent/key.pem"
         ])
         #expect(result.status == .fail)
     }
@@ -160,7 +160,7 @@ struct DoctorStrictChecksTests {
         defer { try? FileManager.default.removeItem(at: key) }
         let result = Self.check01(env: [
             "SPOOK_TLS_CERT_PATH": cert.path,
-            "SPOOK_TLS_KEY_PATH":  key.path
+            "SPOOK_TLS_KEY_PATH": key.path
         ])
         #expect(result.status == .pass)
     }

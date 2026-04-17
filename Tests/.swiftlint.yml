@@ -1,0 +1,57 @@
+# Tests-scoped SwiftLint config.
+#
+# SwiftLint discovers nested `.swiftlint.yml` files automatically
+# and merges them with the repo-root config (the most-specific
+# config wins for the file under it), so this file inherits every
+# rule and severity from `../.swiftlint.yml` and only relaxes the
+# ones that don't carry meaningful quality signal inside test
+# code.
+#
+# Everything *substantive* (force-unwraps, force-casts, force-try,
+# raw shell execution, force HTTP) stays on. Test code that
+# unsafely unwraps or bypasses secure APIs gets caught in CI just
+# like production code.
+#
+# What we relax here and why:
+#
+#   identifier_name
+#     Cryptographic and mathematical tests name variables after
+#     the symbols they represent — `x`, `y`, `a`, `b`, `h`, `k2`,
+#     `ok`, `p`, `fm`, `ca`, `gm`. Renaming `r1` to `rValueFirst`
+#     in an ECDSA test obscures the code, not the other way
+#     around. The production-code rule stays on.
+#
+#   trailing_comma
+#     Swift 5.9+ allows trailing commas in collection literals
+#     precisely because they make large test fixtures easier to
+#     diff. SwiftLint's default still flags them.
+#
+#   implicitly_unwrapped_optional
+#     `var app: XCUIApplication!` is the XCUITest idiom Apple's
+#     own templates ship (`setUp` initializes, `tearDown` nils).
+#     A lazy property would work but is not what auditors reading
+#     reference XCUITest code expect to see.
+#
+#   nesting
+#     Test suites nest helper types to scope fixtures tightly to
+#     the test that uses them. A fourth-level nested `Fixture`
+#     inside a `@Suite` is clearer than a top-level
+#     `_WebhookSignatureVerifierFixture`.
+#
+#   plaintext_secret
+#     Test fixtures embed deliberately-fake keys, tokens, and
+#     passwords. The production rule stays on; tests override it
+#     with an impossible regex so the rule name still exists and
+#     can be re-enabled later without editing parent config.
+disabled_rules:
+  - identifier_name
+  - trailing_comma
+  - implicitly_unwrapped_optional
+  - nesting
+
+custom_rules:
+  plaintext_secret:
+    name: "Plaintext Secret (disabled in Tests/)"
+    regex: '__SWIFTLINT_NEVER_MATCHES_ANYTHING__'
+    message: "Disabled inside Tests/ — see Tests/.swiftlint.yml."
+    severity: warning
