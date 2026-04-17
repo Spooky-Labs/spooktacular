@@ -126,6 +126,11 @@ public actor HTTPAPIServer {
     /// tokens this server mints for its VMs.
     private let tokenIssuer: WorkloadTokenIssuer?
 
+    /// VM → IAM role bindings. Consulted by `/v1/iam` CRUD and by
+    /// `/v1/vms/:name/identity-token` to produce scoped workload
+    /// JWTs.
+    private let iamBindingStore: (any VMIAMBindingStore)?
+
     /// Whether the server is running in insecure development mode.
     /// When `true`, TLS and API token requirements are bypassed.
     /// **Not suitable for production.** Use `--insecure` flag only
@@ -269,6 +274,7 @@ public actor HTTPAPIServer {
         signatureVerifier: SignedRequestVerifier? = nil,
         actorIdentityByKeyFingerprint: [String: String] = [:],
         tokenIssuer: WorkloadTokenIssuer? = nil,
+        iamBindingStore: (any VMIAMBindingStore)? = nil,
         insecureMode: Bool = false
     ) throws {
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -308,6 +314,7 @@ public actor HTTPAPIServer {
         self.signatureVerifier = signatureVerifier
         self.actorIdentityByKeyFingerprint = actorIdentityByKeyFingerprint
         self.tokenIssuer = tokenIssuer
+        self.iamBindingStore = iamBindingStore
 
         if insecureMode {
             Log.httpAPI.warning("⚠️  SERVER RUNNING IN INSECURE MODE — no TLS, no signature verification")
@@ -960,6 +967,16 @@ public actor HTTPAPIServer {
             )
             return response
         }
+        if components.count >= 2, components[0] == "v1", components[1] == "iam" {
+            let response = await handleIAMAPI(
+                request: request, components: components, actorIdentity: actorIdentity
+            )
+            await emitAPIAudit(
+                method: request.method, path: request.path,
+                statusCode: response.statusCode, actorIdentity: actorIdentity
+            )
+            return response
+        }
 
         guard components.count >= 2,
               components[0] == "v1",
@@ -995,6 +1012,8 @@ public actor HTTPAPIServer {
         case ("POST", 4) where components[3] == "start": response = handleStartVM(name: components[2])
         case ("POST", 4) where components[3] == "stop":  response = handleStopVM(name: components[2])
         case ("GET", 4)  where components[3] == "ip":    response = await handleGetIP(name: components[2])
+        case ("GET", 4)  where components[3] == "identity-token":
+            response = await handleMintIdentityToken(vmName: components[2])
         default: response = HTTPResponse.error(message: "Not found.", statusCode: 404)
         }
 
@@ -1036,6 +1055,7 @@ public actor HTTPAPIServer {
         if path.hasPrefix("/v1/audit") { return "audit" }
         if path.hasPrefix("/v1/roles") { return "role" }
         if path.hasPrefix("/v1/tenants") { return "tenant" }
+        if path.hasPrefix("/v1/iam") { return "iam" }
         if path == "/metrics" { return "metrics" }
         return "api"
     }
@@ -1149,6 +1169,177 @@ public actor HTTPAPIServer {
     /// registry (404) and malformed bodies (400), so
     /// misconfiguration surfaces as a crisp HTTP error rather than
     /// an actor crash.
+    // MARK: - IAM binding API (VM → IAM role)
+
+    /// Handles `/v1/iam*` — VM-to-IAM-role binding CRUD.
+    ///
+    /// - `GET    /v1/iam` — list all bindings (optionally filter by ?tenant=)
+    /// - `GET    /v1/iam/{tenant}/{vm}` — get one binding
+    /// - `PUT    /v1/iam/{tenant}/{vm}` — upsert a binding (body: VMIAMBinding JSON without createdBy)
+    /// - `DELETE /v1/iam/{tenant}/{vm}` — remove a binding
+    ///
+    /// Every mutation is RBAC-gated under the `iam` resource; the
+    /// actor identity (already resolved upstream) lands in the
+    /// binding's `createdBy` field so the audit trail is
+    /// cryptographically attributed to a specific operator key.
+    private func handleIAMAPI(
+        request: HTTPRequest,
+        components: [String],
+        actorIdentity: String
+    ) async -> HTTPResponse {
+        guard let store = iamBindingStore else {
+            return HTTPResponse.error(
+                message: "IAM binding store not configured on this server.",
+                statusCode: 404
+            )
+        }
+
+        // GET /v1/iam — list all bindings (platform-admin view).
+        if request.method == "GET" && components.count == 2 {
+            do {
+                let bindings = try await store.list(tenant: nil)
+                return HTTPResponse.ok(bindings)
+            } catch {
+                return internalError("Could not list IAM bindings", error)
+            }
+        }
+
+        // GET /v1/iam/{tenant} — list bindings for one tenant.
+        if request.method == "GET" && components.count == 3 {
+            let tenant = TenantID(components[2])
+            do {
+                let bindings = try await store.list(tenant: tenant)
+                return HTTPResponse.ok(bindings)
+            } catch {
+                return internalError("Could not list IAM bindings", error)
+            }
+        }
+
+        // {tenant}/{vm} — shared by GET/PUT/DELETE at components.count == 4.
+        guard components.count == 4 else {
+            return HTTPResponse.error(message: "Not found.", statusCode: 404)
+        }
+        let tenant = TenantID(components[2])
+        let vmName = components[3]
+
+        if request.method == "GET" {
+            do {
+                guard let b = try await store.binding(vmName: vmName, tenant: tenant) else {
+                    return HTTPResponse.error(message: "Not found.", statusCode: 404)
+                }
+                return HTTPResponse.ok(b)
+            } catch {
+                return internalError("Could not load IAM binding", error)
+            }
+        }
+
+        if request.method == "DELETE" {
+            do {
+                try await store.remove(vmName: vmName, tenant: tenant)
+                return HTTPResponse.ok(["status": "ok"])
+            } catch {
+                return internalError("Could not remove IAM binding", error)
+            }
+        }
+
+        if request.method == "PUT" {
+            guard let body = request.body else {
+                return HTTPResponse.error(
+                    message: "PUT requires a JSON body with fields: roleArn, [audience], [maxTTLSeconds], [additionalClaims].",
+                    statusCode: 400
+                )
+            }
+            struct PutBody: Decodable {
+                let roleArn: String
+                let audience: String?
+                let maxTTLSeconds: Int?
+                let additionalClaims: [String: String]?
+            }
+            guard let put = try? JSONDecoder().decode(PutBody.self, from: body) else {
+                return HTTPResponse.error(
+                    message: "Malformed body — expected {roleArn, [audience], [maxTTLSeconds], [additionalClaims]}.",
+                    statusCode: 400
+                )
+            }
+            guard VMIAMBindingValidation.isLikelyValidRoleARN(put.roleArn) else {
+                return HTTPResponse.error(
+                    message: "roleArn doesn't look like a valid cloud IAM role identifier.",
+                    statusCode: 400
+                )
+            }
+            let binding = VMIAMBinding(
+                vmName: vmName,
+                tenant: tenant,
+                roleArn: put.roleArn,
+                audience: put.audience ?? "sts.amazonaws.com",
+                maxTTLSeconds: put.maxTTLSeconds ?? 900,
+                additionalClaims: put.additionalClaims ?? [:],
+                createdAt: Date(),
+                createdBy: actorIdentity
+            )
+            do {
+                try await store.put(binding)
+                return HTTPResponse.ok(binding)
+            } catch {
+                return internalError("Could not persist IAM binding", error)
+            }
+        }
+
+        return HTTPResponse.error(message: "Method not allowed.", statusCode: 405)
+    }
+
+    /// Mints an OIDC workload-identity JWT for `vmName` in the
+    /// configured tenant, scoped to its IAM binding.
+    private func handleMintIdentityToken(vmName: String) async -> HTTPResponse {
+        guard let issuer = tokenIssuer else {
+            return HTTPResponse.error(
+                message: "Workload-identity issuer not configured on this server.",
+                statusCode: 404
+            )
+        }
+        guard let store = iamBindingStore else {
+            return HTTPResponse.error(
+                message: "IAM binding store not configured on this server.",
+                statusCode: 404
+            )
+        }
+        let binding: VMIAMBinding?
+        do {
+            binding = try await store.binding(vmName: vmName, tenant: tenantID)
+        } catch {
+            return internalError("Could not load IAM binding", error)
+        }
+        guard let b = binding else {
+            return HTTPResponse.error(
+                message: "No IAM binding for VM '\(vmName)' in tenant '\(tenantID.rawValue)'. Attach one with `spook iam attach`.",
+                statusCode: 404
+            )
+        }
+        do {
+            let token = try issuer.mintToken(
+                subject: "vm/\(b.vmName)",
+                audience: b.audience,
+                tenant: b.tenant,
+                additionalClaims: b.additionalClaims,
+                ttl: TimeInterval(b.maxTTLSeconds)
+            )
+            struct IdentityTokenResponse: Encodable {
+                let token: String
+                let roleArn: String
+                let audience: String
+                let expiresIn: Int
+            }
+            return HTTPResponse.ok(IdentityTokenResponse(
+                token: token,
+                roleArn: b.roleArn,
+                audience: b.audience,
+                expiresIn: b.maxTTLSeconds
+            ))
+        } catch {
+            return internalError("Could not mint identity token", error)
+        }
+    }
+
     private func handleTenantAPI(
         request: HTTPRequest,
         components: [String]

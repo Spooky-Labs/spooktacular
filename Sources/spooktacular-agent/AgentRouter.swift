@@ -184,7 +184,8 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
          ("GET", "/api/v1/apps/frontmost"),
          ("GET", "/api/v1/fs"),
          ("GET", "/api/v1/files"),
-         ("GET", "/api/v1/ports"):
+         ("GET", "/api/v1/ports"),
+         ("GET", "/api/v1/identity-token"):
         return .readonly
     default:
         return nil
@@ -453,6 +454,9 @@ func routeRequest(
     case ("GET", "/api/v1/ports"):
         response = handleListPorts()
         statusCode = 200
+    case ("GET", "/api/v1/identity-token"):
+        response = handleIdentityToken()
+        statusCode = 200
     default:
         response = errorResponse(message: "Not found.", statusCode: 404)
         statusCode = 404
@@ -573,6 +577,44 @@ private func handleHealth() -> Data {
     let uptime = Date().timeIntervalSince(agentStartTime)
     let health = HealthResponse(status: "ok", version: agentVersion, uptime: uptime)
     return jsonResponse(health)
+}
+
+// MARK: - Identity token (workload OIDC federation)
+
+/// Handles `GET /api/v1/identity-token`. Returns the
+/// cached workload-identity token that the agent's refresher
+/// populated from the control plane, along with the role ARN
+/// so the AWS / GCP / Azure SDK has both pieces of what it
+/// needs. Workloads inside the VM invoke this endpoint (or
+/// read `SPOOK_WORKLOAD_TOKEN_FILE`, see the reference
+/// shim script) to get short-lived credentials.
+///
+/// The refresh loop isn't this handler's responsibility —
+/// `WorkloadTokenRefresher` on the agent side (kicked off at
+/// boot when `SPOOK_CONTROLLER_VSOCK_CID` + binding metadata
+/// are present) polls the controller on a timer and keeps the
+/// file fresh. This handler just returns whatever the
+/// refresher last wrote.
+private func handleIdentityToken() -> Data {
+    struct IdentityTokenBody: Encodable {
+        let token: String
+        let roleArn: String
+        let audience: String
+        let expiresAt: Date
+    }
+    guard let snapshot = WorkloadTokenCache.shared.snapshot() else {
+        return errorResponse(
+            message: "No workload identity token available. The agent's WorkloadTokenRefresher is not configured or has not yet fetched a token from the control plane.",
+            statusCode: 503
+        )
+    }
+    let body = IdentityTokenBody(
+        token: snapshot.token,
+        roleArn: snapshot.roleArn,
+        audience: snapshot.audience,
+        expiresAt: snapshot.expiresAt
+    )
+    return jsonResponse(body)
 }
 
 // MARK: - Clipboard

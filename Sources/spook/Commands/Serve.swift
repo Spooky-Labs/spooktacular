@@ -396,6 +396,21 @@ extension Spook {
                 print(Style.warning("Host-identity key unavailable: \(error.localizedDescription) — agent-bound operations will fail until resolved."))
             }
 
+            // VM → IAM role bindings. Loaded alongside tenancy
+            // / RBAC config so the IAM CRUD endpoints have a
+            // persistent store. Absence is non-fatal — the
+            // /v1/iam endpoints return 404 and the
+            // /v1/vms/:name/identity-token path refuses to mint.
+            let iamBindingStore: (any VMIAMBindingStore)?
+            do {
+                iamBindingStore = try JSONVMIAMBindingStore(
+                    configPath: env["SPOOK_IAM_BINDINGS_CONFIG"]
+                )
+            } catch {
+                print(Style.warning("IAM binding store unavailable: \(error.localizedDescription). `spook iam` endpoints disabled."))
+                iamBindingStore = nil
+            }
+
             let server: HTTPAPIServer
             do {
                 server = try HTTPAPIServer(
@@ -409,6 +424,7 @@ extension Spook {
                     signatureVerifier: sigVerifier,
                     actorIdentityByKeyFingerprint: actorIdentityByFingerprint,
                     tokenIssuer: oidcIssuer,
+                    iamBindingStore: iamBindingStore,
                     insecureMode: insecure
                 )
             } catch let error as HTTPAPIServerError {
