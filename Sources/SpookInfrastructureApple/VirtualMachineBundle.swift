@@ -122,6 +122,25 @@ public struct VirtualMachineBundle: Sendable {
         let metadataData = try Self.encoder.encode(metadata)
         try metadataData.write(to: url.appendingPathComponent(metadataFileName), options: .atomic)
 
+        // Apply the recommended data-at-rest protection class —
+        // CUFUA on laptops, none on desktops / EC2 Mac hosts. See
+        // docs/DATA_AT_REST.md for the OWASP ASVS mapping and the
+        // full rationale. A failure here is logged but not fatal:
+        // the bundle is still usable, and `spook doctor --strict`
+        // surfaces the unprotected state so the operator can
+        // migrate it explicitly via `spook bundle protect <name>`.
+        let (protection, policy) = BundleProtection.recommendedPolicy()
+        do {
+            try BundleProtection.apply(protection, to: url)
+            Log.vm.info(
+                "Bundle '\(url.lastPathComponent, privacy: .public)' protection=\(protection.displayName, privacy: .public) policy=\(String(describing: policy), privacy: .public)"
+            )
+        } catch {
+            Log.vm.warning(
+                "Failed to apply protection class to '\(url.lastPathComponent, privacy: .public)': \(error.localizedDescription, privacy: .public). Bundle still created; run `spook bundle protect` to retry."
+            )
+        }
+
         Log.vm.info("Created bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
         return VirtualMachineBundle(url: url, spec: spec, metadata: metadata)
     }

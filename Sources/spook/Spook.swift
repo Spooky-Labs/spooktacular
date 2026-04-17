@@ -28,6 +28,7 @@ struct Spook: AsyncParsableCommand {
             Serve.self,
             Doctor.self,
             RBAC.self,
+            Bundle.self,
         ],
         defaultSubcommand: List.self
     )

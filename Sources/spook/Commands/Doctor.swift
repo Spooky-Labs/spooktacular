@@ -227,7 +227,46 @@ extension Spook {
             // Hardened Runtime + notarization on the spook binary
             results.append(checkCodesignHardening())
 
+            // Bundle protection class per the data-at-rest plan
+            results.append(checkBundleProtection())
+
             return results
+        }
+
+        /// On portable Macs, confirms VM bundles carry the
+        /// `.completeUntilFirstUserAuthentication` protection
+        /// class per docs/DATA_AT_REST.md. On desktops this is
+        /// expected to be `.none` and passes.
+        private func checkBundleProtection() -> CheckResult {
+            let (recommended, policy) = BundleProtection.recommendedPolicy()
+            let vmDir = SpooktacularPaths.vms
+            let fm = FileManager.default
+            guard fm.fileExists(atPath: vmDir.path),
+                  let contents = try? fm.contentsOfDirectory(at: vmDir, includingPropertiesForKeys: nil)
+            else {
+                return CheckResult(status: .pass, message: "Bundle protection: no bundles yet — new bundles will apply \(recommended.displayName) [\(policy)]")
+            }
+            let bundles = contents.filter { $0.pathExtension == "vm" }
+            guard !bundles.isEmpty else {
+                return CheckResult(status: .pass, message: "Bundle protection: no bundles yet — new bundles will apply \(recommended.displayName) [\(policy)]")
+            }
+
+            var unprotected: [String] = []
+            for bundle in bundles {
+                let current = (try? BundleProtection.current(at: bundle)) ?? .none
+                if current != recommended {
+                    unprotected.append(bundle.deletingPathExtension().lastPathComponent)
+                }
+            }
+            if unprotected.isEmpty {
+                return CheckResult(status: .pass, message: "Bundle protection: \(bundles.count) bundle(s) at \(recommended.displayName) [\(policy)]")
+            }
+            let list = unprotected.prefix(5).joined(separator: ", ")
+            let more = unprotected.count > 5 ? " (+\(unprotected.count - 5) more)" : ""
+            return CheckResult(
+                status: .warning,
+                message: "Bundle protection: \(unprotected.count) bundle(s) not at \(recommended.displayName): \(list)\(more). Run `spook bundle protect --all` to migrate."
+            )
         }
 
         /// Verifies `UF_APPEND` is set on the target file, or — if
