@@ -72,7 +72,7 @@ struct EnterpriseIntegrationTests {
     // MARK: - Merkle Audit
 
     @Test("MerkleAuditSink produces signed tree heads")
-    func merkleSTH() async {
+    func merkleSTH() async throws {
         let key = Curve25519.Signing.PrivateKey()
         let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signingKey: key)
         let record = AuditRecord(
@@ -80,7 +80,7 @@ struct EnterpriseIntegrationTests {
             resource: "h", action: "check", outcome: .success
         )
         await sink.record(record)
-        let sth = await sink.signedTreeHead()
+        let sth = try await sink.signedTreeHead()
         #expect(sth.treeSize == 1)
         #expect(!sth.rootHash.isEmpty)
         #expect(!sth.signature.isEmpty)

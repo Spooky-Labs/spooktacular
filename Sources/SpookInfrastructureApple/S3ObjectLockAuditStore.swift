@@ -95,6 +95,24 @@ public actor S3ObjectLockAuditStore: ImmutableAuditStore, AuditSink {
         return seq
     }
 
+    /// Flushes any pending records to S3 synchronously.
+    ///
+    /// Callers MUST invoke this during graceful shutdown — otherwise
+    /// up to `batchSize - 1` records that were returned from
+    /// ``append(_:)`` as "appended" will be lost on process exit.
+    /// The class can't rely on `deinit` because the Swift runtime
+    /// doesn't guarantee actor `deinit` runs before the process
+    /// terminates, and `deinit` is sync-only so it couldn't call
+    /// async `flushBatch()` anyway.
+    public func shutdown() async {
+        do {
+            try await flushBatch()
+        } catch {
+            let dropped = self.pendingRecords.count
+            Log.audit.error("S3ObjectLockAuditStore.shutdown flush failed — \(dropped) record(s) dropped: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     public func read(from: UInt64, count: Int) async throws -> [AuditRecord] { [] }
     public func recordCount() async throws -> UInt64 { sequenceNumber }
 

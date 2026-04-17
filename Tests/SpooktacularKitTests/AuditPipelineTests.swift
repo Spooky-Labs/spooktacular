@@ -91,17 +91,15 @@ struct AuditPipelineTests {
         }
 
 
-        @Test("signed tree head has valid signature")
-        func signedTreeHead() async {
+        @Test("signed tree head has valid RFC 6962-shaped signature")
+        func signedTreeHead() async throws {
             let key = Curve25519.Signing.PrivateKey()
             let publicKey = key.publicKey
             let (sink, _) = await AuditPipelineTests.populatedMerkleSink(count: 5, key: key)
 
-            let sth = await sink.signedTreeHead()
+            let sth = try await sink.signedTreeHead()
             #expect(sth.treeSize == 5)
             #expect(!sth.rootHash.isEmpty)
-            #expect(sth.signature != "SIGNING_FAILED",
-                    "Signing must succeed with a valid key")
 
             // Verify the Ed25519 signature.
             guard let sigData = Data(base64Encoded: sth.signature) else {
@@ -110,10 +108,13 @@ struct AuditPipelineTests {
             }
             let rootData = Data(hexString: sth.rootHash)
 
-            // Reconstruct the signed message: timestamp || treeSize || root
+            // Reconstruct the signed message per RFC 6962 §3.5:
+            //   version || signature_type || timestamp_ms || tree_size || sha256_root
             var message = Data()
-            let ts = UInt64(sth.timestamp.timeIntervalSince1970)
-            withUnsafeBytes(of: ts.bigEndian) { message.append(contentsOf: $0) }
+            message.append(0x00)                                              // version = v1
+            message.append(0x01)                                              // signature_type = tree_hash
+            let tsMs = UInt64(sth.timestamp.timeIntervalSince1970 * 1000)
+            withUnsafeBytes(of: tsMs.bigEndian) { message.append(contentsOf: $0) }
             withUnsafeBytes(of: UInt64(sth.treeSize).bigEndian) { message.append(contentsOf: $0) }
             message.append(rootData)
 

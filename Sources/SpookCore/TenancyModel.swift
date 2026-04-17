@@ -256,6 +256,37 @@ public struct AuditRecord: Sendable, Codable, Equatable {
         self.correlationID = correlationID
     }
 
+    /// Rebuilds an `AuditRecord` with all fields explicitly set,
+    /// including `id` and `timestamp`.
+    ///
+    /// Callers that chain or re-emit an existing record (e.g. the
+    /// Merkle audit sink enriching a record with tree-head metadata)
+    /// MUST preserve the original identity — otherwise the durable
+    /// store holds a record with a different `id` / `timestamp`
+    /// than the one the caller sent, breaking NIST SP 800-53 AU-3's
+    /// unique-traceability requirement.
+    public init(
+        id: String,
+        timestamp: Date,
+        actorIdentity: String,
+        tenant: TenantID,
+        scope: AuthScope,
+        resource: String,
+        action: String,
+        outcome: AuditOutcome,
+        correlationID: String? = nil
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.actorIdentity = actorIdentity
+        self.tenant = tenant
+        self.scope = scope
+        self.resource = resource
+        self.action = action
+        self.outcome = outcome
+        self.correlationID = correlationID
+    }
+
     /// Convenience initializer from an AuthorizationContext.
     public init(context: AuthorizationContext, outcome: AuditOutcome) {
         self.init(

@@ -71,9 +71,18 @@ public actor MerkleAuditSink: AuditSink {
         leaves.append(leafHash)
         rebuildTree()
 
-        // Forward the record with the current tree head appended
+        // Forward the record with the current tree head appended as
+        // correlationID metadata. Preserve the caller's id and
+        // timestamp — previously this layer minted a fresh UUID and
+        // a later timestamp, so the record that actually landed on
+        // disk had a different identity than the one the caller
+        // built. NIST SP 800-53 AU-3 requires unique traceability,
+        // and callers that retain the original for later lookup
+        // couldn't find it in the store.
         let root = treeRoot().hexString
         let chainedEntry = AuditRecord(
+            id: entry.id,
+            timestamp: entry.timestamp,
             actorIdentity: entry.actorIdentity,
             tenant: entry.tenant,
             scope: entry.scope,
@@ -88,30 +97,48 @@ public actor MerkleAuditSink: AuditSink {
     // MARK: - Signed Tree Head (NIST AU-10 Non-Repudiation)
 
     /// Produces a Signed Tree Head (STH) — the Merkle root signed
-    /// with the server's Ed25519 private key.
+    /// with the server's Ed25519 private key, byte-compatible with
+    /// RFC 6962 §3.5 `TreeHeadSignature` so external CT-style
+    /// verifiers can validate tree heads without reinventing our
+    /// signature format.
     ///
-    /// External verifiers can check the signature with the public key
-    /// to confirm the log state has not been tampered with.
-    public func signedTreeHead() -> SignedTreeHead {
+    /// ## TBS bytes (the structure we sign)
+    ///
+    /// ```
+    /// version (1 byte)           = 0           (v1)
+    /// signature_type (1 byte)    = 1           (tree_hash)
+    /// timestamp (8 bytes, BE)    milliseconds since Unix epoch
+    /// tree_size (8 bytes, BE)    leaf count
+    /// sha256_root_hash (32 bytes)
+    /// ```
+    ///
+    /// Earlier versions of this method signed a non-standard
+    /// concatenation (seconds instead of ms, no version /
+    /// signature-type domain separators). Any signed tree head
+    /// produced before this commit is non-verifiable by an RFC 6962
+    /// client — callers holding such signatures should treat them
+    /// as opaque blobs and rely on re-signing with the current key.
+    public func signedTreeHead() throws -> SignedTreeHead {
         let root = treeRoot()
         let treeSize = leaves.count
         let timestamp = Date()
 
-        // Sign: SHA256(timestamp || treeSize || root)
         var message = Data()
-        let ts = UInt64(timestamp.timeIntervalSince1970)
-        withUnsafeBytes(of: ts.bigEndian) { message.append(contentsOf: $0) }
+        message.append(0x00)                                  // version = v1
+        message.append(0x01)                                  // signature_type = tree_hash
+        let tsMillis = UInt64(timestamp.timeIntervalSince1970 * 1000)
+        withUnsafeBytes(of: tsMillis.bigEndian) { message.append(contentsOf: $0) }
         withUnsafeBytes(of: UInt64(treeSize).bigEndian) { message.append(contentsOf: $0) }
         message.append(root)
 
-        // OWASP: Never force-unwrap cryptographic operations.
-        // Propagate errors instead of crashing the process.
-        guard let signature = try? signingKey.signature(for: message) else {
-            return SignedTreeHead(
-                treeSize: treeSize, timestamp: timestamp,
-                rootHash: root.hexString, signature: "SIGNING_FAILED"
-            )
-        }
+        // Ed25519 signing is deterministic and should never fail for
+        // a valid key; a throw here indicates key corruption or an
+        // OS-level failure. Propagate so callers can decide whether
+        // to retry or fall back — previously a "SIGNING_FAILED"
+        // sentinel string looked like a valid-shape STH to
+        // downstream consumers, which is strictly worse than an
+        // exception.
+        let signature = try signingKey.signature(for: message)
 
         return SignedTreeHead(
             treeSize: treeSize,
