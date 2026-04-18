@@ -100,11 +100,13 @@ fi
 # Claim 2 — ASVS "N pass / M fail"
 # ─────────────────────────────────────────────────────────────
 if [[ -f "$asvs" ]]; then
-    # Count lines that begin with `| PASS` or `| ✓ ` in a
-    # markdown table row. Match both forms (some rows use the
-    # literal word, others the check glyph).
-    actual_pass=$(grep -cE '^\|[[:space:]]*(PASS|✓)' "$asvs" || true)
-    actual_fail=$(grep -cE '^\|[[:space:]]*(FAIL|✗)' "$asvs" || true)
+    # Verdicts live inside a markdown table row — the pattern is
+    # `| <requirement> | <description> | PASS | <evidence> |`.
+    # Match the verdict cell specifically (pipe-whitespace-word-
+    # whitespace-pipe) so prose mentions like
+    # ``Every `PASS` cites file evidence`` don't skew the count.
+    actual_pass=$(grep -cE '\|[[:space:]]+PASS[[:space:]]+\|' "$asvs" || true)
+    actual_fail=$(grep -cE '\|[[:space:]]+FAIL[[:space:]]+\|' "$asvs" || true)
 
     claimed_pass=$(
         grep -oE '[0-9]+ pass / [0-9]+ fail' "$readme" \
