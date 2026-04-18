@@ -62,12 +62,35 @@ jobs:
       # against the same macOS 26 runner cleanly. Matches the
       # canonical SwiftPM-on-macOS manual-build pattern per
       # https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-swift.
+      #
+      # Three CodeQL-specific hardeners on the command:
+      #
+      # `clean build` — CodeQL's extractor intercepts compiler
+      # invocations; an incremental build that reuses cached
+      # `.o` files emits zero invocations for those files and
+      # CodeQL reports them as "Not Extracted." Forcing a full
+      # recompile guarantees the extractor sees every Swift
+      # source.
+      #
+      # `CODE_SIGNING_ALLOWED=NO` — CodeQL's init wrapper is a
+      # documented source of CodeSign failures in Swift CI
+      # pipelines. Analysis doesn't need a signed binary, so we
+      # strip the signing step entirely and avoid the class of
+      # failures where the extractor environment mismatches
+      # the runner's Keychain.
+      #
+      # `-skipMacroValidation` — Swift 5.9+ macro packages
+      # prompt for trust outside a TTY; skipping validation
+      # prevents a silent hang during CodeQL's non-interactive
+      # run.
       - name: Build for CodeQL (manual build mode)
         run: |
           xcodebuild \
             -scheme Spooktacular \
             -destination 'platform=macOS' \
-            build
+            -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
