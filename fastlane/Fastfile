@@ -103,8 +103,31 @@ platform :mac do
 
   desc "Package the .app into a .pkg for App Store submission"
   lane :package do
-    installer_identity = ENV["INSTALLER_CERT_NAME"] ||
-      "3rd Party Mac Developer Installer: Perris Davis (#{TEAM_ID})"
+    # Query the keychain for the installer cert match installed,
+    # instead of string-interpolating a name. The previous
+    # `"3rd Party Mac Developer Installer: Perris Davis (#{TEAM_ID})"`
+    # fallback broke when `TEAM_ID` evaluated to an empty string
+    # (Ruby's `||` treats "" as truthy, so `ENV[..] || default`
+    # returns "" when FASTLANE_TEAM_ID is exported empty). Keychain
+    # lookup returns the authoritative name match actually created —
+    # `3rd Party Mac Developer Installer: <Person> (<TEAM_ID>)`
+    # including the real team ID — so the identity always matches
+    # what productbuild resolves.
+    installer_identity = ENV["INSTALLER_CERT_NAME"].to_s.empty? ?
+      sh(
+        "security find-identity -v | " \
+        "awk '/3rd Party Mac Developer Installer/ " \
+        "{ sub(/^[^\"]+\"/, \"\"); sub(/\".*$/, \"\"); print; exit }'",
+        log: false
+      ).strip :
+      ENV["INSTALLER_CERT_NAME"]
+
+    UI.user_error!(
+      "No '3rd Party Mac Developer Installer' cert in keychain — " \
+      "did the `signing` lane run before `package`?"
+    ) if installer_identity.empty?
+
+    UI.message("Packaging with installer identity: #{installer_identity}")
 
     Dir.chdir(PROJECT_ROOT) do
       sh("productbuild",
