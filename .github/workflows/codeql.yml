@@ -22,13 +22,37 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      # `build-mode: manual` per GitHub's documented fallback
+      # when autobuild fails with "We were unable to
+      # automatically build your code" —
+      # https://github.com/actions/starter-workflows/blob/main/code-scanning/codeql.yml
+      # states: "If the analyze step fails for one of the
+      # languages you are analyzing with 'We were unable to
+      # automatically build your code', modify the matrix above
+      # to set the build mode to 'manual' for that language."
+      #
+      # CodeQL's Swift autobuild is documented to search only
+      # for an Xcode project or workspace —
+      # https://docs.github.com/en/code-security/reference/code-scanning/codeql/codeql-build-options-and-steps-for-compiled-languages.
+      # This repo is SwiftPM-only (`Package.swift`, no
+      # `.xcodeproj`), so autobuild can't find a target and
+      # falls back to a partial `swift build` that doesn't link
+      # Apple's Virtualization framework correctly.
+      #
+      # The manual build step below runs the same `swift build`
+      # the `Test & Build` job already runs successfully on
+      # every PR — same runner, same SDK, same toolchain. This
+      # is the canonical pattern GitHub's starter workflow
+      # publishes for "autobuild didn't work, here's the
+      # manual equivalent."
       - name: Initialize CodeQL
         uses: github/codeql-action/init@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
         with:
           languages: swift
+          build-mode: manual
 
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
+      - name: Build for CodeQL (manual build mode)
+        run: swift build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
