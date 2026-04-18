@@ -74,15 +74,15 @@ fi
 # 4. Code sign
 # Use the signing identity from CODESIGN_IDENTITY env var if set
 # (match sets this via MATCH_CODESIGN_IDENTITY), otherwise ad-hoc.
+#
+# Entitlements are passed to `codesign --entitlements` below and
+# embedded into the signature. Do not copy the .entitlements file
+# into Contents/ — a loose .plist there is treated by codesign as
+# an unsigned subcomponent and triggers
+#   "code object is not signed at all
+#    In subcomponent: .../Contents/Entitlements.plist"
+# when the bundle root is signed afterwards.
 SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
-
-# Copy entitlements into bundle only with a real signing identity.
-# Loose .plist files inside the bundle cause "code object is not signed"
-# errors with ad-hoc signing because codesign treats them as unsigned
-# subcomponents.
-if [ "$SIGN_IDENTITY" != "-" ]; then
-    cp "$ENTITLEMENTS" "$CONTENTS/Entitlements.plist"
-fi
 echo "Code signing with identity: $SIGN_IDENTITY"
 # Sign inner binaries first, then the main executable, then the bundle.
 # Never use --deep — it masks signing order bugs.
