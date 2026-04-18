@@ -51,8 +51,23 @@ jobs:
           languages: swift
           build-mode: manual
 
+      # Use `xcodebuild` rather than `swift build` here, even
+      # though they both drive the same toolchain, because
+      # `xcodebuild` sets `SDKROOT` per the scheme's deployment
+      # target (macOS 14+). Under CodeQL's extractor, naked
+      # `swift build` picks up a stale SDK where
+      # `VZMacMachineIdentifier` (added in macOS 13) isn't
+      # visible — producing ~100 "cannot find in scope" errors
+      # while the `Xcode build` CI job runs the same command
+      # against the same macOS 26 runner cleanly. Matches the
+      # canonical SwiftPM-on-macOS manual-build pattern per
+      # https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-swift.
       - name: Build for CodeQL (manual build mode)
-        run: swift build
+        run: |
+          xcodebuild \
+            -scheme Spooktacular \
+            -destination 'platform=macOS' \
+            build
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@865f5f5c36632f18690a3d569fa0a764f2da0c3e # v3
