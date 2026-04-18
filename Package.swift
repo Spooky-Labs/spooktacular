@@ -123,5 +123,25 @@ let package = Package(
             dependencies: ["SpooktacularKit"],
             path: "Tests/SpooktacularKitTests"
         ),
+        // UI tests — XCUITest-based, capture App Store
+        // screenshots via `XCTAttachment` (see
+        // `Tests/SpooktacularUITests/ScreenshotTests.swift`).
+        //
+        // Declared here so `swift build --target
+        // SpooktacularUITests` catches compile regressions on
+        // every PR (accessibility-identifier renames, SwiftUI
+        // API changes). NOT runnable via `swift test` — Apple's
+        // limit: SwiftPM can't host an XCUITest bundle with a
+        // launchable app target, so `XCUIApplication().launch()`
+        // aborts at runtime. Actually running these tests (and
+        // producing screenshot artifacts) requires an
+        // `.xcodeproj` with a dedicated "UI Testing Bundle"
+        // target — tracked as a separate infrastructure task
+        // (xcodegen or tuist wiring).
+        .testTarget(
+            name: "SpooktacularUITests",
+            dependencies: ["SpooktacularKit"],
+            path: "Tests/SpooktacularUITests"
+        ),
     ]
 )

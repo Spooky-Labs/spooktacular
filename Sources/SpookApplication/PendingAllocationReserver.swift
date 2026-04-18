@@ -61,10 +61,17 @@ public actor PendingAllocationReserver {
     private var liveReservations: Set<UUID> = []
     private var tenantByReservation: [UUID: TenantID] = [:]
 
+    /// Single-process reserver. Counts are in-memory; use this
+    /// variant in single-host deployments or in tests.
     public init() {
         self.scope = .local
     }
 
+    /// Fleet-wide reserver backed by a
+    /// ``DistributedLockService``. Every reservation goes
+    /// through a lock held by `holder`, so two controllers
+    /// can't both see "0 pending" and over-allocate — the
+    /// classic TOCTOU race the reserver exists to close.
     public init(lock: any DistributedLockService, holder: String) {
         self.scope = .distributed(lock, holder: holder)
     }

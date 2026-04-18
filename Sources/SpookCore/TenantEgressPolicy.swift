@@ -127,6 +127,13 @@ public struct EgressRule: Sendable, Codable, Equatable {
 
 // MARK: - PF rule generation
 
+/// Generates macOS `pf(8)` rule snippets from a
+/// ``TenantEgressPolicy``.
+///
+/// Wrapped as an empty `enum` (no cases, no init) so the
+/// namespace cannot be instantiated — every entry point is
+/// `static`. This mirrors Apple's pattern for pure-function
+/// namespaces such as `CommandLine` / `MemoryLayout`.
 public enum TenantEgressPolicyPF {
 
     /// Emits a macOS PF rule snippet that enforces `policy` for

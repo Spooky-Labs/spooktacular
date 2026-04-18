@@ -201,6 +201,11 @@ public actor IssuedTokenLedger {
 
     private var records: [UUID: Record] = [:]
 
+    /// Creates an empty ledger. No persistence — the ledger
+    /// tracks currently-outstanding tokens for in-process
+    /// revocation and hygiene only. GitHub-side tokens still
+    /// expire at their server-side 1-hour TTL regardless of
+    /// ledger contents.
     public init() {}
 
     /// Records a new issued token and returns its opaque handle.

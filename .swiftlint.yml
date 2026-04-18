@@ -37,6 +37,18 @@ opt_in_rules:
   - unused_declaration
   - unused_import
   - yoda_condition
+  # Owns the "every public symbol has a docstring" quality
+  # contract, previously enforced by DocC
+  # `--warnings-as-errors`. SwiftLint catches this across every
+  # target (SpookCore, SpookApplication, SpookInfrastructureApple,
+  # SpooktacularKit, the executables, and every test helper
+  # marked public) — a stricter cross-section than DocC's
+  # per-target symbol graph ever enforced. See
+  # https://realm.github.io/SwiftLint/missing_docs.html for
+  # configuration options (`excludes_extensions: true`,
+  # `evaluate_effective_access_control_level: false` by
+  # default — both sensible).
+  - missing_docs
 
 disabled_rules:
   - line_length            # DocC comments can be long
