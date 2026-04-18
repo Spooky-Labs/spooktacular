@@ -297,7 +297,25 @@ public enum XMLCanonicalization {
     /// Reference semantics are used so the parser can populate children
     /// during SAX callbacks and so canonicalization can walk parent
     /// links to resolve inherited namespaces.
-    public final class Element {
+    // `@unchecked Sendable` because this class carries mutable
+    // `var`s (attributes, declaredNamespaces, children, weak
+    // parent) that the SAX builder populates during `parse(_:)`
+    // and nothing mutates afterward. Every caller in this repo
+    // treats the returned tree as immutable — SAML verification
+    // reads it within a single actor-isolated call and discards
+    // it. Marking it Sendable here unblocks Swift 6 strict-
+    // concurrency diagnostics that otherwise flag every pass
+    // from `SAMLAssertionVerifier.verify(token:)` (an `actor`)
+    // into its own private helpers as "sending a non-Sendable
+    // value risks data races", even though the send stays
+    // inside the same actor.
+    //
+    // Do not mutate an `Element` after `XMLCanonicalization.parse`
+    // returns — treat the tree as read-only. If a future caller
+    // wants to mutate post-parse, convert the vars to `let` and
+    // move the SAX fill-in to a separate builder type so this
+    // assertion stays honest.
+    public final class Element: @unchecked Sendable {
 
         /// Namespace URI (empty if none).
         public let namespaceURI: String

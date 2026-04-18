@@ -240,7 +240,18 @@ public enum TenantEgressPolicyPF {
                 )
                 var addr = sin.pointee.sin_addr
                 if inet_ntop(AF_INET, &addr, &buf, socklen_t(buf.count)) != nil {
-                    addresses.insert(String(cString: buf) + "/32")
+                    // Pointer form of `String(cString:)` is
+                    // still supported; the array form was
+                    // deprecated in Swift 6 in favor of
+                    // `String(decoding:as:)` after null-
+                    // truncation. We already wrote a known
+                    // null-terminated UTF-8 IP string via
+                    // `inet_ntop(3)`, so the pointer form is
+                    // both idiomatic and deprecation-free.
+                    let ipv4 = buf.withUnsafeBufferPointer {
+                        String(cString: $0.baseAddress!)
+                    }
+                    addresses.insert(ipv4 + "/32")
                 }
             case AF_INET6:
                 let sin6 = UnsafePointer<sockaddr_in6>(
@@ -248,7 +259,10 @@ public enum TenantEgressPolicyPF {
                 )
                 var addr6 = sin6.pointee.sin6_addr
                 if inet_ntop(AF_INET6, &addr6, &buf, socklen_t(buf.count)) != nil {
-                    addresses.insert(String(cString: buf) + "/128")
+                    let ipv6 = buf.withUnsafeBufferPointer {
+                        String(cString: $0.baseAddress!)
+                    }
+                    addresses.insert(ipv6 + "/128")
                 }
             default:
                 break

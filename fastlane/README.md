@@ -127,10 +127,10 @@ Run SwiftLint (strict) against Sources/ and Tests/
 
 Validate App Store metadata (description, release notes, keywords, …)
 
-### mac danger
+### mac pr_review
 
 ```sh
-[bundle exec] fastlane mac danger
+[bundle exec] fastlane mac pr_review
 ```
 
 Run Danger against the current pull request (PR hygiene + strict SwiftLint on changed files)
