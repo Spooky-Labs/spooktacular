@@ -20,7 +20,7 @@ import Security
 ///    shell history, and `launchctl print`. The caller gets a
 ///    warning when this path is taken.
 ///
-/// Throws ``GitHubTokenError/missing`` when none of the sources
+/// Throws ``GitHubTokenError.missing`` when none of the sources
 /// produced a value.
 ///
 /// Lives in SpooktacularKit so tests can exercise the resolution

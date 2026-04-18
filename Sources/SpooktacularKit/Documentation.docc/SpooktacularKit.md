@@ -143,23 +143,12 @@ try VirtualMachineConfiguration.applySpec(spec, to: config)
 
 - ``IPResolver``
 - ``SSHExecutor``
+- ``SSHError``
 
-<!--
-`SSHError`, `Log`, and `AccessibilityID` live in
-`SpookInfrastructureApple` / `SpookCore`. The `SpooktacularKit`
-umbrella re-exports their libraries but DocC's symbol graph
-for `--target SpooktacularKit` doesn't include dependency-
-target symbols, so linking them here fails
-`--warnings-as-errors`. Consumers who need the inline DocC
-should generate docs for the underlying target directly:
-
-    swift package generate-documentation --target SpookInfrastructureApple
-    swift package generate-documentation --target SpookCore
--->
 ### Logging
 
-Logging utilities live in the `SpookInfrastructureApple` target — generate docs for that target to see the `Log` namespace API.
+- ``Log``
 
 ### Accessibility
 
-Accessibility identifiers live in the `SpookCore` target — generate docs for that target to see `AccessibilityID`.
+- ``AccessibilityID``
