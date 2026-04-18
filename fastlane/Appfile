@@ -5,7 +5,20 @@
 # auto-loads that file before this one runs, so the env-var fallbacks
 # below pick up overrides without needing to edit this file.
 
+# Empty-string guard: fastlane auto-loads `fastlane/.env.default`,
+# which sets every FASTLANE_* var to "". Ruby's `||` treats "" as
+# truthy, so `ENV["X"] || default` returns "" in that case and
+# propagates an empty string into downstream `team_id:` and
+# `apple_id:` action args — producing errors like
+# "You must provide a value for the attribute 'contactEmail'" in
+# the beta lane. The helper below falls through to the default
+# when the env var is either unset or blank.
+def env_or(key, default)
+  value = ENV[key]
+  (value.nil? || value.empty?) ? default : value
+end
+
 app_identifier "com.spooktacular.app"
-apple_id(ENV["FASTLANE_APPLE_ID"] || "davisperris@gmail.com")
-team_id(ENV["FASTLANE_TEAM_ID"] || "4AM5US9G8B")
-itc_team_id(ENV["FASTLANE_ITC_TEAM_ID"] || "4AM5US9G8B")
+apple_id(env_or("FASTLANE_APPLE_ID", "davisperris@gmail.com"))
+team_id(env_or("FASTLANE_TEAM_ID", "4AM5US9G8B"))
+itc_team_id(env_or("FASTLANE_ITC_TEAM_ID", "4AM5US9G8B"))

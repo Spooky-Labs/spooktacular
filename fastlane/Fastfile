@@ -9,15 +9,26 @@ APP_IDENTIFIER = "com.spooktacular.app"
 # Developer contact fields — sourced from .env so forks can override
 # without editing the Fastfile. Defaults keep Spooktacular's canonical
 # submission flow working without configuration.
-TEAM_ID                 = ENV["FASTLANE_TEAM_ID"]                 || "4AM5US9G8B"
-ITC_TEAM_ID             = ENV["FASTLANE_ITC_TEAM_ID"]             || TEAM_ID
-APPLE_ID                = ENV["FASTLANE_APPLE_ID"]                || "davisperris@gmail.com"
-CONTACT_FIRST_NAME      = ENV["FASTLANE_CONTACT_FIRST_NAME"]      || "Perris"
-CONTACT_LAST_NAME       = ENV["FASTLANE_CONTACT_LAST_NAME"]       || "Davis"
-CONTACT_EMAIL           = ENV["FASTLANE_CONTACT_EMAIL"]           || APPLE_ID
-CONTACT_PHONE           = ENV["FASTLANE_CONTACT_PHONE"]           || "+1 (555) 000-0000"
-APP_REVIEW_EMAIL        = ENV["FASTLANE_APP_REVIEW_EMAIL"]        || APPLE_ID
-APP_FEEDBACK_EMAIL      = ENV["FASTLANE_APP_FEEDBACK_EMAIL"]      || APPLE_ID
+#
+# `env_or` treats both nil and empty string as "not set". Plain
+# `ENV["X"] || default` breaks when something exports `X=` (empty),
+# because Ruby's `||` treats "" as truthy and returns the empty
+# string — which App Store Connect then rejects with
+# "You must provide a value for the attribute 'contactEmail'".
+def env_or(key, default)
+  value = ENV[key]
+  (value.nil? || value.empty?) ? default : value
+end
+
+TEAM_ID                 = env_or("FASTLANE_TEAM_ID",                 "4AM5US9G8B")
+ITC_TEAM_ID             = env_or("FASTLANE_ITC_TEAM_ID",             TEAM_ID)
+APPLE_ID                = env_or("FASTLANE_APPLE_ID",                "davisperris@gmail.com")
+CONTACT_FIRST_NAME      = env_or("FASTLANE_CONTACT_FIRST_NAME",      "Perris")
+CONTACT_LAST_NAME       = env_or("FASTLANE_CONTACT_LAST_NAME",       "Davis")
+CONTACT_EMAIL           = env_or("FASTLANE_CONTACT_EMAIL",           APPLE_ID)
+CONTACT_PHONE           = env_or("FASTLANE_CONTACT_PHONE",           "+1 (555) 000-0000")
+APP_REVIEW_EMAIL        = env_or("FASTLANE_APP_REVIEW_EMAIL",        APPLE_ID)
+APP_FEEDBACK_EMAIL      = env_or("FASTLANE_APP_FEEDBACK_EMAIL",      APPLE_ID)
 
 platform :mac do
 
