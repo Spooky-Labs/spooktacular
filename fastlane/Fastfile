@@ -55,7 +55,20 @@ platform :mac do
       # crash silently skips the entire suite), which lets false-
       # green slip past CI. We tee the output and then require the
       # summary line — any deviation aborts the lane.
-      output = sh("swift", "test", "--parallel", log: true)
+      #
+      # `--skip SpooktacularUITests` excludes the XCUITest bundle
+      # from the RUN phase (the target is still compiled by the
+      # Xcode-build CI job for regression catches). SwiftPM can
+      # host an XCUITest target for compile-only use, but
+      # `XCUIApplication().launch()` aborts with SIGABRT at
+      # runtime because SwiftPM can't wire a test-host application
+      # bundle (Apple limit). Proper runtime coverage needs an
+      # `.xcodeproj` with a UI Testing Bundle target — tracked as
+      # a separate infra task.
+      output = sh(
+        "swift", "test", "--parallel", "--skip", "SpooktacularUITests",
+        log: true
+      )
       unless output.include?("Test run with") || output.include?("Executed ")
         UI.user_error!(
           "swift test produced no test-run summary — this is the " \
