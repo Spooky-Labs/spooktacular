@@ -89,7 +89,7 @@ public actor DynamoDBFleetSingleton: FleetSingleton {
         let request = PutItemRequest(
             tableName: tableName,
             item: [
-                "id":        .string(id),
+                "id": .string(id),
                 "expiresAt": .number("\(expires)"),
             ],
             conditionExpression: "attribute_not_exists(id) OR expiresAt < :now",

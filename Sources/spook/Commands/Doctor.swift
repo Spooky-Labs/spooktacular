@@ -555,10 +555,8 @@ extension Spook {
                 return warn(19, "SAML verifier — SPOOK_IDP_CONFIG missing/unreadable; skipping")
             }
             let providers: [[String: Any]]
-            if let array = obj as? [[String: Any]] { providers = array }
-            else if let dict = obj as? [String: Any],
-                    let array = dict["providers"] as? [[String: Any]] { providers = array }
-            else { providers = [] }
+            if let array = obj as? [[String: Any]] { providers = array } else if let dict = obj as? [String: Any],
+                    let array = dict["providers"] as? [[String: Any]] { providers = array } else { providers = [] }
 
             let samlProviders = providers.filter {
                 ($0["type"] as? String)?.lowercased() == "saml" || $0["saml"] != nil

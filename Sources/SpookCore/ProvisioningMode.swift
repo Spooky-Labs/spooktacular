@@ -19,8 +19,7 @@ import Foundation
 /// All interfaces (CLI, GUI, K8s) expose the same modes with
 /// the same descriptions.
 public enum ProvisioningMode: String, Sendable, Codable, Equatable,
-    Hashable, CaseIterable
-{
+    Hashable, CaseIterable {
     /// Injects a LaunchDaemon into the VM's disk before first boot.
     ///
     /// The script runs automatically when macOS starts — no SSH,

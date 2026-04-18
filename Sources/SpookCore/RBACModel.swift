@@ -114,10 +114,19 @@ public enum BuiltInRole {
         Permission(resource: "audit", action: "list"),
     ]
 
+    /// Read-only role. Grants `list` on every resource; grants
+    /// no mutating action. Suitable for dashboards, auditors,
+    /// and cross-tenant observability consumers.
     public static func viewer(tenant: TenantID = .default) -> Role {
         Role(id: "viewer", tenant: tenant, name: "Viewer", permissions: viewerPerms)
     }
 
+    /// CI-pipeline operator role. Builds on ``viewer(tenant:)``
+    /// with the four verbs an automated runner actually needs:
+    /// `vm:create`, `vm:start`, `vm:stop`, `pool:schedule`.
+    /// Does NOT grant `vm:delete` — that belongs to
+    /// ``platformAdmin(tenant:)`` because cleanup is a
+    /// platform-level decision (capacity, billing, audit).
     public static func ciOperator(tenant: TenantID = .default) -> Role {
         Role(id: "ci-operator", tenant: tenant, name: "CI Operator", permissions: viewerPerms.union([
             Permission(resource: "vm", action: "create"),
@@ -127,6 +136,12 @@ public enum BuiltInRole {
         ]))
     }
 
+    /// Platform administrator role for a tenant. Superset of
+    /// ``ciOperator(tenant:)`` plus destructive actions
+    /// (`vm:delete`, `pool:delete`, `host:drain`,
+    /// `runner-group:manage`) and tenant lifecycle (CRUD on
+    /// `/v1/tenants`). Assigned per-tenant; does NOT imply
+    /// cross-tenant reach.
     public static func platformAdmin(tenant: TenantID = .default) -> Role {
         Role(id: "platform-admin", tenant: tenant, name: "Platform Admin",
              permissions: ciOperator(tenant: tenant).permissions.union([
@@ -148,6 +163,14 @@ public enum BuiltInRole {
              ]))
     }
 
+    /// Security / audit administrator role. Read access across
+    /// every resource plus the audit-plane verbs
+    /// (`audit:export`, `audit:verify`, `host:rotate-certs`),
+    /// RBAC mutation (`role:assign`, `role:revoke`), and
+    /// tenant-roster read. Intentionally does NOT grant
+    /// `tenant:create`/`update`/`delete` — mutating tenancy
+    /// during an investigation is a platform-admin decision so
+    /// the audit trail stays clean.
     public static func securityAdmin(tenant: TenantID = .default) -> Role {
         Role(id: "security-admin", tenant: tenant, name: "Security Admin",
              permissions: viewerPerms.union([

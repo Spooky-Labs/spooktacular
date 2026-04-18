@@ -44,6 +44,13 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
+      # Belt + braces before we tell Apple "submit this for
+      # review": re-check the metadata against Apple's rules so a
+      # stale release note or a prohibited word doesn't fail the
+      # deliver call halfway through.
+      - name: fastlane lint_metadata
+        run: bundle exec fastlane lint_metadata
+
       - name: fastlane promote
         run: |
           bundle exec fastlane promote \

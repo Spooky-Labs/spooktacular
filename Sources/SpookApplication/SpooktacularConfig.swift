@@ -115,8 +115,8 @@ public struct SpooktacularConfig: Sendable, Codable {
             rbac: RBACConfig(configPath: env["SPOOK_RBAC_CONFIG"]),
             tls: TLSConfig(
                 certPath: tlsPath("SPOOK_TLS_CERT_PATH", "TLS_CERT_PATH"),
-                keyPath:  tlsPath("SPOOK_TLS_KEY_PATH",  "TLS_KEY_PATH"),
-                caPath:   tlsPath("SPOOK_TLS_CA_PATH",   "TLS_CA_PATH")
+                keyPath: tlsPath("SPOOK_TLS_KEY_PATH", "TLS_KEY_PATH"),
+                caPath: tlsPath("SPOOK_TLS_CA_PATH", "TLS_CA_PATH")
             ),
             audit: AuditConfig(
                 filePath: env["SPOOK_AUDIT_FILE"],

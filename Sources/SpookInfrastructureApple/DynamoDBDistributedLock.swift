@@ -290,11 +290,11 @@ public actor DynamoDBDistributedLock: DistributedLockService {
     /// that a required attribute like `expiresAt` was present.
     private func leaseItem(_ lease: DistributedLease) -> [String: DDBAttribute] {
         [
-            "name":         .string(lease.name),
-            "holder":       .string(lease.holder),
-            "acquiredAt":   .number("\(Int(lease.acquiredAt.timeIntervalSince1970))"),
-            "expiresAt":    .number("\(Int(lease.expiresAt.timeIntervalSince1970))"),
-            "version":      .number("\(lease.version)"),
+            "name": .string(lease.name),
+            "holder": .string(lease.holder),
+            "acquiredAt": .number("\(Int(lease.acquiredAt.timeIntervalSince1970))"),
+            "expiresAt": .number("\(Int(lease.expiresAt.timeIntervalSince1970))"),
+            "version": .number("\(lease.version)"),
             "renewalCount": .number("\(lease.renewalCount)"),
         ]
     }

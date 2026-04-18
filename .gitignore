@@ -16,6 +16,9 @@ Resources/icon_1024.png
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/test_output/
+# CI-only: `:get_api_key` decodes APPLE_API_KEY_P8 here at
+# fastlane-run time and deletes on lane exit. Never commit.
+fastlane/ci/
 
 # macOS
 .DS_Store

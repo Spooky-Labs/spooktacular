@@ -79,7 +79,7 @@ struct EnterpriseReadinessTests {
             // — the shape DynamoDBDistributedLock now validates at
             // init (Fortune-20 hardening). Use a syntactically valid
             // fake that never grants anything real.
-            setenv("AWS_ACCESS_KEY_ID",     "AKIAEXAMPLETESTKEY00", 1)
+            setenv("AWS_ACCESS_KEY_ID", "AKIAEXAMPLETESTKEY00", 1)
             setenv("AWS_SECRET_ACCESS_KEY", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", 1)
             defer {
                 unsetenv("AWS_ACCESS_KEY_ID")

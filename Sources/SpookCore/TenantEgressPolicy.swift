@@ -75,6 +75,12 @@ public struct TenantEgressPolicy: Sendable, Codable, Equatable {
 /// denies outbound traffic from the tenant's VM.
 public struct EgressRule: Sendable, Codable, Equatable {
 
+    // The trailing underscore is deliberate — `Protocol` is a
+    // Swift keyword, and this enum is the *network* protocol in
+    // a pf(8) rule. Renaming to `NetworkProtocol` would read
+    // fine at the declaration site but hurt the call-site noun
+    // (`rule.proto: .tcp` is clearer than `rule.networkProto`).
+    // swiftlint:disable:next type_name
     public enum Protocol_: String, Sendable, Codable {
         case tcp, udp, any
     }
@@ -121,6 +127,13 @@ public struct EgressRule: Sendable, Codable, Equatable {
 
 // MARK: - PF rule generation
 
+/// Generates macOS `pf(8)` rule snippets from a
+/// ``TenantEgressPolicy``.
+///
+/// Wrapped as an empty `enum` (no cases, no init) so the
+/// namespace cannot be instantiated — every entry point is
+/// `static`. This mirrors Apple's pattern for pure-function
+/// namespaces such as `CommandLine` / `MemoryLayout`.
 public enum TenantEgressPolicyPF {
 
     /// Emits a macOS PF rule snippet that enforces `policy` for
@@ -216,7 +229,7 @@ public enum TenantEgressPolicyPF {
             ai_protocol: 0, ai_addrlen: 0, ai_canonname: nil,
             ai_addr: nil, ai_next: nil
         )
-        var result: UnsafeMutablePointer<addrinfo>? = nil
+        var result: UnsafeMutablePointer<addrinfo>?
         let status = hostname.withCString { ptr in
             getaddrinfo(ptr, nil, &hints, &result)
         }
@@ -234,7 +247,18 @@ public enum TenantEgressPolicyPF {
                 )
                 var addr = sin.pointee.sin_addr
                 if inet_ntop(AF_INET, &addr, &buf, socklen_t(buf.count)) != nil {
-                    addresses.insert(String(cString: buf) + "/32")
+                    // Pointer form of `String(cString:)` is
+                    // still supported; the array form was
+                    // deprecated in Swift 6 in favor of
+                    // `String(decoding:as:)` after null-
+                    // truncation. We already wrote a known
+                    // null-terminated UTF-8 IP string via
+                    // `inet_ntop(3)`, so the pointer form is
+                    // both idiomatic and deprecation-free.
+                    let ipv4 = buf.withUnsafeBufferPointer {
+                        String(cString: $0.baseAddress!)
+                    }
+                    addresses.insert(ipv4 + "/32")
                 }
             case AF_INET6:
                 let sin6 = UnsafePointer<sockaddr_in6>(
@@ -242,7 +266,10 @@ public enum TenantEgressPolicyPF {
                 )
                 var addr6 = sin6.pointee.sin6_addr
                 if inet_ntop(AF_INET6, &addr6, &buf, socklen_t(buf.count)) != nil {
-                    addresses.insert(String(cString: buf) + "/128")
+                    let ipv6 = buf.withUnsafeBufferPointer {
+                        String(cString: $0.baseAddress!)
+                    }
+                    addresses.insert(ipv6 + "/128")
                 }
             default:
                 break

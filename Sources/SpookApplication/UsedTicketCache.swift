@@ -160,9 +160,14 @@ public final class UsedTicketCache: @unchecked Sendable {
 /// the backend's single-writer guarantee. Operators who need
 /// N-use tickets must either mint N distinct JTIs or stick
 /// with the per-agent cache.
-public actor FleetUsedTicketCache: Sendable {
+public actor FleetUsedTicketCache {
     private let singleton: any FleetSingleton
 
+    /// Wraps a ``FleetSingleton`` backend so every ticket
+    /// consumption query travels through the shared store's
+    /// atomic conditional write. Pass a
+    /// ``DynamoDBFleetSingleton`` in production or an
+    /// ``InProcessFleetSingleton`` in unit tests.
     public init(singleton: any FleetSingleton) {
         self.singleton = singleton
     }

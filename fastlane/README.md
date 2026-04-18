@@ -21,7 +21,7 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 [bundle exec] fastlane mac test
 ```
 
-Run all unit tests
+Run all unit tests (parallel) with a false-green guard
 
 ### mac build
 
@@ -71,6 +71,14 @@ Build, package, and upload to TestFlight
 
 Build, notarize, and submit to the App Store
 
+### mac promote
+
+```sh
+[bundle exec] fastlane mac promote
+```
+
+Promote an existing TestFlight build to App Store review (no rebuild)
+
 ### mac homebrew
 
 ```sh
@@ -79,13 +87,21 @@ Build, notarize, and submit to the App Store
 
 Build, notarize, and package for Homebrew distribution
 
+### mac ui_tests
+
+```sh
+[bundle exec] fastlane mac ui_tests
+```
+
+Run UI tests and extract XCTAttachment screenshots into fastlane/screenshots/en-US/
+
 ### mac screenshots
 
 ```sh
 [bundle exec] fastlane mac screenshots
 ```
 
-Capture and process App Store screenshots
+Capture, process, and frame App Store screenshots (requires an interactive macOS session)
 
 ### mac generate_docs
 
@@ -101,7 +117,23 @@ Generate DocC documentation
 [bundle exec] fastlane mac lint
 ```
 
-Validate App Store metadata
+Run SwiftLint (strict) against Sources/ and Tests/
+
+### mac lint_metadata
+
+```sh
+[bundle exec] fastlane mac lint_metadata
+```
+
+Validate App Store metadata (description, release notes, keywords, …)
+
+### mac pr_review
+
+```sh
+[bundle exec] fastlane mac pr_review
+```
+
+Run Danger against the current pull request (PR hygiene + strict SwiftLint on changed files)
 
 ### mac register_app
 
@@ -109,7 +141,7 @@ Validate App Store metadata
 [bundle exec] fastlane mac register_app
 ```
 
-Register app identifier in Apple Developer Portal and App Store Connect
+Register app identifier in Apple Developer Portal
 
 ----
 

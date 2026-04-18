@@ -232,8 +232,7 @@ public actor RunnerPoolManager {
 
         // Pre-warm: if all active runners are busy, add one more.
         if desired.preWarm, activeCount > 0, busyCount == activeCount,
-           activeCount < desired.maxRunners
-        {
+           activeCount < desired.maxRunners {
             // Only add if we haven't already added runners above that would
             // satisfy this (e.g., if we scaled up, there are now non-busy
             // runners pending creation).

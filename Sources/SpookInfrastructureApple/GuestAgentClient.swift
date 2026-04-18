@@ -595,5 +595,4 @@ private struct GuestAgentEnvelope<T: Decodable>: Decodable {
 
 /// A placeholder type for responses with no meaningful body.
 struct GuestEmptyResponse: Decodable {
-    init() {}
 }

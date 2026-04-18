@@ -69,7 +69,17 @@ public enum XMLCanonicalization {
     /// well-formed SAML assertions use ≤ 5 entity references
     /// (mostly `&amp;`) and ≤ 10 levels of nesting. See
     /// https://developer.apple.com/documentation/foundation/xmlparser .
+    /// Ceiling on how many internal entity declarations the
+    /// parser accepts before aborting. Defends against the
+    /// "billion laughs" class of XML bombs where a handful of
+    /// nested `&entity;` expansions resolve to gigabytes of
+    /// output.
     public static let maxEntityExpansions = 100
+
+    /// Ceiling on element nesting depth before the parser
+    /// aborts. Defends against quadratic-blowup attacks that
+    /// rely on unbounded nesting; well-formed SAML assertions
+    /// rarely exceed depth 6.
     public static let maxElementDepth = 10
 
     /// Parses XML bytes into a canonicalization-ready tree.
@@ -297,7 +307,25 @@ public enum XMLCanonicalization {
     /// Reference semantics are used so the parser can populate children
     /// during SAX callbacks and so canonicalization can walk parent
     /// links to resolve inherited namespaces.
-    public final class Element {
+    // `@unchecked Sendable` because this class carries mutable
+    // `var`s (attributes, declaredNamespaces, children, weak
+    // parent) that the SAX builder populates during `parse(_:)`
+    // and nothing mutates afterward. Every caller in this repo
+    // treats the returned tree as immutable — SAML verification
+    // reads it within a single actor-isolated call and discards
+    // it. Marking it Sendable here unblocks Swift 6 strict-
+    // concurrency diagnostics that otherwise flag every pass
+    // from `SAMLAssertionVerifier.verify(token:)` (an `actor`)
+    // into its own private helpers as "sending a non-Sendable
+    // value risks data races", even though the send stays
+    // inside the same actor.
+    //
+    // Do not mutate an `Element` after `XMLCanonicalization.parse`
+    // returns — treat the tree as read-only. If a future caller
+    // wants to mutate post-parse, convert the vars to `let` and
+    // move the SAX fill-in to a separate builder type so this
+    // assertion stays honest.
+    public final class Element: @unchecked Sendable {
 
         /// Namespace URI (empty if none).
         public let namespaceURI: String
@@ -350,17 +378,32 @@ public enum XMLCanonicalization {
 
     /// A node in the canonicalization tree — either an element or text.
     public enum Node {
+        /// A child element subtree.
         case element(Element)
+        /// A text node whose `String` value is the canonical
+        /// UTF-8 content between element boundaries.
         case text(String)
     }
 
     /// An attribute on an ``XMLCanonicalization/Element``.
     public struct Attribute {
+        /// The attribute's namespace URI, or empty string if the
+        /// attribute has no explicit namespace.
         public let namespaceURI: String
+        /// The local (unqualified) attribute name, e.g. `"ID"`.
         public let localName: String
+        /// The namespace prefix as it appeared in the source
+        /// document, or `nil` if the attribute used the default
+        /// namespace.
         public let prefix: String?
+        /// The attribute's string value, already unescaped from
+        /// XML entity form.
         public let value: String
 
+        /// Creates an attribute value from its four canonical
+        /// parts. `prefix` is preserved verbatim from the source
+        /// document so C14N serialization can emit it
+        /// round-trip.
         public init(namespaceURI: String, localName: String, prefix: String?, value: String) {
             self.namespaceURI = namespaceURI
             self.localName = localName
@@ -368,6 +411,9 @@ public enum XMLCanonicalization {
             self.value = value
         }
 
+        /// Qualified name — `"prefix:localName"` if the
+        /// attribute is in a non-default namespace, otherwise
+        /// just the local name.
         public var qualifiedName: String {
             if let prefix, !prefix.isEmpty {
                 return "\(prefix):\(localName)"

@@ -132,7 +132,7 @@ public enum VsockProvisioner {
             throw error
         } catch let error as GuestAgentError {
             Log.provision.warning(
-                "Guest agent error: \(error.localizedDescription ?? "unknown", privacy: .public)"
+                "Guest agent error: \(error.localizedDescription, privacy: .public)"
             )
             try await sshFallback(
                 fallbackIP: fallbackIP, script: script,

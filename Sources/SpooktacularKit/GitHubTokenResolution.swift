@@ -29,6 +29,23 @@ import Security
 /// they should work standalone.
 public enum GitHubTokenResolver {
 
+    /// Resolves a GitHub runner registration token from the
+    /// four sources documented on the enum. Returns the
+    /// trimmed token string on success, throws
+    /// ``GitHubTokenError`` when no source produces a value.
+    ///
+    /// - Parameters:
+    ///   - flagValue: value of `--github-token`, if any. Lowest
+    ///     precedence — visible in `ps` and shell history, so
+    ///     the caller gets a warning when this path wins.
+    ///   - filePath: path to a file holding the token on its
+    ///     own line. Content is read and trimmed of whitespace.
+    ///   - keychainAccount: account name under service
+    ///     `com.spooktacular.github`. Most-protected path.
+    ///   - environment: process environment. Defaults to the
+    ///     current process; override in tests.
+    /// - Returns: the resolved token, trimmed, never empty.
+    /// - Throws: ``GitHubTokenError`` on every failure mode.
     public static func resolve(
         flagValue: String?,
         filePath: String?,

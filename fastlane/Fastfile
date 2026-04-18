@@ -55,7 +55,20 @@ platform :mac do
       # crash silently skips the entire suite), which lets false-
       # green slip past CI. We tee the output and then require the
       # summary line — any deviation aborts the lane.
-      output = sh("swift", "test", "--parallel", log: true)
+      #
+      # `--skip SpooktacularUITests` excludes the XCUITest bundle
+      # from the RUN phase (the target is still compiled by the
+      # Xcode-build CI job for regression catches). SwiftPM can
+      # host an XCUITest target for compile-only use, but
+      # `XCUIApplication().launch()` aborts with SIGABRT at
+      # runtime because SwiftPM can't wire a test-host application
+      # bundle (Apple limit). Proper runtime coverage needs an
+      # `.xcodeproj` with a UI Testing Bundle target — tracked as
+      # a separate infra task.
+      output = sh(
+        "swift", "test", "--parallel", "--skip", "SpooktacularUITests",
+        log: true
+      )
       unless output.include?("Test run with") || output.include?("Executed ")
         UI.user_error!(
           "swift test produced no test-run summary — this is the " \
@@ -348,10 +361,52 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # Screenshots — Capture App Store screenshots
+  # UI Tests — XCUITest via `scan`, then extract screenshot
+  # attachments from the .xcresult bundle.
   # ──────────────────────────────────────────────────
 
-  desc "Capture and process App Store screenshots"
+  desc "Run UI tests and extract XCTAttachment screenshots into fastlane/screenshots/en-US/"
+  #
+  # This lane works headlessly — no display required — because
+  # XCUITest captures each screen via `XCTAttachment` inside the
+  # test run (see Tests/SpooktacularUITests/ScreenshotTests.swift).
+  # CI (GitHub Actions macos-26) and a developer's laptop follow
+  # the same path, so screenshots produced on a PR look the same
+  # as the ones a dev would commit locally.
+  lane :ui_tests do
+    scan(
+      scheme: "Spooktacular",
+      destination: "platform=macOS",
+      only_testing: ["SpooktacularUITests"],
+      result_bundle: true,
+      output_directory: "./fastlane/test_output",
+      output_types: "html,junit",
+      fail_build: true
+    )
+
+    Dir.chdir(PROJECT_ROOT) do
+      xcresult = Dir.glob("fastlane/test_output/*.xcresult").first
+      UI.user_error!("no .xcresult bundle produced by scan") if xcresult.nil?
+      sh("./scripts/extract-xcresult-screenshots.sh",
+         xcresult,
+         "./fastlane/screenshots/en-US")
+    end
+  end
+
+  # ──────────────────────────────────────────────────
+  # Screenshots — App Store artwork pipeline (local dev)
+  # ──────────────────────────────────────────────────
+
+  desc "Capture, process, and frame App Store screenshots (requires an interactive macOS session)"
+  #
+  # Local-dev counterpart to `:ui_tests`. Uses
+  # `scripts/capture-screenshots.sh` (screencapture + osascript) to
+  # produce un-framed App Store-sized PNGs, then runs frameit to
+  # wrap them in device chrome for App Store submission.
+  #
+  # Skipped on CI because screencapture requires a display.
+  # Reviewers should use the `ui_tests` lane output, which is
+  # uploaded as a PR artifact.
   lane :screenshots do
     build
 
@@ -361,7 +416,7 @@ platform :mac do
     end
 
     frameit(
-      path: "./screenshots",
+      path: "./fastlane/screenshots",
       white: false,
       force_orientation_block: proc { |_| :portrait }
     )
@@ -381,15 +436,85 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # Lint — Validate metadata
+  # Lint — SwiftLint + App Store metadata
   # ──────────────────────────────────────────────────
 
-  desc "Validate App Store metadata"
+  desc "Run SwiftLint (strict) against Sources/ and Tests/"
+  #
+  # Thin wrapper around fastlane's built-in `swiftlint` action
+  # (https://docs.fastlane.tools/actions/swiftlint) so CI and a
+  # contributor's laptop share one entry point and the SwiftLint
+  # version used is the one in Homebrew on the runner.
+  #
+  # No `config_file:` — SwiftLint auto-discovers
+  # `.swiftlint.yml` at the repo root and the nested
+  # `Tests/.swiftlint.yml` (which relaxes a handful of rules that
+  # don't carry quality signal in test code). Passing
+  # `config_file:` would disable that discovery per the SwiftLint
+  # README.
   lane :lint do
+    swiftlint(
+      mode: :lint,
+      strict: true,
+      raise_if_swiftlint_error: true
+    )
+  end
+
+  desc "Validate App Store metadata (description, release notes, keywords, …)"
+  #
+  # Runs before `:promote` so deliver doesn't reject the push on
+  # a trailing whitespace or the word \"Android\". The underlying
+  # `precheck` / `check_app_store_metadata` action hits App
+  # Store Connect to pull current live metadata for the diff, so
+  # it needs an authenticated API key — we feed it the same
+  # ``get_api_key`` helper every publish lane uses.
+  #
+  # Gracefully skipped when the ASC API key is missing or
+  # malformed (common symptom: "invalid curve name" from OpenSSL
+  # when the `APPLE_API_KEY_P8` secret isn't correctly
+  # base64-encoded). The release lanes will re-surface the same
+  # credential error at publish time, so we don't silently paper
+  # over it — just don't block the lint job on upstream
+  # credential state.
+  lane :lint_metadata do
+    unless ENV["APPLE_API_KEY_ID"] && ENV["APPLE_API_ISSUER_ID"] && ENV["APPLE_API_KEY_P8"]
+      UI.important("APPLE_API_* env vars unset — skipping App Store metadata precheck.")
+      next
+    end
+    api_key = begin
+      get_api_key
+    rescue => e
+      UI.important("App Store Connect API key is invalid (#{e.message}). " \
+                   "Skipping metadata precheck; the release lane will re-raise " \
+                   "this at publish time where it belongs.")
+      next
+    end
     check_app_store_metadata(
+      api_key: api_key,
       default_rule_level: :error,
       negative_apple_sentiment: true,
       placeholder_text: true
+    )
+  end
+
+  desc "Run Danger against the current pull request (PR hygiene + strict SwiftLint on changed files)"
+  #
+  # Named `pr_review` to avoid shadowing the built-in `danger`
+  # action (fastlane refuses a lane whose name matches an
+  # action's name). Wraps fastlane's `danger` action — which
+  # auto-uses `bundle exec` when a Gemfile is present — with the
+  # Dangerfile at the repo root and the danger-swiftlint gem.
+  #
+  # Invoked from `.github/workflows/ci.yml` only on
+  # pull_request events so the strict force-unwrap rule runs on
+  # the contributor's diff and never on push-to-main (which has
+  # no PR context for Danger to read).
+  lane :pr_review do
+    danger(
+      github_api_token: ENV["GITHUB_TOKEN"] || ENV["DANGER_GITHUB_API_TOKEN"],
+      fail_on_errors: true,
+      new_comment: false,
+      remove_previous_comments: true
     )
   end
 
@@ -415,14 +540,85 @@ platform :mac do
   # Helpers
   # ──────────────────────────────────────────────────
 
+  # Resolves an App Store Connect API key (.p8) in the form
+  # `app_store_connect_api_key` + the underlying `spaceship`
+  # token can actually parse.
+  #
+  # Why this is not a one-line call to `app_store_connect_api_key`:
+  #
+  # The canonical pattern (key_content: ENV["APPLE_API_KEY_P8"],
+  # is_key_content_base64: true) is broken on GitHub Actions —
+  # see fastlane/fastlane#29478. The secret's base64 payload
+  # survives intact through the `env:` block, but OpenSSL fails
+  # to parse it back into a P-256 EC key, producing
+  # "OpenSSL::PKey::ECError: invalid curve name" right at the
+  # JWT-signing moment. The workaround that the thread
+  # consistently lands on (and that we adopt here) is to
+  # write the decoded .p8 to disk ourselves and hand fastlane
+  # a `key_filepath:` — which goes through a completely
+  # different `OpenSSL::PKey.read` path that *does* work.
+  #
+  # Callers keep their environment variable layout unchanged:
+  # APPLE_API_KEY_ID, APPLE_API_ISSUER_ID, and a base64-encoded
+  # APPLE_API_KEY_P8 (produced by
+  # `cat AuthKey_XXXXXXXXXX.p8 | openssl base64 -A`). The
+  # .p8 we write to disk is owner-only (mode 0600), lives under
+  # `fastlane/ci/AuthKey.p8` inside the repo's work tree so a
+  # single-run CI job's cleanup step can `rm -rf fastlane/ci`
+  # without thinking about paths, and is never committed
+  # (`.gitignore` excludes the directory).
   private_lane :get_api_key do
+    filepath = ensure_api_key_on_disk
     app_store_connect_api_key(
       key_id: ENV["APPLE_API_KEY_ID"],
       issuer_id: ENV["APPLE_API_ISSUER_ID"],
-      key_content: ENV["APPLE_API_KEY_P8"],
-      is_key_content_base64: true,
+      key_filepath: filepath,
       in_house: false
     )
+  end
+
+  # Decodes APPLE_API_KEY_P8 (base64) → `fastlane/ci/AuthKey.p8`
+  # exactly once per fastlane run. Returns the absolute path.
+  # Idempotent: re-running is a no-op that returns the same
+  # path. The caller (``get_api_key``) is responsible for
+  # feeding the path to the action; this lane does not call
+  # `app_store_connect_api_key` so it's safe to invoke from
+  # anywhere without starting a spaceship session.
+  private_lane :ensure_api_key_on_disk do
+    UI.user_error!("APPLE_API_KEY_ID is unset") if (ENV["APPLE_API_KEY_ID"] || "").empty?
+    UI.user_error!("APPLE_API_ISSUER_ID is unset") if (ENV["APPLE_API_ISSUER_ID"] || "").empty?
+
+    if ENV["APPLE_API_KEY_FILEPATH"] && File.exist?(ENV["APPLE_API_KEY_FILEPATH"])
+      next ENV["APPLE_API_KEY_FILEPATH"]
+    end
+    UI.user_error!("APPLE_API_KEY_P8 is unset") if (ENV["APPLE_API_KEY_P8"] || "").empty?
+
+    require 'base64'
+    dir = File.expand_path("./fastlane/ci", PROJECT_ROOT)
+    path = File.join(dir, "AuthKey.p8")
+
+    FileUtils.mkdir_p(dir)
+    raw = ENV["APPLE_API_KEY_P8"]
+    # `strict_decode64` would reject base64 that contains
+    # newlines — which some CI systems introduce when the
+    # secret was encoded without `openssl base64 -A`. Use
+    # the lenient `decode64` so both single-line and
+    # multi-line base64 inputs produce the same .p8 bytes.
+    pem = Base64.decode64(raw)
+
+    unless pem.include?("BEGIN PRIVATE KEY") || pem.include?("BEGIN EC PRIVATE KEY")
+      UI.user_error!(
+        "APPLE_API_KEY_P8 did not decode to a PEM-formatted .p8 key. " \
+        "Re-encode with `cat AuthKey_XXXXXXXXXX.p8 | openssl base64 -A` " \
+        "and update the secret."
+      )
+    end
+
+    File.write(path, pem)
+    File.chmod(0o600, path)
+    ENV["APPLE_API_KEY_FILEPATH"] = path
+    UI.message("Wrote App Store Connect API key → #{path} (mode 0600)")
+    path
   end
 
   # Shared text — defined once, used everywhere.

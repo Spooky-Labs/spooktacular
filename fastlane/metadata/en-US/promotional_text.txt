@@ -1,1 +1,1 @@
-Create, provision, and orchestrate macOS VMs with 4 provisioning modes, ephemeral CI runners, a Kubernetes operator, and an HTTP API.
+Double your Mac capacity. Same hardware. Two macOS VMs per Mac, ephemeral CI runners, Kubernetes operator, RFC 6962 audit, MIT licensed.

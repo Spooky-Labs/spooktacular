@@ -47,6 +47,12 @@ public struct SecurityControl: Codable, Sendable, Equatable {
 ///
 /// Order inside each category is alphabetical for stable output.
 public enum SecurityControlInventory {
+    /// Flat list of every shipped security control in the
+    /// codebase, keyed for audit review. Each entry points at
+    /// the implementation file and the test file proving the
+    /// control's behavior — `spook security-controls` renders
+    /// this list verbatim so auditors can spot-check the
+    /// evidence chain.
     public static let all: [SecurityControl] = [
 
         // MARK: Authentication & Identity

@@ -90,7 +90,6 @@ struct AuditPipelineTests {
             #expect(verified, "Inclusion proof must verify for leaf \(leafIndex)")
         }
 
-
         @Test("signed tree head has valid RFC 6962-shaped signature")
         func signedTreeHead() async throws {
             let key = P256.Signing.PrivateKey()

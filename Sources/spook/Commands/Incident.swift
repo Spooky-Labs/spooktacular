@@ -96,11 +96,11 @@ extension Spook {
                 // Audit
                 print("")
                 Style.header("Audit configuration")
-                Style.field("JSONL file",      env["SPOOK_AUDIT_FILE"] ?? "(unset)")
+                Style.field("JSONL file", env["SPOOK_AUDIT_FILE"] ?? "(unset)")
                 Style.field("Immutable append", env["SPOOK_AUDIT_IMMUTABLE_PATH"] ?? "(unset)")
-                Style.field("Merkle signing",   env["SPOOK_AUDIT_MERKLE"] == "1" ? "enabled" : "disabled")
-                Style.field("S3 Object Lock",   env["SPOOK_AUDIT_S3_BUCKET"] ?? "(unset)")
-                Style.field("SIEM webhook",     env["SPOOK_AUDIT_WEBHOOK_URL"] ?? "(unset)")
+                Style.field("Merkle signing", env["SPOOK_AUDIT_MERKLE"] == "1" ? "enabled" : "disabled")
+                Style.field("S3 Object Lock", env["SPOOK_AUDIT_S3_BUCKET"] ?? "(unset)")
+                Style.field("SIEM webhook", env["SPOOK_AUDIT_WEBHOOK_URL"] ?? "(unset)")
 
                 // OIDC / IAM
                 print("")

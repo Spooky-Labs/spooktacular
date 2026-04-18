@@ -64,7 +64,7 @@ public enum ImageSource: Sendable, Codable, Equatable {
 /// race. Consumers driving the library from a background task must
 /// `await MainActor.run { ... }` or mark their callsite `@MainActor`.
 @MainActor
-public final class ImageLibrary: Sendable {
+public final class ImageLibrary {
 
     /// The directory where images and metadata are stored.
     public let directory: URL

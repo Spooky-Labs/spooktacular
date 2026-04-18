@@ -95,7 +95,7 @@ public enum VirtualMachineState: String, Sendable, Codable {
 ///   corrupt the guest filesystem. The ``stop(graceful:)`` shim
 ///   always grants a grace window — see its DocC.
 @MainActor
-public final class VirtualMachine: NSObject, Sendable {
+public final class VirtualMachine: NSObject {
 
     // MARK: - Properties
 

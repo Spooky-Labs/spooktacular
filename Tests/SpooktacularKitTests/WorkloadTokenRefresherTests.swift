@@ -98,8 +98,11 @@ struct WorkloadTokenRefreshTimingTests {
     func backoff(attempt: Int, expected: TimeInterval) {
         var delay: TimeInterval = 0
         for _ in 1...attempt {
-            if delay == 0 { delay = Self.config.baseBackoff }
-            else { delay = min(delay * 2, Self.config.maxBackoff) }
+            if delay == 0 {
+                delay = Self.config.baseBackoff
+            } else {
+                delay = min(delay * 2, Self.config.maxBackoff)
+            }
         }
         #expect(delay == expected)
     }

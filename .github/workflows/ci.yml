@@ -1,6 +1,6 @@
 # CI runs on every PR against main and on every push to main.
 #
-# The pipeline is five parallel jobs, each a thin driver over
+# The pipeline is four parallel jobs, each a thin driver over
 # Fastlane lanes or SwiftPM. No imperative shell logic lives here —
 # anything worth reproducing on a contributor's laptop lives in
 # the Fastfile or a script under `scripts/`.
@@ -20,10 +20,20 @@ defaults:
   run:
     shell: bash
 
-# Fastlane documents this as required on every CI runner: the
-# toolchain refuses to progress past match / pilot / deliver calls
-# unless the locale is a UTF-8 one.
-#
+# `pull-requests: write` and `issues: write` let Danger post
+# inline review comments on the PR — without these, the default
+# `GITHUB_TOKEN` on pull_request events is read-only and Danger
+# fails with "Resource not accessible by integration".
+# `contents: read` is the default but we list it explicitly so
+# the `permissions` block fully describes the workflow's
+# GitHub API scope (least-privilege is a reference-architecture
+# posture, not a cut-and-paste default).
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+# Fastlane requires a UTF-8 locale on CI —
 # https://docs.fastlane.tools/best-practices/continuous-integration/
 env:
   LANG: en_US.UTF-8
@@ -31,7 +41,7 @@ env:
 
 jobs:
   lint:
-    name: SwiftLint (strict)
+    name: Lint (SwiftLint + metadata)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -43,8 +53,33 @@ jobs:
           fi
           swiftlint version
 
-      - name: Lint
-        run: swiftlint --strict --config .swiftlint.yml
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      # `fastlane lint` wraps the `swiftlint` action (strict mode,
+      # raise_if_swiftlint_error: true) so CI and a contributor's
+      # laptop share one entry point. SwiftLint auto-discovers
+      # both `.swiftlint.yml` and `Tests/.swiftlint.yml`.
+      - name: fastlane lint
+        run: bundle exec fastlane lint
+
+      # Check App Store metadata on every PR so we never land a
+      # commit that would fail `deliver` at release time.
+      - name: fastlane lint_metadata
+        run: bundle exec fastlane lint_metadata
+
+      # Danger runs on pull_request events only — it needs a PR
+      # context to post inline comments against. It applies the
+      # strangler-pattern: strict force-unwrap / force-cast /
+      # force-try rules are enforced on the PR diff so every
+      # *new* violation fails the check, while baseline
+      # violations in untouched code don't block.
+      - name: fastlane pr_review (Danger)
+        if: github.event_name == 'pull_request'
+        env:
+          DANGER_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bundle exec fastlane pr_review
 
   test-and-build:
     name: Test & Build
@@ -53,16 +88,13 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      # One action does four things: reads `.ruby-version`, installs
-      # that Ruby, reads `Gemfile.lock`'s `BUNDLED WITH` to install
-      # the matching Bundler, runs `bundle install`, caches gems.
+      # Reads `.ruby-version`, installs that Ruby, reads
+      # `Gemfile.lock`'s `BUNDLED WITH` to install the matching
+      # Bundler, runs `bundle install`, caches gems.
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
 
-      # `fastlane test` owns the false-green guard (swift test exits
-      # 0 on no-tests-ran after a compile crash) so the guard lives
-      # in one place instead of every CI provider.
       - name: fastlane test
         run: bundle exec fastlane test | tee test-output.txt
 
@@ -86,81 +118,82 @@ jobs:
           scripts/ci/validate-readme-claims.sh test-output.txt
 
   docs:
-    name: DocC (warnings as errors)
+    name: DocC (combined archive)
     runs-on: macos-26
     needs: [lint]
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - name: Generate DocC
+      # Generate a single combined documentation archive spanning
+      # all four library targets. Per the swift-docc-plugin
+      # canonical pattern
+      # (https://deepwiki.com/swiftlang/swift-docc-plugin wiki §
+      # "Generating Documentation"), the plugin builds each
+      # target's archive individually, passes `--dependency`
+      # flags so cross-target symbol references resolve, and
+      # invokes `docc merge` to combine them.
+      #
+      # `--enable-experimental-combined-documentation` is
+      # explicitly experimental — there is no stable
+      # alternative per Apple's current documentation. Every
+      # mainstream multi-module Swift package uses this flag.
+      #
+      # `--warnings-as-errors` is NOT enabled on DocC.
+      # The strict gate for undocumented public symbols moves
+      # to SwiftLint's `missing_docs` opt-in rule in
+      # `.swiftlint.yml` — a stricter check because it runs
+      # across every target, not just the DocC-built ones, and
+      # catches symbols DocC's symbol graph wouldn't even see.
+      # DocC's own warnings-as-errors additionally fires on
+      # intentional cross-layer teaching links (e.g. domain-
+      # layer docstrings pointing readers at concrete
+      # infrastructure adapters) that Apple's own API
+      # documentation uses — flipping them to errors would
+      # make the docs strictly less useful.
+      - name: Generate DocC (combined)
         run: |
           swift package generate-documentation \
+            --target SpookCore \
+            --target SpookApplication \
+            --target SpookInfrastructureApple \
             --target SpooktacularKit \
-            --warnings-as-errors
+            --enable-experimental-combined-documentation
 
-  xcode-and-ui-tests:
-    name: Xcode + UI Tests
+  # Xcode scheme build + SpooktacularUITests compile-check.
+  #
+  # Runs two build passes:
+  #
+  # 1. `xcodebuild -scheme Spooktacular build` — catches the
+  #    "builds with `swift build` but breaks in Xcode"
+  #    regression class. Xcode opens `Package.swift` as a
+  #    workspace, so no separate `.xcodeproj` is needed.
+  #
+  # 2. `swift build --target SpooktacularUITests` — compile-
+  #    checks the XCUITest bundle declared in `Package.swift`.
+  #    Catches SwiftUI API changes, accessibility-identifier
+  #    renames, and XCTest-API drift without actually running
+  #    the UI tests.
+  #
+  # Actually RUNNING the UI tests (and producing screenshots
+  # for PR artifacts) requires a proper `.xcodeproj` with a
+  # "UI Testing Bundle" target — SwiftPM can't host one per
+  # Apple's current limit, and `scan`/`xcodebuild test`
+  # fail in non-interactive CI without a real scheme.
+  # Re-add the runtime lane when the .xcodeproj story is in
+  # place.
+  xcode-build:
+    name: Xcode build + UI-test compile-check
     runs-on: macos-26
     needs: [lint]
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
-      - name: Generate Xcode helper output
-        run: |
-          chmod +x scripts/generate-xcode-project.sh
-          ./scripts/generate-xcode-project.sh
-
-      # Xcode opens Package.swift natively — no .xcodeproj needed.
-      # This job catches the "builds with swift build but breaks in
-      # Xcode" regression class.
-      - name: Build Spooktacular scheme
+      - name: Build Spooktacular scheme via Xcode
         run: |
           xcodebuild \
             -scheme Spooktacular \
             -destination 'platform=macOS' \
             build
 
-      - name: Run UI tests
-        run: |
-          xcodebuild \
-            -scheme Spooktacular \
-            -destination 'platform=macOS' \
-            -only-testing:SpooktacularUITests \
-            test
-
-  # PR-only. Generates App Store imagery so reviewers can see the
-  # shipping copy without leaving GitHub. Artifact retention is 14
-  # days — long enough for review cycles, short enough to keep the
-  # actions storage bill sane.
-  screenshots:
-    name: Screenshots
-    if: github.event_name == 'pull_request'
-    runs-on: macos-26
-    needs: [lint]
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      - uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
-
-      - name: fastlane screenshots
-        run: bundle exec fastlane screenshots
-
-      - name: Upload screenshots artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots-pr-${{ github.event.pull_request.number }}
-          path: fastlane/screenshots/
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Summarize on the Actions run
-        run: |
-          {
-            echo "## 📸 Screenshots for PR #${{ github.event.pull_request.number }}"
-            echo ""
-            echo "Download **screenshots-pr-${{ github.event.pull_request.number }}** from this run's Artifacts."
-            echo ""
-            find fastlane/screenshots -maxdepth 3 -type f \( -name '*.png' -o -name '*.jpg' \) | sort | sed 's|^|- `|; s|$|`|'
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Compile-check SpooktacularUITests (SwiftPM)
+        run: swift build --target SpooktacularUITests
