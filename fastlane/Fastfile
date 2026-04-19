@@ -42,16 +42,6 @@ APP_FEEDBACK_EMAIL      = env_or("FASTLANE_APP_FEEDBACK_EMAIL",      APPLE_ID)
 CONTACT_PHONE_RAW       = env_or("FASTLANE_CONTACT_PHONE",           "5550000000")
 CONTACT_PHONE           = CONTACT_PHONE_RAW.gsub(/\D/, "")
 
-# External TestFlight groups. Pilot's `groups:` is an array of
-# group names that must already exist in App Store Connect —
-# fastlane won't create them. Accept a comma-separated env var
-# so a fork can change the distribution list without editing
-# the Fastfile. Trim whitespace around each name because humans
-# will type "A, B, C" and Apple's lookup is case-sensitive and
-# exact.
-EXTERNAL_BETA_GROUPS    = env_or("FASTLANE_EXTERNAL_BETA_GROUPS", "Homies")
-                          .split(",").map(&:strip).reject(&:empty?)
-
 platform :mac do
 
   # Run fastlane's canonical pre-lane discipline exactly once, in
@@ -258,17 +248,18 @@ platform :mac do
       skip_submission: false,
       skip_waiting_for_build_processing: true,
 
-      # External TestFlight distribution. `distribute_external: true`
-      # tells App Store Connect to submit the build for beta review
-      # and, once Apple approves, assign it to `groups` and email
-      # the testers. Pilot returns immediately — Apple runs the
-      # review asynchronously. `submit_beta_review:` defaults to
-      # true; set explicitly for clarity.
+      # Internal-only for now. App Store Connect auto-distributes
+      # to all internal App Store Connect users who have access to
+      # this app record; no `groups:` filter needed at this stage.
+      #
+      # External distribution will go here when there's a real
+      # external beta group (pilot's `groups:` + `distribute_external:
+      # true` lookup is against the *external* namespace, not the
+      # internal one — internal group names like "Homies" are not
+      # valid there). Keep `notify_external_testers: false` so pilot
+      # doesn't email anyone until external is wired up.
       # Source: https://docs.fastlane.tools/actions/upload_to_testflight/
-      distribute_external: true,
-      groups: EXTERNAL_BETA_GROUPS,
-      submit_beta_review: true,
-      notify_external_testers: true,
+      notify_external_testers: false,
       expire_previous_builds: true
     )
   end
