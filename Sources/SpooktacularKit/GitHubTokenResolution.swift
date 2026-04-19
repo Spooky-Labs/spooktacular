@@ -1,128 +1,85 @@
 import Foundation
 import Security
 
-/// Resolves a GitHub runner registration token from one of four
-/// sources, in priority order:
+/// Resolves a GitHub runner registration token from the **macOS
+/// Keychain only**.
 ///
-/// 1. `--github-token-file <path>` — token read from file,
-///    trimmed of whitespace. Does not land in `ps` output.
-///    Useful with Vault agent, 1Password secrets-inject, or any
-///    other file-based secret injector.
-/// 2. `--github-token-keychain <account>` — read from the macOS
-///    Keychain under service `com.spooktacular.github`. The
-///    token never touches plaintext disk and never appears in
-///    `ps` or `launchctl print`. Most-protected path on
-///    single-host deployments.
-/// 3. `SPOOK_GITHUB_TOKEN` environment variable — visible to
-///    the launching shell only, not propagated to subprocesses
-///    by default.
-/// 4. `--github-token <value>` — CLI flag, visible in `ps`,
-///    shell history, and `launchctl print`. The caller gets a
-///    warning when this path is taken.
+/// ## Design: single protected path
 ///
-/// Throws ``GitHubTokenError.missing`` when none of the sources
-/// produced a value.
+/// Earlier revisions of this resolver accepted the token via an
+/// environment variable (`SPOOK_GITHUB_TOKEN`), a CLI flag
+/// (`--github-token`), and a file path (`--github-token-file`).
+/// Each of those is reachable by malware running as the
+/// logged-in user:
 ///
-/// Lives in SpooktacularKit so tests can exercise the resolution
-/// chain without building the `spook` executable — the typed
-/// errors + the Keychain helper are the units worth testing, and
-/// they should work standalone.
+/// - **Env var**: visible in `ps auxwwe`, `launchctl print`,
+///   and every child process' environment.
+/// - **CLI flag**: visible in `ps auxww` and shell history.
+/// - **File on disk**: readable by any process with the
+///   logged-in user's UID (no hardware gate), and copied into
+///   backup archives + crash reports.
+///
+/// Pre-1.0 we ship the clean design as the only design:
+/// Keychain-only. The token stays behind `SecItemCopyMatching`,
+/// which requires an unlocked Keychain bound to this device
+/// (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`). Sibling
+/// processes reading `ps` or `/etc/**` see nothing.
+///
+/// ## Populating the Keychain
+///
+/// One-time setup per host, per token:
+///
+/// ```bash
+/// security add-generic-password \
+///     -s com.spooktacular.github \
+///     -a <account-name> \
+///     -w "$(read-token-from-wherever)" \
+///     -U
+/// ```
+///
+/// Vault / 1Password / AWS Secrets Manager integrations call
+/// `security add-generic-password` from their inject hook —
+/// the secret manager stays authoritative, the Keychain is just
+/// the handoff surface the app reads from.
+///
+/// ## API
+///
+/// ``resolve(keychainAccount:)`` takes the account name and
+/// returns the token on success, throwing ``GitHubTokenError``
+/// otherwise. No flag-value, file-path, or environment
+/// parameters — those paths were removed to honor the
+/// single-path principle.
 public enum GitHubTokenResolver {
 
-    /// Resolves a GitHub runner registration token from the
-    /// four sources documented on the enum. Returns the
-    /// trimmed token string on success, throws
-    /// ``GitHubTokenError`` when no source produces a value.
+    /// Resolves the GitHub runner registration token from the
+    /// macOS Keychain at service `com.spooktacular.github` and
+    /// the supplied account. The item must already exist — this
+    /// type never writes. Secret-manager tooling (Vault,
+    /// 1Password, SSM) is expected to populate the Keychain
+    /// out-of-band via `security add-generic-password`.
     ///
-    /// - Parameters:
-    ///   - flagValue: value of `--github-token`, if any. Lowest
-    ///     precedence — visible in `ps` and shell history, so
-    ///     the caller gets a warning when this path wins.
-    ///   - filePath: path to a file holding the token on its
-    ///     own line. Content is read and trimmed of whitespace.
-    ///   - keychainAccount: account name under service
-    ///     `com.spooktacular.github`. Most-protected path.
-    ///   - environment: process environment. Defaults to the
-    ///     current process; override in tests.
-    /// - Returns: the resolved token, trimmed, never empty.
+    /// - Parameter keychainAccount: account name under service
+    ///   `com.spooktacular.github`. Usually a scope-identifier
+    ///   like `org-acme`, `personal-sandbox`, or
+    ///   `ci-runner-pool-a`.
+    /// - Returns: the trimmed, non-empty token.
     /// - Throws: ``GitHubTokenError`` on every failure mode.
-    public static func resolve(
-        flagValue: String?,
-        filePath: String?,
-        keychainAccount: String?,
-        environment: [String: String] = ProcessInfo.processInfo.environment
-    ) throws -> String {
-        if let filePath {
-            let raw: String
-            do {
-                raw = try String(contentsOf: URL(filePath: filePath), encoding: .utf8)
-            } catch {
-                throw GitHubTokenError.unreadableFile(path: filePath, underlying: error)
-            }
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else {
-                throw GitHubTokenError.emptyFile(path: filePath)
-            }
-            return trimmed
+    public static func resolve(keychainAccount: String) throws -> String {
+        guard let token = GitHubKeychain.load(account: keychainAccount) else {
+            throw GitHubTokenError.keychainMiss(account: keychainAccount)
         }
-        if let account = keychainAccount {
-            guard let token = GitHubKeychain.load(account: account) else {
-                throw GitHubTokenError.keychainMiss(account: account)
-            }
-            return token
-        }
-        if let env = environment["SPOOK_GITHUB_TOKEN"], !env.isEmpty {
-            return env
-        }
-        if let flagValue, !flagValue.isEmpty {
-            return flagValue
-        }
-        throw GitHubTokenError.missing
+        return token
     }
 }
 
 // MARK: - GitHub Keychain
 
 /// Reads GitHub registration tokens from the macOS Keychain under
-/// a dedicated service name.
-///
-/// ## Threat model
-///
-/// The goal is to keep long-lived `ghp_*` PATs out of:
-///
-/// - The process table (`ps auxww` would leak `--github-token`).
-/// - Shell history (`HISTFILE`).
-/// - `launchctl print`, which shows a LaunchDaemon's environment.
-/// - Post-mortem core dumps + crash reports.
-/// - Backup archives that include `/etc/**` or `/var/**`.
-///
-/// The Keychain solves every one of those, at the cost of
-/// requiring the operator to run one `security` command at setup
-/// time. That's the right trade for enterprise deployments.
-///
-/// ## Storage
-///
-/// Tokens live under service `com.spooktacular.github` with the
-/// operator-supplied account name as the discriminator. One host
-/// can hold many tokens for different scopes (`org-acme`,
-/// `personal-sandbox`, `ci-runner-pool-a`, etc.).
-///
-/// ## Insertion pattern
-///
-/// ```bash
-/// security add-generic-password \
-///     -s com.spooktacular.github \
-///     -a org-acme \
-///     -w "$(cat ~/secrets/runner-token)" \
-///     -U  # update existing item if present
-/// ```
-///
-/// No corresponding `store()` in this type — writes are the
-/// operator's responsibility and typically come from an external
-/// secret manager (Vault, 1Password CLI, SSM) via the `security`
-/// CLI. Keeping reads here and writes out there matches the
-/// principle of least privilege: `spook` never holds the
-/// plaintext PAT long enough to accidentally log or write it.
+/// a dedicated service name. Writes are intentionally not
+/// provided here — the operator populates the Keychain via the
+/// `security` CLI (or a Vault / 1Password inject hook that wraps
+/// it), keeping plaintext PAT material out of Swift's memory
+/// except during the brief `SecItemCopyMatching` window.
 public enum GitHubKeychain {
 
     /// Keychain service name. Matches the pattern used by the
@@ -154,23 +111,14 @@ public enum GitHubKeychain {
 
 // MARK: - Errors
 
-/// Diagnostics for ``GitHubTokenResolver`` — every case carries an
-/// actionable recovery hint so the CLI can render a one-shot
-/// message the operator can copy-paste.
+/// Diagnostics for ``GitHubTokenResolver``. Every case carries
+/// an actionable recovery hint the CLI renders verbatim so the
+/// operator can copy-paste a one-shot fix.
 public enum GitHubTokenError: Error, LocalizedError, Sendable {
-    case missing
-    case emptyFile(path: String)
-    case unreadableFile(path: String, underlying: any Error & Sendable)
     case keychainMiss(account: String)
 
     public var errorDescription: String? {
         switch self {
-        case .missing:
-            "No GitHub runner registration token supplied."
-        case .emptyFile(let path):
-            "GitHub token file at '\(path)' is empty."
-        case .unreadableFile(let path, let err):
-            "Cannot read GitHub token file at '\(path)': \(err.localizedDescription)"
         case .keychainMiss(let account):
             "Keychain has no item at service=com.spooktacular.github, account=\(account)."
         }
@@ -178,14 +126,13 @@ public enum GitHubTokenError: Error, LocalizedError, Sendable {
 
     public var recoverySuggestion: String? {
         switch self {
-        case .missing:
-            "Store the token in the Keychain and use --github-token-keychain <account>. File- and env-var-based fallbacks are --github-token-file or SPOOK_GITHUB_TOKEN. The --github-token flag is dev-only."
-        case .emptyFile:
-            "Write the token to the file with trailing newline stripped, then chmod 600."
-        case .unreadableFile:
-            "Check the file exists and the daemon user can read it: `ls -l <path>`."
         case .keychainMiss(let account):
-            "Add the token with: `security add-generic-password -s com.spooktacular.github -a \(account) -w <token> -U`. Confirm it's stored: `security find-generic-password -s com.spooktacular.github -a \(account)`."
+            "Add the token with: " +
+            "`security add-generic-password -s com.spooktacular.github " +
+            "-a \(account) -w <token> -U`. " +
+            "Confirm it's stored: " +
+            "`security find-generic-password -s com.spooktacular.github " +
+            "-a \(account)`."
         }
     }
 }

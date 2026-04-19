@@ -152,7 +152,7 @@ extension Spook {
         @Flag(
             help: """
                 Configure as a GitHub Actions runner. Requires \
-                --github-repo and --github-token.
+                --github-repo and --github-token-keychain.
                 """
         )
         var githubRunner: Bool = false
@@ -160,27 +160,17 @@ extension Spook {
         @Option(help: "GitHub repository (org/repo) for --github-runner.")
         var githubRepo: String?
 
-        @Option(help: """
-            GitHub runner registration token. Falls back to \
-            SPOOK_GITHUB_TOKEN if unset. AVOID this flag in \
-            production — the token becomes visible in `ps`, shell \
-            history, and launchctl output. Prefer --github-token-file \
-            or the SPOOK_GITHUB_TOKEN environment variable.
-            """)
-        var githubToken: String?
-
-        @Option(
-            name: .customLong("github-token-file"),
-            help: "Path to a file containing the GitHub runner registration token. Contents are read once and trimmed."
-        )
-        var githubTokenFile: String?
-
         @Option(
             name: .customLong("github-token-keychain"),
             help: """
-                Keychain account name under service `com.spooktacular.github`. \
-                Store with: `security add-generic-password -s com.spooktacular.github -a <account> -w <token> -U`. \
-                The token never touches disk in plaintext and never appears in `ps` output.
+                Keychain account name under service \
+                `com.spooktacular.github`. The only accepted way \
+                to supply the runner registration token — env-var, \
+                CLI-flag, and file-path paths were removed to keep \
+                the PAT out of `ps`, `launchctl print`, and \
+                plaintext-on-disk exposures. \
+                Store with: `security add-generic-password -s \
+                com.spooktacular.github -a <account> -w <token> -U`.
                 """
         )
         var githubTokenKeychain: String?
@@ -365,15 +355,18 @@ extension Spook {
                 if githubRunner {
                     guard let repo = githubRepo else {
                         print(Style.error("✗ --github-runner requires --github-repo."))
-                        print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token-file /etc/spooktacular/runner-token"))
+                        print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token-keychain org-acme"))
+                        throw ExitCode.failure
+                    }
+                    guard let account = githubTokenKeychain else {
+                        print(Style.error("✗ --github-runner requires --github-token-keychain <account>."))
+                        print(Style.dim("  Store the token first: security add-generic-password -s com.spooktacular.github -a <account> -w <token> -U"))
                         throw ExitCode.failure
                     }
                     let token: String
                     do {
                         token = try GitHubTokenResolver.resolve(
-                            flagValue: githubToken,
-                            filePath: githubTokenFile,
-                            keychainAccount: githubTokenKeychain
+                            keychainAccount: account
                         )
                     } catch {
                         print(Style.error("✗ \(error.localizedDescription)"))
@@ -381,9 +374,6 @@ extension Spook {
                             print(Style.dim("  \(suggestion)"))
                         }
                         throw ExitCode.failure
-                    }
-                    if githubToken != nil {
-                        print(Style.warning("⚠ --github-token is visible in `ps`, shell history, and launchd output. Prefer --github-token-file or SPOOK_GITHUB_TOKEN for production."))
                     }
                     provisionScript = try GitHubRunnerTemplate.generate(
                         repo: repo, token: token, ephemeral: ephemeral
