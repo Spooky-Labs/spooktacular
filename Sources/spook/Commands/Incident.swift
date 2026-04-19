@@ -108,7 +108,6 @@ extension Spook {
                 Style.field("OIDC issuer URL", env["SPOOK_OIDC_ISSUER_URL"] ?? "(unset)")
                 Style.field("OIDC issuer key",
                     env["SPOOK_OIDC_ISSUER_KEY_LABEL"].map { "Keychain '\($0)' (SEP-bound)" }
-                        ?? env["SPOOK_OIDC_ISSUER_KEY_PATH"].map { "file '\($0)'" }
                         ?? "(unset)"
                 )
             }

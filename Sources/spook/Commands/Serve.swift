@@ -238,10 +238,15 @@ extension Spook {
             }
             let auditSink: (any AuditSink)?
             if env["SPOOK_AUDIT_MERKLE"] == "1", let base = auditBase {
+                // SEP-bound only. `SPOOK_AUDIT_SIGNING_KEY_PATH`
+                // (the PEM-on-disk fallback) was removed in Phase 3
+                // of the SEP migration: software keys on disk are
+                // reachable by malware running as the logged-in
+                // user, while SEP-bound keys are hardware-isolated
+                // and non-extractable. See `docs/THREAT_MODEL.md`.
                 let auditConfig = AuditConfig(
                     merkleEnabled: true,
-                    merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"],
-                    merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY_PATH"]
+                    merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"]
                 )
                 let signer: any P256Signer
                 do {
@@ -335,35 +340,31 @@ extension Spook {
             // via standard OIDC federation (sts:AssumeRoleWithWebIdentity).
             var oidcIssuer: WorkloadTokenIssuer?
             if let issuerURL = env["SPOOK_OIDC_ISSUER_URL"] {
-                let signer: (any P256Signer)?
-                if let label = env["SPOOK_OIDC_ISSUER_KEY_LABEL"] {
-                    // SEP-bound (recommended).
-                    do {
-                        signer = try await P256KeyStore.loadOrCreateSEP(
-                            service: P256KeyStore.Service.oidcIssuer,
-                            label: label,
-                            presenceGated: false
-                        )
-                    } catch {
-                        print(Style.error("✗ Cannot load OIDC issuer SEP key: \(error.localizedDescription)"))
-                        throw ExitCode.failure
-                    }
-                } else if let path = env["SPOOK_OIDC_ISSUER_KEY_PATH"] {
-                    // Software fallback for non-SEP hosts.
-                    do {
-                        signer = try P256KeyStore.loadOrCreateSoftware(at: path)
-                    } catch {
-                        print(Style.error("✗ Cannot load OIDC issuer software key: \(error.localizedDescription)"))
-                        throw ExitCode.failure
-                    }
-                } else {
-                    print(Style.warning("SPOOK_OIDC_ISSUER_URL is set but neither SPOOK_OIDC_ISSUER_KEY_LABEL (SEP-bound, recommended) nor SPOOK_OIDC_ISSUER_KEY_PATH (software) is configured — workload federation disabled."))
-                    signer = nil
+                // SEP-bound only. `SPOOK_OIDC_ISSUER_KEY_PATH`
+                // (PEM-on-disk) was removed in the Phase 3 SEP
+                // migration — malware running as the logged-in
+                // user can read 0600 files but can't extract keys
+                // from the Secure Enclave.
+                guard let label = env["SPOOK_OIDC_ISSUER_KEY_LABEL"] else {
+                    print(Style.warning("SPOOK_OIDC_ISSUER_URL is set but SPOOK_OIDC_ISSUER_KEY_LABEL is missing — workload federation disabled. Set the label and the SEP-backed key will be generated on first use."))
+                    return
                 }
-                if let signer {
-                    oidcIssuer = WorkloadTokenIssuer(issuerURL: issuerURL, signer: signer)
-                    print(Style.info("Workload-identity OIDC issuer enabled: \(issuerURL) (kid: \(oidcIssuer!.kid))"))
+                let signer: any P256Signer
+                do {
+                    signer = try await P256KeyStore.loadOrCreateSEP(
+                        service: P256KeyStore.Service.oidcIssuer,
+                        label: label,
+                        presenceGated: false
+                    )
+                } catch {
+                    print(Style.error("✗ Cannot load OIDC issuer SEP key: \(error.localizedDescription)"))
+                    if let hint = (error as? KeyStoreError)?.recoverySuggestion {
+                        print(Style.dim("  \(hint)"))
+                    }
+                    throw ExitCode.failure
                 }
+                oidcIssuer = WorkloadTokenIssuer(issuerURL: issuerURL, signer: signer)
+                print(Style.info("Workload-identity OIDC issuer enabled: \(issuerURL) (kid: \(oidcIssuer!.kid))"))
             }
 
             // Host-identity signing key. Used whenever this

@@ -27,13 +27,24 @@ import SpookApplication
 /// with per-purpose namespacing so inventory queries, rotation,
 /// and audit are consistent.
 ///
-/// ## SEP vs software
+/// ## SEP-only
 ///
-/// Production calls ``loadOrCreateSEP(service:label:accessControl:authenticationPrompt:)``.
-/// Tests and non-SEP hosts (CI, older Intel Macs without T2,
-/// hybrid deployments where the controller runs on non-Apple
-/// hardware) call ``loadOrCreateSoftware(at:)`` with a PEM file
-/// path at mode 0600.
+/// Spooktacular ships a single key-provisioning path:
+/// ``loadOrCreateSEP(service:label:presenceGated:authenticationPrompt:)``.
+/// The earlier `loadOrCreateSoftware(at:)` helper and its
+/// `SPOOK_*_KEY_PATH` env-var wiring are gone — every host
+/// Spooktacular runs on has a Secure Enclave (the Virtualization
+/// framework requirement already constrains the app to Apple
+/// Silicon), and Apple's documented threat model for PEM-on-disk
+/// keys puts them in reach of malware running as the logged-in
+/// user. Keeping a dual-mode knob would let an operator
+/// (or a compromised installer script) silently downgrade the
+/// posture via an env-var flip. Per the "no legacy / dual-mode
+/// paths" rule, the clean design is the only design.
+///
+/// Unit tests instantiate `P256.Signing.PrivateKey()` directly
+/// when they need an in-memory key for test logic — they don't
+/// round-trip through this store.
 public enum P256KeyStore {
 
     // MARK: - Service namespaces
@@ -227,57 +238,6 @@ public enum P256KeyStore {
         return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
 
-    // MARK: - Software fallback
-
-    /// Loads an existing PEM-encoded P-256 key at `path`, or
-    /// creates one with owner-only permissions on first use.
-    ///
-    /// Production deployments should prefer ``loadOrCreateSEP``
-    /// whenever an SEP is available; software keys exist for
-    /// CI, non-Apple hosts, and unit tests.
-    public static func loadOrCreateSoftware(at path: String) throws -> any P256Signer {
-        let url = URL(filePath: path)
-        let fm = FileManager.default
-
-        if fm.fileExists(atPath: path) {
-            let attrs = try fm.attributesOfItem(atPath: path)
-            let mode = (attrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
-            guard mode & 0o077 == 0 else {
-                throw KeyStoreError.softwareKeyPermissionsTooOpen(path: path, mode: mode)
-            }
-            let pem = try String(contentsOf: url, encoding: .utf8)
-            return try P256.Signing.PrivateKey(pemRepresentation: pem)
-        }
-
-        let dir = url.deletingLastPathComponent()
-        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-        let newKey = P256.Signing.PrivateKey()
-
-        try path.withCString { cPath in
-            let fd = open(cPath, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-            guard fd >= 0 else {
-                throw KeyStoreError.softwareKeyCreateFailed(path: path, errno: errno)
-            }
-            defer { close(fd) }
-            let data = Data(newKey.pemRepresentation.utf8)
-            try data.withUnsafeBytes { buffer in
-                var remaining = buffer.count
-                var base = buffer.baseAddress
-                while remaining > 0 {
-                    let written = write(fd, base, remaining)
-                    if written < 0 {
-                        if errno == EINTR { continue }
-                        throw KeyStoreError.softwareKeyCreateFailed(path: path, errno: errno)
-                    }
-                    remaining -= written
-                    base = base?.advanced(by: written)
-                }
-            }
-            fsync(fd)
-        }
-        return newKey
-    }
-
     // MARK: - Internals
 
     private static func loadExisting(
@@ -369,9 +329,11 @@ public enum KeyStoreError: Error, LocalizedError {
     /// non-Apple hardware, or a stripped virtualized
     /// environment). Distinct from
     /// ``secureEnclaveUnavailable(underlying:)``, which reports
-    /// a late failure during key creation. Points at
-    /// ``P256KeyStore/loadOrCreateSoftware(at:)`` as the
-    /// fallback.
+    /// a late failure during key creation. Fatal — Spooktacular
+    /// requires SEP-bound key material; there is no software
+    /// fallback. Make sure the host has a T2 chip or Apple
+    /// Silicon and that the Mac has been booted into macOS at
+    /// least once since the last firmware update.
     case secureEnclaveUnavailableOnHost
 
     case notFound(service: String, label: String)
@@ -379,8 +341,6 @@ public enum KeyStoreError: Error, LocalizedError {
     case presenceUnavailable(underlying: Error?)
     case malformedKeyData
     case keychainStatus(OSStatus, operation: String)
-    case softwareKeyPermissionsTooOpen(path: String, mode: UInt16)
-    case softwareKeyCreateFailed(path: String, errno: Int32)
 
     public var errorDescription: String? {
         switch self {
@@ -393,7 +353,7 @@ public enum KeyStoreError: Error, LocalizedError {
         case .secureEnclaveUnavailable(let err):
             "Secure Enclave unavailable on this host: \(err.localizedDescription)"
         case .secureEnclaveUnavailableOnHost:
-            "This host has no Secure Enclave (SecureEnclave.isAvailable == false). Switch to `P256KeyStore.loadOrCreateSoftware(at:)` for Intel Macs without a T2 chip, CI, or non-Apple controller deployments."
+            "This host has no Secure Enclave (SecureEnclave.isAvailable == false). Spooktacular requires SEP-bound keys — there is no software fallback. Run on an Apple Silicon Mac or an Intel Mac with a T2 chip."
         case .notFound(let service, let label):
             "No key exists under service '\(service)' label '\(label)'."
         case .userDeclined:
@@ -404,13 +364,6 @@ public enum KeyStoreError: Error, LocalizedError {
             "The data stored in the Keychain is not a valid Secure Enclave key representation."
         case .keychainStatus(let status, let op):
             "Keychain \(op) failed with OSStatus \(status)."
-        case .softwareKeyPermissionsTooOpen(let path, let mode):
-            String(
-                format: "Software key at '%@' has permissions 0%o. Expected 0600 (owner-only). `chmod 600 %@` then retry.",
-                path, mode, path
-            )
-        case .softwareKeyCreateFailed(let path, let err):
-            "Failed to create software key at '\(path)': \(String(cString: strerror(err))) (errno \(err))."
         }
     }
 
@@ -423,23 +376,19 @@ public enum KeyStoreError: Error, LocalizedError {
         case .accessControlFailed:
             "Ensure the device has Touch ID, Watch unlock, or a login password configured. SEP keys with `.userPresence` require at least one of these."
         case .secureEnclaveUnavailable:
-            "This host lacks a Secure Enclave (Apple Silicon or Intel Mac with T2). Use the software-key fallback path."
+            "This host lacks a Secure Enclave (Apple Silicon or Intel Mac with T2). Spooktacular requires SEP — there is no software fallback. Run on a supported Mac."
         case .secureEnclaveUnavailableOnHost:
-            "Use `P256KeyStore.loadOrCreateSoftware(at: \"<path-to-pem>\")` on this host. Software keys rely on filesystem-level protection (0600) rather than hardware isolation — adequate for CI and development, not for production key material that requires hardware-bound non-extractability."
+            "Spooktacular's threat model mandates SEP-bound keys — malware running as the logged-in user can exfiltrate software keys from disk but cannot extract from the Secure Enclave. Run on an Apple Silicon or T2-equipped Mac."
         case .notFound:
             "Generate the key with the appropriate CLI (e.g. `spook break-glass keygen --keychain-label <label>`)."
         case .userDeclined:
-            "Touch the sensor or enter the password when prompted. For unattended / CI environments use the software-key fallback path instead."
+            "Touch the sensor or enter the password when prompted. Unattended / CI use that can't accommodate presence gates should use the break-glass ticket flow instead, which does provide an out-of-band consent artifact."
         case .presenceUnavailable:
-            "Configure a login password on the host. For truly headless deployments, use a file-backed software-P-256 key."
+            "Configure a login password or enrolled Touch ID on the host — `.userPresence` requires at least one. Truly headless deployments shouldn't be provisioning presence-gated keys; drop `presenceGated: true`."
         case .malformedKeyData:
             "The Keychain item was written by a different SEP or has been tampered with. Delete it and rotate."
         case .keychainStatus:
             "Inspect the OSStatus via `security error <status>` on the command line."
-        case .softwareKeyPermissionsTooOpen:
-            "Narrow the file's permissions with `chmod 600 <path>` and retry."
-        case .softwareKeyCreateFailed:
-            "Check the directory exists and is writable by the current user."
         }
     }
 }

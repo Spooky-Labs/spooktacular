@@ -123,7 +123,6 @@ public struct SpooktacularConfig: Sendable, Codable {
                 immutablePath: env["SPOOK_AUDIT_IMMUTABLE_PATH"],
                 merkleEnabled: env["SPOOK_AUDIT_MERKLE"] == "1",
                 merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"],
-                merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY_PATH"],
                 s3Bucket: env["SPOOK_AUDIT_S3_BUCKET"],
                 s3Region: env["SPOOK_AUDIT_S3_REGION"],
                 s3Prefix: env["SPOOK_AUDIT_S3_PREFIX"],
@@ -313,26 +312,18 @@ public struct AuditConfig: Sendable, Codable {
     /// Keychain label for the SEP-bound P-256 signing key used by
     /// `MerkleAuditSink` to sign tree heads.
     ///
-    /// Production default. The key is generated inside the Secure
-    /// Enclave on first use and stored under this label; subsequent
-    /// runs reconstruct the signer from the persisted SEP blob
+    /// SEP-bound Keychain label for the Merkle signing key.
+    ///
+    /// The key is generated inside the Secure Enclave on first
+    /// use and stored under this label; subsequent runs
+    /// reconstruct the signer from the persisted SEP blob
     /// without ever seeing the private bytes.
     ///
-    /// Populated by `SPOOK_AUDIT_SIGNING_KEY_LABEL`. Mutually
-    /// exclusive with `merkleSigningKeyPath`.
+    /// Populated by `SPOOK_AUDIT_SIGNING_KEY_LABEL`. Required
+    /// when `merkleEnabled` is true — the legacy
+    /// `SPOOK_AUDIT_SIGNING_KEY_PATH` software-key path has been
+    /// removed (see docs/THREAT_MODEL.md).
     public let merkleSigningKeyLabel: String?
-
-    /// Path to a PEM-encoded P-256 software signing key.
-    ///
-    /// Fallback for CI, unit tests, and hosts without a Secure
-    /// Enclave. Populated by `SPOOK_AUDIT_SIGNING_KEY_PATH`.
-    /// Mutually exclusive with `merkleSigningKeyLabel`.
-    ///
-    /// When `merkleEnabled` is true and neither this nor
-    /// `merkleSigningKeyLabel` is set, the factory refuses to
-    /// build a Merkle sink so operators don't silently get
-    /// ephemeral keys.
-    public let merkleSigningKeyPath: String?
 
     public let s3Bucket: String?
     public let s3Region: String?
@@ -370,7 +361,6 @@ public struct AuditConfig: Sendable, Codable {
     public init(filePath: String? = nil, immutablePath: String? = nil,
                 merkleEnabled: Bool = false,
                 merkleSigningKeyLabel: String? = nil,
-                merkleSigningKeyPath: String? = nil,
                 s3Bucket: String? = nil,
                 s3Region: String? = nil,
                 s3Prefix: String? = nil,
@@ -383,7 +373,6 @@ public struct AuditConfig: Sendable, Codable {
         self.immutablePath = immutablePath
         self.merkleEnabled = merkleEnabled
         self.merkleSigningKeyLabel = merkleSigningKeyLabel
-        self.merkleSigningKeyPath = merkleSigningKeyPath
         self.s3Bucket = s3Bucket
         self.s3Region = s3Region
         self.s3Prefix = s3Prefix

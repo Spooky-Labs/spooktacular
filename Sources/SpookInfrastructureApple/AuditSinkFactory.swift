@@ -39,18 +39,19 @@ extension Data {
 /// ## Merkle signing key selection
 ///
 /// When Merkle is enabled, the factory delegates to
-/// ``P256KeyStore``, picking between SEP-bound and software
-/// paths based on which of the two config fields is set:
+/// ``P256KeyStore``, which is SEP-only:
 ///
-/// 1. `config.merkleSigningKeyLabel` — SEP-bound key under the
-///    `com.spooktacular.merkle-audit` service namespace. The
-///    daemon signs continuously so no presence gate is used.
-/// 2. `config.merkleSigningKeyPath` — PEM-encoded software key
-///    at file mode 0600. Fallback for non-SEP hosts and tests.
+/// - `config.merkleSigningKeyLabel` — SEP-bound key under the
+///   `com.spooktacular.merkle-audit` service namespace. The
+///   daemon signs continuously so no presence gate is used.
 ///
-/// Requiring exactly one is intentional: silent fall-through
-/// to an ephemeral key would produce STHs that don't verify
-/// after restart.
+/// Requiring a label is intentional: silent fall-through to an
+/// ephemeral key would produce STHs that don't verify after
+/// restart. The legacy `config.merkleSigningKeyPath` software-key
+/// path was removed in Phase 3 of the SEP migration — PEM-on-disk
+/// keys are reachable by malware running as the logged-in user
+/// (see docs/THREAT_MODEL.md), while SEP-bound keys are
+/// hardware-isolated and non-extractable.
 public enum AuditSinkFactory {
 
     /// Builds an audit sink chain from the given configuration.
@@ -122,27 +123,21 @@ public enum AuditSinkFactory {
     }
 
     /// Resolves the Merkle signing key from the configuration.
-    /// Requires exactly one of the label / path options to be set.
+    /// Requires `SPOOK_AUDIT_SIGNING_KEY_LABEL` (the SEP Keychain
+    /// label). The legacy software-key path via
+    /// `SPOOK_AUDIT_SIGNING_KEY_PATH` has been removed — Apple's
+    /// threat model for PEM-on-disk keys puts them in reach of
+    /// malware running as the logged-in user, while SEP-bound
+    /// keys are hardware-isolated.
     public static func resolveMerkleSigner(config: AuditConfig) async throws -> any P256Signer {
-        let hasLabel = config.merkleSigningKeyLabel != nil
-        let hasPath = config.merkleSigningKeyPath != nil
-        switch (hasLabel, hasPath) {
-        case (false, false):
-            throw AuditSinkFactoryError.merkleKeyRequired
-        case (true, true):
-            throw AuditSinkFactoryError.merkleKeyAmbiguous
-        case (true, false):
-            guard let label = config.merkleSigningKeyLabel, !label.isEmpty else {
-                throw AuditSinkFactoryError.merkleKeyLabelEmpty
-            }
-            return try await P256KeyStore.loadOrCreateSEP(
-                service: P256KeyStore.Service.merkleAudit,
-                label: label,
-                presenceGated: false
-            )
-        case (false, true):
-            return try P256KeyStore.loadOrCreateSoftware(at: config.merkleSigningKeyPath!)
+        guard let label = config.merkleSigningKeyLabel, !label.isEmpty else {
+            throw AuditSinkFactoryError.merkleKeyLabelRequired
         }
+        return try await P256KeyStore.loadOrCreateSEP(
+            service: P256KeyStore.Service.merkleAudit,
+            label: label,
+            presenceGated: false
+        )
     }
 }
 
@@ -150,18 +145,12 @@ public enum AuditSinkFactory {
 
 /// Errors raised while composing an audit sink chain.
 public enum AuditSinkFactoryError: Error, LocalizedError, Sendable {
-    case merkleKeyRequired
-    case merkleKeyAmbiguous
-    case merkleKeyLabelEmpty
+    case merkleKeyLabelRequired
 
     public var errorDescription: String? {
         switch self {
-        case .merkleKeyRequired:
-            return "Merkle audit is enabled but neither SPOOK_AUDIT_SIGNING_KEY_LABEL (SEP-bound, recommended) nor SPOOK_AUDIT_SIGNING_KEY_PATH (software) is set. A persistent signing key is required so tree heads verify across restarts."
-        case .merkleKeyAmbiguous:
-            return "Both SPOOK_AUDIT_SIGNING_KEY_LABEL and SPOOK_AUDIT_SIGNING_KEY_PATH are set — choose exactly one. Prefer the label (Secure Enclave) in production."
-        case .merkleKeyLabelEmpty:
-            return "SPOOK_AUDIT_SIGNING_KEY_LABEL is set but empty."
+        case .merkleKeyLabelRequired:
+            return "Merkle audit is enabled but SPOOK_AUDIT_SIGNING_KEY_LABEL is unset or empty. Set it to a non-empty Keychain label — the SEP-backed key will be generated on first use and reused thereafter. The legacy SPOOK_AUDIT_SIGNING_KEY_PATH software-key path has been removed."
         }
     }
 }

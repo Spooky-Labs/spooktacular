@@ -278,12 +278,12 @@ public enum SecurityControlInventory {
             notes: "STH signing key generated inside and bound to the SEP — non-exportable. Full process / kernel compromise still cannot forge tree heads; SEP only signs what the daemon asks. P-256 ECDSA wire format."
         ),
         SecurityControl(
-            name: "Atomic 0600 software-key creation (non-SEP fallback, no TOCTOU)",
+            name: "SEP-only signing keys — no software-key fallback",
             category: "Data at Rest",
-            standard: "CWE-362 mitigation",
-            implementation: "Sources/SpookInfrastructureApple/P256KeyStore.swift (loadOrCreateSoftware — open(2) O_CREAT|O_EXCL|O_NOFOLLOW, 0600)",
-            test: "Tests/SpooktacularKitTests/EnterpriseReadinessTests.swift",
-            notes: "Software-keyed fallback for CI / non-Apple hosts without an SEP. Closes the umask-default TOCTOU window; PEM-encoded P-256."
+            standard: "Threat: malware running as the logged-in user",
+            implementation: "Sources/SpookInfrastructureApple/P256KeyStore.swift (loadOrCreateSEP as the sole provisioning path). The previous `loadOrCreateSoftware` helper, along with `SPOOK_AUDIT_SIGNING_KEY_PATH` and `SPOOK_OIDC_ISSUER_KEY_PATH`, were removed in Phase 3 of the SEP migration.",
+            test: "Tests/SpooktacularKitTests/P256KeyStoreTests.swift",
+            notes: "PEM-on-disk keys are reachable by any process with the logged-in user's UID; SEP-bound keys are hardware-isolated and non-extractable even under full kernel compromise. The daemon resolves keys by Keychain label and fails at startup if the label is missing — silent ephemeral keys are not possible."
         ),
 
         // MARK: Cross-Region Coordination
