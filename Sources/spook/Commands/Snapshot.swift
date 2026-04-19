@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import SpookInfrastructureApple
 import SpooktacularKit
 
 extension Spook {
@@ -91,6 +92,8 @@ extension Spook {
     }
 
     /// `spook snapshot restore <vm> <label>`
+    // Apple doc for the presence-gate:
+    // https://developer.apple.com/documentation/localauthentication/lapolicy/deviceownerauthentication
     struct SnapshotRestore: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "restore",
@@ -135,6 +138,16 @@ extension Spook {
                 print(Style.info("[dry-run] Would restore VM '\(name)' to snapshot '\(info.label)' (\(humanizeBytes(info.sizeInBytes)))."))
                 return
             }
+
+            // Per-action user presence. Restoring overwrites the
+            // VM's current disk + aux state with the snapshot's —
+            // destructive to whatever work exists on the live
+            // disk. Gate on Touch ID / passcode to block a
+            // malware-driven `snapshot restore` that would wipe
+            // legitimate progress.
+            _ = try await AdminPresenceGate.requirePresence(
+                reason: "Restore VM '\(name)' to snapshot '\(label)'"
+            )
 
             print(Style.info("Restoring VM '\(name)' to snapshot '\(label)'..."))
 
@@ -226,6 +239,19 @@ extension Spook {
                 print(Style.info("[dry-run] Would delete snapshot '\(label)' from VM '\(name)'."))
                 return
             }
+
+            // Per-action user presence. Snapshots are the
+            // primary artifact an operator uses to recover from
+            // a botched VM state. Losing one to a silent
+            // malware-driven `rm -rf` breaks that recovery
+            // lifeline, so we gate deletion on Touch ID / passcode
+            // through `AdminPresenceGate`.
+            //
+            // Apple doc:
+            // https://developer.apple.com/documentation/localauthentication/lapolicy/deviceownerauthentication
+            _ = try await AdminPresenceGate.requirePresence(
+                reason: "Delete snapshot '\(label)' from VM '\(name)'"
+            )
 
             do {
                 try SnapshotManager.delete(bundle: bundle, label: label)

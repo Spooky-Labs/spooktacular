@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import SpookInfrastructureApple
 import SpooktacularKit
 
 extension Spook {
@@ -29,6 +30,22 @@ extension Spook {
 
         func run() async throws {
             let bundleURL = try requireBundle(for: name)
+
+            // Per-action user presence — deletion is irreversible
+            // and destroys the VM's disk, snapshots, and config.
+            // Gating with Touch ID / passcode closes the
+            // "malware running as the logged-in user wipes
+            // legitimate VMs" path that would otherwise be a
+            // single `rm -rf` away. The existing
+            // `AdminPresenceGate` wraps
+            // `LAContext.evaluatePolicy(.deviceOwnerAuthentication)`
+            // and supports a signed bypass token for headless
+            // automation (SPOOK_ADMIN_PRESENCE_BYPASS=1 + the
+            // operator-consent token; every bypass is audit-logged).
+            // Source: https://developer.apple.com/documentation/localauthentication/lapolicy/deviceownerauthentication
+            _ = try await AdminPresenceGate.requirePresence(
+                reason: "Delete virtual machine '\(name)' and all its data"
+            )
 
             if PIDFile.isRunning(bundleURL: bundleURL) {
                 if force {
