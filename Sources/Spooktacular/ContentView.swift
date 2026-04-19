@@ -80,11 +80,34 @@ struct ContentView: View {
                 }
             }
         }
-        .onAppear {
+        .task {
+            // `.task` (not `.onAppear`) for two reasons:
+            //
+            // 1. Lifecycle. `.onAppear` can fire multiple times
+            //    during complex layout transitions — when a view's
+            //    identity gets destroyed + recreated as part of
+            //    rapid animations, `onAppear` re-runs. With VM
+            //    loading being synchronous disk I/O (enumerate
+            //    ~/.spooktacular/vms + JSON-decode each bundle),
+            //    repeated fires from sidebar-toggle thrash block
+            //    the main thread and the UI freezes. `.task` is
+            //    guarded by a single `@State didLoad` flag so the
+            //    heavy path is guaranteed to execute once.
+            //
+            // 2. Concurrency. `.task` runs on the view's actor
+            //    context and is cancelled when the view goes away;
+            //    no orphaned work outliving its owner.
+            guard !didLoadInitialState else { return }
+            didLoadInitialState = true
             appState.loadVMs()
             restorePreviouslyOpenWorkspaces()
         }
     }
+
+    /// Ensures `appState.loadVMs()` runs exactly once per
+    /// `ContentView` lifetime — not on every SwiftUI identity
+    /// re-creation caused by layout thrash.
+    @State private var didLoadInitialState = false
 
     /// Re-opens workspace windows that were open at last quit.
     ///
