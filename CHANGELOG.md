@@ -126,6 +126,51 @@ A cross-layer hardening pass covering ~158 findings from a deep audit against a 
 - HTTPAPIServer split into HTTPRequest, HTTPResponse, APIModels
 - 411+ tests in 50+ suites (was 297 in 36)
 
+## [1.0.1] - 2026-04-19
+
+### Added — GUI ↔ CLI feature parity
+
+Closes the parity gap between the SwiftUI app and the `spook` CLI. All five
+features ship behind Apple framework APIs cited inline in the code.
+
+- **SSH into workspaces from the toolbar.** The running-workspace toolbar's
+  "Copy IP" button is now a `Menu(primaryAction:)` split-button: primary tap
+  copies the DHCP-resolved IPv4 to the pasteboard; the chevron opens the
+  host's default `ssh://` handler (Terminal.app on stock macOS, iTerm2 / Warp
+  if registered) with a session to `admin@<ip>`. Mirrors `spook ssh`. (#39)
+- **Local IPSW file picker in Create.** New "macOS Source" segmented picker
+  (Latest compatible | Local IPSW file) closes parity with
+  `spook create --from-ipsw <path>`. Skips the 10–20 GB Apple download when
+  the operator has a cached IPSW on disk — critical for offline installs and
+  re-creating VMs from a pinned build. Uses `UTType(filenameExtension: "ipsw")`
+  to scope the `NSOpenPanel` to IPSW files. (#40)
+- **Provisioning template picker in Create.** Menu picker with five choices:
+  None / GitHub Actions Runner / OpenClaw AI Agent / Remote Desktop (VNC) /
+  Custom Script. Replaces the previously-dangling user-data field that
+  silently dropped scripts on the floor. GitHub runner tokens come from the
+  macOS Keychain only (service `com.spooktacular.github`) per the pre-1.0
+  single-protected-path principle — env-var / flag / file-path resolvers
+  were removed. (#41)
+- **Clone VM sheet.** Context-menu "Clone…" now opens a proper sheet with a
+  name field preseeded to a free slot (`source-clone`, `-2`, `-3`, …),
+  keyboard shortcut ⌘D (Finder's Duplicate convention), and disabled-state
+  handling for blank / duplicate names. Replaces the silent auto-suffix
+  clone that forced a second rename pass. Uses APFS copy-on-write via
+  `CloneManager.clone(source:to:)`. (#42)
+- **Shared folders post-creation in HardwareEditor.** Add, remove, and
+  toggle read-only on each VirtIO FS mount while the VM is stopped. Closes
+  parity with post-creation `spook share`. Form is already
+  `.disabled(isRunning)` per Apple's
+  `VZVirtualMachineConfiguration` contract ("device configuration is
+  immutable after startup"), so the running-hint banner already covers the
+  greyed-out state. (#43)
+
+### Fixed
+- CreateVMSheet previously stored `userDataPath` / `provisioningMode` in
+  `@State` but never fed them into `createVM()` — a user-data script
+  selected in the sheet would silently do nothing. Now injected via the
+  same `DiskInjector` code path as `spook create`. (#41)
+
 ## [1.0.0] - 2026-04-19
 
 ### Added

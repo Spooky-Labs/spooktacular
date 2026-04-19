@@ -413,7 +413,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app;
 				PRODUCT_NAME = Spooktacular;
 				PROVISIONING_PROFILE_SPECIFIER = "match AppStore com.spooktacular.app macos";
@@ -437,7 +437,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app;
 				PRODUCT_NAME = Spooktacular;
 				SDKROOT = macosx;

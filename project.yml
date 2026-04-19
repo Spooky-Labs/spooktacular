@@ -139,7 +139,7 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_ENTITLEMENTS: Spooktacular.entitlements
         CURRENT_PROJECT_VERSION: 1
-        MARKETING_VERSION: 1.0.0
+        MARKETING_VERSION: 1.0.1
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
