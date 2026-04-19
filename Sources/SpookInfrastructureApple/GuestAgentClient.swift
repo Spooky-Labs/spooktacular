@@ -24,10 +24,33 @@ import os
 ///
 /// ## Thread Safety
 ///
-/// `GuestAgentClient` is an actor, so all methods are isolated and
-/// safe to call from any concurrency context. The underlying
-/// `VZVirtioSocketDevice.connect(toPort:)` call is dispatched to the
-/// main actor internally.
+/// `GuestAgentClient` is `@MainActor`-isolated to satisfy Apple's
+/// requirement that `VZVirtioSocketDevice` calls happen on the
+/// owning VM's dispatch queue. Spooktacular constructs VMs via
+/// `VZVirtualMachine(configuration:)` from `@MainActor` code
+/// (see `VirtualMachine.swift`), which binds each VM's queue to
+/// the main queue — `@MainActor` on this class matches that.
+///
+/// Declaring the class as `actor` placed its methods on a
+/// private serial executor that is not the main queue, and the
+/// first `socketDevice.connect(toPort:)` call trapped with
+/// `dispatch_assert_queue_fail` (crash report
+/// `Spooktacular-2026-04-19-002222.ips`). Apple's documentation
+/// on `VZVirtualMachine.queue`
+/// (https://developer.apple.com/documentation/Virtualization/VZVirtualMachine/queue)
+/// specifies the queue requirement:
+///
+/// > The dispatch queue associated with this virtual machine.
+/// > The framework uses this queue for VM initialization and
+/// > invokes completion handlers on it.
+///
+/// Every field on the class is `let`, so no mutable state
+/// requires actor isolation; the class only needs its methods
+/// run on a specific queue, which is exactly what `@MainActor`
+/// provides. Regression is guarded at runtime by
+/// `MainActor.assertIsolated()` immediately before the
+/// `connect(toPort:)` call, and at the type-system level by
+/// `Tests/SpooktacularKitTests/GuestAgentClientIsolationTests.swift`.
 ///
 /// ## Usage
 ///
@@ -35,11 +58,9 @@ import os
 /// let client = GuestAgentClient(socketDevice: device)
 /// let health = try await client.health()
 /// print(health.version)
-///
-/// let result = try await client.exec("uname -a")
-/// print(result.stdout)
 /// ```
-public actor GuestAgentClient {
+@MainActor
+public final class GuestAgentClient {
 
     /// The VirtIO socket device attached to the running VM.
     private let socketDevice: VZVirtioSocketDevice
@@ -402,6 +423,22 @@ public actor GuestAgentClient {
     ) async throws -> Data {
         Log.guestAgent.debug(
             "\(method, privacy: .public) \(path, privacy: .public)"
+        )
+
+        // Belt-and-braces regression guard. Apple's
+        // `VZVirtioSocketDevice.connect(toPort:)` requires
+        // the owning VM's queue (main, in our case — see the
+        // class-level comment). If someone regresses this
+        // class back to `actor`, or if a caller dispatches
+        // to a background queue, this assertion traps before
+        // Apple's framework does, with a pointer to the root
+        // cause in the message.
+        //
+        // `MainActor.assertIsolated` is Apple's documented
+        // runtime assertion for verifying main-actor isolation:
+        // https://developer.apple.com/documentation/swift/mainactor/assertisolated(_:file:line:)
+        MainActor.assertIsolated(
+            "VZVirtioSocketDevice.connect must run on the VM's queue (main)."
         )
 
         let connection: VZVirtioSocketConnection
