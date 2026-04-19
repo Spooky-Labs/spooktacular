@@ -217,6 +217,12 @@ struct CreateVMSheet: View {
         }
         .frame(width: 680, height: 640)
         .accessibilityIdentifier(AccessibilityID.createSheet)
+        // Propagate the `.switch` style to every `Toggle` in the
+        // sheet via environment inheritance — checkboxes read as
+        // old-style Mac form controls; switches match the
+        // Liquid-Glass sliding-thumb idiom and the app's other
+        // boolean surfaces.
+        .toggleStyle(.switch)
     }
 
     /// Whether the Create button is eligible to fire. A non-blank
