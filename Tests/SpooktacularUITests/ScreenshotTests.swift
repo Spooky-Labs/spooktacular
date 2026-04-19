@@ -149,10 +149,26 @@ final class ScreenshotTests: XCTestCase {
             app.typeKey("n", modifierFlags: .command)
         }
 
-        // Wait for the sheet to appear by looking for the name field.
+        // Wait for a sheet to appear in the accessibility
+        // hierarchy before looking for the name field inside it.
+        // On CI runners (observed: runs 24620603778, 24620842803)
+        // the field lookup raced sheet-presentation animation and
+        // timed out. Waiting for `app.sheets.firstMatch` directly
+        // blocks on the window that hosts the form instead of a
+        // descendant element. Captures a diagnostic screenshot on
+        // failure so the artifact has evidence for why the test
+        // couldn't find what it expected.
+        let sheet = app.sheets.firstMatch
+        guard sheet.waitForExistence(timeout: 15) else {
+            captureScreenshot(named: "02_debug_no_sheet")
+            XCTFail("Create VM sheet did not appear")
+            return
+        }
+
         let nameField = app.textFields["vmNameField"]
         guard nameField.waitForExistence(timeout: 10) else {
-            XCTFail("Create VM sheet did not appear")
+            captureScreenshot(named: "02_debug_no_namefield")
+            XCTFail("vmNameField not found in Create VM sheet")
             return
         }
 
