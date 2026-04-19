@@ -26,12 +26,19 @@ struct ContentView: View {
             detailContent
                 .accessibilitySortPriority(2)
         }
-        .navigationSplitViewStyle(.balanced)
-        .searchable(
-            text: $searchText,
-            placement: .sidebar,
-            prompt: "Filter VMs"
-        )
+        // Intentionally no `.searchable(placement: .sidebar)` on
+        // the `NavigationSplitView` — that pattern attaches the
+        // search bar to the *split view itself*, which on macOS 26
+        // fights the sidebar-collapse animation and freezes the
+        // UI mid-animation. `.searchable` now lives inside
+        // `SidebarView` on the `List`, so it's scoped to the
+        // sidebar column and only animates when the sidebar
+        // visibility actually changes.
+        //
+        // `.navigationSplitViewStyle(.balanced)` also removed —
+        // the system default picks the best style per platform,
+        // and `.balanced` was causing the detail column to
+        // over-reserve width on macOS 26.
         .sheet(isPresented: $state.showCreateSheet) {
             CreateVMSheet()
         }

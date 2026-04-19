@@ -53,6 +53,14 @@ struct SidebarView: View {
         .accessibilityIdentifier(AccessibilityID.vmList)
         .listStyle(.sidebar)
         .frame(minWidth: 220)
+        // Scope `.searchable` to the sidebar's List, not to the
+        // enclosing NavigationSplitView — the split-view-level
+        // `placement: .sidebar` variant fights the column-
+        // collapse animation on macOS 26 and freezes the UI.
+        // Attached here, the search field lives in the sidebar's
+        // own toolbar area and only animates when the sidebar
+        // itself does.
+        .searchable(text: $searchText, prompt: "Filter VMs")
         .toolbar {
             // Sidebar toolbar items: Create + Diagnostics. Grouping
             // them in one `ToolbarItemGroup` lets Liquid Glass
