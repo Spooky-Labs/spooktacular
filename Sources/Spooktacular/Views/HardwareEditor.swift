@@ -22,6 +22,8 @@ struct HardwareEditor: View {
     @State private var cpu: Int = 4
     @State private var memoryGB: Int = 8
     @State private var diskGB: Int = 64
+    @State private var audioEnabled: Bool = true
+    @State private var microphoneEnabled: Bool = false
     @State private var errorMessage: String?
     @State private var initialized: Bool = false
 
@@ -37,6 +39,7 @@ struct HardwareEditor: View {
                 cpuRow
                 memoryRow
                 diskRow
+                audioRow
             }
             .formStyle(.grouped)
             .disabled(isRunning)
@@ -108,6 +111,30 @@ struct HardwareEditor: View {
         }
     }
 
+    /// Audio output + optional microphone capture. Both toggle
+    /// the corresponding `VZVirtioSoundDevice*StreamConfiguration`
+    /// on the VM's config during next `start()`. The form is
+    /// already `.disabled` while the VM is running (the whole
+    /// section inherits it from the outer Form), so the user
+    /// can't flip these under a live machine — matches Apple's
+    /// "VM device configuration is immutable after startup"
+    /// guarantee from
+    /// https://developer.apple.com/documentation/virtualization/vzvirtualmachineconfiguration.
+    private var audioRow: some View {
+        Section("Audio") {
+            Toggle("Speaker output", isOn: $audioEnabled)
+                .help("Route guest audio to the host's default output device. Needed for web video (YouTube), music, and VM audio alerts.")
+            Toggle("Microphone input", isOn: $microphoneEnabled)
+                .disabled(!audioEnabled)
+                .help("Attach the host's microphone to the guest. Requires audio to be enabled.")
+            if !audioEnabled {
+                Text("Disabling audio removes the VirtIO sound device from the guest. Safe for headless compute workloads.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var footer: some View {
         HStack {
             Spacer()
@@ -128,6 +155,8 @@ struct HardwareEditor: View {
         return cpu != spec.cpuCount
             || UInt64(memoryGB) != spec.memorySizeInGigabytes
             || UInt64(diskGB) != spec.diskSizeInGigabytes
+            || audioEnabled != spec.audioEnabled
+            || microphoneEnabled != spec.microphoneEnabled
     }
 
     private func loadInitialValues() {
@@ -135,6 +164,8 @@ struct HardwareEditor: View {
         cpu = spec.cpuCount
         memoryGB = Int(spec.memorySizeInGigabytes)
         diskGB = Int(spec.diskSizeInGigabytes)
+        audioEnabled = spec.audioEnabled
+        microphoneEnabled = spec.microphoneEnabled
         initialized = true
     }
 
@@ -143,7 +174,9 @@ struct HardwareEditor: View {
         let updated = bundle.spec.with(
             cpuCount: cpu,
             memorySizeInBytes: .gigabytes(UInt64(memoryGB)),
-            diskSizeInBytes: .gigabytes(UInt64(diskGB))
+            diskSizeInBytes: .gigabytes(UInt64(diskGB)),
+            audioEnabled: audioEnabled,
+            microphoneEnabled: microphoneEnabled
         )
         do {
             try VirtualMachineBundle.writeSpec(updated, to: bundle.url)
