@@ -134,7 +134,13 @@ final class ScreenshotTests: XCTestCase {
         // the app's responder chain (observed: run 24620349705 —
         // sheet never appeared within 5s). Clicking the button by
         // accessibility identifier is deterministic.
-        let createButton = app.buttons["createVMButton"]
+        // `.firstMatch` is important: the `createVMButton`
+        // accessibility identifier is applied both to the
+        // EmptyStateView button (ContentView.swift:112) and to
+        // the sidebar "+ Add VM" button (SidebarView.swift:59).
+        // Without firstMatch, XCUIElementQuery raises "Multiple
+        // matching elements found" (observed on run 24620603778).
+        let createButton = app.buttons["createVMButton"].firstMatch
         if createButton.waitForExistence(timeout: 5) {
             createButton.click()
         } else {
