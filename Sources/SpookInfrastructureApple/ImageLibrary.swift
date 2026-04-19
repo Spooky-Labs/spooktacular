@@ -63,6 +63,18 @@ public enum ImageSource: Sendable, Codable, Equatable {
 /// not a suggestion — mutating `images` off the main actor is a data
 /// race. Consumers driving the library from a background task must
 /// `await MainActor.run { ... }` or mark their callsite `@MainActor`.
+///
+/// `@Observable` is required so SwiftUI views that read
+/// `appState.imageLibrary.images` re-render when an IPSW download
+/// completes and `addIPSW(…)` appends to the `images` array. Without
+/// it, the sidebar's `ForEach(appState.imageLibrary.images)` keeps
+/// showing the stale, pre-download list until a full view rebuild
+/// (observed symptom: user downloaded an image, clicked Create,
+/// and never saw the image show up in the sidebar). `@Observable` is
+/// Apple's canonical macro for making classes drive SwiftUI
+/// re-rendering; see
+/// https://developer.apple.com/documentation/swift/observable
+@Observable
 @MainActor
 public final class ImageLibrary {
 
