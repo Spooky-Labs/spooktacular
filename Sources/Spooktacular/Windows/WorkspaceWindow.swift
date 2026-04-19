@@ -135,18 +135,33 @@ struct WorkspaceWindow: View {
                 PortPanel(monitor: appState.portMonitor(for: vmName))
             }
 
-            Button {
-                Task { await resolveAndCopyIP() }
+            // Network actions grouped under a Menu: primary tap
+            // copies the IP (the most frequent action); the
+            // chevron exposes `SSH in Terminal…` (mirrors
+            // `spook ssh <vm>`). Packaging both behind a single
+            // toolbar slot keeps the chrome tight — the toolbar
+            // already has Stop / Snapshots / Ports alongside —
+            // and matches Apple's own "split-button" pattern.
+            // Docs: https://developer.apple.com/documentation/swiftui/menu
+            Menu {
+                Button {
+                    Task { await launchSSH() }
+                } label: {
+                    Label("SSH in Terminal…", systemImage: "terminal")
+                }
+                .help("Resolve the workspace's IP and open an ssh session in Terminal.app.")
             } label: {
                 Label(
                     lastCopiedIP ?? "Copy IP",
                     systemImage: lastCopiedIP != nil ? "checkmark.circle.fill" : "number"
                 )
+            } primaryAction: {
+                Task { await resolveAndCopyIP() }
             }
             .glassButton()
-            .help("Resolve this workspace's IPv4 address and copy it to the clipboard.")
+            .help("Resolve this workspace's IPv4 address. Tap to copy it; chevron for other network actions.")
             .accessibilityLabel(
-                lastCopiedIP.map { "Copied \($0)" } ?? "Copy workspace IP"
+                lastCopiedIP.map { "Copied \($0)" } ?? "Workspace network actions"
             )
             // Subtle transition when the label swaps between
             // "Copy IP" and the resolved address — matches the
@@ -190,6 +205,40 @@ struct WorkspaceWindow: View {
             // noisier than useful (DHCP + ARP both fail within
             // the first ~15s of a cold boot).
             Log.vm.debug("IP resolution failed for \(vmName, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Resolves the running VM's IPv4 address and opens the host's
+    /// default ssh:// handler — mirrors `spook ssh <vm>` for users
+    /// who live in the GUI. Terminal.app registers itself as the
+    /// default handler on stock macOS, but iTerm2/Warp/etc. all
+    /// register too, so this honours the user's chosen terminal.
+    ///
+    /// Uses defaults of `admin` + `~/.ssh/id_*` — the same as
+    /// `spook ssh`. For non-default users or explicit key paths,
+    /// the CLI's `--user` and `--key` flags remain the escape
+    /// hatch; adding fields to a toolbar popover would bloat the
+    /// 95%-case one-tap flow.
+    ///
+    /// `NSWorkspace.open(_:)` docs:
+    /// https://developer.apple.com/documentation/appkit/nsworkspace/open(_:)
+    private func launchSSH() async {
+        guard let mac = appState.vms[vmName]?.spec.macAddress else { return }
+        do {
+            guard let ip = try await IPResolver.resolveIP(macAddress: mac),
+                  let url = URL(string: "ssh://admin@\(ip)") else {
+                return
+            }
+            // `open(_:)` returns false only when no handler is
+            // registered for the URL scheme, which on macOS is
+            // effectively never for `ssh://`. We log the edge
+            // case for support diagnostics rather than surfacing
+            // a toast.
+            if !NSWorkspace.shared.open(url) {
+                Log.vm.debug("No handler registered for ssh:// scheme on this host.")
+            }
+        } catch {
+            Log.vm.debug("SSH launch failed for \(vmName, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 
