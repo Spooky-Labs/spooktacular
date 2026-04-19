@@ -33,14 +33,6 @@ jobs:
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
       APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-      # match runs inside `:ui_tests` too — the XCUITest runner
-      # needs a real Apple Development cert in the keychain so
-      # the test bundle and its plugin aren't signed with mismatched
-      # ad-hoc team IDs (the "mapping process and mapped file (non-
-      # platform) have different Team IDs" failure mode reproduced
-      # in a local run).
-      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
       # Apple rejects placeholder phone numbers server-side; the
       # `promote` lane attaches the same review-contact fields to
       # the App Store submission as `:beta` did to the TestFlight
