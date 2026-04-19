@@ -115,47 +115,18 @@ struct P256KeyStoreTests {
         )
         #expect(noSEP.errorDescription?.contains("Secure Enclave") == true)
 
-        let badPerms = KeyStoreError.softwareKeyPermissionsTooOpen(
-            path: "/tmp/key.pem", mode: 0o644
-        )
-        #expect(badPerms.errorDescription?.contains("0644") == true)
-        #expect(badPerms.recoverySuggestion?.contains("chmod 600") == true)
-    }
-
-    // MARK: - Software fallback (actually exercises the filesystem)
-
-    @Test("Software key creation and reload round-trip preserves the signing key")
-    func softwareKeyRoundTrip() throws {
-        let tmpDir = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "p256keystore-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-
-        let keyPath = tmpDir.appending(path: "signing.pem").path
-
-        // First call creates.
-        let first = try P256KeyStore.loadOrCreateSoftware(at: keyPath)
-
-        // Second call reloads the same key.
-        let second = try P256KeyStore.loadOrCreateSoftware(at: keyPath)
-
-        // Same key → same public key.
-        #expect(first.publicKey.pemRepresentation == second.publicKey.pemRepresentation,
-                "Reload must reconstruct the same key")
-    }
-
-    @Test("Software key file is created at mode 0600")
-    func softwareKeyCreatedAt0600() throws {
-        let tmpDir = URL(filePath: NSTemporaryDirectory())
-            .appending(path: "p256keystore-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tmpDir) }
-
-        let keyPath = tmpDir.appending(path: "signing.pem").path
-        _ = try P256KeyStore.loadOrCreateSoftware(at: keyPath)
-
-        let attrs = try FileManager.default.attributesOfItem(atPath: keyPath)
-        let mode = (attrs[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
-        #expect(mode == 0o600, "Software key file must be 0600; got 0\(String(mode, radix: 8))")
+        let noSEPHost = KeyStoreError.secureEnclaveUnavailableOnHost
+        #expect(noSEPHost.errorDescription?.contains("Secure Enclave") == true)
+        // Per Phase 3, the recovery hint must NOT point the
+        // operator at a software-fallback API — that path was
+        // removed. Mentioning "software" in the context of why
+        // it's forbidden is fine; suggesting `loadOrCreateSoftware`
+        // or a file path is not.
+        let hint = noSEPHost.recoverySuggestion ?? ""
+        #expect(!hint.contains("loadOrCreateSoftware"))
+        #expect(!hint.contains("<path-to-pem>"))
+        #expect(hint.contains("Apple Silicon")
+             || hint.contains("T2")
+             || hint.contains("SEP"))
     }
 }

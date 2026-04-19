@@ -13,7 +13,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 14+](https://img.shields.io/badge/macOS-14+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-822_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-820_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Download](https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/) · [Get Started](#-summon-your-first-vm)
 
@@ -296,7 +296,7 @@ Every release ships with:
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 822 tests
+swift test               # Run 820 tests
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -304,7 +304,7 @@ swift test               # Run 822 tests
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | 822 tests + SwiftLint (strict) + DocC (warnings-as-errors) + Xcode project build + UI tests + release build + .app bundle |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | 820 tests + SwiftLint (strict) + DocC (warnings-as-errors) + Xcode project build + UI tests + release build + .app bundle |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [Docs](https://github.com/Spooky-Labs/spooktacular/actions/workflows/docs.yml) | Push to main | DocC generation + GitHub Pages deploy |
@@ -318,7 +318,7 @@ We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welco
 1. Fork the repo
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure `swift test` passes (822 tests)
+4. Ensure `swift test` passes (820 tests)
 5. Open a PR using our [PR template](.github/PULL_REQUEST_TEMPLATE.md)
 
 ## License

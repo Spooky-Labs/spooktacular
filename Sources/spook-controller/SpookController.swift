@@ -142,8 +142,7 @@ struct SpookController {
         if tenancyMode == .multiTenant || env["SPOOK_AUDIT_MERKLE"] == "1" {
             let auditConfig = AuditConfig(
                 merkleEnabled: true,
-                merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"],
-                merkleSigningKeyPath: env["SPOOK_AUDIT_SIGNING_KEY_PATH"]
+                merkleSigningKeyLabel: env["SPOOK_AUDIT_SIGNING_KEY_LABEL"]
             )
             let signer: any P256Signer
             do {
@@ -154,7 +153,6 @@ struct SpookController {
             }
             auditSink = MerkleAuditSink(wrapping: baseSink, signer: signer)
             let keySource = auditConfig.merkleSigningKeyLabel.map { "Keychain label '\($0)' (SEP-bound)" }
-                ?? auditConfig.merkleSigningKeyPath.map { "file '\($0)' (software)" }
                 ?? "(unset)"
             logger.notice("Audit: Merkle tree enabled (RFC 6962 tamper-evidence, P-256 ECDSA), key=\(keySource, privacy: .public)")
         } else {
