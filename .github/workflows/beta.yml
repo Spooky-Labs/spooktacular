@@ -37,6 +37,12 @@ jobs:
       # match password + Git auth for the cert repo.
       MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
       MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      # Beta-review contact fields. Apple rejects obvious placeholders
+      # (`+1 (555) 000-0000`, fictional emails) server-side, so at
+      # least the phone must be a real reachable number. Other
+      # contact fields have sane defaults in Fastfile; override via
+      # matching FASTLANE_CONTACT_* secrets when needed.
+      FASTLANE_CONTACT_PHONE: ${{ secrets.FASTLANE_CONTACT_PHONE }}
       # build-app.sh reads BUILD_NUMBER for CFBundleVersion.
       # github.run_number is monotonic, collision-free, and numeric
       # — unlike the commit SHA, which wouldn't parse.

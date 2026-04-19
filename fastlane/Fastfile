@@ -26,9 +26,21 @@ APPLE_ID                = env_or("FASTLANE_APPLE_ID",                "davisperri
 CONTACT_FIRST_NAME      = env_or("FASTLANE_CONTACT_FIRST_NAME",      "Perris")
 CONTACT_LAST_NAME       = env_or("FASTLANE_CONTACT_LAST_NAME",       "Davis")
 CONTACT_EMAIL           = env_or("FASTLANE_CONTACT_EMAIL",           APPLE_ID)
-CONTACT_PHONE           = env_or("FASTLANE_CONTACT_PHONE",           "+1 (555) 000-0000")
 APP_REVIEW_EMAIL        = env_or("FASTLANE_APP_REVIEW_EMAIL",        APPLE_ID)
 APP_FEEDBACK_EMAIL      = env_or("FASTLANE_APP_FEEDBACK_EMAIL",      APPLE_ID)
+
+# App Store Connect's contactPhone validator wants a digits-only
+# string (fastlane's own example:
+# https://docs.fastlane.tools/actions/upload_to_testflight/ shows
+# `"5558675309"`), not E.164 or formatted. Accept any human-
+# convenient input in the env var (`+1 (206) 555-1212`,
+# `206.555.1212`, `+12065551212`) and strip everything that isn't
+# a digit before handing it to pilot/deliver. The raw default
+# `5550000000` falls in NANP's fictional range and will still fail
+# Apple's real-carrier lookup — every real submission must set
+# `FASTLANE_CONTACT_PHONE` to a reachable number.
+CONTACT_PHONE_RAW       = env_or("FASTLANE_CONTACT_PHONE",           "5550000000")
+CONTACT_PHONE           = CONTACT_PHONE_RAW.gsub(/\D/, "")
 
 platform :mac do
 
