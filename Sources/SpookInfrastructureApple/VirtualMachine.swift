@@ -264,8 +264,17 @@ public final class VirtualMachine: NSObject {
     /// ``VirtualMachineState/starting``, then to ``VirtualMachineState/running``
     /// once the guest OS begins executing.
     ///
+    /// - Parameter startUpFromMacOSRecovery: When `true`, boots
+    ///   the guest into macOS Recovery instead of the normal
+    ///   boot partition. Passed through to Apple's
+    ///   `VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`.
+    ///   Useful for filesystem repair, Startup Security Utility,
+    ///   or reinstalling macOS from a snapshot. Defaults to
+    ///   `false` — a regular boot.
     /// - Throws: An error if the VM cannot be started.
-    public func start() async throws {
+    ///
+    /// Doc: https://developer.apple.com/documentation/virtualization/vzmacosvirtualmachinestartoptions/startupfrommacosrecovery
+    public func start(startUpFromMacOSRecovery: Bool = false) async throws {
         guard let virtualMachine = vzVM else { throw VirtualMachineInvalidatedError() }
         guard virtualMachine.canStart else {
             throw VirtualMachineLifecycleError.invalidTransition(
@@ -273,11 +282,30 @@ public final class VirtualMachine: NSObject {
                 reason: "VM cannot start in its current state"
             )
         }
-        Log.vm.info("Starting VM '\(self.bundle.url.lastPathComponent, privacy: .public)'")
+        Log.vm.info("Starting VM '\(self.bundle.url.lastPathComponent, privacy: .public)'\(startUpFromMacOSRecovery ? " in Recovery mode" : "")")
         updateState(.starting)
         nonisolated(unsafe) let unsafeVM = virtualMachine
         do {
-            try await unsafeVM.start()
+            if startUpFromMacOSRecovery {
+                // Apple's `start(options:)` with
+                // `VZMacOSVirtualMachineStartOptions` only exposes
+                // a completion-handler variant (no async
+                // overload). Wrap it in a continuation so the
+                // caller gets the same async ergonomics.
+                let options = VZMacOSVirtualMachineStartOptions()
+                options.startUpFromMacOSRecovery = true
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    unsafeVM.start(options: options) { error in
+                        if let error {
+                            continuation.resume(throwing: error)
+                        } else {
+                            continuation.resume()
+                        }
+                    }
+                }
+            } else {
+                try await unsafeVM.start()
+            }
         } catch {
             Log.vm.error("Failed to start VM '\(self.bundle.url.lastPathComponent, privacy: .public)': \(error.localizedDescription, privacy: .public)")
             lastError = error

@@ -1,5 +1,7 @@
+import AppKit
 import SwiftUI
 @preconcurrency import Virtualization
+import SpookInfrastructureApple
 import SpooktacularKit
 
 /// A window dedicated to a single VM workspace.
@@ -29,6 +31,15 @@ struct WorkspaceWindow: View {
     @State private var showSnapshots: Bool = false
     @State private var showHardware: Bool = false
     @State private var showPorts: Bool = false
+
+    /// Holds the most-recently-resolved IP for two seconds so the
+    /// toolbar "Copy IP" button can briefly flip to a checkmark
+    /// after a successful copy — then reverts to the default
+    /// label. A plain `@State Bool` wouldn't distinguish "just
+    /// copied 10.1.2.3" from "just copied 10.1.2.4", which
+    /// matters when the user re-resolves and the VM's DHCP
+    /// lease has rotated.
+    @State private var lastCopiedIP: String?
 
     var body: some View {
         Group {
@@ -123,20 +134,91 @@ struct WorkspaceWindow: View {
             .popover(isPresented: $showPorts, arrowEdge: .bottom) {
                 PortPanel(monitor: appState.portMonitor(for: vmName))
             }
+
+            Button {
+                Task { await resolveAndCopyIP() }
+            } label: {
+                Label(
+                    lastCopiedIP ?? "Copy IP",
+                    systemImage: lastCopiedIP != nil ? "checkmark.circle.fill" : "number"
+                )
+            }
+            .glassButton()
+            .help("Resolve this workspace's IPv4 address and copy it to the clipboard.")
+            .accessibilityLabel(
+                lastCopiedIP.map { "Copied \($0)" } ?? "Copy workspace IP"
+            )
+            // Subtle transition when the label swaps between
+            // "Copy IP" and the resolved address — matches the
+            // pulse indicator pattern elsewhere in the toolbar.
+            .animation(.smooth(duration: 0.2), value: lastCopiedIP)
+        }
+    }
+
+    /// Resolves the running VM's IPv4 address from its MAC via
+    /// `IPResolver` (DHCP lease table + ARP fallback — same path
+    /// as `spook ip <vm>`) and copies the result to the general
+    /// pasteboard.
+    ///
+    /// Intentionally idempotent: a second tap re-resolves in case
+    /// the guest's DHCP lease has rotated since the last call.
+    /// The toolbar label flips to a checkmark for two seconds so
+    /// the user sees confirmation without a modal toast.
+    ///
+    /// `NSPasteboard.general` docs:
+    /// https://developer.apple.com/documentation/appkit/nspasteboard/general
+    private func resolveAndCopyIP() async {
+        guard let mac = appState.vms[vmName]?.spec.macAddress else { return }
+        do {
+            guard let ip = try await IPResolver.resolveIP(macAddress: mac) else {
+                return
+            }
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(ip, forType: .string)
+            lastCopiedIP = ip
+            // Revert the label after a brief confirmation window.
+            // Checking `lastCopiedIP == ip` means a later copy
+            // with a different IP (rotated DHCP lease) doesn't
+            // accidentally erase its own confirmation.
+            try? await Task.sleep(for: .seconds(2))
+            if lastCopiedIP == ip { lastCopiedIP = nil }
+        } catch {
+            // Resolution failure is silent — the button simply
+            // doesn't flip to the checkmark, and the user can
+            // try again. Surfacing an error toast here would be
+            // noisier than useful (DHCP + ARP both fail within
+            // the first ~15s of a cold boot).
+            Log.vm.debug("IP resolution failed for \(vmName, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 
     @ToolbarContentBuilder
     private var stoppedToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                Task { await appState.startVM(vmName) }
+            // Start button with a split-menu affordance: primary
+            // tap performs a normal boot; the chevron exposes
+            // `Start in Recovery Mode`, which boots the guest
+            // into macOS Recovery via
+            // `VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`.
+            // SwiftUI's `Menu(primaryAction:)` renders exactly
+            // this split-button shape on macOS 14+ per
+            // https://developer.apple.com/documentation/swiftui/menu.
+            Menu {
+                Button {
+                    Task { await appState.startVM(vmName, recovery: true) }
+                } label: {
+                    Label("Start in Recovery Mode", systemImage: "wrench.and.screwdriver")
+                }
+                .help("Boot into macOS Recovery (Disk Utility, Startup Security Utility, reinstall).")
             } label: {
                 Label("Start", systemImage: "play.fill")
+            } primaryAction: {
+                Task { await appState.startVM(vmName) }
             }
             .glassButton()
             .tint(.green)
-            .help("Start this workspace")
+            .help("Start this workspace. Hold the chevron for Recovery-mode boot.")
             .accessibilityIdentifier(AccessibilityID.startButton)
 
             Button {

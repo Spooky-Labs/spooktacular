@@ -267,7 +267,13 @@ final class AppState {
     ///
     /// Marks the VM as transitioning for the duration of the start
     /// sequence so the menu-bar icon switches to its busy variant.
-    func startVM(_ name: String) async {
+    ///
+    /// - Parameter recovery: When `true`, boots the guest into
+    ///   macOS Recovery via
+    ///   `VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`.
+    ///   Useful for filesystem repair, Startup Security Utility,
+    ///   or reinstalling the OS. Defaults to `false`.
+    func startVM(_ name: String, recovery: Bool = false) async {
         guard let bundle = vms[name], runningVMs[name] == nil else { return }
 
         transitioningVMs.insert(name)
@@ -275,7 +281,7 @@ final class AppState {
 
         do {
             let vm = try VirtualMachine(bundle: bundle)
-            try await vm.start()
+            try await vm.start(startUpFromMacOSRecovery: recovery)
             runningVMs[name] = vm
 
             if let socketDevice = vm.vzVM?.socketDevices.first as? VZVirtioSocketDevice {
