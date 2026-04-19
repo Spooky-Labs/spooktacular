@@ -399,6 +399,7 @@ struct CreateVMSheet: View {
                     .help("Number of virtual monitors attached to the guest. Each uses a Metal-accelerated GPU.")
 
                     Toggle("Auto-resize display", isOn: $autoResizeDisplay)
+                        .toggleStyle(.switch)
                         .help("Adjust the guest resolution automatically when you resize the window. Recommended for remote desktop.")
                 }
             },
