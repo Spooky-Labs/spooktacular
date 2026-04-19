@@ -1,63 +1,87 @@
 import SwiftUI
-@preconcurrency import Virtualization
 import SpooktacularKit
+@preconcurrency import Virtualization
 
-/// The detail view for a selected VM.
-///
-/// When running: shows the live VM display (VZVirtualMachineView).
-/// When stopped: shows a launch screen with a prominent Start
-/// button and a quick summary. The full configuration is in the
-/// inspector panel — not duplicated here.
+/// Detail view for a selected VM. Simple stack: icon, name,
+/// specs, primary + secondary actions.
 struct VMDetailView: View {
 
     let name: String
+    let bundle: VirtualMachineBundle
+
     @Environment(AppState.self) private var appState
+    @Environment(\.openWindow) private var openWindow
+
+    private var isRunning: Bool { appState.isRunning(name) }
 
     var body: some View {
-        Group {
-            if let vm = appState.runningVMs[name] {
-                VMDisplayView(name: name, virtualMachine: vm)
-            } else if let bundle = appState.vms[name] {
-                VMLaunchView(name: name, bundle: bundle)
-            }
-        }
-        .toolbar {
-            toolbarContent
-        }
-    }
+        VStack(spacing: 20) {
+            Spacer()
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            if appState.isRunning(name) {
-                Button {
-                    Task { await appState.stopVM(name) }
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
+            Image(systemName: "macwindow")
+                .font(.system(size: 72))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 6) {
+                Text(name).font(.largeTitle.weight(.semibold))
+                HStack(spacing: 16) {
+                    Label("\(bundle.spec.cpuCount) CPU", systemImage: "cpu")
+                    Label("\(bundle.spec.memorySizeInGigabytes) GB", systemImage: "memorychip")
+                    Label("\(bundle.spec.diskSizeInGigabytes) GB", systemImage: "internaldrive")
                 }
-                .glassButton()
-                .help("Stop the virtual machine")
-                .accessibilityIdentifier(AccessibilityID.stopButton)
-                .accessibilityHint("Force stops the virtual machine")
-            } else {
-                Button {
-                    Task { await appState.startVM(name) }
-                } label: {
-                    Label("Start", systemImage: "play.fill")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+
+                if isRunning {
+                    Label("Running", systemImage: "circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .padding(.top, 4)
                 }
-                .glassButton()
-                .help("Start the virtual machine")
-                .accessibilityIdentifier(AccessibilityID.startButton)
-                .accessibilityHint("Boots the virtual machine")
-                .tint(.green)
             }
+
+            HStack(spacing: 12) {
+                Button {
+                    openWindow(id: "workspace", value: name)
+                } label: {
+                    Label("Open Workspace", systemImage: "macwindow")
+                        .padding(.horizontal, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.return, modifiers: [])
+
+                if isRunning {
+                    Button {
+                        Task { await appState.stopVM(name) }
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .controlSize(.large)
+                } else {
+                    Button {
+                        Task { await appState.startVM(name) }
+                    } label: {
+                        Label("Start", systemImage: "play.fill")
+                    }
+                    .controlSize(.large)
+                    .tint(.green)
+                }
+            }
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+        .navigationTitle(name)
     }
 }
 
-// MARK: - VM Display (Running)
-
-/// Wraps `VZVirtualMachineView` for SwiftUI.
+/// `NSViewRepresentable` wrapping `VZVirtualMachineView` so a
+/// running VM's framebuffer can be hosted inside a SwiftUI view.
+/// Used by `WorkspaceWindow` when the VM is running.
 struct VMDisplayView: NSViewRepresentable {
 
     let name: String
@@ -67,9 +91,7 @@ struct VMDisplayView: NSViewRepresentable {
         let view = VZVirtualMachineView()
         view.virtualMachine = virtualMachine.vzVM
         view.capturesSystemKeys = true
-        if #available(macOS 14.0, *) {
-            view.automaticallyReconfiguresDisplay = true
-        }
+        view.automaticallyReconfiguresDisplay = true
         view.setAccessibilityLabel("Virtual machine display for \(name)")
         view.setAccessibilityRole(.group)
         return view
@@ -80,84 +102,31 @@ struct VMDisplayView: NSViewRepresentable {
     }
 }
 
-// MARK: - VM Launch Screen (Stopped)
-
-/// A centered launch screen shown when the VM is stopped.
-///
-/// Shows the VM name, status badge, a quick hardware summary,
-/// and a prominent Start button. The full configuration lives
-/// in the inspector panel — this view is intentionally minimal
-/// to avoid duplicating the inspector's content.
-struct VMLaunchView: View {
+/// Sidebar row for one VM — name, specs, running dot.
+struct VMRow: View {
 
     let name: String
-    let bundle: VirtualMachineBundle
     @Environment(AppState.self) private var appState
 
-    var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+    private var isRunning: Bool { appState.isRunning(name) }
 
-            Image(systemName: "desktopcomputer")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "circle.fill")
+                .font(.system(size: 7))
+                .foregroundStyle(isRunning ? .green : .secondary.opacity(0.3))
                 .accessibilityHidden(true)
 
-            VStack(spacing: 6) {
-                Text(name)
-                    .font(.largeTitle)
-                    .fontWeight(.semibold)
-                    .accessibilityAddTraits(.isHeader)
-
-                let ready = bundle.metadata.setupCompleted
-                Label(
-                    ready ? "Ready" : "Setup pending",
-                    systemImage: ready ? "checkmark.circle.fill" : "clock"
-                )
-                .font(.subheadline)
-                .foregroundStyle(ready ? .green : .orange)
-                .glassStatusBadge()
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(.body)
+                if let bundle = appState.vms[name] {
+                    Text("\(bundle.spec.cpuCount) CPU · \(bundle.spec.memorySizeInGigabytes) GB")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-
-            HStack(spacing: 16) {
-                Label("\(bundle.spec.cpuCount) cores", systemImage: "cpu")
-                Label("\(bundle.spec.memorySizeInGigabytes) GB", systemImage: "memorychip")
-                Label("\(bundle.spec.diskSizeInGigabytes) GB", systemImage: "internaldrive")
-                Label(
-                    "\(bundle.spec.displayCount)",
-                    systemImage: "display"
-                )
-            }
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .glassCard(cornerRadius: 12)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(Text("Hardware summary"))
-            .accessibilityValue(
-                Text("\(bundle.spec.cpuCount) cores, \(bundle.spec.memorySizeInGigabytes) gigabytes RAM, \(bundle.spec.diskSizeInGigabytes) gigabytes disk, \(bundle.spec.displayCount) display")
-            )
-
-            Button {
-                Task { await appState.startVM(name) }
-            } label: {
-                Label("Start Virtual Machine", systemImage: "play.fill")
-                    .font(.title3)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-            }
-            .glassButton()
-            .controlSize(.large)
-            .accessibilityIdentifier(AccessibilityID.startButton)
-            .accessibilityHint("Boots the virtual machine")
-
-            Text("Open the inspector panel for full configuration details.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-
             Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 2)
     }
 }

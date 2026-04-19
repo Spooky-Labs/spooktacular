@@ -1,35 +1,25 @@
 import SwiftUI
 
-/// The Spooktacular macOS application.
+/// Spooktacular — macOS virtualization for the datacenter.
 ///
-/// Uses a multi-window scene architecture:
+/// Kept intentionally minimal: scene declarations only, zero
+/// custom window chrome, zero custom container backgrounds. On
+/// macOS 26 the standard `NavigationSplitView` + toolbar combo
+/// renders Liquid Glass chrome automatically; on macOS 14–15 we
+/// get the default vibrancy + material treatment. Fighting the
+/// system here caused the transparent-window + detached-sidebar
+/// regressions we spent a day chasing — don't reintroduce.
 ///
-/// - **Library window** (`id: "library"`) — the home view: VM list,
-///   search, create/clone/delete. Always presented at launch.
-/// - **Workspace window** (`id: "workspace", for: String.self`) —
-///   one window per running VM, opened by passing the VM name to
-///   `openWindow(id:value:)`. Hosts `VZVirtualMachineView` and a
-///   Liquid-Glass toolbar.
-///
-/// This matches the GhostVM pattern where each VM feels like its
-/// own app: the library is just the dashboard; workspaces stand
-/// on their own and can remain open after the library is hidden.
-///
-/// ## Window Restoration
-///
-/// Open workspace windows are persisted to
-/// `@AppStorage("openWorkspaces")` as a JSON array of names. On
-/// the next launch ``ContentView`` iterates the stored list and
-/// calls `openWindow(id:value:)` for each. VMs that no longer
-/// exist are silently skipped.
+/// Docs:
+/// - Designing for macOS:
+///   https://developer.apple.com/design/human-interface-guidelines/designing-for-macos
+/// - Adopting Liquid Glass:
+///   https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass
 @main
 struct SpooktacularApp: App {
 
     @State private var appState = AppState()
 
-    /// Controls whether the menu-bar icon renders as a busy
-    /// indicator when any VM is mid-transition (starting, stopping,
-    /// or cloning).
     private var menuBarSymbol: String {
         if appState.isAnyVMTransitioning { return "hourglass.circle" }
         return appState.runningVMs.isEmpty
@@ -39,45 +29,72 @@ struct SpooktacularApp: App {
 
     var body: some Scene {
 
-        // MARK: - Library Window
-
+        // ────────────── Library window ──────────────
         WindowGroup(id: "library") {
             ContentView()
                 .environment(appState)
-                .frame(minWidth: 720, minHeight: 460)
-                // Opaque glass-material background on the library
-                // window. Without this, the window content area is
-                // fully transparent — the desktop wallpaper bleeds
-                // through (observed: user report "main app's
-                // background is clear and that's weird").
-                //
-                // `.libraryWindowBackground()` picks the best
-                // API for the running OS: `containerBackground`
-                // (macOS 15+) → `background` (macOS 14). See the
-                // extension below for the `#available` selector
-                // and Apple doc citations.
-                .libraryWindowBackground()
-                .sheet(isPresented: Bindable(appState).showAddImage) {
-                    AddImageSheet()
-                        .environment(appState)
-                }
-                .sheet(isPresented: Bindable(appState).showCommandPalette) {
-                    CommandPalette()
-                        .environment(appState)
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                .onReceive(NotificationCenter.default.publisher(
+                    for: NSApplication.willTerminateNotification
+                )) { _ in
                     appState.stopAllRunningVMs()
                 }
         }
-        .windowStyle(.automatic)
-        .defaultSize(width: 960, height: 640)
+        .defaultSize(width: 1000, height: 640)
         .commands {
-            workspaceCommands
-            helpCommands
+            // Replace the default "New Window" command group so
+            // Cmd+N doesn't spawn a duplicate library window.
+            //
+            // Docs: https://developer.apple.com/documentation/swiftui/commandgroupplacement/newitem
+            CommandGroup(replacing: .newItem) {
+                Button("New Virtual Machine…") {
+                    appState.showCreateSheet = true
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+
+                Button("Add Image…") {
+                    appState.showAddImage = true
+                }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+            }
+
+            // Standard SwiftUI sidebar-toggle command group —
+            // surfaces View → Show Sidebar / Hide Sidebar with
+            // the platform-standard ⌃⌘S shortcut.
+            //
+            // Docs: https://developer.apple.com/documentation/swiftui/sidebarcommands
+            SidebarCommands()
+
+            CommandGroup(replacing: .help) {
+                Button("Spooktacular Help") {
+                    NSWorkspace.shared.open(
+                        URL(string: "https://spooktacular.app/")!
+                    )
+                }
+                .keyboardShortcut("?", modifiers: .command)
+                Divider()
+                Button("CLI Reference") {
+                    NSWorkspace.shared.open(
+                        URL(string: "https://spooktacular.app/features.html")!
+                    )
+                }
+                Button("Security & Compliance") {
+                    NSWorkspace.shared.open(
+                        URL(string: "https://spooktacular.app/security.html")!
+                    )
+                }
+                Divider()
+                Button("Report an Issue…") {
+                    NSWorkspace.shared.open(
+                        URL(string: "https://github.com/Spooky-Labs/spooktacular/issues")!
+                    )
+                }
+            }
         }
 
-        // MARK: - Workspace Windows
-
+        // ────────────── Workspace windows ──────────────
+        // One window per running VM. Identified by VM name so
+        // `openWindow(id: "workspace", value: name)` brings the
+        // existing window forward instead of spawning a duplicate.
         WindowGroup(id: "workspace", for: String.self) { $vmName in
             if let name = vmName {
                 WorkspaceWindow(vmName: name)
@@ -85,114 +102,20 @@ struct SpooktacularApp: App {
             }
         }
         .defaultSize(width: 1024, height: 640)
-        .windowResizability(.contentMinSize)
 
-        // MARK: - Settings
-
+        // ────────────── Settings ──────────────
         Settings {
             SettingsView()
                 .environment(appState)
         }
 
-        // MARK: - Menu Bar
-
+        // ────────────── Menu bar ──────────────
         MenuBarExtra(
             "Spooktacular",
             systemImage: menuBarSymbol
         ) {
             MenuBarView()
                 .environment(appState)
-        }
-    }
-
-    // MARK: - Command Groups
-
-    @CommandsBuilder
-    private var workspaceCommands: some Commands {
-        CommandGroup(after: .newItem) {
-            Button("New Virtual Machine…") {
-                appState.showCreateSheet = true
-            }
-            .keyboardShortcut("n", modifiers: [.command])
-
-            Button("Add Image…") {
-                appState.showAddImage = true
-            }
-            .keyboardShortcut("i", modifiers: [.command, .shift])
-
-            Button("Open Command Palette") {
-                appState.showCommandPalette = true
-            }
-            .keyboardShortcut("k", modifiers: [.command])
-        }
-    }
-
-    @CommandsBuilder
-    private var helpCommands: some Commands {
-        CommandGroup(replacing: .help) {
-            Button("Spooktacular Help") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs")!)
-            }
-
-            Divider()
-
-            Button("Getting Started") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/getting-started")!)
-            }
-
-            Button("CLI Reference") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/cli")!)
-            }
-
-            Button("Kubernetes Guide") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/kubernetes")!)
-            }
-
-            Divider()
-
-            Button("Report an Issue…") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/Spooky-Labs/spooktacular/issues")!)
-            }
-
-            Button("Release Notes") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/Spooky-Labs/spooktacular/releases")!)
-            }
-        }
-    }
-}
-
-// MARK: - Library window background
-
-private extension View {
-
-    /// Applies the Liquid Glass window background to the library
-    /// window, picking the best Apple API for the running OS.
-    ///
-    /// - **macOS 15+**:
-    ///   `containerBackground(.ultraThinMaterial, for: .window)`
-    ///   — purpose-built for window-wide material fills,
-    ///   resilient to split-view reshuffling. This is the
-    ///   recommended API in Apple's
-    ///   ["Giving a window a custom background"](https://developer.apple.com/documentation/swiftui/view/containerbackground(_:for:))
-    ///   sample.
-    /// - **macOS 14**: `background(.ultraThinMaterial)` —
-    ///   visually identical under the library's single
-    ///   `NavigationSplitView`, and the documented
-    ///   ["Material"](https://developer.apple.com/documentation/swiftui/material)
-    ///   pattern for general material fills on SwiftUI views.
-    ///
-    /// Using an `#available` guard (rather than a shared
-    /// deployment-target bump) keeps macOS 14 users' install
-    /// count valid through Spooktacular's pre-1.0 phase; both
-    /// paths produce the same pixel effect, so there's no
-    /// feature-parity risk.
-    func libraryWindowBackground() -> some View {
-        Group {
-            if #available(macOS 15.0, *) {
-                self.containerBackground(.ultraThinMaterial, for: .window)
-            } else {
-                self.background(.ultraThinMaterial)
-            }
         }
     }
 }
