@@ -26,7 +26,7 @@ type: application
 version: 0.1.0
 
 # Application version — matches the Spooktacular binary version.
-appVersion: "0.1.0"
+appVersion: "1.0.0"
 
 home: https://github.com/spooktacular/spooktacular
 sources:

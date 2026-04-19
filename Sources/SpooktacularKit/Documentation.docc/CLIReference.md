@@ -22,7 +22,7 @@ brew install --cask spooktacular
 
 # Verify
 spook --version
-# spook 0.1.0
+# spook 1.0.0
 ```
 
 #### From the .app Bundle

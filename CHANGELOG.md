@@ -126,7 +126,7 @@ A cross-layer hardening pass covering ~158 findings from a deep audit against a 
 - HTTPAPIServer split into HTTPRequest, HTTPResponse, APIModels
 - 411+ tests in 50+ suites (was 297 in 36)
 
-## [0.1.0] - 2026-04-13
+## [1.0.0] - 2026-04-19
 
 ### Added
 - Initial release
@@ -151,5 +151,5 @@ A cross-layer hardening pass covering ~158 findings from a deep audit against a 
 - Metal GPU displays, audio, shared folders
 - Per-VM LaunchDaemon services
 
-[Unreleased]: https://github.com/Spooky-Labs/spooktacular/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/Spooky-Labs/spooktacular/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Spooky-Labs/spooktacular/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Spooky-Labs/spooktacular/releases/tag/v1.0.0

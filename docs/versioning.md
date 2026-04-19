@@ -67,8 +67,7 @@ their staging environment before the stable release ships.**
 | 0.2.0 | Development | 2026-04-12 | Enterprise blockers: stop, capacity, IP, SSH |
 | 0.3.0 | Development | 2026-04-12 | Feature complete: service, snapshots, templates |
 | 0.4.0 | Development | 2026-04-12 | Code quality: naming, errors, logging, Fastlane |
-| 1.0.0-rc1 | Release Candidate | Upcoming | First production candidate |
-| 1.0.0 | Stable | Upcoming | First stable release |
+| 1.0.0 | Stable | 2026-04-19 | Initial public release (App Store + Homebrew + GitHub Release) |
 
 **0.x.x versions** are development releases. The API may change between
 minor versions. Use in production at your own discretion.

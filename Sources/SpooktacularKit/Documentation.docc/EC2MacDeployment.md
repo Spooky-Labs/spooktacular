@@ -79,7 +79,7 @@ Verify the installation:
 
 ```bash
 spook --version
-# spook 0.1.0
+# spook 1.0.0
 ```
 
 ### Step 2: Install the LaunchDaemon
