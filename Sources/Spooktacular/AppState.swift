@@ -282,6 +282,7 @@ final class AppState {
     ///   or reinstalling the OS. Defaults to `false`.
     func startVM(_ name: String, recovery: Bool = false) async {
         guard let bundle = vms[name], runningVMs[name] == nil else { return }
+        guard !transitioningVMs.contains(name) else { return }
 
         transitioningVMs.insert(name)
         defer { transitioningVMs.remove(name) }
@@ -309,8 +310,16 @@ final class AppState {
     ///
     /// Marks the VM as transitioning for the duration of the stop
     /// sequence so the menu-bar icon switches to its busy variant.
+    ///
+    /// Guards against re-entry: if a stop is already in flight for
+    /// this VM (rapid-tap the Stop button, simultaneous context-menu
+    /// Stop, etc.), subsequent calls are a no-op. Without the guard
+    /// VZ raises `Invalid state transition. Transition from state
+    /// "stopping" to state "stopping" is invalid` and the error
+    /// alert fires every time the user clicks again.
     func stopVM(_ name: String) async {
         guard let vm = runningVMs[name] else { return }
+        guard !transitioningVMs.contains(name) else { return }
 
         transitioningVMs.insert(name)
         defer { transitioningVMs.remove(name) }

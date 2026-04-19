@@ -75,17 +75,32 @@ struct VMDetailView: View {
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: [])
 
+                let transitioning = appState.transitioningVMs.contains(name)
                 if isRunning {
                     Button {
                         Task { await appState.stopVM(name) }
-                    } label: { Label("Stop", systemImage: "stop.fill") }
+                    } label: {
+                        if transitioning {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Stop", systemImage: "stop.fill")
+                        }
+                    }
                     .controlSize(.large)
+                    .disabled(transitioning)
                 } else {
                     Button {
                         Task { await appState.startVM(name) }
-                    } label: { Label("Start", systemImage: "play.fill") }
+                    } label: {
+                        if transitioning {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Start", systemImage: "play.fill")
+                        }
+                    }
                     .controlSize(.large)
                     .tint(.green)
+                    .disabled(transitioning)
                 }
             }
         }

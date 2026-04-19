@@ -185,6 +185,7 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
          ("GET", "/api/v1/fs"),
          ("GET", "/api/v1/files"),
          ("GET", "/api/v1/ports"),
+         ("GET", "/api/v1/stats"),
          ("GET", "/api/v1/identity-token"):
         return .readonly
     default:
@@ -453,6 +454,9 @@ func routeRequest(
         statusCode = 200
     case ("GET", "/api/v1/ports"):
         response = handleListPorts()
+        statusCode = 200
+    case ("GET", "/api/v1/stats"):
+        response = handleStats()
         statusCode = 200
     case ("GET", "/api/v1/identity-token"):
         response = handleIdentityToken()

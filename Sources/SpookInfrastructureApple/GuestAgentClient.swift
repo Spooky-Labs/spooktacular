@@ -132,6 +132,25 @@ public final class GuestAgentClient {
         try await request(method: "GET", path: "/health")
     }
 
+    /// Fetches a point-in-time snapshot of guest VM metrics —
+    /// CPU usage fraction, memory in use, load average, process
+    /// count, uptime. Uses `GET /api/v1/stats` on the read-only
+    /// scope of the guest agent.
+    ///
+    /// The agent computes CPU usage as a delta against the last
+    /// time `stats` was called, so the first call after agent
+    /// boot returns `cpuUsage == nil` while subsequent calls
+    /// return a meaningful rate. Sample every ~1–5 seconds for
+    /// reasonable-looking charts.
+    ///
+    /// - Throws: ``GuestAgentError`` if the connection or
+    ///   request fails, or `404` from older agents without the
+    ///   stats endpoint — callers can catch that to fall back
+    ///   to latency-only metrics.
+    public func stats() async throws -> GuestStatsResponse {
+        try await request(method: "GET", path: "/api/v1/stats")
+    }
+
     /// Reads the guest's clipboard as plain text.
     ///
     /// - Returns: The current clipboard text.
