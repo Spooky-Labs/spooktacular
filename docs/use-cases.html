@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Use cases — Spooktacular</title>
+<meta name="description" content="Four workflows: ephemeral CI/CD runner pools, fleet provisioning, Virtual Desktop Infrastructure, and sandboxed computer-using agents. The concrete feature set under each.">
+<link rel="canonical" href="https://spooktacular.app/use-cases.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
+<div class="inner">
+<a href="/" class="logo" aria-label="Spooktacular home">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
+<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
+<div class="links">
+<a href="/features.html">Features</a>
+<a href="/use-cases.html" class="active">Use cases</a>
+<a href="/architecture.html">Architecture</a>
+<a href="/security.html">Security</a>
+<a href="/api/documentation/spooktacularkit/">Docs</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank" rel="noopener">GitHub</a>
+<a href="/download.html" class="cta">Download</a>
+</div>
+</div>
+</nav>
+
+<main id="main">
+
+<section class="hero">
+<div class="glow-field">
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-3"></div>
+</div>
+<div class="bg-grid"></div>
+<div class="container">
+  <span class="eyebrow reveal">Four workflows, one binary</span>
+  <h1 class="reveal delay-1">Pick the workflow that <span class="gradient">already matches your team.</span></h1>
+  <p class="lead reveal delay-2">
+    Each section below is a concrete answer to a concrete problem — the
+    commands, the CRDs, the hardening. No generic marketing tiles; this
+    is what the app actually does.
+  </p>
+  <div class="cta-row reveal delay-3">
+    <a href="#ci-cd" class="btn btn-ghost">CI/CD →</a>
+    <a href="#fleet" class="btn btn-ghost">Fleet →</a>
+    <a href="#vdi" class="btn btn-ghost">VDI →</a>
+    <a href="#agents" class="btn btn-ghost">Agents →</a>
+  </div>
+</div>
+</section>
+
+<!-- ========================= CI/CD ========================= -->
+<section class="block" id="ci-cd">
+<div class="container">
+<span class="eyebrow-inline reveal">01 · CI/CD</span>
+<h2 class="section-h reveal delay-1">Ephemeral GitHub runners on your Mac fleet.</h2>
+<p class="section-sub reveal delay-2">
+  One VM, one job, destroyed. The strictest isolation guarantee possible
+  on macOS — every job runs on a byte-for-byte fresh install. Warm-pool
+  mode swaps the destroy-and-re-clone cycle for a validated scrub when
+  cold-start cost is the bottleneck.
+</p>
+
+<div class="split">
+  <div class="reveal">
+    <h3>The shape of a pool</h3>
+    <p>
+      A <code>RunnerPool</code> CRD declares mode, min/max, and source
+      VM. The operator does the rest: clone, register, drain when done,
+      recycle or destroy. Scale to zero, scale on queue depth, or pin
+      min capacity.
+    </p>
+    <ul class="feat-list" style="grid-template-columns:1fr;">
+      <li><strong>Ephemeral mode</strong> — one job per VM, clean destroy-and-reclone</li>
+      <li><strong>Warm-pool mode</strong> — 10-check scrub validator proves clean</li>
+      <li><strong>Persistent mode</strong> — long-lived runners with drain-on-shutdown</li>
+      <li><strong>Keychain tokens</strong> — registration tokens never in <code>ps</code>, env, or disk</li>
+      <li><strong>Workload JWTs</strong> — JWKS kid rotation with 24 h overlap window</li>
+      <li><strong>Drain-before-delete</strong> — no torn builds on scale-down</li>
+    </ul>
+  </div>
+  <div class="reveal delay-2">
+    <div class="window-frame">
+      <div class="window-chrome">
+        <span class="ww-dot red"></span><span class="ww-dot amber"></span><span class="ww-dot green"></span>
+        <span class="ww-title">runners.yaml</span>
+      </div>
+      <div class="window-body">
+        <div class="terminal-body">
+<pre><span class="kwd">apiVersion</span>: <span class="str">spooktacular.io/v1</span>
+<span class="kwd">kind</span>: <span class="str">RunnerPool</span>
+<span class="kwd">metadata</span>:
+  <span class="kwd">name</span>: <span class="str">ios-ci</span>
+  <span class="kwd">namespace</span>: <span class="str">mobile-platform</span>
+<span class="kwd">spec</span>:
+  <span class="kwd">mode</span>: <span class="str">ephemeral</span>
+  <span class="kwd">minSize</span>: <span class="str">2</span>
+  <span class="kwd">maxSize</span>: <span class="str">8</span>
+  <span class="kwd">sourceVM</span>: <span class="str">macos-26-xcode-16</span>
+  <span class="kwd">github</span>:
+    <span class="kwd">repo</span>: <span class="str">acme/platform-ios</span>
+    <span class="kwd">tokenKeychainAccount</span>: <span class="str">ios-ci-pool</span>
+  <span class="kwd">scrub</span>:
+    <span class="kwd">validator</span>: <span class="str">clean-tenfold</span>
+    <span class="kwd">timeout</span>: <span class="str">90s</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout mt-5">
+  <strong>Per-label shell escape.</strong> Labels feed into the runner template as a single <code>--labels</code> argument. The template POSIX-escapes every label individually before joining — a single-quote inside a label can't break out and inject commands. Catches the classic "malicious repo name in label" vector.
+</div>
+</div>
+</section>
+
+<!-- ========================= Fleet / MDM ========================= -->
+<section class="block alt" id="fleet">
+<div class="container">
+<span class="eyebrow-inline reveal">02 · Fleet provisioning</span>
+<h2 class="section-h reveal delay-1">Re-image the fleet overnight. Without a network round-trip.</h2>
+<p class="section-sub reveal delay-2">
+  Create one golden VM. Clone it by the dozen. Every clone gets a fresh
+  machine identifier, a unique MAC, and an injected user-data script that
+  runs on first boot via a LaunchDaemon — no guest agent, no SSH, no DHCP
+  required.
+</p>
+
+<div class="split">
+  <div class="reveal">
+    <h3>Bulk provisioning from a single base</h3>
+    <p>
+      APFS copy-on-write means a 100 GB disk clones in milliseconds and
+      shares blocks until the clone writes. A 32-host rack with 2 VMs per
+      host fits 64 VMs cloned from one IPSW install. All re-imageable on
+      demand.
+    </p>
+    <ul class="feat-list" style="grid-template-columns:1fr;">
+      <li><strong>disk-inject</strong> — LaunchDaemon dropped pre-boot, runs before Setup Assistant</li>
+      <li><strong>Setup Assistant automation</strong> for macOS 15 and 26 — unattended</li>
+      <li><strong>Stable MAC addresses</strong> — IP resolution works on first boot, no manual DHCP reservation</li>
+      <li><strong>Bundle.config.json</strong> — atomic writes, versioned, git-friendly</li>
+      <li><strong>Snapshot → restore</strong> per VM — reset to known-good between runs</li>
+      <li><strong>Shared folders</strong> for config, certs, and scripts — no secrets on the guest image</li>
+    </ul>
+  </div>
+  <div class="reveal delay-2">
+    <div class="window-frame">
+      <div class="window-chrome">
+        <span class="ww-dot red"></span><span class="ww-dot amber"></span><span class="ww-dot green"></span>
+        <span class="ww-title">fleet-reset.sh</span>
+      </div>
+      <div class="window-body">
+        <div class="terminal-body">
+<div><span class="cmt"># Snapshot the golden state once</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook snapshot save macos-26-base golden</span></div>
+<div><span class="ok">✓</span> Snapshot 'golden' saved (142 MiB aux).</div>
+<div>&nbsp;</div>
+<div><span class="cmt"># Roll out 24 identical VMs</span></div>
+<div><span class="dim">$</span> <span class="kwd">for</span> i <span class="kwd">in</span> {01..24}; <span class="kwd">do</span></div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cmd">spook clone</span> macos-26-base host-$i \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">--user-data</span> ./provision-$i.sh</div>
+<div><span class="kwd">done</span></div>
+<div>&nbsp;</div>
+<div><span class="cmt"># Morning reset — snapshot-restore in parallel</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook snapshot restore</span> host-* golden</div>
+<div><span class="ok">✓</span> 24 VMs reset in <span class="ok">2.1s</span>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= VDI ========================= -->
+<section class="block" id="vdi">
+<div class="container">
+<span class="eyebrow-inline reveal">03 · Virtual Desktop Infrastructure</span>
+<h2 class="section-h reveal delay-1">Persistent Macs for remote developers, contractors, and BYOD users.</h2>
+<p class="section-sub reveal delay-2">
+  Give your team a real Mac desktop hosted on centralized infrastructure.
+  Metal-accelerated display, auto-resize, audio, clipboard, shared folders.
+  Screen Sharing enabled on first boot — connect with any VNC client.
+</p>
+
+<div class="card-grid cols-2">
+  <div class="card reveal">
+    <h3>Display</h3>
+    <p>1 or 2 virtual displays, Metal GPU, auto-resize picks up window-size changes so guest resolution tracks the client — essential for remote desktop.</p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Audio + mic</h3>
+    <p>VirtIO sound devices. Toggle per-VM from the Hardware editor. Disable cleanly for headless compute — removes the device, doesn't just mute.</p>
+  </div>
+  <div class="card reveal delay-2">
+    <h3>Shared folders</h3>
+    <p>VirtIO FS mounts under <code>/Volumes/My Shared Files/</code>. Pass build artifacts, credentials, training data without touching the network. Read-only per-folder.</p>
+  </div>
+  <div class="card reveal">
+    <h3>Clipboard bridge</h3>
+    <p>Host ↔ guest pasteboard sync for Linux guests via the SwiftUI app. macOS guests use the native Apple clipboard bridge when available.</p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Remote Desktop template</h3>
+    <p>One flag (<code>--remote-desktop</code>) enables macOS Screen Sharing on first boot and surfaces the VNC URL in the system log. Any VNC client works.</p>
+  </div>
+  <div class="card reveal delay-2">
+    <h3>Workspace windows</h3>
+    <p>Each running VM opens in its own SwiftUI window. Close the library, keep the workspaces — VMs feel like apps on the Dock.</p>
+  </div>
+</div>
+
+<div class="callout mt-4">
+  <strong>Provision once, recycle forever.</strong> Pair a long-lived VDI base with <code>spook snapshot restore</code> for "roll back the broken install" — users get their environment back in seconds without IT ticket churn.
+</div>
+</div>
+</section>
+
+<!-- ========================= Agents ========================= -->
+<section class="block alt" id="agents">
+<div class="container">
+<span class="eyebrow-inline reveal">04 · Computer-using agents</span>
+<h2 class="section-h reveal delay-1">A sandboxed macOS desktop for every agent.</h2>
+<p class="section-sub reveal delay-2">
+  Give a computer-using agent its own Mac — Finder, Safari, Xcode, every
+  app the host Mac can run. The Spooktacular guest agent exposes what the
+  agent actually needs (exec, file I/O, clipboard, app launch, port
+  listing) over VirtIO sockets, separated into three trust tiers so the
+  agent's session scope matches its permissions.
+</p>
+
+<div class="split">
+  <div class="reveal">
+    <h3>Why this is not a container</h3>
+    <p>
+      Containers share the host kernel. An agent that runs a full macOS
+      browser, exercises Xcode's code signing, or hits a Keychain simply
+      can't do that inside a Linux container — you need a real macOS
+      kernel. Spooktacular gives every agent one, isolated by Apple's
+      Virtualization.framework.
+    </p>
+    <ul class="feat-list" style="grid-template-columns:1fr;">
+      <li><strong>OpenClaw template</strong> — Node.js + gateway daemon, ready for agent frameworks</li>
+      <li><strong>Secrets via shared folder</strong> — API keys never in env, never in the script</li>
+      <li><strong>Three-tier vsock</strong> — read-only / runner / break-glass ports</li>
+      <li><strong>Egress allowlist</strong> compiled to <code>pf(8)</code> rules — agent can't dial the open internet</li>
+      <li><strong>Per-VM snapshot</strong> to roll back after each agent session</li>
+      <li><strong>Ephemeral mode</strong> for one-shot tasks — VM destroyed after run</li>
+    </ul>
+  </div>
+  <div class="reveal delay-2">
+    <div class="window-frame">
+      <div class="window-chrome">
+        <span class="ww-dot red"></span><span class="ww-dot amber"></span><span class="ww-dot green"></span>
+        <span class="ww-title">agent-host.sh</span>
+      </div>
+      <div class="window-body">
+        <div class="terminal-body">
+<div><span class="cmt"># Create a sandbox with the OpenClaw template</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook create</span> agent-01 \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">--openclaw</span> \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">--share</span> ~/agent-secrets \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">--network</span> isolated</div>
+<div>&nbsp;</div>
+<div><span class="cmt"># Talk to the guest agent over vsock — runner port</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook exec</span> agent-01 -- \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="str">"open -a Safari https://example.com"</span></div>
+<div>&nbsp;</div>
+<div><span class="cmt"># Roll back after the session</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook snapshot restore</span> agent-01 clean</div>
+<div><span class="ok">✓</span> Rolled back to snapshot 'clean'.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="callout mt-5">
+  <strong>Break-glass with a signed ticket.</strong> If an agent needs privileged admin access, the operator issues an Ed25519-signed ticket bound to the VM's fleet and a specific JTI. The ticket is single-use (<code>UsedTicketCache</code> is distributed) and replay-proof — an agent can't leak it twice.
+</div>
+</div>
+</section>
+
+<!-- ========================= CTA ========================= -->
+<section class="block">
+<div class="container center">
+<h2 class="section-h reveal">One tool. Four workloads. Same primitives.</h2>
+<p class="section-sub reveal delay-1" style="margin-left:auto;margin-right:auto;">
+  The GUI, CLI, HTTP API, and Kubernetes operator all speak the same
+  <code>VirtualMachineBundle</code>. Start anywhere, promote later.
+</p>
+<div class="cta-row reveal delay-2" style="justify-content:center;">
+  <a href="/download.html" class="btn btn-primary">Download</a>
+  <a href="/architecture.html" class="btn btn-secondary">See the architecture</a>
+</div>
+</div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+<div class="inner">
+<div class="grid">
+<div class="col brand-col">
+<a href="/" class="brand">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<p>macOS virtualization for the datacenter. Apple Silicon only. Open source, MIT.</p>
+</div>
+<div class="col"><h4>Product</h4><a href="/features.html">Features</a><a href="/use-cases.html">Use cases</a><a href="/architecture.html">Architecture</a><a href="/download.html">Download</a></div>
+<div class="col"><h4>Resources</h4><a href="/api/documentation/spooktacularkit/">Docs</a><a href="/security.html">Security</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a></div>
+<div class="col"><h4>Community</h4><a href="https://github.com/Spooky-Labs/spooktacular/issues">Issues</a><a href="https://github.com/Spooky-Labs/spooktacular/discussions">Discussions</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md">Security policy</a></div>
+<div class="col"><h4>Legal</h4><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT license</a></div>
+</div>
+<div class="bottom"><p>© 2026 Spooky Labs. Apple Silicon, macOS, TestFlight, and App Store are trademarks of Apple Inc.</p><p class="mono xs">v1.0.1</p></div>
+</div>
+</footer>
+
+<script>
+(function() {
+  if (typeof IntersectionObserver === "undefined") {
+    document.querySelectorAll(".reveal").forEach(el => el.classList.add("shown"));
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add("shown"); io.unobserve(entry.target); } });
+  }, { threshold: 0.12, rootMargin: "0px 0px -60px 0px" });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+})();
+</script>
+</body>
+</html>

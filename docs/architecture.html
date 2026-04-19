@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture — Spooktacular</title>
+<meta name="description" content="Clean architecture: SpookCore (domain), SpookApplication (use cases), SpookInfrastructureApple (adapters). Same domain model drives the GUI, CLI, HTTP API, and Kubernetes operator.">
+<link rel="canonical" href="https://spooktacular.app/architecture.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
+<div class="inner">
+<a href="/" class="logo" aria-label="Spooktacular home">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
+<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
+<div class="links">
+<a href="/features.html">Features</a>
+<a href="/use-cases.html">Use cases</a>
+<a href="/architecture.html" class="active">Architecture</a>
+<a href="/security.html">Security</a>
+<a href="/api/documentation/spooktacularkit/">Docs</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank" rel="noopener">GitHub</a>
+<a href="/download.html" class="cta">Download</a>
+</div>
+</div>
+</nav>
+
+<main id="main">
+
+<section class="hero">
+<div class="glow-field">
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+</div>
+<div class="bg-grid"></div>
+<div class="container">
+  <span class="eyebrow reveal">Clean architecture, Apple-first</span>
+  <h1 class="reveal delay-1">One domain model. <span class="gradient">Four front-ends.</span></h1>
+  <p class="lead reveal delay-2">
+    Every control surface — the SwiftUI app, the <code>spook</code> CLI, the
+    mTLS HTTP server, the Kubernetes operator — calls into the same typed
+    use cases. Layer boundaries are enforced at build time; nothing in
+    <code>SpookCore</code> can <code>import AppKit</code>.
+  </p>
+</div>
+</section>
+
+<!-- ========================= Layer diagram ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Module layout</span>
+<h2 class="section-h reveal delay-1">Three layers. No cheating.</h2>
+<p class="section-sub reveal delay-2">
+  Enforced by <code>DocConsistencyTests</code> in CI — a layer violation
+  breaks the build, not the code review.
+</p>
+
+<div class="arch-diagram reveal">
+  <div class="arch-layer">
+    <div class="label">Front-ends</div>
+    <div class="components">
+      <div class="component accent">SwiftUI App</div>
+      <div class="component accent">spook CLI</div>
+      <div class="component accent">HTTP API</div>
+      <div class="component accent">K8s Operator</div>
+      <div class="component accent">Guest Agent</div>
+    </div>
+  </div>
+  <div class="arch-layer">
+    <div class="label">Infrastructure</div>
+    <div class="components">
+      <div class="component">Virtualization.framework</div>
+      <div class="component">Keychain</div>
+      <div class="component">CryptoKit</div>
+      <div class="component">LocalAuthentication</div>
+      <div class="component">Network.framework</div>
+      <div class="component">hdiutil</div>
+      <div class="component">pf(8)</div>
+    </div>
+  </div>
+  <div class="arch-layer">
+    <div class="label">Application</div>
+    <div class="components">
+      <div class="component">VMProvisioner</div>
+      <div class="component">RunnerPoolManager</div>
+      <div class="component">FleetSingleton</div>
+      <div class="component">FairScheduler</div>
+      <div class="component">ScrubStrategy</div>
+      <div class="component">AuditPipeline</div>
+      <div class="component">RBACService</div>
+    </div>
+  </div>
+  <div class="arch-layer">
+    <div class="label">Core</div>
+    <div class="components">
+      <div class="component">VirtualMachineBundle</div>
+      <div class="component">RunnerPool</div>
+      <div class="component">TenantQuota</div>
+      <div class="component">BreakGlassTicket</div>
+      <div class="component">AuditRecord</div>
+      <div class="component">NetworkMode</div>
+    </div>
+  </div>
+</div>
+
+<div class="callout mt-4">
+  <strong>Foundation-only at the core.</strong>
+  <code>SpookCore</code> cannot import CryptoKit, AppKit, or any Apple
+  framework — it's pure Swift value types so the domain compiles on Linux
+  for server-side validation. <code>SpookApplication</code> adds CryptoKit
+  for signing. <code>SpookInfrastructureApple</code> adapts Apple APIs.
+  Tests catch violations; humans don't have to.
+</div>
+</div>
+</section>
+
+<!-- ========================= Data flow ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">Data flow</span>
+<h2 class="section-h reveal delay-1">One bundle format, three ways to drive it.</h2>
+<p class="section-sub reveal delay-2">
+  <code>VirtualMachineBundle</code> is the on-disk source of truth. Every
+  front-end reads and writes the same directory layout.
+</p>
+
+<div class="split">
+  <div class="reveal">
+    <h3>On-disk layout</h3>
+    <div class="window-frame">
+      <div class="window-chrome">
+        <span class="ww-dot red"></span><span class="ww-dot amber"></span><span class="ww-dot green"></span>
+        <span class="ww-title">~/.spooktacular/vms/macos-26-base.vm</span>
+      </div>
+      <div class="window-body">
+        <div class="terminal-body">
+<pre><span class="cmd">.</span>
+├── <span class="file">config.json</span>          <span class="cmt"># spec (CPU, RAM, disk, net)</span>
+├── <span class="file">metadata.json</span>        <span class="cmt"># bundle id, timestamps, icon</span>
+├── <span class="file">disk.img</span>             <span class="cmt"># APFS sparse disk image</span>
+├── <span class="file">hardware-model.bin</span>   <span class="cmt"># VZ hardware fingerprint</span>
+├── <span class="file">machine-identifier.bin</span><span class="cmt"> # unique per bundle</span>
+├── <span class="file">auxiliary.img</span>        <span class="cmt"># VZ aux storage</span>
+└── <span class="cmd">snapshots/</span>
+    └── <span class="cmd">golden/</span>           <span class="cmt"># COW-linked disk</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="reveal delay-2">
+    <h3>Atomic writes &amp; typed errors</h3>
+    <p>
+      <code>writeSpec(_:to:)</code> writes to a sibling tmp file, fsyncs,
+      then atomically renames. A crashed process can't leave a
+      half-written config. Every boundary returns a typed error — no
+      silent <code>nil</code> fallbacks.
+    </p>
+    <ul class="feat-list" style="grid-template-columns:1fr;">
+      <li><code>VirtualMachineBundle.create(at:spec:)</code></li>
+      <li><code>.load(from:)</code> / <code>.writeSpec(_:to:)</code></li>
+      <li><code>.writeMetadata(_:to:)</code></li>
+      <li><code>SnapshotManager.save / restore / list / delete</code></li>
+      <li><code>CloneManager.clone(source:to:)</code> (APFS COW)</li>
+      <li><code>DiskInjector.inject(script:into:)</code> (LaunchDaemon)</li>
+    </ul>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= Deployment topologies ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Deploy how you like</span>
+<h2 class="section-h reveal delay-1">Three topologies. Pick the one that matches your infrastructure.</h2>
+
+<div class="card-grid cols-3">
+  <div class="card reveal">
+    <h3>Laptop / workstation</h3>
+    <p>Download the SwiftUI app from the Mac App Store. The bundled <code>spook</code> binary lives in <code>/Applications/Spooktacular.app/Contents/MacOS/</code>. No server, no cluster, no config.</p>
+    <div class="meta">App Store · single host</div>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Dedicated Mac host</h3>
+    <p>A rack-mounted Mac mini (or a leased dedicated Mac in a datacenter). Install <code>spook serve</code> under LaunchDaemon. Mint an mTLS cert from your internal CA. The HTTP API exposes the full control surface.</p>
+    <div class="meta">LaunchDaemon · mTLS</div>
+  </div>
+  <div class="card reveal delay-2">
+    <h3>Kubernetes fleet</h3>
+    <p>Install the Helm chart. CRDs register. Each node runs a <code>spook-controller</code> DaemonSet that reconciles <code>MacOSVM</code> and <code>RunnerPool</code> resources. Validating webhook enforces tenant isolation + the 2-per-host cap.</p>
+    <div class="meta">Helm · operator · webhook</div>
+  </div>
+</div>
+
+<div class="callout mt-5">
+  <strong>Provisioning checklist is shipped as code.</strong>
+  <code>spook doctor --strict</code> walks the 18-item
+  <code>DEPLOYMENT_HARDENING.md</code> preflight: TLS, mTLS, TLS-1.3 floor,
+  API bearer in Keychain, guest-agent tokens, RBAC active, federated IdP,
+  JWKS pinned, audit JSONL writable, append-only audit, signing key perms,
+  distributed lock, tenancy mode, insecure mode OFF, hardened runtime,
+  code-signing timestamp, etc. Non-zero exit means the deployment is
+  <em>not</em> hardened.
+</div>
+</div>
+</section>
+
+<!-- ========================= HTTP API ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">HTTP API</span>
+<h2 class="section-h reveal delay-1">A REST control plane, not a toy server.</h2>
+<p class="section-sub reveal delay-2">
+  Built on <code>Network.framework</code>, not URLSession. Hardened against
+  the usual boundary attacks out of the box.
+</p>
+
+<div class="card-grid cols-2">
+  <div class="card reveal">
+    <h3>Request hygiene</h3>
+    <p>Body size enforced before trusting <code>Content-Length</code>. Duplicate <code>Content-Length</code> rejected per RFC 7230 §3.3.2. Slow-loris defense tracks elapsed time from first byte. <code>X-Forwarded-For</code> only honored when operator opts in via <code>SPOOK_TRUST_FORWARDED_FOR=1</code>.</p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Errors as a contract</h3>
+    <p><code>{error: {code, message, requestId}}</code> on every failure. 12 typed error codes. <code>X-Request-ID</code> minted per response — the audit record, the trace span, and the error envelope all reference the same ID.</p>
+  </div>
+  <div class="card reveal">
+    <h3>Rate limiting</h3>
+    <p>Split read/write buckets — a scraper hitting <code>GET /vms</code> can't burn the write quota. Per-token and per-IP limits combined. 429 with <code>Retry-After</code>.</p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Auth &amp; authz</h3>
+    <p>Bearer token for reads, mTLS for writes (operator choice — both can be required). RBAC on every handler; the authorization decision goes into the audit stream.</p>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= K8s operator ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Kubernetes</span>
+<h2 class="section-h reveal delay-1">A real operator. Typed conditions. Drain on terminate.</h2>
+
+<div class="split">
+  <div class="reveal">
+    <h3>Two CRDs</h3>
+    <p>
+      <code>MacOSVM</code> declares one VM on a specific host or a
+      label-selected pool. <code>RunnerPool</code> declares a min/max pool
+      of runners against a repo or org. Both track
+      <code>observedGeneration</code> and emit typed conditions:
+      Available, Progressing, Degraded, PoolReady, ScaleUpInProgress,
+      CapacityExhausted.
+    </p>
+    <ul class="feat-list" style="grid-template-columns:1fr;">
+      <li>Validating webhook blocks tenant/namespace violations at admission</li>
+      <li>2-VMs-per-host cap enforced both at admission and at reconcile</li>
+      <li>Watch-stream reconnect with exponential backoff (5→10→30s)</li>
+      <li><code>watch_stream_reconnect_total</code> metric tracks recovery</li>
+      <li>Helm chart ships NetworkPolicy, PDB, ServiceMonitor, PrometheusRule</li>
+    </ul>
+  </div>
+  <div class="reveal delay-2">
+    <div class="window-frame">
+      <div class="window-chrome">
+        <span class="ww-dot red"></span><span class="ww-dot amber"></span><span class="ww-dot green"></span>
+        <span class="ww-title">kubectl describe runnerpool ios-ci</span>
+      </div>
+      <div class="window-body">
+        <div class="terminal-body">
+<pre><span class="kwd">Status:</span>
+  <span class="kwd">ObservedGeneration:</span> <span class="str">3</span>
+  <span class="kwd">Phase:</span> <span class="ok">Healthy</span>
+  <span class="kwd">Ready Replicas:</span> <span class="str">2</span>
+  <span class="kwd">Busy Replicas:</span> <span class="str">1</span>
+
+  <span class="kwd">Conditions:</span>
+  - <span class="kwd">Type:</span> <span class="ok">Available</span>
+    <span class="kwd">Status:</span> <span class="ok">True</span>
+    <span class="kwd">Reason:</span> <span class="str">PoolOperating</span>
+    <span class="kwd">Last Transition:</span> <span class="dim">2m ago</span>
+  - <span class="kwd">Type:</span> <span class="ok">PoolReady</span>
+    <span class="kwd">Status:</span> <span class="ok">True</span>
+    <span class="kwd">Reason:</span> <span class="str">MinReplicasMet</span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= Observability ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">Observability</span>
+<h2 class="section-h reveal delay-1">SLOs as code. Dashboards as JSON.</h2>
+<p class="section-sub reveal delay-2">
+  The repo ships an SLO catalog (<code>docs/observability/slo-catalog.md</code>)
+  with 10 user-facing + platform SLIs. Each one has a PromQL expression,
+  target, evaluation window, and an alert rule name you can
+  <code>kubectl apply</code>.
+</p>
+
+<ul class="feat-list">
+  <li>OpenTelemetry trace export (OTLP HTTP/JSON) on every API request</li>
+  <li>Prometheus metrics with a typed, bounded-cardinality registry</li>
+  <li>Two Grafana dashboards (controller + fleet) as JSON</li>
+  <li>SLO-burn-rate alerts in <code>PrometheusRule</code></li>
+  <li>Prometheus scrape config for K8s SD + EC2 SD with mTLS</li>
+  <li>Request-ID correlation across HTTP, audit, traces</li>
+  <li>Menu-bar status icon animates while any VM is transitioning</li>
+</ul>
+</div>
+</section>
+
+<section class="block">
+<div class="container center">
+<h2 class="section-h reveal">Read the code, not just the page.</h2>
+<p class="section-sub reveal delay-1" style="margin-left:auto;margin-right:auto;">
+  The DocC archive covers every public API, with call-site examples and
+  the Apple documentation URLs cited inline.
+</p>
+<div class="cta-row reveal delay-2" style="justify-content:center;">
+  <a href="/api/documentation/spooktacularkit/" class="btn btn-primary">Browse the DocC</a>
+  <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank" rel="noopener" class="btn btn-secondary">GitHub →</a>
+</div>
+</div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+<div class="inner">
+<div class="grid">
+<div class="col brand-col">
+<a href="/" class="brand">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<p>macOS virtualization for the datacenter. Apple Silicon only. Open source, MIT.</p>
+</div>
+<div class="col"><h4>Product</h4><a href="/features.html">Features</a><a href="/use-cases.html">Use cases</a><a href="/architecture.html">Architecture</a><a href="/download.html">Download</a></div>
+<div class="col"><h4>Resources</h4><a href="/api/documentation/spooktacularkit/">Docs</a><a href="/security.html">Security</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a></div>
+<div class="col"><h4>Community</h4><a href="https://github.com/Spooky-Labs/spooktacular/issues">Issues</a><a href="https://github.com/Spooky-Labs/spooktacular/discussions">Discussions</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md">Security policy</a></div>
+<div class="col"><h4>Legal</h4><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT license</a></div>
+</div>
+<div class="bottom"><p>© 2026 Spooky Labs. Apple Silicon, macOS, TestFlight, and App Store are trademarks of Apple Inc.</p><p class="mono xs">v1.0.1</p></div>
+</div>
+</footer>
+
+<script>
+(function() {
+  if (typeof IntersectionObserver === "undefined") {
+    document.querySelectorAll(".reveal").forEach(el => el.classList.add("shown"));
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add("shown"); io.unobserve(entry.target); } });
+  }, { threshold: 0.12, rootMargin: "0px 0px -60px 0px" });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+})();
+</script>
+</body>
+</html>

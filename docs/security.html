@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security — Spooktacular</title>
+<meta name="description" content="mTLS, Keychain-pinned certs, OIDC + SAML, RBAC, Merkle audit tree, Secure Enclave break-glass, per-VM pf(8) egress. Every control maps to OWASP ASVS, NIST SP 800-53, SOC 2.">
+<link rel="canonical" href="https://spooktacular.app/security.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
+<div class="inner">
+<a href="/" class="logo" aria-label="Spooktacular home">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
+<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
+<div class="links">
+<a href="/features.html">Features</a>
+<a href="/use-cases.html">Use cases</a>
+<a href="/architecture.html">Architecture</a>
+<a href="/security.html" class="active">Security</a>
+<a href="/api/documentation/spooktacularkit/">Docs</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank" rel="noopener">GitHub</a>
+<a href="/download.html" class="cta">Download</a>
+</div>
+</div>
+</nav>
+
+<main id="main">
+
+<section class="hero">
+<div class="glow-field">
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+</div>
+<div class="bg-grid"></div>
+<div class="container">
+  <span class="eyebrow reveal">Fortune-20 reviewer ready</span>
+  <h1 class="reveal delay-1">Security posture, <span class="gradient">citable.</span></h1>
+  <p class="lead reveal delay-2">
+    Every control on this page maps to a specific OWASP ASVS, NIST SP 800-53,
+    or SOC 2 citation. The implementation is open source — the claims are
+    testable by anyone with a <code>git clone</code> and an hour.
+  </p>
+  <div class="pills mt-4 reveal delay-3">
+    <span class="pill">OWASP ASVS V5</span>
+    <span class="pill">NIST SP 800-53</span>
+    <span class="pill">SOC 2 CC6</span>
+    <span class="pill">RFC 6962</span>
+    <span class="pill">RFC 8037</span>
+    <span class="pill">STRIDE</span>
+    <span class="pill">CISA KEV</span>
+  </div>
+</div>
+</section>
+
+<!-- ========================= Threat model ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Threat model</span>
+<h2 class="section-h reveal delay-1">What's in scope. What isn't.</h2>
+<p class="section-sub reveal delay-2">
+  Designed against a specific threat model: <em>malware running as the
+  logged-in user on the operator's workstation</em>. That moves a lot of
+  controls — env vars, CLI flags, plaintext files — out of the acceptable
+  design space.
+</p>
+
+<div class="card-grid cols-2">
+  <div class="card reveal">
+    <h3>In scope</h3>
+    <p>A compromised process under the logged-in UID. A compromised CI runner attempting to exfiltrate the host's Mac fleet tokens. A compromised VM attempting lateral movement. Cross-tenant data leakage through shared Kubernetes state.</p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Out of scope</h3>
+    <p>Root exploits on the host kernel (that's Apple's). Attackers with physical possession and unlock time. Side-channel attacks on the Secure Enclave. Apple Silicon firmware flaws.</p>
+  </div>
+</div>
+
+<div class="callout mt-4">
+  <strong>Pre-1.0 no-compat-hedges rule.</strong>
+  Legacy paths that accepted secrets via env vars, CLI flags, or files on
+  disk were <strong>removed</strong> before 1.0 shipped — not gated behind
+  a deprecation warning. The Keychain is the only accepted path. A feature
+  that would weaken the threat model doesn't exist, not even as a
+  compatibility shim.
+</div>
+</div>
+</section>
+
+<!-- ========================= Identity & auth ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">Identity &amp; authentication</span>
+<h2 class="section-h reveal delay-1">Federated, pinned, replay-proof.</h2>
+
+<div class="card-grid cols-2">
+  <div class="card reveal">
+    <h3>OIDC</h3>
+    <p>
+      Full JWT validation: signature, <code>iss</code>, <code>aud</code>,
+      <code>exp</code>, <code>nbf</code>, <code>iat</code>, replay. JWKS
+      pinned per issuer — no "discover and trust" default. <code>iss</code>
+      validated <strong>before</strong> JWKS key selection — the IdP
+      confusion vector is closed at the type level.
+    </p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>SAML</h3>
+    <p>
+      XML canon caps entity expansion + element depth (billion-laughs
+      defense). CDATA fidelity preserved. <code>Conditions</code>
+      validation fails closed — a missing <code>NotBefore</code> or
+      <code>NotOnOrAfter</code> never silently skips time validation. JWKS
+      for signing keys; pinned per IdP.
+    </p>
+  </div>
+  <div class="card reveal">
+    <h3>mTLS</h3>
+    <p>
+      TLS 1.3 floor. <code>KeychainTLSProvider</code> verifies cert/key
+      pairs by signing a nonce and validating — an imported mismatched
+      identity is rejected at load time, not silently broken at runtime.
+      Cert pinning on the refinement protocol makes "turn off pinning"
+      unreachable by construction.
+    </p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Per-action MFA</h3>
+    <p>
+      Admin actions require Keychain ACL + <code>LocalAuthentication</code>
+      per call, not a session token that outlives the user's intent.
+      Satisfies OWASP ASVS V2.10 at the action boundary — an attacker with
+      a stolen session token can't invoke admin APIs without
+      re-authentication.
+    </p>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= Secrets ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Secrets</span>
+<h2 class="section-h reveal delay-1">Keychain-only, Secure-Enclave where possible.</h2>
+<p class="section-sub reveal delay-2">
+  Tokens, registration tokens, webhook secrets, audit signing keys — all
+  resolved through a single path per type. Env, flag, and file paths were
+  removed pre-1.0.
+</p>
+
+<ul class="feat-list">
+  <li><strong>GitHub runner tokens</strong> — Keychain service <code>com.spooktacular.github</code>, account name per scope</li>
+  <li><strong>Webhook signing secrets</strong> — Keychain service <code>com.spooktacular.webhook</code></li>
+  <li><strong>API bearer tokens</strong> — Keychain with env-var fallback only at startup</li>
+  <li><strong>Guest-agent tokens</strong> — Keychain, scoped per channel</li>
+  <li><strong>Audit signing keys</strong> — Keychain, 0600 perms enforced</li>
+  <li><strong>Break-glass signing keys</strong> — Secure-Enclave-bound (P-256 in SEP)</li>
+  <li><strong>Workload JWT signing</strong> — JWKS kid rotation with 24 h overlap</li>
+  <li><strong>Host-side certs</strong> — Keychain with ACL + <code>kSecAttrAccessibleWhenUnlockedThisDeviceOnly</code></li>
+</ul>
+
+<div class="callout mt-4">
+  <strong>No silent fallbacks.</strong> Every resolver throws a typed
+  error with an actionable <code>recoverySuggestion</code> that tells the
+  operator exactly which <code>security add-generic-password</code>
+  command populates the missing item. No guessing, no chain-of-fallbacks
+  hiding a misconfiguration.
+</div>
+</div>
+</section>
+
+<!-- ========================= Break-glass ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">Break-glass</span>
+<h2 class="section-h reveal delay-1">Time-limited, single-use, signed, audited.</h2>
+<p class="section-sub reveal delay-2">
+  When a human needs to override RBAC — incident response, customer
+  support — the mechanism is an explicit ticket, not a "sudo for the
+  fleet" mode.
+</p>
+
+<div class="split">
+  <div class="reveal">
+    <h3>BreakGlassTicket</h3>
+    <p>
+      Ed25519-signed value type (RFC 8037). Compact
+      <code>bgt:&lt;base64url-payload&gt;.&lt;base64url-sig&gt;</code>
+      wire format with <strong>no <code>alg</code> header</strong> —
+      eliminates JWT's algorithm-confusion surface rather than guarding
+      against it.
+    </p>
+    <p>
+      Ticket payload: issuer, tenant, fleet, JTI, <code>iat</code>,
+      <code>exp</code>, allowed scopes, max-uses. The signer key lives
+      in the Secure Enclave; the verifier public key is pinned per
+      issuer.
+    </p>
+  </div>
+  <div class="reveal delay-2">
+    <h3>UsedTicketCache</h3>
+    <p>
+      Distributed JTI denylist backed by DynamoDB in production
+      (<code>DynamoDBFleetSingleton</code>) or a local file in
+      single-host deployments. Enforces single-use per JTI
+      <strong>and</strong> max-uses across the fleet — an attacker
+      can't replay a ticket on a different controller.
+    </p>
+    <ul class="feat-list" style="grid-template-columns:1fr;">
+      <li>Four-gate server-side enforcement: port-tier, credential-path, credential check, handler-tier re-assertion</li>
+      <li><code>spook break-glass keygen</code> + <code>issue</code> CLI</li>
+      <li>Agent loads verifier via <code>SPOOK_BREAKGLASS_PUBLIC_KEY</code> / <code>_ISSUERS</code> / <code>_TENANT</code> env</li>
+      <li>Every break-glass use emits an audit record with a separate severity class</li>
+    </ul>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= Audit ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Audit</span>
+<h2 class="section-h reveal delay-1">RFC 6962 Merkle tree. Verifiable on a laptop.</h2>
+<p class="section-sub reveal delay-2">
+  Append-only JSONL with fsync on every write. Daily size-threshold rollover.
+  S3 Object Lock dual sink with HEAD-verify after every PUT — if the object
+  isn't under Object Lock, the write fails, loudly.
+</p>
+
+<div class="card-grid cols-2">
+  <div class="card reveal">
+    <h3>Shape</h3>
+    <p>One record per decision, per state transition, per security event. Hash-chained: each record's hash includes the previous record's hash. Tree-head signed with Ed25519 every N records. <code>HashChainAuditSink</code> rehydrates on startup and throws on chain break.</p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>Verify</h3>
+    <p><code>spook audit verify --record &lt;r&gt; --audit-path &lt;p&gt; --tree-head &lt;t&gt; --public-key &lt;k&gt;</code> reconstructs the Merkle inclusion proof and validates the signature. Supports P-256 ECDSA (current signer) and Ed25519 (CT-compatible legacy).</p>
+  </div>
+  <div class="card reveal">
+    <h3>Dual sink</h3>
+    <p>Writes go to the local JSONL <strong>and</strong> S3 Object Lock. A divergence alarm fires if the two diverge — an attacker can't silently drop records locally without the remote copy disagreeing.</p>
+  </div>
+  <div class="card reveal delay-1">
+    <h3>SIEM</h3>
+    <p>HMAC-signed webhook forwarder with exponential backoff and a bounded retry queue. Metric on loss so an outage is visible, not silent.</p>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= Network ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">Network</span>
+<h2 class="section-h reveal delay-1">Egress control, compiled.</h2>
+
+<ul class="feat-list">
+  <li><strong>Per-VM <code>pf(8)</code> rules</strong> generated from a typed policy — every outbound connection goes through the firewall</li>
+  <li><strong>Isolated network mode</strong> — no network interface at all, host ↔ guest over VirtIO socket only</li>
+  <li><strong>NAT</strong> — shared internet via host, separate MAC per VM, DHCP lease recovery via ARP</li>
+  <li><strong>Bridged</strong> — VM gets its own IP on your LAN (requires the VM-networking entitlement)</li>
+  <li><strong>HTTP body-size caps</strong> — checked <strong>before</strong> trusting <code>Content-Length</code></li>
+  <li><strong>Slow-loris defense</strong> — tracks elapsed time from the first byte of a request</li>
+  <li><strong>Duplicate Content-Length rejected</strong> per RFC 7230 §3.3.2</li>
+  <li><strong>X-Forwarded-For trust</strong> is operator-opt-in, not default</li>
+</ul>
+</div>
+</section>
+
+<!-- ========================= Data at rest ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Data at rest</span>
+<h2 class="section-h reveal delay-1">Encrypted on power-off. Verified on load.</h2>
+
+<div class="split">
+  <div class="reveal">
+    <h3>Bundle protection</h3>
+    <p>
+      <code>BundleProtection.apply</code> sets
+      <code>FileProtectionType.completeUntilFirstUserAuthentication</code>
+      on portable Macs. The bundle — disk image, config, auxiliary
+      storage — is encrypted at rest when the laptop is powered off, even
+      if the FileVault recovery key is later compromised.
+    </p>
+    <p>
+      Desktops and rack-mounted Mac hosts get <code>.none</code> so
+      pre-login LaunchDaemons can still read bundles at boot. The
+      policy is automated via
+      <code>BundleProtection.recommendedPolicy()</code> and overridable
+      via <code>SPOOK_BUNDLE_PROTECTION</code>.
+    </p>
+  </div>
+  <div class="reveal delay-2">
+    <h3>Integrity checks</h3>
+    <p>
+      <code>CloneManager</code> verifies <code>machine-identifier.bin</code>
+      SHA-256 after write — a corrupt or truncated clone surfaces at
+      clone time, not on next boot. <code>SnapshotManager</code> uses a
+      staging directory renamed on success so a crashed save can't leave
+      a half-written snapshot.
+    </p>
+  </div>
+</div>
+</div>
+</section>
+
+<!-- ========================= Compliance ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">Compliance</span>
+<h2 class="section-h reveal delay-1">Posture, not certification.</h2>
+<p class="section-sub reveal delay-2">
+  Spooktacular is not SOC 2 or ISO 27001 certified — certification applies
+  to your deployment, not to an open-source codebase. What we ship is a
+  <strong>posture</strong>: the controls, mapped 1:1 to the relevant
+  control framework, auditable in <code>git blame</code>.
+</p>
+
+<div class="tbl-wrap reveal">
+<table class="compare">
+<thead><tr><th>Framework</th><th>Control</th><th>Where it lives</th></tr></thead>
+<tbody>
+<tr><td>OWASP ASVS V5</td><td>V2.10 — MFA per sensitive action</td><td><code>AdminPresenceGate</code> + Keychain ACL</td></tr>
+<tr><td>OWASP ASVS V5</td><td>V3 — Session management</td><td>Bearer + mTLS, short-lived JWTs, replay cache</td></tr>
+<tr><td>OWASP ASVS V5</td><td>V7 — Error handling / logging</td><td>Typed errors, audit on every decision</td></tr>
+<tr><td>NIST SP 800-53</td><td>AC-14 — Break-glass</td><td><code>BreakGlassTicket</code>, <code>UsedTicketCache</code></td></tr>
+<tr><td>NIST SP 800-53</td><td>AU-9(3) — Cryptographic protection of audit records</td><td>Merkle tree, Ed25519 signed tree heads</td></tr>
+<tr><td>SOC 2</td><td>CC6.6 — Logical access restrictions</td><td>RBAC + federated IdP + audit</td></tr>
+<tr><td>SOC 2</td><td>CC7.2 — System monitoring</td><td>OTel traces, Prometheus SLOs, alerts</td></tr>
+<tr><td>RFC 6962</td><td>Certificate Transparency Merkle proofs</td><td><code>spook audit verify</code></td></tr>
+<tr><td>RFC 8037</td><td>Ed25519 signatures in CBOR Web Tokens</td><td>Break-glass ticket format</td></tr>
+<tr><td>CISA KEV</td><td>24h / 7d / 30d patch SLAs</td><td><code>docs/PATCH_POLICY.md</code></td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout mt-4">
+  <strong>Procurement docs included.</strong>
+  <code>docs/DATA_PROCESSING_AGREEMENT.md</code>,
+  <code>docs/AUDIT_STATUS.md</code>,
+  <code>docs/INCIDENT_RESPONSE.md</code> (four full runbooks),
+  <code>docs/EXPORT_CONTROL.md</code> (EAR + OFAC),
+  <code>docs/VPAT.md</code>, and
+  <code>docs/SUB_PROCESSORS.md</code> ship with the repo.
+  <code>SECURITY.md</code> includes a PGP disclosure section.
+</div>
+</div>
+</section>
+
+<!-- ========================= Disclosure ========================= -->
+<section class="block">
+<div class="container center">
+<h2 class="section-h reveal">Responsible disclosure</h2>
+<p class="section-sub reveal delay-1" style="margin-left:auto;margin-right:auto;">
+  Found something? Email <code>security@spookylabs.ai</code> (PGP available
+  in <code>SECURITY.md</code>). Reasonable-time-bound disclosure — we
+  publish the CVE and post-mortem after patches ship.
+</p>
+<div class="cta-row reveal delay-2" style="justify-content:center;">
+  <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md" target="_blank" rel="noopener" class="btn btn-primary">SECURITY.md</a>
+  <a href="/download.html" class="btn btn-secondary">Download</a>
+</div>
+</div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+<div class="inner">
+<div class="grid">
+<div class="col brand-col">
+<a href="/" class="brand">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<p>macOS virtualization for the datacenter. Apple Silicon only. Open source, MIT.</p>
+</div>
+<div class="col"><h4>Product</h4><a href="/features.html">Features</a><a href="/use-cases.html">Use cases</a><a href="/architecture.html">Architecture</a><a href="/download.html">Download</a></div>
+<div class="col"><h4>Resources</h4><a href="/api/documentation/spooktacularkit/">Docs</a><a href="/security.html">Security</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a></div>
+<div class="col"><h4>Community</h4><a href="https://github.com/Spooky-Labs/spooktacular/issues">Issues</a><a href="https://github.com/Spooky-Labs/spooktacular/discussions">Discussions</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md">Security policy</a></div>
+<div class="col"><h4>Legal</h4><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT license</a></div>
+</div>
+<div class="bottom"><p>© 2026 Spooky Labs. Apple Silicon, macOS, TestFlight, and App Store are trademarks of Apple Inc.</p><p class="mono xs">v1.0.1</p></div>
+</div>
+</footer>
+
+<script>
+(function() {
+  if (typeof IntersectionObserver === "undefined") {
+    document.querySelectorAll(".reveal").forEach(el => el.classList.add("shown"));
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add("shown"); io.unobserve(entry.target); } });
+  }, { threshold: 0.12, rootMargin: "0px 0px -60px 0px" });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+})();
+</script>
+</body>
+</html>

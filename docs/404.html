@@ -4,198 +4,61 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>404 — Spooktacular</title>
-<meta name="description" content="Page not found. This page has been ghosted.">
-<style>
-:root { --bg: #07050f; --surface: #0f0a1a; --surface2: #1a1035; --border: rgba(139,108,224,0.15); --fg: #f0eaff; --dim: #8b7faa; --accent: #a78bfa; --accent2: #7c3aed; --green: #22c55e; --red: #ef4444; --yellow: #fbbf24; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; min-height: 100vh; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-
-/* Nav */
-nav { position: fixed; top: 0; width: 100%; z-index: 100; background: rgba(7,5,15,0.7); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid rgba(139,108,224,0.1); }
-nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
-nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
-nav .logo:hover { text-decoration: none; }
-nav .logo svg { width: 24px; height: 24px; }
-nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
-nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
-nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
-nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
-nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
-nav .cta-btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
-nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
-nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
-nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
-#nav-toggle { display: none; }
-@media (max-width: 768px) {
-  nav .hamburger { display: flex; }
-  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(7,5,15,0.95); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
-  nav .nav-links a { padding: 0.6rem 0.75rem; }
-  nav .nav-links a::after { display: none; }
-  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
-  #nav-toggle:checked ~ .nav-links { display: flex; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-}
-
-/* 404 Content */
-.four-oh-four { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 200px); text-align: center; padding: 2rem; padding-top: 5rem; }
-
-/* Ghost animation */
-.ghost-container { position: relative; width: 180px; height: 220px; margin-bottom: 2rem; }
-.ghost { position: relative; width: 120px; height: 140px; margin: 0 auto; animation: float 3s ease-in-out infinite; }
-.ghost-body { width: 120px; height: 110px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 60px 60px 0 0; position: relative; overflow: hidden; }
-.ghost-body::before { content: ''; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 80px; height: 60px; background: rgba(255,255,255,0.08); border-radius: 40px 40px 0 0; }
-.ghost-face { position: absolute; top: 35px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; }
-.ghost-eye { width: 14px; height: 18px; background: var(--bg); border-radius: 50%; position: relative; animation: blink 4s ease-in-out infinite; }
-.ghost-eye::after { content: ''; position: absolute; top: 3px; left: 3px; width: 5px; height: 5px; background: rgba(255,255,255,0.6); border-radius: 50%; }
-.ghost-mouth { position: absolute; top: 65px; left: 50%; transform: translateX(-50%); width: 14px; height: 10px; border-radius: 0 0 10px 10px; background: var(--bg); }
-.ghost-tail { display: flex; position: relative; top: -1px; }
-.ghost-tail-piece { width: 30px; height: 30px; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
-.ghost-tail-piece:nth-child(1) { border-radius: 0 0 0 30px; }
-.ghost-tail-piece:nth-child(2) { border-radius: 0 0 30px 0; }
-.ghost-tail-piece:nth-child(3) { border-radius: 0 0 0 30px; }
-.ghost-tail-piece:nth-child(4) { border-radius: 0 0 30px 0; }
-.ghost-tail-piece:nth-child(even) { transform: translateY(-12px); }
-.ghost-shadow { width: 80px; height: 14px; background: radial-gradient(ellipse, rgba(167,139,250,0.3) 0%, transparent 70%); border-radius: 50%; margin: 20px auto 0; animation: shadow-pulse 3s ease-in-out infinite; }
-.sparkle { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0; }
-.sparkle:nth-child(1) { top: 20px; left: 10px; animation: sparkle 2.5s ease-in-out 0s infinite; }
-.sparkle:nth-child(2) { top: 60px; right: 5px; animation: sparkle 2.5s ease-in-out 0.8s infinite; }
-.sparkle:nth-child(3) { top: 10px; right: 20px; animation: sparkle 2.5s ease-in-out 1.6s infinite; }
-
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
-@keyframes shadow-pulse { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(0.7); opacity: 0.5; } }
-@keyframes blink { 0%, 42%, 44%, 100% { transform: scaleY(1); } 43% { transform: scaleY(0.1); } }
-@keyframes sparkle { 0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(180deg); } }
-
-.error-code { font-size: 8rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 0.5rem; }
-.error-message { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
-.error-sub { color: var(--dim); font-size: 1.05rem; margin-bottom: 2rem; max-width: 400px; }
-.btn-home { display: inline-flex; align-items: center; gap: 0.5rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; padding: 0.75rem 1.75rem; border-radius: 8px; font-weight: 600; font-size: 0.95rem; transition: opacity 0.2s, transform 0.2s; }
-.btn-home:hover { opacity: 0.9; text-decoration: none; transform: translateY(-1px); }
-.error-links { margin-top: 1.5rem; display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center; }
-.error-links a { color: var(--dim); font-size: 0.9rem; }
-.error-links a:hover { color: var(--accent); }
-
-/* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
-footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
-footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
-footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-col .brand-desc { font-size: 0.85rem; color: var(--dim); margin-top: 0.25rem; }
-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
-footer .foot-bottom p { margin: 0; }
-@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
-
-/* Starfield */
-.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #7c3aed33, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
-.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #7c3aed44, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
-.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #7c3aed22, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
-@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, .four-oh-four, footer { position: relative; z-index: 1; }
-</style>
+<meta name="description" content="That page disappeared. The app works; the link doesn't.">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-<div class="stars" aria-hidden="true"></div><div class="stars2" aria-hidden="true"></div><div class="stars3" aria-hidden="true"></div>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav role="navigation" aria-label="Main navigation">
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
 <div class="inner">
-<a href="index.html" class="logo" aria-label="Spooktacular home">
-<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" width="24" height="24"><path d="M12 2C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V22h2v-2h4v2h2v-7.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7zm-2 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+<a href="/" class="logo" aria-label="Spooktacular home">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
 Spooktacular
 </a>
-<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
-<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
-<div class="nav-links">
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="api/documentation/spooktacularkit/">Docs</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="get-started.html">Get Started</a>
-<a href="download.html" class="cta-btn">Download</a>
+<div class="links">
+<a href="/features.html">Features</a>
+<a href="/use-cases.html">Use cases</a>
+<a href="/architecture.html">Architecture</a>
+<a href="/security.html">Security</a>
+<a href="/download.html" class="cta">Download</a>
 </div>
 </div>
 </nav>
 
-<main>
-<div class="four-oh-four" role="main">
-<div class="ghost-container" aria-hidden="true">
-<span class="sparkle"></span>
-<span class="sparkle"></span>
-<span class="sparkle"></span>
-<div class="ghost">
-<div class="ghost-body">
-<div class="ghost-face">
-<div class="ghost-eye"></div>
-<div class="ghost-eye"></div>
+<main id="main">
+<section class="hero centered" style="padding-top: 9rem;">
+<div class="glow-field">
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-3"></div>
 </div>
-<div class="ghost-mouth"></div>
-</div>
-<div class="ghost-tail">
-<div class="ghost-tail-piece"></div>
-<div class="ghost-tail-piece"></div>
-<div class="ghost-tail-piece"></div>
-<div class="ghost-tail-piece"></div>
-</div>
-</div>
-<div class="ghost-shadow"></div>
-</div>
+<div class="bg-grid"></div>
+<div class="container">
 
-<div class="error-code">404</div>
-<div class="error-message">This page has been ghosted</div>
-<p class="error-sub">The VM you're looking for has vanished into the void. Maybe it was an ephemeral runner.</p>
-<a href="index.html" class="btn-home">Back to Home</a>
-<div class="error-links">
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
+  <div style="font-size: clamp(6rem, 15vw, 10rem); font-weight: 800; letter-spacing: -0.05em; line-height: 1; margin-bottom: 1rem;" class="gradient">
+    <svg viewBox="0 0 128 96" width="110" height="110" aria-hidden="true" shape-rendering="crispEdges" style="vertical-align: middle; margin-right: 1rem;"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="17" y="46" width="18" height="3" fill="#e8deff"/><rect x="24" y="47" width="4" height="2" fill="#7c3aed"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/></svg><span style="background: linear-gradient(120deg, #c4b5fd, #7c3aed); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">404</span>
+  </div>
+
+  <h1 style="font-size: clamp(1.75rem, 3.5vw, 2.5rem);">That page disappeared.</h1>
+  <p class="lead" style="max-width: 560px;">
+    Maybe it moved with the v1.0.1 website refresh. Try the nav, or head
+    back to the top and pick up from there.
+  </p>
+  <div class="cta-row" style="justify-content: center;">
+    <a href="/" class="btn btn-primary">Home</a>
+    <a href="/features.html" class="btn btn-secondary">Features</a>
+    <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank" rel="noopener" class="btn btn-ghost">GitHub →</a>
+  </div>
 </div>
-</div>
+</section>
 </main>
 
-<footer role="contentinfo">
-<div class="foot-inner">
-<div class="foot-grid">
-<div class="foot-col">
-<h4>Product</h4>
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="versioning.html">Versioning</a>
-<a href="download.html">Downloads</a>
-</div>
-<div class="foot-col">
-<h4>Resources</h4>
-<a href="api/documentation/spooktacularkit/">API Reference</a>
-<a href="get-started.html">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
-</div>
-<div class="foot-col">
-<h4>Legal</h4>
-<a href="privacy.html">Privacy Policy</a>
-<a href="terms.html">Terms of Use</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
-</div>
-<div class="foot-col">
-<h4>Community</h4>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
-</div>
-</div>
-<div class="foot-bottom">
-<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
+<footer class="site-footer">
+<div class="inner">
+<div class="bottom" style="margin-top: 0; padding-top: 0; border: none;">
+<p>© 2026 Spooky Labs.</p>
+<p class="mono xs">v1.0.1</p>
 </div>
 </div>
 </footer>
