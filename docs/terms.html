@@ -3,233 +3,181 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Terms of Use — Spooktacular</title>
-<meta name="description" content="Spooktacular terms of use. MIT licensed. Covers Apple EULA compliance, VM data responsibility, and enterprise use guidance.">
-<style>
-:root { --bg: #07050f; --surface: #0f0a1a; --surface2: #1a1035; --border: rgba(139,108,224,0.15); --fg: #f0eaff; --dim: #8b7faa; --accent: #a78bfa; --accent2: #7c3aed; --green: #22c55e; --red: #ef4444; --yellow: #fbbf24; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.skip-link { position: absolute; top: -100%; left: 1rem; background: var(--accent); color: #000; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; z-index: 200; }
-.skip-link:focus { top: 0.5rem; }
-
-/* Nav */
-nav { position: fixed; top: 0; width: 100%; z-index: 100; background: rgba(7,5,15,0.7); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid rgba(139,108,224,0.1); }
-nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
-nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
-nav .logo:hover { text-decoration: none; }
-nav .logo svg { width: 24px; height: 24px; }
-nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
-nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
-nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
-nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
-nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
-nav .nav-links a.active { color: var(--fg); }
-nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
-nav .cta-btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
-nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
-nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
-nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
-#nav-toggle { display: none; }
-@media (max-width: 768px) {
-  nav .hamburger { display: flex; }
-  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(7,5,15,0.95); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
-  nav .nav-links a { padding: 0.6rem 0.75rem; }
-  nav .nav-links a::after { display: none; }
-  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
-  #nav-toggle:checked ~ .nav-links { display: flex; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-}
-
-.container { max-width: 700px; margin: 0 auto; padding: 2rem; }
-
-/* Page header */
-.page-header { text-align: center; padding: 7rem 0 1rem; }
-.page-header h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -0.03em; }
-.page-header h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.page-header p { color: var(--dim); font-size: 1.1rem; margin-top: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; }
-
-h2 { font-size: 1.25rem; margin: 2.5rem 0 0.75rem; color: var(--accent); font-weight: 600; }
-p, li { margin-bottom: 0.75rem; color: var(--dim); font-size: 0.95rem; }
-p strong { color: var(--fg); }
-ul { padding-left: 1.5rem; }
-code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.82em; font-family: 'SF Mono', 'Fira Code', monospace; }
-.updated { color: var(--dim); font-size: 0.85rem; }
-
-/* Callout */
-.callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 1.25rem 1.5rem; margin: 1.5rem 0; }
-.callout p { margin: 0; color: var(--fg); font-weight: 500; }
-.callout-warn { border-left-color: var(--yellow); }
-
-/* License block */
-.license-block { background: var(--surface); padding: 1rem 1.25rem; border-radius: 8px; border: 1px solid var(--border); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.7; white-space: pre-wrap; color: var(--dim); margin-bottom: 0.75rem; }
-
-/* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
-footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
-footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
-footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-col .brand-desc { font-size: 0.85rem; color: var(--dim); margin-top: 0.25rem; }
-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
-footer .foot-bottom p { margin: 0; }
-@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
-
-/* Starfield */
-.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #7c3aed33, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
-.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #7c3aed44, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
-.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #7c3aed22, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
-@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, .container, .page-header, footer { position: relative; z-index: 1; }
-</style>
+<title>Terms of Service — Spooktacular</title>
+<meta name="description" content="Terms for using Spooktacular. MIT licensed, AS IS, Apple Silicon only, subject to Apple's EULA for macOS guests.">
+<link rel="canonical" href="https://spooktacular.app/terms.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#07050f">
+<meta property="og:image" content="https://spooktacular.app/assets/icons/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://spooktacular.app/assets/icons/og-image.png">
+<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to main content</a>
-<div class="stars" aria-hidden="true"></div><div class="stars2" aria-hidden="true"></div><div class="stars3" aria-hidden="true"></div>
 
-<nav role="navigation" aria-label="Main navigation">
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
 <div class="inner">
-<a href="index.html" class="logo" aria-label="Spooktacular home">
-<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" width="24" height="24"><path d="M12 2C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V22h2v-2h4v2h2v-7.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7zm-2 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+<a href="/" class="logo" aria-label="Spooktacular home">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
 Spooktacular
 </a>
 <input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
 <label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
-<div class="nav-links">
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="api/documentation/spooktacularkit/">Docs</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="get-started.html">Get Started</a>
-<a href="download.html" class="cta-btn">Download</a>
+<div class="links">
+<a href="/features.html">Features</a>
+<a href="/use-cases.html">Use cases</a>
+<a href="/architecture.html">Architecture</a>
+<a href="/security.html">Security</a>
+<a href="/api/documentation/spooktacularkit/">Docs</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank" rel="noopener">GitHub</a>
+<a href="/download.html" class="cta">Download</a>
 </div>
 </div>
 </nav>
 
 <main id="main">
-<div class="page-header">
-<h1>Terms of <span class="gradient">Use</span></h1>
-<p>Terms of use for Spooktacular. MIT licensed, Apple EULA compliant, no strings attached.</p>
-</div>
+<div class="container-narrow legal">
 
-<div class="container">
-<p class="updated">Last updated: April 12, 2026</p>
+<h1>Terms of Service</h1>
+<p class="meta">Effective 2026-04-19.</p>
 
 <div class="callout">
-<p>Spooktacular is MIT licensed. You can use it for any purpose, commercial or personal, with no restrictions beyond the MIT license terms.</p>
+  <strong>Plain-language summary.</strong> Spooktacular is MIT-licensed
+  open-source software provided AS IS, no warranty, no liability. Running
+  macOS in a VM is governed by Apple's macOS Software License
+  Agreement — max two VMs per physical Mac host. You're responsible for
+  your VMs and what you put in them.
 </div>
 
-<h2>1. The MIT License</h2>
-<p>Spooktacular is released under the <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>. The full text:</p>
-<p class="license-block">Copyright (c) 2026 Spooky Labs
+<h2>1. Agreement</h2>
+<p>
+  By installing or using Spooktacular ("the app"), <code>spook</code>
+  ("the CLI"), or any Spooky Labs library, you agree to these terms and
+  to the underlying <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT License</a>.
+  If you're using the app on behalf of an organization, you confirm you
+  have authority to bind that organization.
+</p>
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+<h2>2. License</h2>
+<p>
+  The source code, the signed Mac App Store build, the Homebrew binary,
+  and the container image published by Spooky Labs are released under the
+  <strong>MIT License</strong>. The full license text is in the repository
+  and linked from the footer of every page. Nothing in these terms
+  overrides or restricts the MIT license grant.
+</p>
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+<h2>3. Apple's macOS EULA (important)</h2>
+<p>
+  Spooktacular creates macOS virtual machines using Apple's
+  Virtualization.framework. Your use of macOS inside those VMs is
+  governed by Apple's
+  <a href="https://www.apple.com/legal/sla/" target="_blank" rel="noopener">macOS Software License Agreement</a>,
+  not by us. At time of writing, Apple permits up to <strong>two virtual
+  instances of macOS per physical Apple-branded computer</strong>. The app
+  enforces this ceiling in the GUI, CLI, HTTP API, and Kubernetes
+  admission webhook — but responsibility for EULA compliance is yours.
+</p>
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+<h2>4. AS IS / no warranty</h2>
+<p>
+  THE APP IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT
+  SHALL SPOOKY LABS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+  ARISING FROM, OUT OF, OR IN CONNECTION WITH THE APP OR THE USE OR
+  OTHER DEALINGS IN THE APP. This restates the MIT license's warranty
+  disclaimer — it is not in addition to it.
+</p>
 
-<h2>2. Apple EULA compliance</h2>
-<div class="callout callout-warn">
-<p>You are responsible for complying with Apple's software license agreements when running macOS in virtual machines.</p>
-</div>
-<p>Spooktacular uses Apple's Virtualization.framework, which is Apple's official API for creating virtual machines on Apple Silicon Macs. Key points:</p>
+<h2>5. Responsible use</h2>
+<p>
+  You agree that you will not:
+</p>
 <ul>
-<li><strong>Apple Silicon only:</strong> macOS virtualization via Virtualization.framework is only supported on Apple Silicon Macs. Spooktacular does not support running macOS on non-Apple hardware.</li>
-<li><strong>macOS EULA:</strong> The macOS Software License Agreement permits running up to two (2) additional copies of macOS in virtual machines on each Apple-branded computer. Spooktacular enforces this limit via <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CapacityCheck.swift" target="_blank">CapacityCheck.swift</a>.</li>
-<li><strong>Restore images:</strong> Spooktacular downloads macOS restore images (IPSW files) from Apple's official servers. These are subject to Apple's software license agreements.</li>
-<li><strong>Your responsibility:</strong> You are responsible for ensuring your use of macOS virtual machines complies with Apple's current EULA. Spooky Labs does not provide legal advice.</li>
+  <li>Use the app to violate Apple's macOS EULA — including running more than two macOS VMs per physical Mac host.</li>
+  <li>Use the app to run software that violates the license terms under which that software is distributed.</li>
+  <li>Use the app to infringe any third party's intellectual property or privacy rights.</li>
+  <li>Attempt to reverse engineer Apple's Virtualization.framework beyond what Apple's public API documentation permits.</li>
+  <li>Represent the app, its source code, or its binary as your own work when redistributing it (the MIT license requires attribution and license inclusion).</li>
 </ul>
 
-<h2>3. VM data responsibility</h2>
-<p>You are solely responsible for all data stored in your virtual machines, including:</p>
-<ul>
-<li>Source code, build artifacts, and CI/CD outputs</li>
-<li>Credentials, tokens, and secrets injected via provisioning scripts</li>
-<li>Any software installed inside VMs</li>
-<li>Backups and disaster recovery of VM data</li>
-</ul>
-<p>Spooktacular stores all VM data locally at <code>~/.spooktacular/</code>. We do not access, back up, or manage this data.</p>
+<h2>6. Your VMs, your content</h2>
+<p>
+  Anything you create inside a VM — files, disk images, provisioning
+  scripts, secrets, keys — is yours. We don't see it, don't touch it,
+  don't claim any rights to it. See the <a href="/privacy.html">Privacy
+  Policy</a>.
+</p>
 
-<h2>4. Enterprise use</h2>
-<p>Spooktacular is suitable for enterprise use under the MIT license. There are:</p>
-<ul>
-<li>No per-seat restrictions</li>
-<li>No per-core licensing</li>
-<li>No usage limits</li>
-<li>No commercial use restrictions</li>
-<li>No requirement to purchase support</li>
-<li>No requirement to disclose your usage</li>
-</ul>
-<p>For enterprise deployments at scale, we recommend:</p>
-<ul>
-<li>Pinning to a specific version (see <a href="versioning.html">Versioning</a>)</li>
-<li>Running your own fork if you need guaranteed availability</li>
-<li>Contributing upstream fixes to benefit from community maintenance</li>
-</ul>
+<h2>7. Third-party services</h2>
+<p>
+  The app integrates with third-party services when you configure it to
+  — Apple's signing service (IPSW downloads), GitHub (runner registration),
+  your Kubernetes cluster, your S3 bucket, your IdP. Your use of those
+  services is governed by their own terms and privacy policies, not
+  ours.
+</p>
 
-<h2>5. No warranty</h2>
-<p>As stated in the MIT license, the software is provided "as is" without warranty of any kind. Spooky Labs is not liable for any damages arising from the use of the software.</p>
+<h2>8. Changes to the app</h2>
+<p>
+  Spooktacular evolves. We may add features, change behavior, or deprecate
+  paths between releases. Material changes to default behavior are
+  announced in the <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/CHANGELOG.md">CHANGELOG</a>.
+  Because the app is open source, you can always stay on the version
+  that works for you.
+</p>
 
-<h2>6. Third-party software</h2>
-<p>Spooktacular depends on Apple's Virtualization.framework and other system frameworks. These are subject to their own licenses and terms. Any software you install inside virtual machines (Xcode, Homebrew, GitHub Actions runner, etc.) is subject to the respective licenses of that software.</p>
+<h2>9. Changes to these terms</h2>
+<p>
+  If we update these terms, we'll update the effective date above and
+  the Git history will record the exact diff. Use of a new version of
+  the app constitutes acceptance of the then-current terms.
+</p>
 
-<h2>7. This website</h2>
-<p>This website (spooktacular.app) is provided for informational purposes. While we strive for accuracy, feature descriptions reflect the current state of the software and may change between releases. Always refer to the <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">source code</a> for the authoritative implementation.</p>
+<h2>10. Governing law</h2>
+<p>
+  These terms are governed by the laws of the State of Delaware, United
+  States, without regard to its conflict-of-laws rules. Any dispute will
+  be resolved in the state or federal courts located in Delaware, unless
+  applicable consumer-protection law requires otherwise.
+</p>
 
-<h2>8. Changes to these terms</h2>
-<p>We may update these terms from time to time. Changes will be posted on this page with an updated date. The MIT license itself will not change.</p>
-
-<h2>9. Contact</h2>
-<p>Questions about these terms? Open a <a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">GitHub Discussion</a>.</p>
+<h2>11. Contact</h2>
+<p>
+  Legal: <a href="mailto:legal@spookylabs.ai">legal@spookylabs.ai</a>.
+  General: <a href="mailto:spook@spookylabs.ai">spook@spookylabs.ai</a>.
+  Security: <a href="mailto:security@spookylabs.ai">security@spookylabs.ai</a>
+  (PGP in <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md">SECURITY.md</a>).
+</p>
 
 </div>
 </main>
 
-<footer role="contentinfo">
-<div class="foot-inner">
-<div class="foot-grid">
-<div class="foot-col">
-<h4>Product</h4>
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="versioning.html">Versioning</a>
-<a href="download.html">Downloads</a>
+<footer class="site-footer">
+<div class="inner">
+<div class="grid">
+<div class="col brand-col">
+<a href="/" class="brand">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<p>macOS virtualization for the datacenter. Apple Silicon only. Open source, MIT.</p>
 </div>
-<div class="foot-col">
-<h4>Resources</h4>
-<a href="api/documentation/spooktacularkit/">API Reference</a>
-<a href="get-started.html">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
+<div class="col"><h4>Product</h4><a href="/features.html">Features</a><a href="/use-cases.html">Use cases</a><a href="/architecture.html">Architecture</a><a href="/download.html">Download</a></div>
+<div class="col"><h4>Resources</h4><a href="/api/documentation/spooktacularkit/">Docs</a><a href="/security.html">Security</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a></div>
+<div class="col"><h4>Community</h4><a href="https://github.com/Spooky-Labs/spooktacular/issues">Issues</a><a href="https://github.com/Spooky-Labs/spooktacular/discussions">Discussions</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md">Security policy</a></div>
+<div class="col"><h4>Legal</h4><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT license</a></div>
 </div>
-<div class="foot-col">
-<h4>Legal</h4>
-<a href="privacy.html">Privacy Policy</a>
-<a href="terms.html">Terms of Use</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
-</div>
-<div class="foot-col">
-<h4>Community</h4>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
-</div>
-</div>
-<div class="foot-bottom">
-<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-</div>
+<div class="bottom"><p>© 2026 Spooky Labs. Apple Silicon, macOS, TestFlight, and App Store are trademarks of Apple Inc.</p><p class="mono xs">v1.0.1</p></div>
 </div>
 </footer>
 </body>

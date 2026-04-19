@@ -3,280 +3,278 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Download Spooktacular — macOS Virtualization for Apple Silicon</title>
-<meta name="description" content="Download Spooktacular for macOS. macOS Virtualization for Teams on Apple Silicon. Free, open source, MIT licensed.">
-<style>
-:root { --bg: #09090b; --surface: #18181b; --surface2: #1f1f23; --border: #27272a; --border-hover: #3f3f46; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-.skip-link { position: absolute; top: -100%; left: 1rem; background: var(--accent); color: #000; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; z-index: 200; }
-.skip-link:focus { top: 0.5rem; }
-
-/* Nav */
-nav { position: sticky; top: 0; z-index: 100; background: rgba(9,9,11,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(39,39,42,0.5); }
-nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
-nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
-nav .logo:hover { text-decoration: none; }
-nav .logo svg { width: 24px; height: 24px; }
-nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
-nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
-nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
-nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
-nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
-nav .nav-links a.active { color: var(--fg); }
-nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
-nav .cta-btn { background: var(--accent); color: #000; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
-nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
-nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
-nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
-#nav-toggle { display: none; }
-@media (max-width: 768px) {
-  nav .hamburger { display: flex; }
-  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(9,9,11,0.97); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
-  nav .nav-links a { padding: 0.6rem 0.75rem; }
-  nav .nav-links a::after { display: none; }
-  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
-  #nav-toggle:checked ~ .nav-links { display: flex; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-}
-
-/* Hero */
-.hero { text-align: center; padding: 6rem 0 3rem; position: relative; }
-.hero h1 { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.035em; line-height: 1.1; max-width: 800px; margin: 0 auto; }
-.hero h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.hero .lead { font-size: 1.2rem; color: var(--dim); margin-top: 1rem; max-width: 540px; margin-left: auto; margin-right: auto; line-height: 1.6; }
-.hero .version-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 1.25rem; font-size: 0.8rem; color: var(--dim); margin-bottom: 2rem; }
-.hero .version-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-/* Download button */
-.download-btn { display: inline-flex; flex-direction: column; align-items: center; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #000; padding: 1.25rem 3.5rem; border-radius: 14px; font-weight: 700; font-size: 1.35rem; margin-top: 2.5rem; transition: all 0.25s; box-shadow: 0 4px 24px rgba(167,139,250,0.25); }
-.download-btn:hover { opacity: 0.92; text-decoration: none; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(167,139,250,0.35); }
-.download-btn .download-sub { font-size: 0.8rem; font-weight: 500; opacity: 0.8; margin-top: 0.35rem; }
-
-/* Sections */
-section { padding: 4rem 0; }
-section h2 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
-
-/* Requirements */
-.requirements { max-width: 700px; margin: 0 auto; }
-.req-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; margin-top: 2rem; }
-.req-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; text-align: center; transition: border-color 0.25s; }
-.req-card:hover { border-color: rgba(167,139,250,0.3); }
-.req-card .icon { font-size: 1.75rem; margin-bottom: 0.5rem; display: block; }
-.req-card h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
-.req-card p { color: var(--dim); font-size: 0.82rem; line-height: 1.5; }
-@media (max-width: 640px) { .req-grid { grid-template-columns: 1fr; } }
-
-/* Install steps */
-.install-steps { max-width: 700px; margin: 0 auto; }
-.steps-row { display: flex; align-items: center; justify-content: center; gap: 1.5rem; margin-top: 2rem; flex-wrap: wrap; }
-.step { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem 1.75rem; text-align: center; flex: 1; min-width: 160px; }
-.step .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(167,139,250,0.15); color: var(--accent); font-weight: 700; font-size: 0.85rem; margin-bottom: 0.5rem; }
-.step h3 { font-size: 0.9rem; font-weight: 600; }
-.step p { color: var(--dim); font-size: 0.8rem; margin-top: 0.25rem; }
-.step-arrow { color: var(--dim); font-size: 1.5rem; font-weight: 300; }
-@media (max-width: 640px) { .step-arrow { display: none; } }
-
-/* Alt install */
-.alt-install { max-width: 700px; margin: 0 auto; }
-.alt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; margin-top: 2rem; }
-.alt-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
-.alt-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
-.alt-card .planned-tag { display: inline-block; padding: 0.12rem 0.5rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(96,165,250,0.12); color: var(--blue); }
-.alt-card p { color: var(--dim); font-size: 0.85rem; line-height: 1.5; margin-bottom: 0.75rem; }
-.alt-card code { display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 1rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; color: var(--accent); }
-@media (max-width: 640px) { .alt-grid { grid-template-columns: 1fr; } }
-
-/* Older versions link */
-.older-versions { text-align: center; margin-top: 3rem; padding: 1.5rem; }
-.older-versions a { color: var(--dim); font-size: 0.9rem; transition: color 0.2s; }
-.older-versions a:hover { color: var(--accent); }
-
-/* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
-footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
-footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
-footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
-footer .foot-bottom p { margin: 0; }
-@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
-
-/* Starfield */
-.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
-.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
-.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
-@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, .container, .hero, footer, main { position: relative; z-index: 1; }
-
-@media (max-width: 640px) {
-  .hero h1 { font-size: 2.25rem; }
-  .download-btn { font-size: 1.1rem; padding: 1rem 2.5rem; }
-}
-</style>
+<title>Download — Spooktacular</title>
+<meta name="description" content="Install Spooktacular. Mac App Store, Homebrew, Helm chart, Terraform module. Open source, MIT licensed.">
+<link rel="canonical" href="https://spooktacular.app/download.html">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta name="theme-color" content="#07050f">
+<meta property="og:image" content="https://spooktacular.app/assets/icons/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://spooktacular.app/assets/icons/og-image.png">
+<link rel="stylesheet" href="/assets/style.css">
 </head>
 <body>
-<div class="stars" aria-hidden="true"></div>
-<div class="stars2" aria-hidden="true"></div>
-<div class="stars3" aria-hidden="true"></div>
-<a href="#main" class="skip-link">Skip to content</a>
+<a href="#main" class="skip-link">Skip to main content</a>
 
-<nav role="navigation" aria-label="Main navigation">
+<nav class="site-nav" role="navigation" aria-label="Main navigation">
 <div class="inner">
-<a href="index.html" class="logo" aria-label="Spooktacular home">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+<a href="/" class="logo" aria-label="Spooktacular home">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
 Spooktacular
 </a>
 <input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
 <label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
-<div class="nav-links">
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="api/documentation/spooktacularkit/">Docs</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="get-started.html">Get Started</a>
-<a href="download.html" class="cta-btn active">Download</a>
+<div class="links">
+<a href="/features.html">Features</a>
+<a href="/use-cases.html">Use cases</a>
+<a href="/architecture.html">Architecture</a>
+<a href="/security.html">Security</a>
+<a href="/api/documentation/spooktacularkit/">Docs</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank" rel="noopener">GitHub</a>
+<a href="/download.html" class="cta active">Download</a>
 </div>
 </div>
 </nav>
 
 <main id="main">
 
-<!-- Hero -->
-<section class="hero" aria-labelledby="hero-heading">
+<section class="hero centered">
+<div class="glow-field">
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+</div>
+<div class="bg-grid"></div>
 <div class="container">
-<div class="version-badge"><span class="dot"></span> v1.0.0 &mdash; Latest Release</div>
-<h1 id="hero-heading">Download <span class="gradient">Spooktacular</span></h1>
-<p class="lead">macOS Virtualization for Teams on Apple Silicon. Free, open source, MIT licensed. Zero cost, forever.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip" class="download-btn">
-  Download Spooktacular v1.0.0
-  <span class="download-sub">macOS 14+ &middot; Apple Silicon &middot; 25 MB</span>
-</a>
+  <span class="eyebrow reveal"><span class="dot"></span> v1.0.1 · Apple Silicon · macOS 14+</span>
+  <h1 class="reveal delay-1">Install <span class="gradient">Spooktacular.</span></h1>
+  <p class="lead reveal delay-2">
+    Four install surfaces. Pick the one that matches how you deploy the
+    rest of your stack. The binary is the same; only the packaging
+    differs.
+  </p>
 </div>
 </section>
 
-<!-- System Requirements -->
-<section aria-labelledby="requirements-heading">
-<div class="container requirements">
-<h2 id="requirements-heading" style="text-align: center;">System Requirements</h2>
-<div class="req-grid">
-<div class="req-card">
-<span class="icon" aria-hidden="true">&#128187;</span>
-<h3>macOS 14+</h3>
-<p>Sonoma or later required. Uses Apple's Virtualization.framework.</p>
+<section class="block">
+<div class="container">
+<div class="card-grid cols-2">
+
+  <!-- Mac App Store -->
+  <div class="card accent-border reveal">
+    <div class="icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+    </div>
+    <span class="tag tag-shipped">Recommended</span>
+    <h3>Mac App Store</h3>
+    <p>
+      The signed, notarized, sandboxed build. Auto-updates. Free. Includes
+      the bundled <code>spook</code> CLI at
+      <code>/Applications/Spooktacular.app/Contents/MacOS/spook</code>.
+    </p>
+    <div class="cta-row mt-3">
+      <a href="https://apps.apple.com/app/spooktacular" class="btn btn-primary">
+        Open in App Store
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+  </div>
+
+  <!-- Homebrew -->
+  <div class="card reveal delay-1">
+    <div class="icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="9" width="16" height="12" rx="2"/><path d="M8 9V6a4 4 0 018 0v3"/></svg>
+    </div>
+    <span class="tag tag-shipped">CLI only</span>
+    <h3>Homebrew</h3>
+    <p>
+      For headless hosts, CI, and servers that don't run the GUI. Same
+      binary as the one inside the app bundle.
+    </p>
+    <div class="window-frame mt-3">
+      <div class="window-body">
+        <div class="terminal-body">
+<div><span class="dim">$</span> <span class="cmd">brew tap</span> spooky-labs/tap</div>
+<div><span class="dim">$</span> <span class="cmd">brew install</span> spook</div>
+<div><span class="dim">$</span> <span class="cmd">spook doctor</span></div>
+<div><span class="ok">✓</span> Apple Silicon · Virtualization.framework · 0/2 VMs</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Helm / K8s -->
+  <div class="card reveal">
+    <div class="icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+    </div>
+    <span class="tag tag-shipped">Fleet</span>
+    <h3>Helm chart</h3>
+    <p>
+      For Kubernetes-managed Mac fleets. Ships with
+      <code>MacOSVM</code> + <code>RunnerPool</code> CRDs, validating
+      webhook, NetworkPolicy, PDB, ServiceMonitor, and default
+      PrometheusRule.
+    </p>
+    <div class="window-frame mt-3">
+      <div class="window-body">
+        <div class="terminal-body">
+<div><span class="dim">$</span> <span class="cmd">helm repo add</span> spooky-labs \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;https://charts.spooktacular.app</div>
+<div><span class="dim">$</span> <span class="cmd">helm install</span> spooktacular \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;spooky-labs/spooktacular \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">-n</span> spooktacular-system \</div>
+<div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="dim">--create-namespace</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terraform -->
+  <div class="card reveal delay-1">
+    <div class="icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h18M3 6h18M3 18h12"/></svg>
+    </div>
+    <span class="tag tag-shipped">Infra-as-code</span>
+    <h3>Terraform module</h3>
+    <p>
+      Provisions dedicated Mac hosts with SSM document, License Manager
+      config, Host Resource Group, 7 CloudWatch alarms, and an ASG
+      lifecycle hook that triggers a graceful drain via the
+      <code>DrainSpooktacularHost</code> runbook.
+    </p>
+    <div class="window-frame mt-3">
+      <div class="window-body">
+        <div class="terminal-body">
+<pre><span class="kwd">module</span> <span class="str">"spooktacular"</span> {
+  <span class="kwd">source</span>  = <span class="str">"spooky-labs/spooktacular/aws"</span>
+  <span class="kwd">version</span> = <span class="str">"~&gt; 1.0"</span>
+
+  <span class="kwd">hosts</span> = <span class="str">8</span>
+  <span class="kwd">region</span> = <span class="str">"us-east-1"</span>
+}</pre>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-<div class="req-card">
-<span class="icon" aria-hidden="true">&#9889;</span>
-<h3>Apple Silicon</h3>
-<p>M1, M2, M3, M4, or later. Intel Macs are not supported.</p>
-</div>
-<div class="req-card">
-<span class="icon" aria-hidden="true">&#128190;</span>
-<h3>35 GB Free</h3>
-<p>For the app plus one macOS VM. Each clone adds ~1 GB.</p>
-</div>
+
+<div class="callout mt-5">
+  <strong>Same binary, different packaging.</strong> The <code>spook</code>
+  shipped in the Homebrew formula, the App Store bundle, and the
+  container image in the Helm chart all come from the same
+  <code>swift build -c release</code>. Reproducible. SLSA provenance
+  attached to every GitHub release.
 </div>
 </div>
 </section>
 
-<!-- Install Steps -->
-<section aria-labelledby="install-heading">
-<div class="container install-steps">
-<h2 id="install-heading" style="text-align: center;">Install in 3 Steps</h2>
-<div class="steps-row">
-<div class="step">
-<div class="num">1</div>
-<h3>Download</h3>
-<p>Click the button above</p>
-</div>
-<span class="step-arrow" aria-hidden="true">&#8594;</span>
-<div class="step">
-<div class="num">2</div>
-<h3>Unzip</h3>
-<p>Double-click the .zip file</p>
-</div>
-<span class="step-arrow" aria-hidden="true">&#8594;</span>
-<div class="step">
-<div class="num">3</div>
-<h3>Drag to Applications</h3>
-<p>Move Spooktacular.app</p>
-</div>
+<!-- ========================= First boot ========================= -->
+<section class="block alt">
+<div class="container">
+<span class="eyebrow-inline reveal">90 seconds to first boot</span>
+<h2 class="section-h reveal delay-1">Verify → Create → Start.</h2>
+<p class="section-sub reveal delay-2">
+  The installer leaves you with everything you need. No extra dependencies,
+  no sudo steps, no manual Keychain setup for the local case.
+</p>
+
+<div class="window-frame reveal">
+  <div class="window-chrome">
+    <span class="ww-dot red"></span><span class="ww-dot amber"></span><span class="ww-dot green"></span>
+    <span class="ww-title">first-run.sh</span>
+  </div>
+  <div class="window-body">
+    <div class="terminal-body">
+<div><span class="cmt"># 1 · Verify the host</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook doctor</span></div>
+<div><span class="ok">✓</span> Apple Silicon (arm64)</div>
+<div><span class="ok">✓</span> macOS 15.4 (min: 14.0)</div>
+<div><span class="ok">✓</span> Virtualization.framework available</div>
+<div><span class="ok">✓</span> Disk: 412 GB free (min: 20 GB)</div>
+<div><span class="ok">✓</span> Capacity: 0/2 VMs running</div>
+<div>&nbsp;</div>
+<div><span class="cmt"># 2 · Create the first VM (latest macOS IPSW, auto-install)</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook create</span> my-mac</div>
+<div><span class="dim">Fetching restore image from Apple…</span></div>
+<div><span class="dim">Downloading IPSW (18 GB) … resumable</span></div>
+<div><span class="dim">Installing macOS …</span></div>
+<div><span class="dim">Automating Setup Assistant …</span></div>
+<div><span class="ok">✓</span> VM 'my-mac' ready.</div>
+<div>&nbsp;</div>
+<div><span class="cmt"># 3 · Start it</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook start</span> my-mac</div>
+<div><span class="ok">✓</span> Running. SSH at 192.168.64.7</div>
+    </div>
+  </div>
 </div>
 </div>
 </section>
 
-<!-- Alternative Install Methods -->
-<section aria-labelledby="alt-heading">
-<div class="container alt-install">
-<h2 id="alt-heading" style="text-align: center;">Alternative Install Methods</h2>
-<div class="alt-grid">
-<div class="alt-card">
-<h3>Homebrew Cask <span class="planned-tag">Available</span></h3>
-<p>Install the GUI app via Homebrew. One command, auto-updates.</p>
-<code>brew install --cask spooktacular</code>
-</div>
-<div class="alt-card">
-<h3>CLI via Homebrew <span class="planned-tag">Available</span></h3>
-<p>Install just the <code style="background:none;border:none;padding:0;color:var(--accent);display:inline;">spook</code> CLI for headless workflows and CI/CD.</p>
-<code>brew install spooktacular</code>
-</div>
-</div>
-<div class="older-versions">
-<a href="https://github.com/Spooky-Labs/spooktacular/releases">View all releases &amp; older versions on GitHub &#8594;</a>
+<!-- ========================= Requirements ========================= -->
+<section class="block">
+<div class="container">
+<span class="eyebrow-inline reveal">Requirements</span>
+<h2 class="section-h reveal delay-1">Apple Silicon only.</h2>
+<p class="section-sub reveal delay-2">
+  Intel Macs can't run macOS in a VM without licensing gymnastics — Apple's
+  Virtualization.framework is Apple-Silicon-only for macOS guests.
+</p>
+
+<div class="card-grid cols-3">
+  <div class="card">
+    <h3>Host</h3>
+    <p>Mac with Apple Silicon (M1 / M2 / M3 / M4 / later). macOS 14 (Sonoma) or newer. 16 GB RAM minimum, 32 GB recommended for 2 concurrent VMs.</p>
+  </div>
+  <div class="card">
+    <h3>Storage</h3>
+    <p>20 GB free minimum to bootstrap. APFS-formatted (default). Plan 64 GB+ per VM for a typical dev workload; sparse disks reclaim on delete.</p>
+  </div>
+  <div class="card">
+    <h3>Network</h3>
+    <p>Outbound HTTPS to Apple's signing service for IPSW downloads. Or skip the download with a local IPSW — <code>spook create --from-ipsw &lt;path&gt;</code>.</p>
+  </div>
 </div>
 </div>
 </section>
 
 </main>
 
-<footer role="contentinfo">
-<div class="foot-inner">
-<div class="foot-grid">
-<div class="foot-col">
-<h4>Product</h4>
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="versioning.html">Versioning</a>
-<a href="download.html">Downloads</a>
+<footer class="site-footer">
+<div class="inner">
+<div class="grid">
+<div class="col brand-col">
+<a href="/" class="brand">
+<svg viewBox="0 0 128 96" width="28" height="28" aria-hidden="true" shape-rendering="crispEdges"><rect x="21" y="36" width="10" height="2" fill="#c4b5fd"/><rect x="17" y="40" width="18" height="2" fill="#e8deff"/><rect x="17" y="42" width="2" height="4" fill="#a78bfa"/><rect x="19" y="42" width="14" height="4" fill="#e8deff"/><rect x="33" y="42" width="2" height="4" fill="#a78bfa"/><rect x="21" y="43" width="3" height="3" fill="#1a1035"/><rect x="27" y="43" width="3" height="3" fill="#1a1035"/><rect x="18" y="49" width="18" height="12" fill="#d4c2f0"/><rect x="97" y="36" width="10" height="2" fill="#a78bfa"/><rect x="93" y="40" width="18" height="2" fill="#d0bff5"/><rect x="93" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="95" y="42" width="14" height="4" fill="#d0bff5"/><rect x="109" y="42" width="2" height="4" fill="#8b6ce0"/><rect x="97" y="43" width="3" height="3" fill="#1a1035"/><rect x="103" y="43" width="3" height="3" fill="#1a1035"/><rect x="94" y="49" width="14" height="12" fill="#b99de0"/></svg>
+Spooktacular
+</a>
+<p>macOS virtualization for the datacenter. Apple Silicon only. Open source, MIT.</p>
 </div>
-<div class="foot-col">
-<h4>Resources</h4>
-<a href="api/documentation/spooktacularkit/">API Reference</a>
-<a href="get-started.html">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
+<div class="col"><h4>Product</h4><a href="/features.html">Features</a><a href="/use-cases.html">Use cases</a><a href="/architecture.html">Architecture</a><a href="/download.html">Download</a></div>
+<div class="col"><h4>Resources</h4><a href="/api/documentation/spooktacularkit/">Docs</a><a href="/security.html">Security</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/CHANGELOG.md">Changelog</a><a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a></div>
+<div class="col"><h4>Community</h4><a href="https://github.com/Spooky-Labs/spooktacular/issues">Issues</a><a href="https://github.com/Spooky-Labs/spooktacular/discussions">Discussions</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/SECURITY.md">Security policy</a></div>
+<div class="col"><h4>Legal</h4><a href="/privacy.html">Privacy</a><a href="/terms.html">Terms</a><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE">MIT license</a></div>
 </div>
-<div class="foot-col">
-<h4>Legal</h4>
-<a href="privacy.html">Privacy Policy</a>
-<a href="terms.html">Terms of Use</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
-</div>
-<div class="foot-col">
-<h4>Community</h4>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
-</div>
-</div>
-<div class="foot-bottom">
-<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-</div>
+<div class="bottom"><p>© 2026 Spooky Labs. Apple Silicon, macOS, TestFlight, and App Store are trademarks of Apple Inc.</p><p class="mono xs">v1.0.1</p></div>
 </div>
 </footer>
+
+<script>
+(function() {
+  if (typeof IntersectionObserver === "undefined") {
+    document.querySelectorAll(".reveal").forEach(el => el.classList.add("shown"));
+    return;
+  }
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) { entry.target.classList.add("shown"); io.unobserve(entry.target); } });
+  }, { threshold: 0.12, rootMargin: "0px 0px -60px 0px" });
+  document.querySelectorAll(".reveal").forEach(el => io.observe(el));
+})();
+</script>
 </body>
 </html>
