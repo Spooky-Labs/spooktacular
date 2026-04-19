@@ -33,6 +33,14 @@ jobs:
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
       APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      # match runs inside `:ui_tests` too — the XCUITest runner
+      # needs a real Apple Development cert in the keychain so
+      # the test bundle and its plugin aren't signed with mismatched
+      # ad-hoc team IDs (the "mapping process and mapped file (non-
+      # platform) have different Team IDs" failure mode reproduced
+      # in a local run).
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
       # Apple rejects placeholder phone numbers server-side; the
       # `promote` lane attaches the same review-contact fields to
       # the App Store submission as `:beta` did to the TestFlight
@@ -45,6 +53,13 @@ jobs:
         with:
           bundler-cache: true
 
+      # xcodegen keeps `Spooktacular.xcodeproj` in sync with
+      # `project.yml` before `:ui_tests` invokes xcodebuild. On
+      # macos-26 runners xcodegen isn't preinstalled — install
+      # explicitly rather than assume.
+      - name: Install xcodegen
+        run: brew install xcodegen
+
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -55,6 +70,14 @@ jobs:
       # deliver call halfway through.
       - name: fastlane lint_metadata
         run: bundle exec fastlane lint_metadata
+
+      # Regenerate App Store screenshots from the current HEAD.
+      # Writes into `fastlane/screenshots/en-US/`; `:promote` then
+      # picks them up via `screenshots_path: "./screenshots"` +
+      # `overwrite_screenshots: true`, so every release ships
+      # App Store artwork that matches the tagged binary.
+      - name: fastlane ui_tests (generate screenshots)
+        run: bundle exec fastlane ui_tests
 
       - name: fastlane promote
         run: |

@@ -366,21 +366,19 @@ platform :mac do
       build_number: build_number.to_s,
       skip_binary_upload: true,
 
-      # Refresh metadata on every promotion so App Store copy
-      # stays in sync with the site + repo.
+      # Refresh metadata + screenshots on every promotion so App
+      # Store copy stays in sync with the repo. The `promote`
+      # workflow runs `bundle exec fastlane ui_tests` immediately
+      # before this action, which populates
+      # `fastlane/screenshots/en-US/` from the XCUITest run, so
+      # `overwrite_screenshots: true` is a full refresh every time
+      # — never stale App Store artwork.
       skip_metadata: false,
-
-      # Screenshots are uploaded via the App Store Connect UI
-      # for the v1.0.0 submission. Flip to
-      # `skip_screenshots: false, overwrite_screenshots: true`
-      # once the `:ui_tests` lane is wired into CI and actually
-      # produces PNGs into `fastlane/screenshots/en-US/`. The
-      # xcodegen+XCUITest infrastructure is in place
-      # (`project.yml`), but populating screenshots is a
-      # follow-up — tracked in CHANGELOG.
-      skip_screenshots: true,
+      skip_screenshots: false,
+      overwrite_screenshots: true,
 
       metadata_path: "./metadata",
+      screenshots_path: "./screenshots",
       app_rating_config_path: "./metadata/age_rating_config.json",
 
       primary_category: "DEVELOPER_TOOLS",
@@ -439,6 +437,24 @@ platform :mac do
   # the same path, so screenshots produced on a PR look the same
   # as the ones a dev would commit locally.
   lane :ui_tests do
+    # Install signing on CI before launching the app under test.
+    # Rationale: macOS App Sandbox (`com.apple.security.app-sandbox
+    # = true` in Spooktacular.entitlements) is enforced by
+    # taskgated, which refuses to launch unsigned sandboxed apps.
+    # The XCUITest runner then aborts with "Test crashed with
+    # signal kill before establishing connection." Using ad-hoc
+    # signing (`CODE_SIGN_IDENTITY="-"`) is worse — runner and
+    # plugin end up with mismatched hash-based Team IDs and fail
+    # with "mapping process and mapped file (non-platform) have
+    # different Team IDs."
+    #
+    # Fix: run `match` to install the real Apple Development /
+    # Distribution cert into the CI keychain. Both runner and
+    # plugin then share the same Team ID and the sandbox is happy.
+    # Guarded on CI because match requires MATCH_PASSWORD +
+    # cert-repo access that a developer laptop often lacks.
+    signing if ENV["CI"]
+
     # Regenerate the `.xcodeproj` from `project.yml` so the
     # file can't drift between what xcodegen would produce and
     # what's on disk. xcodegen is idempotent and cheap (sub-second)
