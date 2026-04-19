@@ -206,7 +206,7 @@ struct CreateVMSheet: View {
                     let task = Task { await createVM() }
                     creationTask = task
                 }
-                .glassButton()
+                .glassProminentButton()
                 .disabled(isCreating || !canCreate)
                 .keyboardShortcut(.defaultAction)
                 .help("Download the IPSW, install macOS, and register the bundle")

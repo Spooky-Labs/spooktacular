@@ -265,7 +265,7 @@ struct WorkspaceWindow: View {
             } primaryAction: {
                 Task { await appState.startVM(vmName) }
             }
-            .glassButton()
+            .glassProminentButton()
             .tint(.green)
             .help("Start this workspace. Hold the chevron for Recovery-mode boot.")
             .accessibilityIdentifier(AccessibilityID.startButton)
@@ -328,7 +328,7 @@ struct WorkspaceLaunchView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
             }
-            .glassButton()
+            .glassProminentButton()
             .tint(.green)
             .controlSize(.large)
             .accessibilityIdentifier(AccessibilityID.startButton)

@@ -54,15 +54,28 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .frame(minWidth: 220)
         .toolbar {
+            // Sidebar toolbar items: Create + Diagnostics. Grouping
+            // them in one `ToolbarItemGroup` lets Liquid Glass
+            // render them as a single material cluster on
+            // macOS 26+ (per Apple's "always use GlassEffectContainer
+            // for multiple elements" guidance — toolbar groups
+            // implicitly apply the container).
             ToolbarItemGroup {
                 Button {
                     appState.showCreateSheet = true
                 } label: {
                     Label("Create VM", systemImage: "plus.square.on.square")
                 }
-                .glassButton()
-                .help("Create a new virtual machine")
+                .help("Create a new virtual machine (⌘N)")
                 .accessibilityIdentifier(AccessibilityID.createVMButton)
+
+                Button {
+                    appState.showDoctor = true
+                } label: {
+                    Label("Diagnostics", systemImage: "stethoscope")
+                }
+                .help("Check host readiness — mirrors `spook doctor` (⌃⌘D)")
+                .keyboardShortcut("d", modifiers: [.command, .control])
             }
         }
         .overlay {

@@ -3,17 +3,51 @@ import SwiftUI
 // MARK: - Glass Button Modifier
 
 /// Applies `.buttonStyle(.glass)` on macOS 26+ (Liquid Glass),
-/// falls back to `.borderedProminent` on older versions.
+/// falls back to `.bordered` on older versions.
 ///
-/// The `.glass` button style only exists in the macOS 26 SDK
-/// (Swift 6.2+ / Xcode 26). On older SDKs the symbol is undefined, so
-/// we gate it with `#if compiler(>=6.2)` at compile time,
-/// then use `#available` for the runtime check.
+/// Use for **secondary** actions — the translucent variant that
+/// shows the content behind it. Pair with
+/// ``glassProminentButton()`` for the primary-action counterpart.
+///
+/// Apple guidance: "Controls like sliders and toggles fluidly
+/// morph into menus and popovers" — you don't need to override
+/// shapes; the system supplies the right shape per platform when
+/// you use `.buttonStyle(.glass)` with the default border shape.
+///
+/// Docs:
+/// - https://developer.apple.com/documentation/swiftui/buttonstyle-swift.type/glass
 struct GlassButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+        #else
+        content.buttonStyle(.bordered)
+        #endif
+    }
+}
+
+// MARK: - Glass Prominent Button Modifier
+
+/// Applies `.buttonStyle(.glassProminent)` on macOS 26+,
+/// `.borderedProminent` on older versions.
+///
+/// Use for the **primary** action in a given context — Create,
+/// Save, Open Workspace, Start. Opaque variant that doesn't
+/// show content through — makes the CTA stand out from the
+/// secondary glass controls around it. Per Apple's guidance,
+/// use sparingly: one prominent button per logical action area.
+///
+/// Docs:
+/// - https://developer.apple.com/documentation/swiftui/buttonstyle-swift.type/glassprominent
+struct GlassProminentButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.buttonStyle(.glassProminent)
         } else {
             content.buttonStyle(.borderedProminent)
         }
@@ -125,9 +159,70 @@ extension View {
     }
 
     /// Applies the Liquid Glass button style on macOS 26+,
-    /// `.borderedProminent` on earlier versions.
+    /// `.bordered` on earlier versions. Use for **secondary**
+    /// actions; pair with ``glassProminentButton()`` for primaries.
     func glassButton() -> some View {
         modifier(GlassButtonModifier())
+    }
+
+    /// Applies the prominent Liquid Glass button style on
+    /// macOS 26+, `.borderedProminent` on earlier versions. Use
+    /// for the **primary** action in a given context — exactly
+    /// one per logical action area (per HIG).
+    ///
+    /// Docs: https://developer.apple.com/documentation/swiftui/buttonstyle-swift.type/glassprominent
+    func glassProminentButton() -> some View {
+        modifier(GlassProminentButtonModifier())
+    }
+
+    /// Groups a block of related views into a single shared
+    /// glass material layer on macOS 26+ via `GlassEffectContainer`.
+    /// Per Apple's Liquid Glass adoption guide: "Always use
+    /// GlassEffectContainer for multiple elements" — it optimizes
+    /// rendering by sharing the sampling region and enables
+    /// morphing transitions between neighboring glass elements.
+    /// No-op on earlier macOS versions.
+    ///
+    /// Docs: https://developer.apple.com/documentation/swiftui/glasseffectcontainer
+    @ViewBuilder
+    func glassContainer() -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer { self }
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+
+    /// Applies `.backgroundExtensionEffect()` on macOS 26+ so
+    /// the content beneath a neighboring sidebar or inspector
+    /// "peeks through" — the sidebar/inspector's Liquid Glass
+    /// samples a mirrored, blurred copy of the content edge.
+    /// No-op on earlier macOS.
+    ///
+    /// From Apple's Liquid Glass adoption guide: "A background
+    /// extension effect creates a sense of extending a
+    /// background under a sidebar or inspector, without actually
+    /// scrolling or placing content under it." Apply to the
+    /// detail / main content region of a `NavigationSplitView`
+    /// so the inspector's glass is legible and feels connected
+    /// to the content.
+    ///
+    /// Docs: https://developer.apple.com/documentation/swiftui/view/backgroundextensioneffect()
+    @ViewBuilder
+    func backgroundExtendedUnderSidebarsAndInspectors() -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            self.backgroundExtensionEffect()
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 
     /// Applies a glass card background on macOS 26+,

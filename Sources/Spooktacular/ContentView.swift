@@ -35,6 +35,10 @@ struct ContentView: View {
         .sheet(isPresented: $state.showCreateSheet) {
             CreateVMSheet()
         }
+        .sheet(isPresented: $state.showDoctor) {
+            DoctorSheet()
+                .environment(appState)
+        }
         .alert(
             "Error",
             isPresented: $state.errorPresented
@@ -144,6 +148,7 @@ struct WorkspacePreviewCard: View {
                 spec: bundle.metadata.iconSpec ?? .defaultSpec,
                 size: 160
             )
+            .accessibilityHidden(true)
 
             VStack(spacing: 6) {
                 Text(name)
@@ -166,45 +171,58 @@ struct WorkspacePreviewCard: View {
                 }
             }
 
+            // Primary + secondary actions clustered in a shared
+            // glass container — `.glassContainer()` wraps in
+            // `GlassEffectContainer` on macOS 26+. Per Apple's
+            // adoption guide: "Always use GlassEffectContainer
+            // for multiple elements" so the glass samples a single
+            // material layer and morphs neighboring buttons
+            // together on hover / press.
             HStack(spacing: 12) {
-                Button {
-                    openWindow(id: "workspace", value: name)
-                } label: {
-                    Label("Open Workspace", systemImage: "macwindow")
-                        .font(.headline)
-                        .padding(.horizontal, 8)
-                }
-                .glassButton()
-                .controlSize(.large)
-                .keyboardShortcut(.return, modifiers: [])
-                .help("Open this workspace in its own window")
+                    Button {
+                        openWindow(id: "workspace", value: name)
+                    } label: {
+                        Label("Open Workspace", systemImage: "macwindow")
+                            .font(.headline)
+                            .padding(.horizontal, 8)
+                    }
+                    .glassProminentButton()
+                    .controlSize(.large)
+                    .keyboardShortcut(.return, modifiers: [])
+                    .help("Open this workspace in its own window")
 
-                if appState.isRunning(name) {
-                    Button {
-                        Task { await appState.stopVM(name) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                            .padding(.horizontal, 4)
+                    if appState.isRunning(name) {
+                        Button {
+                            Task { await appState.stopVM(name) }
+                        } label: {
+                            Label("Stop", systemImage: "stop.fill")
+                                .padding(.horizontal, 4)
+                        }
+                        .glassButton()
+                        .controlSize(.large)
+                    } else {
+                        Button {
+                            Task { await appState.startVM(name) }
+                        } label: {
+                            Label("Start", systemImage: "play.fill")
+                                .padding(.horizontal, 4)
+                        }
+                        .glassButton()
+                        .controlSize(.large)
+                        .tint(.green)
                     }
-                    .glassButton()
-                    .controlSize(.large)
-                } else {
-                    Button {
-                        Task { await appState.startVM(name) }
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
-                            .padding(.horizontal, 4)
-                    }
-                    .glassButton()
-                    .controlSize(.large)
-                    .tint(.green)
                 }
-            }
+            .glassContainer()
 
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(32)
+        // Extend the detail content's background beneath the
+        // inspector's Liquid Glass on macOS 26+ so the inspector
+        // samples a mirrored copy of the content edge rather
+        // than black. See `View.backgroundExtendedUnderSidebarsAndInspectors()`.
+        .backgroundExtendedUnderSidebarsAndInspectors()
     }
 }
 
