@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import SpooktacularKit
 
@@ -24,6 +25,7 @@ struct HardwareEditor: View {
     @State private var diskGB: Int = 64
     @State private var audioEnabled: Bool = true
     @State private var microphoneEnabled: Bool = false
+    @State private var sharedFolders: [SharedFolderEntry] = []
     @State private var errorMessage: String?
     @State private var initialized: Bool = false
 
@@ -40,6 +42,7 @@ struct HardwareEditor: View {
                 memoryRow
                 diskRow
                 audioRow
+                sharedFoldersRow
             }
             .formStyle(.grouped)
             .disabled(isRunning)
@@ -135,6 +138,59 @@ struct HardwareEditor: View {
         }
     }
 
+    /// Shared folders (VirtIO FS) attached to the VM. VirtIO FS
+    /// device configuration is immutable after startup — per
+    /// Apple's `VZVirtualMachineConfiguration` contract — so the
+    /// whole Form is already `.disabled` while running. The
+    /// shared-folders section therefore doesn't need its own
+    /// locked-state treatment.
+    ///
+    /// Docs: https://developer.apple.com/documentation/virtualization/vzvirtiofilesystemdeviceconfiguration
+    private var sharedFoldersRow: some View {
+        Section("Shared Folders") {
+            if sharedFolders.isEmpty {
+                Text("No folders shared. Guest mounts appear under /Volumes/My Shared Files/.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach($sharedFolders) { $folder in
+                    HStack {
+                        Image(systemName: "folder")
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(folder.hostPath)
+                                .font(.body.monospaced())
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Text("tag: \(folder.tag)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Toggle("Read only", isOn: $folder.readOnly)
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                            .labelsHidden()
+                            .help("When on, the guest sees this folder as mounted read-only. Useful for source trees the guest shouldn't mutate.")
+                        Button(role: .destructive) {
+                            sharedFolders.removeAll { $0.id == folder.id }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove this shared folder. Takes effect next start.")
+                    }
+                }
+            }
+
+            Button {
+                addSharedFolder()
+            } label: {
+                Label("Add Folder…", systemImage: "plus")
+            }
+        }
+    }
+
     private var footer: some View {
         HStack {
             Spacer()
@@ -152,11 +208,34 @@ struct HardwareEditor: View {
 
     private var hasChanges: Bool {
         guard let spec = bundle?.spec else { return false }
+        let existing = spec.sharedFolders.map {
+            SharedFolderEntry(hostPath: $0.hostPath, tag: $0.tag, readOnly: $0.readOnly)
+        }
         return cpu != spec.cpuCount
             || UInt64(memoryGB) != spec.memorySizeInGigabytes
             || UInt64(diskGB) != spec.diskSizeInGigabytes
             || audioEnabled != spec.audioEnabled
             || microphoneEnabled != spec.microphoneEnabled
+            || !sharedFoldersMatch(existing, sharedFolders)
+    }
+
+    /// Compares two `SharedFolderEntry` arrays ignoring their
+    /// per-instance UUIDs. Without this, freshly-added-and-removed
+    /// entries would always register as a "change" because the
+    /// form-state IDs don't round-trip through the domain spec.
+    private func sharedFoldersMatch(
+        _ lhs: [SharedFolderEntry],
+        _ rhs: [SharedFolderEntry]
+    ) -> Bool {
+        guard lhs.count == rhs.count else { return false }
+        for (a, b) in zip(lhs, rhs) {
+            if a.hostPath != b.hostPath
+                || a.tag != b.tag
+                || a.readOnly != b.readOnly {
+                return false
+            }
+        }
+        return true
     }
 
     private func loadInitialValues() {
@@ -166,17 +245,48 @@ struct HardwareEditor: View {
         diskGB = Int(spec.diskSizeInGigabytes)
         audioEnabled = spec.audioEnabled
         microphoneEnabled = spec.microphoneEnabled
+        sharedFolders = spec.sharedFolders.map {
+            SharedFolderEntry(hostPath: $0.hostPath, tag: $0.tag, readOnly: $0.readOnly)
+        }
         initialized = true
+    }
+
+    /// Presents an `NSOpenPanel` restricted to directories and
+    /// appends the chosen folder to the shared-folders list. The
+    /// guest tag defaults to the folder name — operators who want
+    /// a different VirtIO FS mount tag can edit it post-creation
+    /// by removing + re-adding, which is rare enough not to
+    /// warrant a nested edit UI here.
+    ///
+    /// Docs: https://developer.apple.com/documentation/appkit/nsopenpanel
+    private func addSharedFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Select Folder to Share"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            sharedFolders.append(
+                SharedFolderEntry(
+                    hostPath: url.path,
+                    tag: url.lastPathComponent
+                )
+            )
+        }
     }
 
     private func save() {
         guard let bundle else { return }
+        let folders = sharedFolders.map {
+            SharedFolder(hostPath: $0.hostPath, tag: $0.tag, readOnly: $0.readOnly)
+        }
         let updated = bundle.spec.with(
             cpuCount: cpu,
             memorySizeInBytes: .gigabytes(UInt64(memoryGB)),
             diskSizeInBytes: .gigabytes(UInt64(diskGB)),
             audioEnabled: audioEnabled,
-            microphoneEnabled: microphoneEnabled
+            microphoneEnabled: microphoneEnabled,
+            sharedFolders: folders
         )
         do {
             try VirtualMachineBundle.writeSpec(updated, to: bundle.url)
