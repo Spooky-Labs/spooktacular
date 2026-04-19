@@ -48,6 +48,25 @@ struct CreateVMSheet: View {
     @State private var userDataPath = ""
     @State private var provisioningMode = ProvisioningMode.diskInject
 
+    /// Which built-in provisioning template (if any) to run on
+    /// first boot. Mirrors the CLI's `--github-runner`,
+    /// `--openclaw`, and `--remote-desktop` flags.
+    @State private var template: ProvisioningTemplate = .none
+
+    /// `owner/repo` slug for the GitHub Actions runner template.
+    @State private var githubRepo: String = ""
+
+    /// Keychain account under service `com.spooktacular.github`
+    /// where the runner registration token lives. Keychain is the
+    /// only accepted token source — env-var / flag / file paths
+    /// were removed pre-1.0 to keep the PAT out of `ps`,
+    /// `launchctl print`, and plaintext-on-disk exposures.
+    @State private var githubKeychainAccount: String = ""
+
+    /// When true, the runner exits after one job — used by
+    /// ephemeral CI pools that reclone a clean VM per run.
+    @State private var ephemeralRunner: Bool = false
+
     @State private var isCreating = false
     @State private var statusMessage = ""
     @State private var progress: Double = 0
@@ -73,6 +92,66 @@ struct CreateVMSheet: View {
     /// "latest".
     private enum IPSWSource: String, Hashable, CaseIterable {
         case latest, local
+    }
+
+    /// Built-in first-boot provisioning templates. `.custom`
+    /// surfaces the existing script picker + provisioning-method
+    /// chooser; `.none` skips provisioning entirely and leaves
+    /// the VM at its vanilla install state.
+    private enum ProvisioningTemplate: String, Hashable, CaseIterable {
+        case none, githubRunner, openclaw, remoteDesktop, custom
+
+        var label: String {
+            switch self {
+            case .none: return "None (manual setup)"
+            case .githubRunner: return "GitHub Actions Runner"
+            case .openclaw: return "OpenClaw AI Agent"
+            case .remoteDesktop: return "Remote Desktop (VNC)"
+            case .custom: return "Custom Script"
+            }
+        }
+
+        var explanation: String {
+            switch self {
+            case .none:
+                return """
+                    Leave the VM unprovisioned. The guest boots into a \
+                    pristine macOS install; configure it interactively \
+                    or attach a user-data script later with \
+                    `spook start <name> --user-data <path>`.
+                    """
+            case .githubRunner:
+                return """
+                    Registers the VM as a self-hosted GitHub Actions \
+                    runner on first boot. Downloads the latest \
+                    darwin-arm64 runner, configures it with your repo \
+                    + registration token (read from the Keychain — \
+                    env-var / CLI-flag / file paths were removed \
+                    pre-1.0), and starts it in unattended mode.
+                    """
+            case .openclaw:
+                return """
+                    Installs Node.js + the OpenClaw gateway daemon on \
+                    first boot so the VM acts as a sandboxed agent \
+                    host. Pass API keys via a Shared Folder — keeps \
+                    secrets out of the provisioning script.
+                    """
+            case .remoteDesktop:
+                return """
+                    Enables macOS Screen Sharing / VNC on first boot. \
+                    The VM reports its VNC URL in the system log so \
+                    `spook ip` + a VNC client is all you need to \
+                    connect from another Mac, iPad, or PC.
+                    """
+            case .custom:
+                return """
+                    Run a shell script you provide on first boot. \
+                    Disk-inject runs before the guest's Setup \
+                    Assistant via a LaunchDaemon; SSH runs after \
+                    first boot over the network.
+                    """
+            }
+        }
     }
 
     // MARK: - Body
@@ -101,7 +180,7 @@ struct CreateVMSheet: View {
                     networkRow
                     audioRow
                     sharedFoldersRow
-                    userDataRow
+                    provisioningRow
                 }
                 .padding(24)
             }
@@ -140,17 +219,27 @@ struct CreateVMSheet: View {
         .accessibilityIdentifier(AccessibilityID.createSheet)
     }
 
-    /// Whether the Create button is eligible to fire. Requires a
-    /// non-blank VM name and — when `.local` IPSW is selected —
-    /// a non-blank path. Existence of the path is checked later
-    /// inside `createVM()` so the user isn't blocked by a stale
-    /// filesystem state while typing.
+    /// Whether the Create button is eligible to fire. A non-blank
+    /// VM name is required; `.local` IPSW layers on a non-blank
+    /// path; and the GitHub Actions template layers on
+    /// `owner/repo` + Keychain account so users can't arm the
+    /// Create button into a guaranteed failure (wrong path or
+    /// Keychain miss). Existence of the local IPSW path itself
+    /// is checked inside `createVM()` so the user isn't blocked
+    /// by transient filesystem state while typing.
     private var canCreate: Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
-        if ipswSource == .local {
-            return !localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty
+        if ipswSource == .local,
+           localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty {
+            return false
         }
-        return true
+        switch template {
+        case .githubRunner:
+            return !githubRepo.trimmingCharacters(in: .whitespaces).isEmpty
+                && !githubKeychainAccount.trimmingCharacters(in: .whitespaces).isEmpty
+        default:
+            return true
+        }
     }
 
     // MARK: - Cancel / Dismiss
@@ -439,37 +528,72 @@ struct CreateVMSheet: View {
         )
     }
 
-    private var userDataRow: some View {
+    private var provisioningRow: some View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("User Data Script").font(.headline).glassSectionHeader()
+                    Text("Provisioning").font(.headline).glassSectionHeader()
 
-                    HStack {
-                        TextField("~/setup.sh", text: $userDataPath)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Browse…") { browseForScript() }
-                    }
-
-                    if !userDataPath.isEmpty {
-                        Picker("Method", selection: $provisioningMode) {
-                            ForEach(ProvisioningMode.allCases, id: \.self) { mode in
-                                Text(mode.label).tag(mode)
-                            }
+                    Picker("Template", selection: $template) {
+                        ForEach(ProvisioningTemplate.allCases, id: \.self) { kind in
+                            Text(kind.label).tag(kind)
                         }
-                        .pickerStyle(.radioGroup)
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .help("Pick a built-in first-boot template or provide a custom script.")
+
+                    switch template {
+                    case .none, .openclaw, .remoteDesktop:
+                        EmptyView()
+                    case .githubRunner:
+                        githubRunnerFields
+                    case .custom:
+                        customScriptFields
                     }
                 }
             },
-            explanation: userDataPath.isEmpty
-                ? """
-                    A shell script that runs automatically after the \
-                    VM boots. Used to install tools, configure CI \
-                    runners, set up ML environments, or automate \
-                    any first-boot setup.
-                    """
-                : provisioningMode.explanation
+            explanation: template.explanation
         )
+    }
+
+    @ViewBuilder
+    private var githubRunnerFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextField("owner/repo", text: $githubRepo)
+                .textFieldStyle(.roundedBorder)
+                .help("GitHub repository in owner/repo form (e.g. acme-inc/platform).")
+
+            TextField("Keychain account", text: $githubKeychainAccount)
+                .textFieldStyle(.roundedBorder)
+                .help("Account name under Keychain service com.spooktacular.github. Add the token first: security add-generic-password -s com.spooktacular.github -a <account> -w <token> -U")
+
+            Toggle("Ephemeral (one job per VM)", isOn: $ephemeralRunner)
+                .help("Runner exits after one job; pair with Snapshot-restore-before-start or re-create for clean per-job environments.")
+        }
+    }
+
+    @ViewBuilder
+    private var customScriptFields: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                TextField("~/setup.sh", text: $userDataPath)
+                    .textFieldStyle(.roundedBorder)
+                Button("Browse…") { browseForScript() }
+            }
+
+            if !userDataPath.isEmpty {
+                Picker("Method", selection: $provisioningMode) {
+                    ForEach(ProvisioningMode.allCases, id: \.self) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                Text(provisioningMode.explanation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     // MARK: - Two-Column Row Builder
@@ -602,6 +726,76 @@ struct CreateVMSheet: View {
         }
     }
 
+    /// Generates the provisioning script (if any) and injects it
+    /// into the bundle via ``DiskInjector``. For template-backed
+    /// scripts we always use `disk-inject` — the guest hasn't
+    /// booted yet, so SSH isn't reachable. Custom scripts honour
+    /// the user's `provisioningMode` selection.
+    ///
+    /// Script cleanup policy matches
+    /// `Sources/spook/Commands/Create.swift`: template-generated
+    /// scripts live under `~/Library/Caches/com.spooktacular/`
+    /// and are removed post-injection to shrink the on-disk
+    /// window for the GitHub registration token.
+    @MainActor
+    private func provisionBundle(_ bundle: VirtualMachineBundle) async throws {
+        let scriptURL: URL?
+        let ownsScript: Bool
+        (scriptURL, ownsScript) = try resolveProvisionScript()
+
+        guard let script = scriptURL else { return }
+
+        statusMessage = "Injecting first-boot script…"
+        progress = 1.0
+
+        // `hdiutil attach/detach` + APFS mount is synchronous and
+        // takes ~2-3s. Move it off the main actor so the progress
+        // bar keeps animating.
+        try await Task.detached(priority: .userInitiated) {
+            try DiskInjector.inject(script: script, into: bundle)
+        }.value
+
+        if ownsScript {
+            // `ScriptFile.cleanup` is best-effort — failures are
+            // logged by the shared path and don't abort the flow.
+            try? ScriptFile.cleanup(scriptURL: script)
+        }
+    }
+
+    /// Resolves the provisioning script for the selected template
+    /// and returns `(url, ownsScript)` — the second tuple member
+    /// tells the caller whether to delete the file after use.
+    /// Templates we generate live in a cache directory and should
+    /// be cleaned; user-supplied scripts are left alone.
+    private func resolveProvisionScript() throws -> (URL?, Bool) {
+        switch template {
+        case .none:
+            return (nil, false)
+        case .githubRunner:
+            let repo = githubRepo.trimmingCharacters(in: .whitespaces)
+            let account = githubKeychainAccount.trimmingCharacters(in: .whitespaces)
+            let token = try GitHubTokenResolver.resolve(keychainAccount: account)
+            let url = try GitHubRunnerTemplate.generate(
+                repo: repo,
+                token: token,
+                ephemeral: ephemeralRunner
+            )
+            return (url, true)
+        case .openclaw:
+            return (try OpenClawTemplate.generate(), true)
+        case .remoteDesktop:
+            return (try RemoteDesktopTemplate.generate(), true)
+        case .custom:
+            let trimmed = userDataPath.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { return (nil, false) }
+            let expanded = (trimmed as NSString).expandingTildeInPath
+            guard FileManager.default.fileExists(atPath: expanded) else {
+                throw CreateVMSheetError.userDataNotFound(path: expanded)
+            }
+            return (URL(filePath: expanded), false)
+        }
+    }
+
     @MainActor
     private func createVM() async {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
@@ -692,6 +886,16 @@ struct CreateVMSheet: View {
                 }
             }
 
+            // Provisioning phase — generate the template script
+            // (or resolve the user-supplied one) and inject it via
+            // the same code path the CLI uses. Executed after
+            // install so the guest's data volume exists; disk
+            // injection mounts the freshly-populated APFS
+            // container and drops a LaunchDaemon that fires on
+            // first boot.
+            try Task.checkCancellation()
+            try await provisionBundle(bundle)
+
             appState.loadVMs()
             appState.selectedVM = trimmedName
             isCreating = false
@@ -712,11 +916,45 @@ struct CreateVMSheet: View {
             if let url = bundleURL {
                 try? FileManager.default.removeItem(at: url)
             }
-            let categorized = SpooktacularError.classify(error)
-            errorMessage = "\(categorized.errorDescription ?? error.localizedDescription) \(categorized.suggestedAction)"
+            // Keychain misses and user-data lookup failures carry
+            // their own recoverySuggestion — render both lines so
+            // the user gets the copy-paste-ready `security add-
+            // generic-password` fix verbatim from
+            // `GitHubTokenError`. Other errors still route through
+            // SpooktacularError's classifier for consistent tone.
+            if let localized = error as? LocalizedError,
+               let description = localized.errorDescription {
+                let suggestion = localized.recoverySuggestion.map { " \($0)" } ?? ""
+                errorMessage = description + suggestion
+            } else {
+                let categorized = SpooktacularError.classify(error)
+                errorMessage = "\(categorized.errorDescription ?? error.localizedDescription) \(categorized.suggestedAction)"
+            }
             isCreating = false
             creationTask = nil
             progress = 0
+        }
+    }
+}
+
+/// Diagnostics specific to the Create VM sheet. Most errors
+/// surfaced in this flow come from framework types (Keychain,
+/// VZ, filesystem) — this enum only covers UI-validation failures
+/// we can't attribute elsewhere.
+private enum CreateVMSheetError: LocalizedError {
+    case userDataNotFound(path: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .userDataNotFound(let path):
+            return "User-data script not found at '\(path)'."
+        }
+    }
+
+    var recoverySuggestion: String? {
+        switch self {
+        case .userDataNotFound:
+            return "Pick an existing shell script with the Browse… button, or remove the template selection."
         }
     }
 }
