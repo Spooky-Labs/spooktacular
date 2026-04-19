@@ -154,6 +154,16 @@ struct WorkspacePreviewCard: View {
                 spec: bundle.metadata.iconSpec ?? .defaultSpec,
                 size: 160
             )
+            // `.equatable()` tells SwiftUI to compare this view's
+            // `==` when deciding whether to re-evaluate `body`.
+            // `WorkspaceIconView` is `Equatable` over `(spec, size)`,
+            // so rapid sidebar-collapse animations (which trigger
+            // cascading body re-computes in the enclosing
+            // `NavigationSplitView` detail pane) don't re-render
+            // the 160×160 pixel-art NSImage on every frame.
+            //
+            // Docs: https://developer.apple.com/documentation/swiftui/view/equatable()
+            .equatable()
             .accessibilityHidden(true)
 
             VStack(spacing: 6) {

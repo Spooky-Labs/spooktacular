@@ -310,6 +310,7 @@ struct WorkspaceLaunchView: View {
             Spacer()
 
             WorkspaceIconView(spec: bundle.metadata.iconSpec ?? .defaultSpec, size: 140)
+                .equatable()
 
             VStack(spacing: 6) {
                 Text(name)
@@ -353,15 +354,92 @@ struct WorkspaceLaunchView: View {
 /// Renders an ``IconSpec`` as SwiftUI content by routing through
 /// ``WorkspaceIconRenderer``. Used in the workspace launch view,
 /// library cards, and the settings icon picker.
-struct WorkspaceIconView: View {
+/// Renders an ``IconSpec`` as SwiftUI content with per-process
+/// memoization, so a pixel-art icon isn't re-rendered on every
+/// `body` recomputation.
+///
+/// The previous implementation called
+/// `WorkspaceIconRenderer.render(spec, size:)` inline in `body`.
+/// That runs a non-trivial NSGraphicsContext pass on every view
+/// invalidation — and with the inspector panel + sidebar collapse
+/// animation each producing a cascade of body re-computations,
+/// rapid UI gestures (sidebar toggle tapped quickly) pile up
+/// synchronous image renders on the main thread and freeze the
+/// app. The fix: cache rendered NSImages in a static `NSCache`
+/// keyed by `(spec, size)`, and make the view itself `Equatable`
+/// so SwiftUI can short-circuit body evaluation when inputs
+/// haven't changed.
+///
+/// Docs:
+/// - `NSCache`: https://developer.apple.com/documentation/foundation/nscache
+/// - `View.equatable()`: https://developer.apple.com/documentation/swiftui/view/equatable()
+struct WorkspaceIconView: View, Equatable {
     let spec: IconSpec
     let size: CGFloat
 
     var body: some View {
-        Image(nsImage: WorkspaceIconRenderer.render(spec, size: size))
+        Image(nsImage: Self.cachedImage(spec: spec, size: size))
             .resizable()
             .interpolation(.high)
             .frame(width: size, height: size)
             .accessibilityLabel("Workspace icon")
+    }
+
+    // `Equatable` so callers can wrap in `.equatable()` and
+    // SwiftUI will skip body evaluation when `(spec, size)`
+    // didn't change between renders.
+    //
+    // `nonisolated` because `SwiftUI.View` is `@MainActor` under
+    // Swift 6's strict-concurrency model; without this, the
+    // `Equatable` conformance would cross the main-actor
+    // boundary and the compiler emits `ConformanceIsolation`.
+    // The comparison itself only reads value-type `let` fields,
+    // so it's safe to call from any isolation domain.
+    nonisolated static func == (
+        lhs: WorkspaceIconView,
+        rhs: WorkspaceIconView
+    ) -> Bool {
+        lhs.spec == rhs.spec && lhs.size == rhs.size
+    }
+
+    // MARK: - Memoization
+
+    private static let imageCache: NSCache<IconCacheKey, NSImage> = {
+        let cache = NSCache<IconCacheKey, NSImage>()
+        // Bound the cache so pathological callers can't grow it
+        // without limit. 32 rendered icons covers the visible VM
+        // set + workspace windows + inspector previews with room
+        // to spare.
+        cache.countLimit = 32
+        return cache
+    }()
+
+    private final class IconCacheKey: NSObject {
+        let spec: IconSpec
+        let size: CGFloat
+        init(spec: IconSpec, size: CGFloat) {
+            self.spec = spec
+            self.size = size
+        }
+        override var hash: Int {
+            var hasher = Hasher()
+            hasher.combine(spec)
+            hasher.combine(size)
+            return hasher.finalize()
+        }
+        override func isEqual(_ object: Any?) -> Bool {
+            guard let other = object as? IconCacheKey else { return false }
+            return other.spec == spec && other.size == size
+        }
+    }
+
+    private static func cachedImage(spec: IconSpec, size: CGFloat) -> NSImage {
+        let key = IconCacheKey(spec: spec, size: size)
+        if let cached = imageCache.object(forKey: key) {
+            return cached
+        }
+        let image = WorkspaceIconRenderer.render(spec, size: size)
+        imageCache.setObject(image, forKey: key)
+        return image
     }
 }
