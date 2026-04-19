@@ -8,6 +8,12 @@ struct SidebarView: View {
 
     @Binding var searchText: String
     @State private var confirmDelete: String?
+    /// Source VM for the Clone sheet, or nil when the sheet is
+    /// dismissed. Using an `Item`-style optional binding with
+    /// `.sheet(item:)` avoids the stale-binding problem that
+    /// `isPresented: Bool + separate source name` would have
+    /// produced.
+    @State private var cloneSource: CloneSource?
 
     var body: some View {
         @Bindable var state = appState
@@ -77,6 +83,10 @@ struct SidebarView: View {
                 Text("'\(name)' and all its data will be permanently deleted.")
             }
         }
+        .sheet(item: $cloneSource) { source in
+            CloneVMSheet(source: source.name)
+                .environment(appState)
+        }
     }
 
     // MARK: - Filtering
@@ -110,14 +120,27 @@ struct SidebarView: View {
             }
         }
         Divider()
-        Button("Clone", systemImage: "doc.on.doc") {
-            appState.cloneVM(name, to: "\(name)-clone")
+        Button("Clone…", systemImage: "doc.on.doc") {
+            cloneSource = CloneSource(name: name)
         }
+        .keyboardShortcut("d", modifiers: [.command])
         Divider()
         Button("Delete", systemImage: "trash", role: .destructive) {
             confirmDelete = name
         }
     }
+}
+
+// MARK: - Clone Source
+
+/// Identifiable wrapper so the Clone sheet can be presented via
+/// `.sheet(item:)`. The string name alone isn't `Identifiable`,
+/// and `.sheet(isPresented:)` + a separate `@State String?` has a
+/// stale-binding race where the sheet captures the wrong name on
+/// rapid re-presentations.
+struct CloneSource: Identifiable {
+    let id = UUID()
+    let name: String
 }
 
 // MARK: - Open Workspace Button
