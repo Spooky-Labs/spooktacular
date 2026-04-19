@@ -143,16 +143,30 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
-      # Per-config signing identity. Debug is what the XCUITest
-      # runner builds in; Release would be for a distributable
-      # build (not actually used — build-app.sh drives those via
-      # `swift build` + manual codesign). Both point at
-      # match-managed profiles by the canonical match naming
-      # convention `match <Type> <bundle_id> <platform>`.
+      # Per-config signing strategy.
+      #
+      # Debug:   No signing at all. The separate
+      #          `Spooktacular.debug.entitlements` file omits
+      #          `com.apple.security.app-sandbox`, so the app can
+      #          launch without a valid code signature. This lets
+      #          the XCUITest runner on ephemeral CI VMs (whose
+      #          UDID isn't registered with Apple Developer) build
+      #          and run the host app without a Mac Development
+      #          profile. Registering the UDID per run would burn
+      #          through Apple's 100-device/year cap fast.
+      #
+      # Release: Manual signing with the match-managed AppStore
+      #          profile, for anyone who opens the .xcodeproj in
+      #          Xcode and archives. Not the shipping path —
+      #          `build-app.sh` drives release via `swift build -c
+      #          release` + manual `codesign --entitlements
+      #          Spooktacular.entitlements` (the sandboxed real one).
       configs:
         Debug:
-          PROVISIONING_PROFILE_SPECIFIER: match Development com.spooktacular.app macos
-          CODE_SIGN_IDENTITY: Apple Development
+          CODE_SIGN_ENTITLEMENTS: Spooktacular.debug.entitlements
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
+          CODE_SIGN_IDENTITY: ""
         Release:
           PROVISIONING_PROFILE_SPECIFIER: match AppStore com.spooktacular.app macos
           CODE_SIGN_IDENTITY: Apple Distribution
@@ -169,15 +183,15 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.spooktacular.uitests
         TEST_TARGET_NAME: SpooktacularApp
         GENERATE_INFOPLIST_FILE: YES
-        # XCUITest bundles don't need their OWN provisioning
-        # profile (the test plugin and XCTRunner wrapper get
-        # signed with the same identity as the host app), but
-        # they do need `CODE_SIGN_IDENTITY` set to a real cert so
-        # runner + plugin share a Team ID. Only Debug matters —
-        # tests never run against Release.
+        # Match SpooktacularApp's Debug config: no signing for
+        # the runner + plugin either. Since the host app launches
+        # unsigned, the test bundle must too — otherwise Team ID
+        # mismatch on plugin load.
       configs:
         Debug:
-          CODE_SIGN_IDENTITY: Apple Development
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
+          CODE_SIGN_IDENTITY: ""
 
 schemes:
   # Named `SpooktacularApp` (not `Spooktacular`) to avoid a
