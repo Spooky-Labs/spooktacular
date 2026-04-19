@@ -22,12 +22,19 @@ end
 
 TEAM_ID                 = env_or("FASTLANE_TEAM_ID",                 "4AM5US9G8B")
 ITC_TEAM_ID             = env_or("FASTLANE_ITC_TEAM_ID",             TEAM_ID)
+# `APPLE_ID` is the Apple Developer Account login — can't be
+# changed without migrating the whole developer account.
 APPLE_ID                = env_or("FASTLANE_APPLE_ID",                "davisperris@gmail.com")
 CONTACT_FIRST_NAME      = env_or("FASTLANE_CONTACT_FIRST_NAME",      "Perris")
 CONTACT_LAST_NAME       = env_or("FASTLANE_CONTACT_LAST_NAME",       "Davis")
-CONTACT_EMAIL           = env_or("FASTLANE_CONTACT_EMAIL",           APPLE_ID)
-APP_REVIEW_EMAIL        = env_or("FASTLANE_APP_REVIEW_EMAIL",        APPLE_ID)
-APP_FEEDBACK_EMAIL      = env_or("FASTLANE_APP_FEEDBACK_EMAIL",      APPLE_ID)
+# Customer-facing + Apple-reviewer contact email. Separate from
+# the developer-account `APPLE_ID` so the public face of the app
+# uses the canonical `help@` inbox (monitored by the team) while
+# the developer account stays on its original login.
+SUPPORT_EMAIL           = env_or("FASTLANE_SUPPORT_EMAIL",           "help@spookylabs.ai")
+CONTACT_EMAIL           = env_or("FASTLANE_CONTACT_EMAIL",           SUPPORT_EMAIL)
+APP_REVIEW_EMAIL        = env_or("FASTLANE_APP_REVIEW_EMAIL",        SUPPORT_EMAIL)
+APP_FEEDBACK_EMAIL      = env_or("FASTLANE_APP_FEEDBACK_EMAIL",      SUPPORT_EMAIL)
 
 # App Store Connect's contactPhone validator wants a digits-only
 # string (fastlane's own example:
