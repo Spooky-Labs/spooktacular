@@ -14,10 +14,32 @@ struct VMDetailView: View {
 
     private var isRunning: Bool { appState.isRunning(name) }
 
-    var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
+    @State private var stats = WorkspaceStatsModel()
 
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                heroPane
+                if isRunning { statsPane }
+            }
+            .frame(maxWidth: 560)
+            .padding(24)
+            .frame(maxWidth: .infinity)
+        }
+        .navigationTitle(name)
+        .task(id: "\(name)-\(isRunning)") {
+            if isRunning, let client = appState.agentClients[name] {
+                stats.start(client: client)
+            } else {
+                stats.stop()
+            }
+        }
+    }
+
+    // MARK: - Hero
+
+    private var heroPane: some View {
+        VStack(spacing: 20) {
             Image(systemName: "macwindow")
                 .font(.system(size: 72))
                 .foregroundStyle(.tint)
@@ -56,26 +78,25 @@ struct VMDetailView: View {
                 if isRunning {
                     Button {
                         Task { await appState.stopVM(name) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
+                    } label: { Label("Stop", systemImage: "stop.fill") }
                     .controlSize(.large)
                 } else {
                     Button {
                         Task { await appState.startVM(name) }
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
-                    }
+                    } label: { Label("Start", systemImage: "play.fill") }
                     .controlSize(.large)
                     .tint(.green)
                 }
             }
-
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
-        .navigationTitle(name)
+        .padding(.vertical, 24)
+    }
+
+    // MARK: - Live stats (Swift Charts)
+
+    private var statsPane: some View {
+        WorkspaceStatsSidebar(model: stats)
+            .frame(maxWidth: .infinity)
     }
 }
 
