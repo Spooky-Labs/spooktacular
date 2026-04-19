@@ -258,11 +258,11 @@
 				TargetAttributes = {
 					0F0EE855B5DEDE88D2D88AA3 = {
 						DevelopmentTeam = 4AM5US9G8B;
-						ProvisioningStyle = Automatic;
+						ProvisioningStyle = Manual;
 					};
 					531A09E6D441AF69D7E14330 = {
 						DevelopmentTeam = 4AM5US9G8B;
-						ProvisioningStyle = Automatic;
+						ProvisioningStyle = Manual;
 						TestTargetID = 0F0EE855B5DEDE88D2D88AA3;
 					};
 				};
@@ -373,7 +373,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = 4AM5US9G8B;
@@ -404,6 +404,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Spooktacular.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -415,6 +416,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app;
 				PRODUCT_NAME = Spooktacular;
+				PROVISIONING_PROFILE_SPECIFIER = "match AppStore com.spooktacular.app macos";
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -424,6 +426,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Spooktacular.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -435,6 +438,7 @@
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app;
 				PRODUCT_NAME = Spooktacular;
+				PROVISIONING_PROFILE_SPECIFIER = "match Development com.spooktacular.app macos";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -489,7 +493,7 @@
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = 4AM5US9G8B;
@@ -526,6 +530,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
