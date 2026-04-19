@@ -8,7 +8,7 @@ struct Spook: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "spook",
         abstract: "Manage macOS virtual machines on Apple Silicon.",
-        version: "0.1.0",
+        version: "1.0.0",
         subcommands: [
             Create.self,
             Start.self,

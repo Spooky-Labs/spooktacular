@@ -1,4 +1,4 @@
-v0.1.0 — First public beta. Apple Silicon only. MIT licensed.
+v1.0.0 — Initial public release. Apple Silicon only. MIT licensed.
 
 Run 2 macOS VMs per Mac — the maximum Apple's EULA allows.
 

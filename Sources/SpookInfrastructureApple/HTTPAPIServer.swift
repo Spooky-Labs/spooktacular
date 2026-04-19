@@ -1786,7 +1786,7 @@ public actor HTTPAPIServer {
     /// Returns a simple health-check response confirming the server
     /// is running.
     private func handleHealth() -> HTTPResponse {
-        HTTPResponse.ok(HealthResponse(service: "spooktacular", version: "0.1.0"))
+        HTTPResponse.ok(HealthResponse(service: "spooktacular", version: "1.0.0"))
     }
 
     /// Handles `GET /.well-known/openid-configuration`.
