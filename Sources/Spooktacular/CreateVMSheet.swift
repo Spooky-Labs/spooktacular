@@ -1,5 +1,6 @@
 import SwiftUI
 import SpooktacularKit
+import UniformTypeIdentifiers
 import Darwin
 
 /// Entry for a shared folder in the create form.
@@ -24,6 +25,13 @@ struct CreateVMSheet: View {
     // MARK: - State
 
     @State private var name = ""
+    /// Source of the macOS install media. `.latest` asks Apple's
+    /// signing service for the newest IPSW compatible with this
+    /// host (the default, ~12 GB download); `.local` points at an
+    /// IPSW already on disk. Offline, airgapped, and fleet-clone
+    /// workflows live entirely in `.local`.
+    @State private var ipswSource: IPSWSource = .latest
+    @State private var localIpswPath: String = ""
     @State private var cpuCount: Double = 4
     @State private var memorySizeInGigabytes: Double = 8
     @State private var diskSizeInGigabytes: Double = 64
@@ -59,6 +67,14 @@ struct CreateVMSheet: View {
         case nat, bridged, isolated
     }
 
+    /// macOS install-media source. Mirrors the CLI's
+    /// `--from-ipsw latest|<path>` — an enum keeps the path string
+    /// from being silently interpreted when the user is on
+    /// "latest".
+    private enum IPSWSource: String, Hashable, CaseIterable {
+        case latest, local
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -79,6 +95,7 @@ struct CreateVMSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     nameRow
+                    sourceRow
                     hardwareRow
                     displayRow
                     networkRow
@@ -111,7 +128,7 @@ struct CreateVMSheet: View {
                     creationTask = task
                 }
                 .glassButton()
-                .disabled(isCreating || name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .disabled(isCreating || !canCreate)
                 .keyboardShortcut(.defaultAction)
                 .help("Download the IPSW, install macOS, and register the bundle")
                 .accessibilityIdentifier(AccessibilityID.createConfirmButton)
@@ -121,6 +138,19 @@ struct CreateVMSheet: View {
         }
         .frame(width: 680, height: 640)
         .accessibilityIdentifier(AccessibilityID.createSheet)
+    }
+
+    /// Whether the Create button is eligible to fire. Requires a
+    /// non-blank VM name and — when `.local` IPSW is selected —
+    /// a non-blank path. Existence of the path is checked later
+    /// inside `createVM()` so the user isn't blocked by a stale
+    /// filesystem state while typing.
+    private var canCreate: Bool {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+        if ipswSource == .local {
+            return !localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+        return true
     }
 
     // MARK: - Cancel / Dismiss
@@ -155,6 +185,52 @@ struct CreateVMSheet: View {
                 as the resource name.
                 """
         )
+    }
+
+    private var sourceRow: some View {
+        row(
+            control: {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("macOS Source").font(.headline).glassSectionHeader()
+
+                    Picker("Source", selection: $ipswSource) {
+                        Text("Latest compatible").tag(IPSWSource.latest)
+                        Text("Local IPSW file").tag(IPSWSource.local)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
+
+                    if ipswSource == .local {
+                        HStack {
+                            TextField("~/Downloads/macOS.ipsw", text: $localIpswPath)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Browse…") { browseForIPSW() }
+                        }
+                    }
+                }
+            },
+            explanation: ipswSourceExplanation
+        )
+    }
+
+    private var ipswSourceExplanation: String {
+        switch ipswSource {
+        case .latest:
+            return """
+                Downloads the newest macOS IPSW compatible with \
+                this host from Apple's signing service. Cached \
+                under ~/.spooktacular/ipsw/ and deduplicated by \
+                SHA-256, so subsequent VMs skip the download.
+                """
+        case .local:
+            return """
+                Installs from an IPSW already on disk — skip the \
+                10–20 GB download. Useful for offline installs, \
+                pinning to a known macOS build, or re-creating \
+                VMs from a fleet-wide IPSW snapshot.
+                """
+        }
     }
 
     private var hardwareRow: some View {
@@ -509,6 +585,23 @@ struct CreateVMSheet: View {
         }
     }
 
+    /// Opens an `NSOpenPanel` restricted to `.ipsw` files. The
+    /// `.ipsw` UTType is synthesized on-the-fly from the filename
+    /// extension since there is no registered conformance in the
+    /// system UTType database — Apple's Virtualization.framework
+    /// treats IPSWs by signature internally.
+    ///
+    /// Docs: https://developer.apple.com/documentation/uniformtypeidentifiers/uttype/init(filenameextension:conformingto:)
+    private func browseForIPSW() {
+        let panel = NSOpenPanel()
+        panel.title = "Select IPSW File"
+        panel.allowedContentTypes = [UTType(filenameExtension: "ipsw") ?? .data]
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            localIpswPath = url.path
+        }
+    }
+
     @MainActor
     private func createVM() async {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
@@ -546,16 +639,38 @@ struct CreateVMSheet: View {
             statusMessage = "Found macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
             progress = 0.05
 
-            statusMessage = "Downloading kernel and firmware…"
-            let ipswURL = try await manager.downloadIPSW(from: restoreImage) { snapshot in
-                Task { @MainActor in
-                    bytesReceived = snapshot.bytesReceived
-                    bytesTotal = snapshot.bytesTotal
-                    progress = 0.05 + snapshot.fraction * 0.45
-                    let pct = Int(snapshot.fraction * 100)
-                    statusMessage = snapshot.resumed
-                        ? "Resuming IPSW download (\(pct)%)…"
-                        : "Downloading IPSW (\(pct)%)…"
+            let ipswURL: URL
+            if ipswSource == .local {
+                // Apple's VZ framework needs the hardware model
+                // from `fetchLatestSupported()` for bundle
+                // creation even when the user supplies their
+                // own IPSW, so we keep that call above and only
+                // skip the download here. Mirrors the CLI's
+                // branching in `Sources/spook/Commands/Create.swift`.
+                let trimmedPath = localIpswPath.trimmingCharacters(in: .whitespaces)
+                let expanded = (trimmedPath as NSString).expandingTildeInPath
+                let candidate = URL(filePath: expanded)
+                guard FileManager.default.fileExists(atPath: candidate.path) else {
+                    errorMessage = "IPSW file not found at '\(expanded)'."
+                    isCreating = false
+                    creationTask = nil
+                    return
+                }
+                ipswURL = candidate
+                statusMessage = "Using local IPSW at \(candidate.lastPathComponent)…"
+                progress = 0.5
+            } else {
+                statusMessage = "Downloading kernel and firmware…"
+                ipswURL = try await manager.downloadIPSW(from: restoreImage) { snapshot in
+                    Task { @MainActor in
+                        bytesReceived = snapshot.bytesReceived
+                        bytesTotal = snapshot.bytesTotal
+                        progress = 0.05 + snapshot.fraction * 0.45
+                        let pct = Int(snapshot.fraction * 100)
+                        statusMessage = snapshot.resumed
+                            ? "Resuming IPSW download (\(pct)%)…"
+                            : "Downloading IPSW (\(pct)%)…"
+                    }
                 }
             }
             try Task.checkCancellation()
