@@ -91,10 +91,11 @@ struct PortPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            subtitle
             Divider()
             content
         }
-        .frame(width: 320, height: 320)
+        .frame(width: 360, height: 360)
     }
 
     private var header: some View {
@@ -104,19 +105,47 @@ struct PortPanel: View {
             Spacer()
             Image(systemName: monitor.connected ? "dot.radiowaves.left.and.right" : "exclamationmark.triangle.fill")
                 .foregroundStyle(monitor.connected ? .green : .orange)
+                // Subtle pulse on the live connection indicator —
+                // reinforces "yes, this is real-time data" without
+                // adding chrome. Apple's `.symbolEffect(.pulse)`
+                // honours the user's Reduce Motion preference
+                // automatically. Docs:
+                // https://developer.apple.com/documentation/swiftui/view/symboleffect(_:options:value:)
+                .symbolEffect(
+                    .pulse,
+                    options: .repeating,
+                    value: monitor.connected
+                )
                 .help(monitor.connected ? "Guest agent is responding" : "Waiting for guest agent")
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+    }
+
+    /// Expectation-setting: this list only shows services inside
+    /// the guest that are accepting *incoming* connections (SSH,
+    /// a dev server, `python -m http.server`, etc.). Safari,
+    /// Chrome, and other browser activity is *outbound* only and
+    /// won't appear here. Without this caption new users
+    /// routinely ask "why isn't Safari in the list?" — now the
+    /// UI answers the question before it's asked.
+    private var subtitle: some View {
+        Text("Services inside the workspace that accept incoming connections. Click a row to copy the URL. Outbound traffic (Safari, Chrome, git pull, …) isn't listed — only listeners.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder
     private var content: some View {
         if monitor.ports.isEmpty {
-            ContentUnavailableView(
-                "No listening ports",
-                systemImage: "network.slash",
-                description: Text("Any app the guest opens will appear here.")
-            )
+            ContentUnavailableView {
+                Label("No listening services", systemImage: "network.slash")
+            } description: {
+                Text("Start an SSH daemon, a dev server, or any tool that binds a port and it will appear here automatically.")
+            }
         } else {
             List(monitor.ports, id: \.port) { info in
                 PortRow(info: info, guestIP: monitor.guestIP)
