@@ -134,6 +134,7 @@ struct ContentView: View {
                         .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
                         .accessibilitySortPriority(1)
                 }
+                .toolbar { primaryToolbar }
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
                         Button {
@@ -151,6 +152,7 @@ struct ContentView: View {
                 }
         } else {
             emptyState
+                .toolbar { primaryToolbar }
         }
     }
 
@@ -165,6 +167,32 @@ struct ContentView: View {
                 systemImage: "sidebar.left",
                 description: Text("Choose a workspace from the sidebar.")
             )
+        }
+    }
+
+    /// Primary toolbar items — Create VM + Host Diagnostics.
+    /// Attached to the detail pane (not the sidebar) so they
+    /// survive sidebar collapse. Per macOS HIG: primary actions
+    /// belong in the main window toolbar and should not disappear
+    /// when a secondary column is hidden.
+    @ToolbarContentBuilder
+    private var primaryToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                appState.showCreateSheet = true
+            } label: {
+                Label("Create VM", systemImage: "plus.square.on.square")
+            }
+            .help("Create a new virtual machine (⌘N)")
+            .accessibilityIdentifier(AccessibilityID.createVMButton)
+
+            Button {
+                appState.showDoctor = true
+            } label: {
+                Label("Diagnostics", systemImage: "stethoscope")
+            }
+            .help("Check host readiness — mirrors `spook doctor` (⌃⌘D)")
+            .keyboardShortcut("d", modifiers: [.command, .control])
         }
     }
 }

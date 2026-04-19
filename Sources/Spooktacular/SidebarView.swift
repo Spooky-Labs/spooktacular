@@ -74,31 +74,14 @@ struct SidebarView: View {
         // `placement: .sidebar` variant fights the column-
         // collapse animation on macOS 26 and freezes the UI.
         .searchable(text: $searchText, prompt: "Filter VMs")
-        .toolbar {
-            // Sidebar toolbar items: Create + Diagnostics. Grouping
-            // them in one `ToolbarItemGroup` lets Liquid Glass
-            // render them as a single material cluster on
-            // macOS 26+ (per Apple's "always use GlassEffectContainer
-            // for multiple elements" guidance — toolbar groups
-            // implicitly apply the container).
-            ToolbarItemGroup {
-                Button {
-                    appState.showCreateSheet = true
-                } label: {
-                    Label("Create VM", systemImage: "plus.square.on.square")
-                }
-                .help("Create a new virtual machine (⌘N)")
-                .accessibilityIdentifier(AccessibilityID.createVMButton)
-
-                Button {
-                    appState.showDoctor = true
-                } label: {
-                    Label("Diagnostics", systemImage: "stethoscope")
-                }
-                .help("Check host readiness — mirrors `spook doctor` (⌃⌘D)")
-                .keyboardShortcut("d", modifiers: [.command, .control])
-            }
-        }
+        .navigationTitle("Workspaces")
+        // Primary toolbar actions intentionally DO NOT live on
+        // the sidebar — they're attached to the detail view in
+        // `ContentView` so they remain reachable when the
+        // sidebar is collapsed. Putting Create / Diagnostics on
+        // the sidebar toolbar hid them the moment the user
+        // collapsed the sidebar, which broke the "primary
+        // actions are always a click away" HIG expectation.
         .overlay {
             if filteredVMNames.isEmpty && !searchText.isEmpty {
                 ContentUnavailableView.search(text: searchText)
