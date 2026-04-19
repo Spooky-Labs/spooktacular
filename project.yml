@@ -1,0 +1,150 @@
+# project.yml — xcodegen spec that produces an .xcodeproj
+# whose sole job is hosting the SpooktacularUITests XCUITest
+# bundle.
+#
+# Why this file exists:
+#   SwiftPM can't declare UI-testing bundles with a launchable
+#   app host (Apple's current limit — SwiftPM testTargets run
+#   in-process, XCUITest needs a sibling .app target). The
+#   workaround documented in Package.swift's SpooktacularUITests
+#   comment is "xcodegen or tuist wiring." This is that wiring.
+#
+# What this generates:
+#   - `Spooktacular.xcodeproj` with two targets:
+#       1. `Spooktacular` — macOS .app bundle. Sources compiled
+#          from `Sources/Spooktacular`. Depends on the
+#          `SpooktacularKit` product from the root SwiftPM
+#          package (`Package.swift`), so the business logic
+#          doesn't duplicate across build systems.
+#       2. `SpooktacularUITests` — XCUITest bundle. Sources from
+#          `Tests/SpooktacularUITests`. Targets (`host app`) the
+#          `Spooktacular` target.
+#   - A scheme named `Spooktacular` that wires both targets into
+#     the `test` action, so `xcodebuild test -scheme Spooktacular
+#     -only-testing:SpooktacularUITests` works out of the box.
+#
+# What this does NOT replace:
+#   - `build-app.sh` continues to drive production builds via
+#     `swift build -c release` + manual bundle assembly. The
+#     .xcodeproj is only used by `fastlane ui_tests` (local and
+#     CI) to produce App Store screenshots.
+#   - Package.swift is still the source of truth for every
+#     library target (SpookCore, SpookApplication,
+#     SpookInfrastructureApple, SpooktacularKit, spook CLI, etc.).
+#
+# Generating the project:
+#   brew install xcodegen
+#   xcodegen generate
+#
+# The generated `.xcodeproj` is gitignored; it's a build artifact
+# derived from this file.
+
+name: Spooktacular
+
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+  developmentLanguage: en
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: 4AM5US9G8B
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Automatic
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+packages:
+  SpooktacularPackage:
+    path: .
+
+targets:
+  # Target is named `SpooktacularApp` (not `Spooktacular`) to
+  # avoid a collision with the `Package.swift` executable target
+  # also named `Spooktacular` that ships as part of the
+  # `SpooktacularPackage` SPM dependency. When both exist under
+  # the same name in the same `.xcodeproj`, Xcode routes build
+  # output to the same DerivedData slot — the SPM executable
+  # (bare binary) and the xcodegen app (wrapped in `.app/`) both
+  # write to `Debug/Spooktacular`, corrupting each other.
+  # Symptom: UITest runner crashes at launch with
+  # "The bundle identifier for Spooktacular couldn't be read.
+  #  No such file or directory: Debug/Spooktacular" — because
+  # it's reading the SPM bare-executable path, not the `.app`.
+  # Fix: keep the xcodegen target name unique, but override
+  # `PRODUCT_NAME` so the shipped artifact is still
+  # `Spooktacular.app` (what users install, what provisioning
+  # profiles match, what App Store Connect expects).
+  SpooktacularApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Spooktacular
+    resources:
+      # Info.plist lives in Resources/ alongside AppIcon.icns but
+      # is consumed via INFOPLIST_FILE below — exclude it from
+      # the bundled-resources copy step so it doesn't land as a
+      # loose file inside the .app alongside the real one Xcode
+      # injects into the signature.
+      - path: Resources
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: SpooktacularPackage
+        product: SpooktacularKit
+    # NOTE: intentionally no `info:` or `entitlements:` keys.
+    # Those directives tell xcodegen to GENERATE (and overwrite!)
+    # the file — wiping our hand-authored `Resources/Info.plist`
+    # and `Spooktacular.entitlements`. The `INFOPLIST_FILE` and
+    # `CODE_SIGN_ENTITLEMENTS` build settings below point Xcode at
+    # the existing files without touching them.
+    settings:
+      base:
+        PRODUCT_NAME: Spooktacular
+        PRODUCT_BUNDLE_IDENTIFIER: com.spooktacular.app
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Spooktacular.entitlements
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0.0
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+
+  SpooktacularUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/SpooktacularUITests
+    dependencies:
+      - target: SpooktacularApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spooktacular.uitests
+        TEST_TARGET_NAME: SpooktacularApp
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  # Named `SpooktacularApp` (not `Spooktacular`) to avoid a
+  # collision with SwiftPM's auto-generated `Spooktacular` scheme
+  # for the `.executableTarget(name: "Spooktacular")` in
+  # `Package.swift`. With identical names, `xcodebuild -scheme
+  # Spooktacular` would pick one non-deterministically (usually
+  # the SPM one, which is a bare CLI executable without an
+  # `.app` bundle — breaks UI test discovery with
+  # "The bundle identifier for Spooktacular couldn't be read").
+  SpooktacularApp:
+    build:
+      targets:
+        SpooktacularApp: all
+        SpooktacularUITests: [test]
+    run:
+      config: Debug
+      executable: SpooktacularApp
+    test:
+      config: Debug
+      targets:
+        - SpooktacularUITests
