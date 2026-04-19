@@ -366,14 +366,21 @@ platform :mac do
       build_number: build_number.to_s,
       skip_binary_upload: true,
 
-      # Refresh metadata + screenshots on every promotion so App
-      # Store copy stays in sync with the site + repo.
+      # Refresh metadata on every promotion so App Store copy
+      # stays in sync with the site + repo.
       skip_metadata: false,
-      skip_screenshots: false,
-      overwrite_screenshots: true,
+
+      # Screenshots are uploaded via the App Store Connect UI
+      # for the v1.0.0 submission. Flip to
+      # `skip_screenshots: false, overwrite_screenshots: true`
+      # once the `:ui_tests` lane is wired into CI and actually
+      # produces PNGs into `fastlane/screenshots/en-US/`. The
+      # xcodegen+XCUITest infrastructure is in place
+      # (`project.yml`), but populating screenshots is a
+      # follow-up — tracked in CHANGELOG.
+      skip_screenshots: true,
 
       metadata_path: "./metadata",
-      screenshots_path: "./screenshots",
       app_rating_config_path: "./metadata/age_rating_config.json",
 
       primary_category: "DEVELOPER_TOOLS",
@@ -432,8 +439,22 @@ platform :mac do
   # the same path, so screenshots produced on a PR look the same
   # as the ones a dev would commit locally.
   lane :ui_tests do
+    # Regenerate the `.xcodeproj` from `project.yml` so the
+    # file can't drift between what xcodegen would produce and
+    # what's on disk. xcodegen is idempotent and cheap (sub-second)
+    # on a cold run.
+    Dir.chdir(PROJECT_ROOT) do
+      sh("xcodegen", "generate")
+    end
+
+    # `scheme: "SpooktacularApp"` targets the xcodegen-generated
+    # scheme. Naming it `SpooktacularApp` (not `Spooktacular`)
+    # avoids a collision with SwiftPM's auto-generated scheme for
+    # the `Spooktacular` executable target — see `project.yml`
+    # header comment for the full story.
     scan(
-      scheme: "Spooktacular",
+      project: "Spooktacular.xcodeproj",
+      scheme: "SpooktacularApp",
       destination: "platform=macOS",
       only_testing: ["SpooktacularUITests"],
       result_bundle: true,
