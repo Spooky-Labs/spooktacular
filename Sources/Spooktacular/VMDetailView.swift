@@ -123,6 +123,73 @@ struct VMDisplayView: NSViewRepresentable {
     }
 }
 
+/// Detail view for a selected image in the Images section.
+/// Shows the image's name, source (local IPSW / OCI reference),
+/// size, and a context-menu-equivalent set of actions.
+struct ImageDetailView: View {
+
+    let image: VirtualMachineImage
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "photo.stack")
+                .font(.system(size: 72))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 6) {
+                Text(image.name).font(.largeTitle.weight(.semibold))
+
+                Text(sourceLabel)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                if let bytes = image.sizeInBytes {
+                    Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    appState.showCreateSheet = true
+                } label: {
+                    Label("Create VM from image", systemImage: "plus.square.on.square")
+                        .padding(.horizontal, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Button(role: .destructive) {
+                    try? appState.imageLibrary.remove(id: image.id)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .controlSize(.large)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: 560)
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle(image.name)
+    }
+
+    private var sourceLabel: String {
+        switch image.source {
+        case .ipsw(let path):
+            return "Local IPSW · \((path as NSString).lastPathComponent)"
+        case .oci(let reference):
+            return "OCI · \(reference)"
+        }
+    }
+}
+
 /// Sidebar row for one VM — name, specs, running dot.
 struct VMRow: View {
 

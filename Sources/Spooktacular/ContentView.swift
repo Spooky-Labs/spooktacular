@@ -7,9 +7,18 @@ struct ContentView: View {
 
     @Environment(AppState.self) private var appState
 
-    @State private var selection: String?
+    @State private var selection: SidebarSelection?
     @State private var searchText = ""
     @State private var didLoad = false
+
+    /// Typed selection so a single `List(selection:)` can route
+    /// clicks from two heterogeneous sections (VMs + Images) into
+    /// one binding. Without this, images wouldn't participate in
+    /// the selection system and clicks on them would be inert.
+    enum SidebarSelection: Hashable {
+        case vm(String)
+        case image(UUID)
+    }
 
     var body: some View {
         @Bindable var state = appState
@@ -56,12 +65,22 @@ struct ContentView: View {
         List(selection: $selection) {
             Section("Virtual Machines") {
                 ForEach(filteredVMs, id: \.self) { name in
-                    VMRow(name: name).tag(name)
+                    VMRow(name: name).tag(SidebarSelection.vm(name))
                 }
             }
             Section("Images") {
                 ForEach(images) { image in
                     Label(image.name, systemImage: "photo.stack")
+                        .tag(SidebarSelection.image(image.id))
+                        .contextMenu {
+                            Button("Create VM from this image…") {
+                                appState.showCreateSheet = true
+                            }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                try? appState.imageLibrary.remove(id: image.id)
+                            }
+                        }
                 }
                 Button {
                     appState.showAddImage = true
@@ -80,9 +99,32 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let name = selection, let bundle = appState.vms[name] {
-            VMDetailView(name: name, bundle: bundle)
-        } else if appState.vms.isEmpty {
+        switch selection {
+        case .vm(let name):
+            if let bundle = appState.vms[name] {
+                VMDetailView(name: name, bundle: bundle)
+            } else {
+                emptySelection
+            }
+        case .image(let id):
+            if let image = appState.imageLibrary.images.first(where: { $0.id == id }) {
+                ImageDetailView(image: image)
+            } else {
+                emptySelection
+            }
+        case .none:
+            emptySelection
+        }
+    }
+
+    @ViewBuilder
+    private var emptySelection: some View {
+        detailEmptyState
+    }
+
+    @ViewBuilder
+    private var detailEmptyState: some View {
+        if appState.vms.isEmpty {
             ContentUnavailableView {
                 Label("No workspaces yet", systemImage: "sparkles")
             } description: {
