@@ -737,14 +737,15 @@ platform :mac do
   end
 
   def self.default_changelog
-    "• Create and clone macOS VMs (APFS copy-on-write, ~48ms)\n" \
-    "• GitHub Actions, CircleCI, and Jenkins runner pools\n" \
-    "• Ephemeral, warm-pool, and persistent runner modes\n" \
-    "• SSH and disk-inject provisioning\n" \
-    "• HTTP REST API with TLS and bearer token auth\n" \
-    "• Kubernetes operator (MacOSVM + RunnerPool CRDs)\n" \
-    "• SwiftUI GUI with Liquid Glass (macOS 26+)\n" \
-    "• Full VoiceOver accessibility"
+    "v1.0.1 — GUI ↔ CLI feature parity.\n" \
+    "\n" \
+    "• SSH into workspaces with one tap (toolbar split-button also copies the IP).\n" \
+    "• Install from a local IPSW file — skip the 10–20 GB Apple download.\n" \
+    "• First-boot templates in Create: GitHub Actions runner, OpenClaw agent, Screen Sharing (VNC).\n" \
+    "• Clone VMs from the sidebar with a proper name dialog (⌘D).\n" \
+    "• Add, remove, and toggle read-only on shared folders in the Hardware editor.\n" \
+    "\n" \
+    "What to test: the five flows above, end-to-end. File feedback from Help > Send Feedback."
   end
 
   after_all do |lane|

@@ -1,59 +1,13 @@
-v1.0.0 — Initial public release. Apple Silicon only. MIT licensed.
+v1.0.1 — GUI now has feature parity with the spook CLI.
 
-Run 2 macOS VMs per Mac — the maximum Apple's EULA allows.
+GUI parity
+• SSH into workspaces with one tap. The toolbar split-button's primary action copies the IP, the chevron opens Terminal with an ssh session.
+• Install from a local IPSW file. Skip the 10–20 GB Apple download when you already have the restore image on disk — useful for offline installs, pinning to a known build, and re-creating VMs from a fleet-wide snapshot.
+• Built-in first-boot templates in Create: GitHub Actions runner, OpenClaw agent, Screen Sharing (VNC), or a custom shell script. The GitHub runner flow reads its registration token from the Keychain — env-var / CLI-flag / file paths were removed pre-1.0 to keep the token off of ps and disk.
+• Clone VMs from the sidebar with a proper name dialog (⌘D). APFS copy-on-write, so a 100 GB disk clones in milliseconds.
+• Add, remove, and toggle read-only on shared folders in the Hardware editor — post-creation management matches spook share on the CLI.
 
-VM LIFECYCLE
-• Create macOS VMs from IPSW restore images. Resumable downloads with SHA-256 content-addressed caching.
-• Unattended Setup Assistant on macOS 15 + 26.
-• APFS copy-on-write clones in ~48 ms.
-• Graceful and pull-the-cord stop as distinct, named operations.
+Bug fixes
+• Custom user-data scripts selected in the Create sheet are now actually injected into the guest. Prior builds silently dropped them on the floor.
 
-PROVISIONING
-• SSH, disk-inject, VirtIO-socket guest agent, and shared-folder modes.
-• Guest agent exposes health/clipboard/exec/apps/files/ports on three scope-separated vsock channels (read-only / runner / break-glass).
-
-GITHUB ACTIONS RUNNERS
-• Ephemeral, warm-pool, and persistent modes.
-• Registration-token hygiene and drain-before-delete on scale-down (default 5 min).
-• 10-check warm-pool scrub validator proves the guest is clean before reuse.
-• Workload-token refresher with ES256 JWTs and 24 h JWKS overlap.
-
-ENTERPRISE
-• OIDC + SAML federated identity with JWKS pinning and strict audience/iss/replay validation.
-• mTLS everywhere. Keychain cert/key pairing verified at import.
-• Multi-tenant RBAC with an audit record on every decision.
-• Break-glass tickets: Secure-Enclave-bound, per-JTI + per-fleet single-use via a distributed singleton.
-• Tenant quotas account for in-flight allocations.
-• Per-VM network egress generates pf(8) rules.
-
-AUDIT
-• RFC 6962 Merkle tree with Ed25519 signed tree heads. Append-only store with fsync on every write.
-• spook audit verify — inclusion-proof validator (P-256 + Ed25519).
-• Dual sinks (JSONL + S3 Object Lock) with HEAD-verify.
-• SIEM webhook forwarder with HMAC-signed deliveries.
-
-KUBERNETES
-• MacOSVM + RunnerPool CRDs with observedGeneration + conditions.
-• ValidatingWebhookConfiguration enforces tenant/namespace isolation and the 2-VM-per-host cap at admission.
-• Helm chart ships NetworkPolicy, PDB, ServiceMonitor, and PrometheusRule.
-
-HTTP API
-• REST control plane with request-ID correlation, standard error envelope, body-size caps, split read/write rate buckets, and slow-loris defense.
-
-UX
-• macOS 26 Liquid Glass. Resumable IPSW downloads, Cancel on long operations, substep progress, dynamic VoiceOver, workspace-window restoration.
-• 16-command CLI with --json and documented exit codes.
-
-OBSERVABILITY
-• OpenTelemetry trace export on every API request. Prometheus with bounded cardinality. SLO catalog, Grafana dashboards, and alert rules as code.
-
-EC2 MAC
-• Terraform module with SSM document, License Manager, Host Resource Group, ASG drain-on-terminate, and seven CloudWatch alarms.
-
-QUALITY BAR
-• 822 tests across 224 suites.
-• SwiftLint strict + DocC warnings-as-errors + Xcode build + UI tests gating CI.
-• Clean Architecture enforced by build-time tests.
-• spook security-controls prints an audit-ready inventory of every shipped control with OWASP / NIST / ASVS citations.
-
-Full changelog in repo CHANGELOG.md.
+The CLI, HTTP API, and Kubernetes operator are unchanged in this release.

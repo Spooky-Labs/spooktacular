@@ -115,7 +115,7 @@ private func releaseExecSlot() {
 }
 
 /// The agent version, reported in health checks.
-private let agentVersion = "1.0.0"
+private let agentVersion = "1.0.1"
 
 /// The process start time, used to compute uptime.
 private let agentStartTime = Date()
