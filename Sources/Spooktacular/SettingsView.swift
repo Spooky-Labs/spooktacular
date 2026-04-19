@@ -25,11 +25,29 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            // Use a stacked layout so a long $HOME (e.g. a FileVault
+            // user with a deep UNIX home path) doesn't clip on the
+            // trailing edge of the settings sheet. Matches Apple's
+            // inspector-panel guidance for long filesystem paths.
+            //
+            // Docs:
+            // https://developer.apple.com/documentation/swiftui/labeledcontent
             Section("Data Directory") {
-                LabeledContent("VM Storage") {
-                    Text(storagePath)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
+                LabeledContent {
+                    EmptyView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("VM Storage")
+                        Text(storagePath)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .help(storagePath)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("VM storage directory")

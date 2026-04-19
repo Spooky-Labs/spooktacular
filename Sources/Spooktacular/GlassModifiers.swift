@@ -1,5 +1,25 @@
 import SwiftUI
 
+// Liquid Glass (macOS 26) is an opt-in material that renders a
+// refractive, dynamic surface over underlying content. On older
+// macOS releases we fall back to `ultraThinMaterial` — which
+// renders as a translucent vibrancy blur and is the closest legacy
+// equivalent. Every modifier in this file uses
+// `#if compiler(>=6.2)` + `#available(macOS 26.0, *)` so a single
+// binary targets macOS 14–26+ without runtime crashes.
+//
+// Docs:
+// - Adopting Liquid Glass:
+//   https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass
+// - `glassEffect(_:in:)`:
+//   https://developer.apple.com/documentation/swiftui/view/glasseffect(_:in:)
+// - `GlassEffectContainer`:
+//   https://developer.apple.com/documentation/swiftui/glasseffectcontainer
+// - `buttonStyle(.glass)`:
+//   https://developer.apple.com/documentation/swiftui/buttonstyle-swift.type/glass
+// - `containerBackground(_:for:)`:
+//   https://developer.apple.com/documentation/swiftui/view/containerbackground(_:for:)
+
 // MARK: - Glass Button Modifier
 
 /// Applies `.buttonStyle(.glass)` on macOS 26+ (Liquid Glass),
@@ -104,12 +124,40 @@ struct GlassSectionHeaderModifier: ViewModifier {
     }
 }
 
+// MARK: - Window Background
+
+/// Applies a window-wide Liquid Glass / material background,
+/// picking the best Apple API for the running OS.
+///
+/// - **macOS 15+**: `containerBackground(.ultraThinMaterial,
+///   for: .window)` — purpose-built for window-level material
+///   fills, resilient to split-view and inspector reshuffling.
+///   Docs: https://developer.apple.com/documentation/swiftui/view/containerbackground(_:for:)
+/// - **macOS 14**: `background(.ultraThinMaterial)` — the
+///   documented fallback for general material fills.
+///   Docs: https://developer.apple.com/documentation/swiftui/material
+///
+/// On macOS 26 the underlying material renders as Liquid Glass
+/// automatically — no extra API call needed, the system
+/// re-materializes the existing container background.
+struct WindowGlassBackgroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.containerBackground(.ultraThinMaterial, for: .window)
+        } else {
+            content.background(.ultraThinMaterial)
+        }
+    }
+}
+
 // MARK: - View Extensions
 
 extension View {
     /// Wraps the toolbar region in a `GlassEffectContainer` on
     /// macOS 26+ so related toolbar glass elements share a
     /// single material layer. No-op on earlier versions.
+    ///
+    /// Docs: https://developer.apple.com/documentation/swiftui/view/toolbarbackgroundvisibility(_:for:)
     @ViewBuilder
     func toolbarApplyingGlassContainer() -> some View {
         #if compiler(>=6.2)
@@ -147,4 +195,70 @@ extension View {
     func glassSectionHeader() -> some View {
         modifier(GlassSectionHeaderModifier())
     }
+
+    /// Applies the Liquid Glass window background — use at the
+    /// root of a `WindowGroup` scene to give the window a
+    /// material chrome that blends with Apple's window chrome on
+    /// macOS 26, and a vibrancy-blur on older releases.
+    ///
+    /// Prefer this over hand-rolling the `#available` selector at
+    /// every scene root. The library window wires it in
+    /// ``SpooktacularApp`` via a private `libraryWindowBackground`
+    /// extension; this public form is for new scene roots (help
+    /// window, workspace, sheets).
+    func windowGlassBackground() -> some View {
+        modifier(WindowGlassBackgroundModifier())
+    }
+
+    /// Groups a block of related views into a single shared glass
+    /// material layer on macOS 26+. Use this around toolbar
+    /// button groups that belong together (Stop / Snapshots /
+    /// Ports), or around a row of inline chips, so they render
+    /// as one continuous glass shape rather than N separate
+    /// blurs. No-op on macOS 14/15 — the material fallback
+    /// already composes correctly without the container.
+    ///
+    /// Docs:
+    /// https://developer.apple.com/documentation/swiftui/glasseffectcontainer
+    @ViewBuilder
+    func glassEffectGroup<Content: View>(
+        @ViewBuilder _ content: () -> Content
+    ) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer { content() }
+        } else {
+            content()
+        }
+        #else
+        content()
+        #endif
+    }
+}
+
+// MARK: - Free-standing helpers
+
+/// Groups a block of related views into a single shared glass
+/// material layer on macOS 26+. See `View.glassEffectGroup` for
+/// the in-view form; this free-standing helper lets call sites
+/// that don't have a `self` (e.g. inside `@ToolbarContentBuilder`
+/// the toolbar leaves the container out) still reach the same
+/// layering primitive when needed.
+///
+/// Docs:
+/// https://developer.apple.com/documentation/swiftui/glasseffectcontainer
+@ViewBuilder
+@MainActor
+func GlassGroup<Content: View>(
+    @ViewBuilder content: @MainActor () -> Content
+) -> some View {
+    #if compiler(>=6.2)
+    if #available(macOS 26.0, *) {
+        GlassEffectContainer { content() }
+    } else {
+        content()
+    }
+    #else
+    content()
+    #endif
 }
