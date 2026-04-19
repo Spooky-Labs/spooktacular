@@ -51,6 +51,20 @@ struct WorkspaceWindow: View {
         }
         .frame(minWidth: 720, minHeight: 460)
         .navigationTitle(vmName)
+        // Window-wide Liquid Glass / material background. On
+        // macOS 26 this becomes the Liquid Glass container;
+        // 14 and 15 fall back to `ultraThinMaterial` via the
+        // helper in `GlassModifiers.swift`. Keeps the
+        // workspace chrome consistent with the library window.
+        .windowGlassBackground()
+        // Wraps the toolbar in a shared material layer on
+        // macOS 26+ so the primary-action button cluster
+        // (Stop / Snapshots / Ports / Copy IP — or Start /
+        // Hardware / Snapshots) renders as one continuous
+        // glass shape rather than N separate blurs.
+        //
+        // Docs: https://developer.apple.com/documentation/swiftui/view/toolbarbackgroundvisibility(_:for:)
+        .toolbarApplyingGlassContainer()
         .task(id: vmName) {
             await appState.workspaceDidOpen(vmName)
         }
@@ -336,7 +350,18 @@ struct WorkspaceLaunchView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassCard(cornerRadius: 24)
+        // No outer `.glassCard` here: the enclosing window
+        // already carries a Liquid Glass / ultraThinMaterial
+        // background (via `windowGlassBackground()` on the
+        // workspace window root). Stacking `.glassCard` on top
+        // produced double-chrome — a visible rectangle on a
+        // window that was already translucent. Apple's
+        // "Adopting Liquid Glass" guide explicitly warns
+        // against nesting glass materials inside other glass
+        // materials; keep the container plain and let the
+        // window chrome carry the texture.
+        //
+        // Docs: https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass
         .padding(24)
     }
 

@@ -87,6 +87,29 @@ struct SpooktacularApp: App {
         .defaultSize(width: 1024, height: 640)
         .windowResizability(.contentMinSize)
 
+        // MARK: - Help Window
+        //
+        // First-class SwiftUI help window — searchable, topic-driven,
+        // opens via `openWindow(id: "help")` or
+        // `openWindow(id: "help", value: slug)` when a specific
+        // topic should be pre-selected. Keeps the legacy
+        // `Help.bundle` / AHT format out of the codebase —
+        // SwiftUI handles search, layout, and Markdown rendering
+        // natively.
+        //
+        // Docs:
+        // - WindowGroup(id:for:):
+        //   https://developer.apple.com/documentation/swiftui/windowgroup
+        // - openWindow:
+        //   https://developer.apple.com/documentation/swiftui/environmentvalues/openwindow
+        WindowGroup(id: "help", for: String?.self) { $initialSlug in
+            HelpView(initialSlug: initialSlug)
+        } defaultValue: {
+            nil
+        }
+        .defaultSize(width: 880, height: 620)
+        .windowResizability(.contentMinSize)
+
         // MARK: - Settings
 
         Settings {
@@ -129,33 +152,89 @@ struct SpooktacularApp: App {
 
     @CommandsBuilder
     private var helpCommands: some Commands {
+        // Apple's macOS HIG reserves `CommandGroup(replacing: .help)`
+        // for the app-specific Help menu items — keyboard shortcut
+        // ⌘? on the first item is the platform convention.
+        //
+        // Docs (menus): https://developer.apple.com/design/human-interface-guidelines/menus
+        // Docs (CommandGroup): https://developer.apple.com/documentation/swiftui/commandgroup
         CommandGroup(replacing: .help) {
-            Button("Spooktacular Help") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs")!)
+            HelpMenuItems()
+        }
+    }
+}
+
+// MARK: - Help menu items
+
+/// The Help menu's content, extracted into a View so each item can
+/// reach the `openWindow` environment value — `CommandGroup` does
+/// not directly bind `@Environment` on its own closure, so the
+/// indirection through a View gives each button a valid scene
+/// environment.
+///
+/// Docs: https://developer.apple.com/documentation/swiftui/environmentvalues/openwindow
+private struct HelpMenuItems: View {
+
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Spooktacular Help") {
+            openWindow(id: "help", value: Optional<String>.none)
+        }
+        // ⌘? — standard macOS shortcut for the primary Help item.
+        .keyboardShortcut("?", modifiers: [.command])
+
+        Divider()
+
+        Button("Getting Started") {
+            openWindow(id: "help", value: Optional("welcome"))
+        }
+
+        Button("Creating a Virtual Machine") {
+            openWindow(id: "help", value: Optional("creating-a-vm"))
+        }
+
+        Button("Keyboard Shortcuts") {
+            openWindow(id: "help", value: Optional("keyboard-shortcuts"))
+        }
+
+        Divider()
+
+        Button("GitHub Actions Runner Setup") {
+            openWindow(id: "help", value: Optional("github-runner"))
+        }
+
+        Button("Remote Desktop Guide") {
+            openWindow(id: "help", value: Optional("remote-desktop-intro"))
+        }
+
+        Button("CLI Reference") {
+            openWindow(id: "help", value: Optional("cli-basics"))
+        }
+
+        Divider()
+
+        // External links stay out of the in-app help window — the
+        // DocC archive and the GitHub issue tracker are richer in
+        // a browser than in a SwiftUI pane. `NSWorkspace.open(_:)`
+        // honours the user's default handler for each URL scheme.
+        //
+        // Docs: https://developer.apple.com/documentation/appkit/nsworkspace/open(_:)
+        Button("API Documentation (DocC)") {
+            if let url = URL(string: "https://spooktacular.app/api/documentation/spooktacularkit/") {
+                NSWorkspace.shared.open(url)
             }
+        }
 
-            Divider()
-
-            Button("Getting Started") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/getting-started")!)
+        Button("Report an Issue…") {
+            if let url = URL(string: "https://github.com/Spooky-Labs/spooktacular/issues") {
+                NSWorkspace.shared.open(url)
             }
+        }
 
-            Button("CLI Reference") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/cli")!)
-            }
-
-            Button("Kubernetes Guide") {
-                NSWorkspace.shared.open(URL(string: "https://spooktacular.dev/docs/kubernetes")!)
-            }
-
-            Divider()
-
-            Button("Report an Issue…") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/Spooky-Labs/spooktacular/issues")!)
-            }
-
-            Button("Release Notes") {
-                NSWorkspace.shared.open(URL(string: "https://github.com/Spooky-Labs/spooktacular/releases")!)
+        Button("Release Notes") {
+            if let url = URL(string: "https://github.com/Spooky-Labs/spooktacular/releases") {
+                NSWorkspace.shared.open(url)
             }
         }
     }

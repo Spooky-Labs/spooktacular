@@ -214,6 +214,23 @@ struct WorkspacePreviewCard: View {
 /// `LabeledContent` and `.formStyle(.grouped)`. Shows all configured
 /// options: identity, hardware, display, network, audio, shared
 /// folders, provisioning, and storage.
+///
+/// # Long-value layout
+///
+/// Values that can exceed the inspector column width — UUIDs,
+/// filesystem paths, long-form timestamps — render on a row *below*
+/// their label using the `LabeledContent { content } label: { label }`
+/// initializer. Apple's macOS HIG recommends putting the content on
+/// its own row whenever the value is likely to wrap or truncate, so
+/// the label/content alignment doesn't fight the inspector's
+/// 280–400 pt column. Short atomic values (name, core counts,
+/// booleans) keep the default trailing layout — they fit fine.
+///
+/// Docs:
+/// - `LabeledContent` custom-label init:
+///   https://developer.apple.com/documentation/swiftui/labeledcontent
+/// - `inspectorColumnWidth(min:ideal:max:)`:
+///   https://developer.apple.com/documentation/swiftui/view/inspectorcolumnwidth(min:ideal:max:)
 struct VMInspectorView: View {
 
     let name: String
@@ -240,21 +257,37 @@ struct VMInspectorView: View {
             LabeledContent("Name", value: name)
                 .accessibilityElement(children: .combine)
 
-            LabeledContent("ID") {
+            // UUID and timestamp both overflow the inspector's
+            // 280–400 pt column. Render them on a line below the
+            // label with `.lineLimit(nil)` so they wrap cleanly
+            // rather than clip on the trailing edge. This is the
+            // layout Apple uses in their own inspectors (e.g.
+            // Finder's Info window) for paths and identifiers.
+            stackedRow(
+                label: "ID",
+                accessibilityLabel: "VM identifier",
+                accessibilityValue: bundle.metadata.id.uuidString
+            ) {
                 Text(bundle.metadata.id.uuidString)
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .accessibilityLabel("VM identifier")
-            .accessibilityValue(bundle.metadata.id.uuidString)
 
-            LabeledContent("Created") {
+            stackedRow(
+                label: "Created",
+                accessibilityLabel: "Creation date"
+            ) {
                 Text(
                     bundle.metadata.createdAt,
                     format: .dateTime.month().day().year().hour().minute()
                 )
+                .font(.callout)
+                .monospacedDigit()
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .accessibilityElement(children: .combine)
 
             LabeledContent("Setup") {
                 Image(systemName: bundle.metadata.setupCompleted
@@ -344,17 +377,24 @@ struct VMInspectorView: View {
                     .accessibilityLabel("No shared folders configured")
             } else {
                 ForEach(bundle.spec.sharedFolders, id: \.tag) { folder in
-                    LabeledContent(folder.tag) {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(folder.hostPath)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                            Text(folder.readOnly ? "read-only" : "read-write")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                    // Use the stacked variant — host paths are
+                    // typically wider than the inspector's 400 pt
+                    // maximum. Show the read-only/read-write chip
+                    // inline with the tag so the relationship is
+                    // obvious at a glance.
+                    stackedRow(
+                        label: LocalizedStringKey(folder.tag),
+                        accessoryLabel: folder.readOnly ? "read-only" : "read-write",
+                        accessibilityLabel: "Shared folder \(folder.tag)",
+                        accessibilityValue: "\(folder.hostPath), \(folder.readOnly ? "read-only" : "read-write")"
+                    ) {
+                        Text(folder.hostPath)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .accessibilityElement(children: .combine)
                 }
             }
         }
@@ -365,13 +405,24 @@ struct VMInspectorView: View {
     @ViewBuilder
     private var storageSection: some View {
         Section("Storage") {
-            LabeledContent("Bundle") {
+            // The bundle path is a full filesystem URL — always
+            // wider than the inspector column. Stack + head/tail
+            // truncation + `.help(...)` so the full path is
+            // reachable on hover, matching Apple's Finder Info
+            // window pattern for long paths.
+            stackedRow(
+                label: "Bundle",
+                accessibilityLabel: "Bundle path",
+                accessibilityValue: bundle.url.path
+            ) {
                 Text(bundle.url.path)
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(bundle.url.path)
             }
-            .accessibilityLabel("Bundle path")
-            .accessibilityValue(bundle.url.path)
         }
     }
 
@@ -389,6 +440,57 @@ struct VMInspectorView: View {
         }
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(enabled ? "Enabled" : "Disabled")
+    }
+
+    /// A vertically-stacked inspector row: label on top, content
+    /// below, and an optional right-side accessory badge (e.g.
+    /// "read-only"). Use this for values that exceed the
+    /// inspector's narrow column: UUIDs, filesystem paths, long
+    /// timestamps. The stacked form avoids the trailing-edge
+    /// clipping that Apple's default `LabeledContent` layout
+    /// produces when content is wider than the column minus the
+    /// label's intrinsic size.
+    ///
+    /// Docs: https://developer.apple.com/documentation/swiftui/labeledcontent
+    ///
+    /// - Parameters:
+    ///   - label: The row's leading label text.
+    ///   - accessoryLabel: Optional trailing caption on the same
+    ///     line as `label` (e.g. a "ro"/"rw" chip).
+    ///   - accessibilityLabel: Describes the row for VoiceOver.
+    ///   - accessibilityValue: Overrides the VoiceOver value.
+    ///     Falls back to the rendered text when nil.
+    ///   - content: The wrapping value block.
+    @ViewBuilder
+    private func stackedRow<Content: View>(
+        label: LocalizedStringKey,
+        accessoryLabel: String? = nil,
+        accessibilityLabel: String,
+        accessibilityValue: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        LabeledContent {
+            EmptyView()
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(label)
+                        .foregroundStyle(.primary)
+                    if let accessoryLabel {
+                        Text(accessoryLabel)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                content()
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(accessibilityValue ?? "")
     }
 
 }
