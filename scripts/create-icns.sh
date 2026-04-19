@@ -1,10 +1,26 @@
 #!/bin/bash
-# Creates AppIcon.icns from a source PNG or SVG.
-# Usage: ./scripts/create-icns.sh [input.png]
+# Creates AppIcon.icns from Resources/AppIcon.svg (the canonical
+# pixel-art source used on the spooktacular.app website) or from
+# an operator-supplied PNG.
 #
-# If no input is given, renders Resources/icon.svg to PNG via
-# `rsvg-convert` (librsvg) and then generates every required
-# size with `sips`.
+# Usage:
+#   ./scripts/create-icns.sh              # render Resources/AppIcon.svg
+#   ./scripts/create-icns.sh icon.png     # use a pre-rendered PNG
+#
+# Why the double render step:
+#
+# `AppIcon.svg` defines its palette via CSS custom properties
+# (`--bg1: #07050f;`, …) referenced by every rect via
+# `fill="var(--bg1)"`. librsvg 2.62 (our renderer) does not
+# resolve CSS custom properties — it falls back to the default
+# fill, producing an all-black image (this bit us in an earlier
+# TestFlight release). Safari and Chrome do resolve CSS vars,
+# but aren't available headlessly on macos-26 runners.
+#
+# Fix: pre-substitute every `var(--name)` with its resolved
+# `#rrggbb` value, then hand the resulting SVG to rsvg-convert.
+# The 20-line Python below does exactly that and nothing else —
+# no third-party deps beyond librsvg (already required).
 
 set -euo pipefail
 
@@ -16,18 +32,12 @@ OUTPUT="$RESOURCES_DIR/AppIcon.icns"
 
 INPUT="${1:-}"
 
-# If no input is given, render the canonical SVG to a 1024x1024
-# PNG via `rsvg-convert`. We previously used `qlmanage -t` but
-# Quick Look's SVG thumbnailer produces an all-black image for
-# anything with gradients — the rendered `.icns` looked like a
-# solid black square in TestFlight (screenshot evidence in PR
-# #30's description). `rsvg-convert` is librsvg's reference
-# renderer and handles gradients, text, and nested groups
-# correctly.
+# If no input is given, resolve CSS custom properties in
+# `AppIcon.svg` and render to PNG via rsvg-convert.
 if [ -z "$INPUT" ]; then
-    SVG="$RESOURCES_DIR/icon.svg"
+    SVG="$RESOURCES_DIR/AppIcon.svg"
     if [ ! -f "$SVG" ]; then
-        echo "Error: No input file and no Resources/icon.svg found." >&2
+        echo "Error: No input file and no Resources/AppIcon.svg found." >&2
         exit 1
     fi
 
@@ -39,9 +49,31 @@ if [ -z "$INPUT" ]; then
         exit 2
     fi
 
-    echo "Rendering SVG to PNG via rsvg-convert..."
+    echo "Resolving CSS custom properties in AppIcon.svg..."
+    RESOLVED_SVG="$(mktemp -t AppIcon-resolved-XXXXXX).svg"
+    trap 'rm -f "$RESOLVED_SVG"' EXIT
+
+    python3 - "$SVG" "$RESOLVED_SVG" <<'PY'
+import re, sys
+src, dst = sys.argv[1], sys.argv[2]
+with open(src) as f:
+    svg = f.read()
+# Collect `--name: value;` from the :root style block.
+vars = dict(re.findall(r'--([\w-]+)\s*:\s*([^;]+);', svg))
+# Substitute every `var(--name)` with its resolved value.
+resolved = re.sub(
+    r'var\(--([\w-]+)\)',
+    lambda m: vars.get(m.group(1).strip(), m.group(0)),
+    svg,
+)
+with open(dst, 'w') as f:
+    f.write(resolved)
+print(f"  {len(vars)} CSS vars resolved → {dst}")
+PY
+
+    echo "Rendering SVG → 1024x1024 PNG via rsvg-convert..."
     INPUT="$RESOURCES_DIR/icon_1024.png"
-    rsvg-convert -w 1024 -h 1024 "$SVG" -o "$INPUT"
+    rsvg-convert -w 1024 -h 1024 "$RESOLVED_SVG" -o "$INPUT"
 fi
 
 if [ ! -f "$INPUT" ]; then
