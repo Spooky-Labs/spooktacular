@@ -138,6 +138,31 @@ struct GlassSectionHeaderModifier: ViewModifier {
     }
 }
 
+// MARK: - Background Extension Effect
+
+/// `ViewModifier` form of `backgroundExtensionEffect()` —
+/// keeps the wrapped view's identity stable across layout
+/// changes, which a free-standing `@ViewBuilder` `if #available`
+/// function does not (it produces `_ConditionalContent` that
+/// tears the subtree down when the branch flips). The struct
+/// form returns a stable concrete `some View` whose body does
+/// the runtime `#available` check.
+///
+/// Docs: https://developer.apple.com/documentation/swiftui/viewmodifier
+struct BackgroundExtensionModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.backgroundExtensionEffect()
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 // MARK: - View Extensions
 
 extension View {
@@ -175,54 +200,24 @@ extension View {
         modifier(GlassProminentButtonModifier())
     }
 
-    /// Groups a block of related views into a single shared
-    /// glass material layer on macOS 26+ via `GlassEffectContainer`.
-    /// Per Apple's Liquid Glass adoption guide: "Always use
-    /// GlassEffectContainer for multiple elements" — it optimizes
-    /// rendering by sharing the sampling region and enables
-    /// morphing transitions between neighboring glass elements.
-    /// No-op on earlier macOS versions.
+    /// Applies `.backgroundExtensionEffect()` on macOS 26+ so the
+    /// content beneath a sidebar or inspector "peeks through" —
+    /// the sidebar/inspector's Liquid Glass samples a mirrored,
+    /// blurred copy of the content edge. No-op on earlier macOS.
     ///
-    /// Docs: https://developer.apple.com/documentation/swiftui/glasseffectcontainer
-    @ViewBuilder
-    func glassContainer() -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            GlassEffectContainer { self }
-        } else {
-            self
-        }
-        #else
-        self
-        #endif
-    }
-
-    /// Applies `.backgroundExtensionEffect()` on macOS 26+ so
-    /// the content beneath a neighboring sidebar or inspector
-    /// "peeks through" — the sidebar/inspector's Liquid Glass
-    /// samples a mirrored, blurred copy of the content edge.
-    /// No-op on earlier macOS.
-    ///
-    /// From Apple's Liquid Glass adoption guide: "A background
-    /// extension effect creates a sense of extending a
-    /// background under a sidebar or inspector, without actually
-    /// scrolling or placing content under it." Apply to the
-    /// detail / main content region of a `NavigationSplitView`
-    /// so the inspector's glass is legible and feels connected
-    /// to the content.
+    /// Implemented as a `ViewModifier` rather than a free-standing
+    /// `@ViewBuilder` function — the modifier struct keeps the
+    /// outer view's identity stable across layout changes
+    /// (sidebar collapse, inspector toggle), where a free-standing
+    /// `if #available` function produces `_ConditionalContent`
+    /// that flips the view type and causes SwiftUI to tear down
+    /// and rebuild the subtree. See Apple's SwiftUI performance
+    /// guidance: keep modifier application order and identity
+    /// stable across body re-evaluations.
     ///
     /// Docs: https://developer.apple.com/documentation/swiftui/view/backgroundextensioneffect()
-    @ViewBuilder
     func backgroundExtendedUnderSidebarsAndInspectors() -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            self.backgroundExtensionEffect()
-        } else {
-            self
-        }
-        #else
-        self
-        #endif
+        modifier(BackgroundExtensionModifier())
     }
 
     /// Applies a glass card background on macOS 26+,
