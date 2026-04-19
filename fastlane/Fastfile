@@ -461,11 +461,26 @@ platform :mac do
     if ENV["CI"]
       signing
       api_key = get_api_key
+      # `readonly: false` — bootstraps the Mac Development cert +
+      # profile into the `spooktacular-certificates` match repo
+      # on the first run. Subsequent CI runs find what's already
+      # there and reuse it (match is idempotent; this never
+      # double-creates). The Distribution cert used by `:signing`
+      # gets `readonly: is_ci` because it was created manually
+      # once; the Development cert has never been created, so we
+      # let CI handle the bootstrap with the App Store Connect
+      # API key.
+      #
+      # Requires: APPLE_API_KEY_* secrets scoped to an Apple ID
+      # with at least "App Manager" role so match can create
+      # certs + profiles on App Store Connect. MATCH_PASSWORD +
+      # MATCH_GIT_BASIC_AUTHORIZATION must also grant write
+      # access to the cert repo.
       match(
         api_key: api_key,
         type: "development",
         platform: "macos",
-        readonly: is_ci
+        readonly: false
       )
     end
 
