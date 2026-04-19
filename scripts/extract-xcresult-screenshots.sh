@@ -44,7 +44,7 @@ mkdir -p "$OUT"
 #
 # `xcresulttool` is a code-signed Xcode binary; calling it is
 # safer than traversing the bundle's internal layout by hand.
-ROOT_JSON=$(xcrun xcresulttool get --format json --path "$XCRESULT")
+ROOT_JSON=$(xcrun xcresulttool get object --legacy --format json --path "$XCRESULT")
 
 # Enumerate every test action's summary reference, then every
 # attachment on every test. `jq` does the walking; we pipe each
@@ -57,7 +57,7 @@ echo "$ROOT_JSON" | jq -r '
 ' 2>/dev/null | while read -r TESTS_REF; do
     [ -z "$TESTS_REF" ] && continue
 
-    TEST_PLAN=$(xcrun xcresulttool get --format json \
+    TEST_PLAN=$(xcrun xcresulttool get object --legacy --format json \
         --path "$XCRESULT" --id "$TESTS_REF")
 
     echo "$TEST_PLAN" | jq -r '
@@ -75,7 +75,8 @@ echo "$ROOT_JSON" | jq -r '
             *.png|*.PNG|*.jpg|*.JPG|*.jpeg|*.JPEG) ;;
             *) SAFE_NAME="${SAFE_NAME}.png" ;;
         esac
-        xcrun xcresulttool export \
+        xcrun xcresulttool export object \
+            --legacy \
             --path "$XCRESULT" \
             --id "$REF" \
             --output-path "$OUT/$SAFE_NAME" \
