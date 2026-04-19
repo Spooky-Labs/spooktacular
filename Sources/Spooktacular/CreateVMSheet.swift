@@ -215,7 +215,15 @@ struct CreateVMSheet: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
-        .frame(width: 680, height: 640)
+        // Use `idealSize` + `minSize` (not fixed `width/height`)
+        // so macOS 26's inset Liquid Glass sheet chrome can
+        // adapt — a fixed-size sheet fights the system's new
+        // half-sheet / expand-to-full-height morph. Per Apple's
+        // Liquid Glass adoption guide: "Sheets feature an
+        // increased corner radius, and half sheets are inset
+        // from the edge of the display" — let the system size
+        // the sheet.
+        .frame(minWidth: 560, idealWidth: 680, minHeight: 520, idealHeight: 640)
         .accessibilityIdentifier(AccessibilityID.createSheet)
     }
 
@@ -262,7 +270,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Name").font(.headline).glassSectionHeader()
+                    Text("Name").font(.headline)
                     TextField("my-vm", text: $name)
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier(AccessibilityID.vmNameField)
@@ -280,8 +288,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("macOS Source").font(.headline).glassSectionHeader()
-
+                    Text("macOS Source").font(.headline)
                     Picker("Source", selection: $ipswSource) {
                         Text("Latest compatible").tag(IPSWSource.latest)
                         Text("Local IPSW file").tag(IPSWSource.local)
@@ -326,8 +333,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Hardware").font(.headline).glassSectionHeader()
-
+                    Text("Hardware").font(.headline)
                     HStack {
                         Text("CPU")
                             .frame(width: 70, alignment: .leading)
@@ -382,8 +388,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Display").font(.headline).glassSectionHeader()
-
+                    Text("Display").font(.headline)
                     Picker("Monitors", selection: $displayCount) {
                         Text("1 Display").tag(1)
                         Text("2 Displays").tag(2)
@@ -409,8 +414,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Network").font(.headline).glassSectionHeader()
-
+                    Text("Network").font(.headline)
                     Picker("Mode", selection: $networkKind) {
                         Text("NAT (shared)").tag(NetworkKind.nat)
                         Text("Bridged (own IP)").tag(NetworkKind.bridged)
@@ -470,8 +474,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Audio & Sharing").font(.headline).glassSectionHeader()
-
+                    Text("Audio & Sharing").font(.headline)
                     Toggle("Speaker output", isOn: $audioEnabled)
                     Toggle("Microphone input", isOn: $microphoneEnabled)
                     Toggle("Clipboard sharing", isOn: $clipboardSharingEnabled)
@@ -490,8 +493,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Shared Folders").font(.headline).glassSectionHeader()
-
+                    Text("Shared Folders").font(.headline)
                     ForEach($sharedFolders) { $folder in
                         HStack {
                             Image(systemName: "folder")
@@ -532,8 +534,7 @@ struct CreateVMSheet: View {
         row(
             control: {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Provisioning").font(.headline).glassSectionHeader()
-
+                    Text("Provisioning").font(.headline)
                     Picker("Template", selection: $template) {
                         ForEach(ProvisioningTemplate.allCases, id: \.self) { kind in
                             Text(kind.label).tag(kind)

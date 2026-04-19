@@ -52,14 +52,27 @@ struct SidebarView: View {
         }
         .accessibilityIdentifier(AccessibilityID.vmList)
         .listStyle(.sidebar)
-        .frame(minWidth: 220)
+        // Per Apple's Sidebars + Split Views HIG: use
+        // `navigationSplitViewColumnWidth(min:ideal:max:)` for
+        // sidebar width, not a plain `.frame(minWidth:)`. This
+        // lets the system apply the correct column-resize
+        // behaviour — fluid drag-resize on macOS 26, respecting
+        // the ideal width as the default — instead of forcing
+        // a single minimum.
+        //
+        // Values chosen per HIG "sidebars are narrow" + the
+        // macOS skill rule of thumb (min: 180, ideal: 220,
+        // max: 320).
+        //
+        // Docs:
+        // - Sidebars: https://developer.apple.com/design/human-interface-guidelines/sidebars
+        // - Split views: https://developer.apple.com/design/human-interface-guidelines/split-views
+        // - `navigationSplitViewColumnWidth`: https://developer.apple.com/documentation/swiftui/view/navigationsplitviewcolumnwidth(min:ideal:max:)
+        .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         // Scope `.searchable` to the sidebar's List, not to the
         // enclosing NavigationSplitView — the split-view-level
         // `placement: .sidebar` variant fights the column-
         // collapse animation on macOS 26 and freezes the UI.
-        // Attached here, the search field lives in the sidebar's
-        // own toolbar area and only animates when the sidebar
-        // itself does.
         .searchable(text: $searchText, prompt: "Filter VMs")
         .toolbar {
             // Sidebar toolbar items: Create + Diagnostics. Grouping
