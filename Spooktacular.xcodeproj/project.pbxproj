@@ -1,0 +1,589 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0ED8C50D1C6148C85CCA358E /* ClipboardBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEDD149336F7760966655F9F /* ClipboardBridge.swift */; };
+		18A9B69E229692F91535E86D /* WorkspaceStatsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 095E11A872D7774730AB6E33 /* WorkspaceStatsSidebar.swift */; };
+		3909AD26FD26ABE1214D452E /* AddImageSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDF357AB41E6D507D72596E2 /* AddImageSheet.swift */; };
+		3FA616531E739A405AE118FA /* WorkspaceIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689A9670C9498270B7933BDC /* WorkspaceIcon.swift */; };
+		41B170CCEC0F6D530F2EAF1A /* HardwareEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A465F9A8249ED35AE053499A /* HardwareEditor.swift */; };
+		4598DD34E4189745E80113A7 /* ErrorExplainerIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E635EF0A233ABB56EC5DAFA0 /* ErrorExplainerIntent.swift */; };
+		55968FEF1DE5DB4AB058565F /* WorkspaceWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A520609D2216DEFDED4073B /* WorkspaceWindow.swift */; };
+		63C4BB5E8603A1107BEBF708 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E560C6641F0973B725E0355 /* MenuBarView.swift */; };
+		7441C53478A107C63C8B9EBE /* SnapshotInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1760CF6EBFD6F04B1D4BBAEE /* SnapshotInspector.swift */; };
+		77F048ED33AD2C3C4DEEFC24 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84FCD987FE554279F129289 /* ContentView.swift */; };
+		7C8468A3D58CC4D08B9A5A4F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207F9CC0084057F2421187AA /* SettingsView.swift */; };
+		913EA2367CDA34280E14610B /* VMNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7911BC1B28464A4C00C6D83D /* VMNotifications.swift */; };
+		915D47D9C5ADDF7C6297CD5C /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCDDBBBA53B0BC9EFB7E1EC8 /* SidebarView.swift */; };
+		9EE6D1D0F9970F81C9BFAD08 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17FA3F07523B486DFEB8683C /* EmptyStateView.swift */; };
+		A26798B6A62F0BA27EBC0A2E /* SpooktacularKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */; };
+		AB0C53B28CC0E7CECDF884C7 /* VMDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */; };
+		C05389CFD2A1D625412F8C7E /* IntentAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CC3E504199300206ED3DEE /* IntentAppState.swift */; };
+		C5DA69E658E0954277939C4D /* PortForwarding.swift in Sources */ = {isa = PBXBuildFile; fileRef = C321AF7CD838B80C6322E24C /* PortForwarding.swift */; };
+		CDF60EAB9D46349ADA598E18 /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96BFBC66E8E9CDB1DD1A16EE /* ScreenshotTests.swift */; };
+		D42F083B9D5C4A4D68363B4A /* CommandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26D27700B1B6DAD63A434D2 /* CommandPalette.swift */; };
+		D65289EB73FEE4A1D643212F /* GlassModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */; };
+		E98BFDBBE2935C71B43D09EB /* SpooktacularApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A885B9AEFD358C772209C45B /* SpooktacularApp.swift */; };
+		EBC9ADE343EA2BA7049963C1 /* VMIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E47F4B98E46DCA9ABE7BE4 /* VMIntents.swift */; };
+		ECC2BE2D93914AB4E31B77D6 /* CreateVMSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C426447ED063F011A1BBBD /* CreateVMSheet.swift */; };
+		FB9D1A5D8F71D85C45856E39 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B12BAC54EC9D9DD73CDD8C /* AppState.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0F5141222A1B987BF194F30C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A6661F845228218192D7CF8F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0F0EE855B5DEDE88D2D88AA3;
+			remoteInfo = SpooktacularApp;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		095E11A872D7774730AB6E33 /* WorkspaceStatsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceStatsSidebar.swift; sourceTree = "<group>"; };
+		1760CF6EBFD6F04B1D4BBAEE /* SnapshotInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotInspector.swift; sourceTree = "<group>"; };
+		17FA3F07523B486DFEB8683C /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		207F9CC0084057F2421187AA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		3739A7E977269073B8D943AC /* SpooktacularUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpooktacularUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		44CC3E504199300206ED3DEE /* IntentAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentAppState.swift; sourceTree = "<group>"; };
+		4A520609D2216DEFDED4073B /* WorkspaceWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceWindow.swift; sourceTree = "<group>"; };
+		4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMDetailView.swift; sourceTree = "<group>"; };
+		5627882CC8850EFC4D63A51D /* SpooktacularApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpooktacularApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		689A9670C9498270B7933BDC /* WorkspaceIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceIcon.swift; sourceTree = "<group>"; };
+		77E47F4B98E46DCA9ABE7BE4 /* VMIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMIntents.swift; sourceTree = "<group>"; };
+		7911BC1B28464A4C00C6D83D /* VMNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMNotifications.swift; sourceTree = "<group>"; };
+		95B12BAC54EC9D9DD73CDD8C /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		96BFBC66E8E9CDB1DD1A16EE /* ScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTests.swift; sourceTree = "<group>"; };
+		9C016368570D79D59A2504F3 /* Spooktacular */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Spooktacular; path = .; sourceTree = SOURCE_ROOT; };
+		9E560C6641F0973B725E0355 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		A465F9A8249ED35AE053499A /* HardwareEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareEditor.swift; sourceTree = "<group>"; };
+		A885B9AEFD358C772209C45B /* SpooktacularApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpooktacularApp.swift; sourceTree = "<group>"; };
+		B4C426447ED063F011A1BBBD /* CreateVMSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateVMSheet.swift; sourceTree = "<group>"; };
+		BDF357AB41E6D507D72596E2 /* AddImageSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddImageSheet.swift; sourceTree = "<group>"; };
+		C321AF7CD838B80C6322E24C /* PortForwarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortForwarding.swift; sourceTree = "<group>"; };
+		D26D27700B1B6DAD63A434D2 /* CommandPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalette.swift; sourceTree = "<group>"; };
+		D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassModifiers.swift; sourceTree = "<group>"; };
+		E635EF0A233ABB56EC5DAFA0 /* ErrorExplainerIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorExplainerIntent.swift; sourceTree = "<group>"; };
+		F84FCD987FE554279F129289 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		FCDDBBBA53B0BC9EFB7E1EC8 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		FEDD149336F7760966655F9F /* ClipboardBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardBridge.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C5E5BD73DB9D60C6140D2248 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A26798B6A62F0BA27EBC0A2E /* SpooktacularKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3592A37B079988982DA72A27 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				934661FE9DC61D55AA2E8949 /* Spooktacular */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		3B396D1141120D188932E0A5 /* Intents */ = {
+			isa = PBXGroup;
+			children = (
+				E635EF0A233ABB56EC5DAFA0 /* ErrorExplainerIntent.swift */,
+				44CC3E504199300206ED3DEE /* IntentAppState.swift */,
+				77E47F4B98E46DCA9ABE7BE4 /* VMIntents.swift */,
+			);
+			path = Intents;
+			sourceTree = "<group>";
+		};
+		5A71FEE04F03CF414104B7DB /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				9C016368570D79D59A2504F3 /* Spooktacular */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		7D5A13B8E333B1AD70A53DB3 /* Windows */ = {
+			isa = PBXGroup;
+			children = (
+				4A520609D2216DEFDED4073B /* WorkspaceWindow.swift */,
+			);
+			path = Windows;
+			sourceTree = "<group>";
+		};
+		7D636FC547AEC997A8264E47 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				7911BC1B28464A4C00C6D83D /* VMNotifications.swift */,
+			);
+			path = Notifications;
+			sourceTree = "<group>";
+		};
+		934661FE9DC61D55AA2E8949 /* Spooktacular */ = {
+			isa = PBXGroup;
+			children = (
+				BC0889D4EF75E0D983C94512 /* HostIntegration */,
+				3B396D1141120D188932E0A5 /* Intents */,
+				7D636FC547AEC997A8264E47 /* Notifications */,
+				E361A7B1B81302EF16B46B1E /* Views */,
+				7D5A13B8E333B1AD70A53DB3 /* Windows */,
+				BDF357AB41E6D507D72596E2 /* AddImageSheet.swift */,
+				95B12BAC54EC9D9DD73CDD8C /* AppState.swift */,
+				F84FCD987FE554279F129289 /* ContentView.swift */,
+				B4C426447ED063F011A1BBBD /* CreateVMSheet.swift */,
+				D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */,
+				9E560C6641F0973B725E0355 /* MenuBarView.swift */,
+				207F9CC0084057F2421187AA /* SettingsView.swift */,
+				FCDDBBBA53B0BC9EFB7E1EC8 /* SidebarView.swift */,
+				A885B9AEFD358C772209C45B /* SpooktacularApp.swift */,
+				4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */,
+				689A9670C9498270B7933BDC /* WorkspaceIcon.swift */,
+			);
+			path = Spooktacular;
+			sourceTree = "<group>";
+		};
+		978F95AB5E33C07999320864 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5627882CC8850EFC4D63A51D /* SpooktacularApp.app */,
+				3739A7E977269073B8D943AC /* SpooktacularUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A58B7B4108A3181DB593B06C = {
+			isa = PBXGroup;
+			children = (
+				5A71FEE04F03CF414104B7DB /* Packages */,
+				3592A37B079988982DA72A27 /* Sources */,
+				D295F70A1818A6D7FB67923C /* Tests */,
+				978F95AB5E33C07999320864 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BC0889D4EF75E0D983C94512 /* HostIntegration */ = {
+			isa = PBXGroup;
+			children = (
+				FEDD149336F7760966655F9F /* ClipboardBridge.swift */,
+				C321AF7CD838B80C6322E24C /* PortForwarding.swift */,
+			);
+			path = HostIntegration;
+			sourceTree = "<group>";
+		};
+		D295F70A1818A6D7FB67923C /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				E3AD2B163E3A525CD201D4EE /* SpooktacularUITests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		E361A7B1B81302EF16B46B1E /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				D26D27700B1B6DAD63A434D2 /* CommandPalette.swift */,
+				17FA3F07523B486DFEB8683C /* EmptyStateView.swift */,
+				A465F9A8249ED35AE053499A /* HardwareEditor.swift */,
+				1760CF6EBFD6F04B1D4BBAEE /* SnapshotInspector.swift */,
+				095E11A872D7774730AB6E33 /* WorkspaceStatsSidebar.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		E3AD2B163E3A525CD201D4EE /* SpooktacularUITests */ = {
+			isa = PBXGroup;
+			children = (
+				96BFBC66E8E9CDB1DD1A16EE /* ScreenshotTests.swift */,
+			);
+			path = SpooktacularUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0F0EE855B5DEDE88D2D88AA3 /* SpooktacularApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0EB514F2B5DA06D0F037F5B4 /* Build configuration list for PBXNativeTarget "SpooktacularApp" */;
+			buildPhases = (
+				C69319587EFBAF8ECE3AB4D0 /* Sources */,
+				C5E5BD73DB9D60C6140D2248 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpooktacularApp;
+			packageProductDependencies = (
+				7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */,
+			);
+			productName = SpooktacularApp;
+			productReference = 5627882CC8850EFC4D63A51D /* SpooktacularApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+		531A09E6D441AF69D7E14330 /* SpooktacularUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0E6BE50B9CA36D8AB979BBCB /* Build configuration list for PBXNativeTarget "SpooktacularUITests" */;
+			buildPhases = (
+				622DBD00DAAE54071C311F13 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AE64B34739801AA4671C63DB /* PBXTargetDependency */,
+			);
+			name = SpooktacularUITests;
+			packageProductDependencies = (
+			);
+			productName = SpooktacularUITests;
+			productReference = 3739A7E977269073B8D943AC /* SpooktacularUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A6661F845228218192D7CF8F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0F0EE855B5DEDE88D2D88AA3 = {
+						DevelopmentTeam = 4AM5US9G8B;
+						ProvisioningStyle = Automatic;
+					};
+					531A09E6D441AF69D7E14330 = {
+						DevelopmentTeam = 4AM5US9G8B;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 0F0EE855B5DEDE88D2D88AA3;
+					};
+				};
+			};
+			buildConfigurationList = 83FA5BDC8EAD7CB2E0B9731E /* Build configuration list for PBXProject "Spooktacular" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = A58B7B4108A3181DB593B06C;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				511C9009CADA570B5CFA00EC /* XCLocalSwiftPackageReference "." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 978F95AB5E33C07999320864 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0F0EE855B5DEDE88D2D88AA3 /* SpooktacularApp */,
+				531A09E6D441AF69D7E14330 /* SpooktacularUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		622DBD00DAAE54071C311F13 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CDF60EAB9D46349ADA598E18 /* ScreenshotTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C69319587EFBAF8ECE3AB4D0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3909AD26FD26ABE1214D452E /* AddImageSheet.swift in Sources */,
+				FB9D1A5D8F71D85C45856E39 /* AppState.swift in Sources */,
+				0ED8C50D1C6148C85CCA358E /* ClipboardBridge.swift in Sources */,
+				D42F083B9D5C4A4D68363B4A /* CommandPalette.swift in Sources */,
+				77F048ED33AD2C3C4DEEFC24 /* ContentView.swift in Sources */,
+				ECC2BE2D93914AB4E31B77D6 /* CreateVMSheet.swift in Sources */,
+				9EE6D1D0F9970F81C9BFAD08 /* EmptyStateView.swift in Sources */,
+				4598DD34E4189745E80113A7 /* ErrorExplainerIntent.swift in Sources */,
+				D65289EB73FEE4A1D643212F /* GlassModifiers.swift in Sources */,
+				41B170CCEC0F6D530F2EAF1A /* HardwareEditor.swift in Sources */,
+				C05389CFD2A1D625412F8C7E /* IntentAppState.swift in Sources */,
+				63C4BB5E8603A1107BEBF708 /* MenuBarView.swift in Sources */,
+				C5DA69E658E0954277939C4D /* PortForwarding.swift in Sources */,
+				7C8468A3D58CC4D08B9A5A4F /* SettingsView.swift in Sources */,
+				915D47D9C5ADDF7C6297CD5C /* SidebarView.swift in Sources */,
+				7441C53478A107C63C8B9EBE /* SnapshotInspector.swift in Sources */,
+				E98BFDBBE2935C71B43D09EB /* SpooktacularApp.swift in Sources */,
+				AB0C53B28CC0E7CECDF884C7 /* VMDetailView.swift in Sources */,
+				EBC9ADE343EA2BA7049963C1 /* VMIntents.swift in Sources */,
+				913EA2367CDA34280E14610B /* VMNotifications.swift in Sources */,
+				3FA616531E739A405AE118FA /* WorkspaceIcon.swift in Sources */,
+				18A9B69E229692F91535E86D /* WorkspaceStatsSidebar.swift in Sources */,
+				55968FEF1DE5DB4AB058565F /* WorkspaceWindow.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AE64B34739801AA4671C63DB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0F0EE855B5DEDE88D2D88AA3 /* SpooktacularApp */;
+			targetProxy = 0F5141222A1B987BF194F30C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		04CD431D9E84E7CFFD9FAD0D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 4AM5US9G8B;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		05D48CAE6816240D135E7001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Spooktacular.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app;
+				PRODUCT_NAME = Spooktacular;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		41381C62F168AF5485FB9AE0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Spooktacular.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app;
+				PRODUCT_NAME = Spooktacular;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		D76E31B94008BABC9D2D6983 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.uitests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = SpooktacularApp;
+			};
+			name = Release;
+		};
+		E326E9420BEA45706D82CB2F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 4AM5US9G8B;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		EAFE464C414A63A97BC8E8CB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.uitests;
+				SDKROOT = macosx;
+				TEST_TARGET_NAME = SpooktacularApp;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0E6BE50B9CA36D8AB979BBCB /* Build configuration list for PBXNativeTarget "SpooktacularUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EAFE464C414A63A97BC8E8CB /* Debug */,
+				D76E31B94008BABC9D2D6983 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		0EB514F2B5DA06D0F037F5B4 /* Build configuration list for PBXNativeTarget "SpooktacularApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				41381C62F168AF5485FB9AE0 /* Debug */,
+				05D48CAE6816240D135E7001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		83FA5BDC8EAD7CB2E0B9731E /* Build configuration list for PBXProject "Spooktacular" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E326E9420BEA45706D82CB2F /* Debug */,
+				04CD431D9E84E7CFFD9FAD0D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		511C9009CADA570B5CFA00EC /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SpooktacularKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A6661F845228218192D7CF8F /* Project object */;
+}

@@ -32,12 +32,25 @@
 #     library target (SpookCore, SpookApplication,
 #     SpookInfrastructureApple, SpooktacularKit, spook CLI, etc.).
 #
-# Generating the project:
-#   brew install xcodegen
+# Regenerating after edits to this file:
+#   brew install xcodegen     # one-time
 #   xcodegen generate
+#   git add Spooktacular.xcodeproj project.yml && git commit
 #
-# The generated `.xcodeproj` is gitignored; it's a build artifact
-# derived from this file.
+# The generated `.xcodeproj` is COMMITTED to the repo (not
+# gitignored) so enterprise clients can `git clone && open
+# Spooktacular.xcodeproj` in Xcode without installing an extra
+# tool — zero-friction onboarding is a stated product requirement.
+# The trade-off is PR noise in `project.pbxproj` when Xcode or
+# xcodegen re-shuffles file lists; reviewers should focus on
+# `project.yml` for the signal.
+#
+# The `:ui_tests` fastlane lane re-runs `xcodegen generate`
+# before `xcodebuild test` so a forgotten regeneration
+# (project.yml edited but .xcodeproj stale) doesn't go unnoticed —
+# the lane will produce a diff against the committed project.
+# CI can layer a `git diff --exit-code` check on top if drift
+# becomes a recurring issue.
 
 name: Spooktacular
 
