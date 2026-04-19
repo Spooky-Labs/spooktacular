@@ -166,22 +166,14 @@ struct BackgroundExtensionModifier: ViewModifier {
 // MARK: - View Extensions
 
 extension View {
-    /// Wraps the toolbar region in a `GlassEffectContainer` on
-    /// macOS 26+ so related toolbar glass elements share a
-    /// single material layer. No-op on earlier versions.
-    @ViewBuilder
-    func toolbarApplyingGlassContainer() -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            self.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-                .containerBackground(.clear, for: .window)
-        } else {
-            self
-        }
-        #else
-        self
-        #endif
-    }
+
+    // Note: a previous helper `toolbarApplyingGlassContainer()`
+    // was removed. It called `containerBackground(.clear, for:
+    // .window)` on macOS 26 which made the window background
+    // fully transparent (sidebar floated detached, wallpaper /
+    // other apps showed through). Standard `NavigationSplitView`
+    // + toolbars already render Liquid Glass correctly without
+    // any wrapper — do not reintroduce one.
 
     /// Applies the Liquid Glass button style on macOS 26+,
     /// `.bordered` on earlier versions. Use for **secondary**

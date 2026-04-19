@@ -45,18 +45,21 @@ struct SpooktacularApp: App {
             ContentView()
                 .environment(appState)
                 .frame(minWidth: 720, minHeight: 460)
-                // Opaque glass-material background on the library
-                // window. Without this, the window content area is
-                // fully transparent — the desktop wallpaper bleeds
-                // through (observed: user report "main app's
-                // background is clear and that's weird").
-                //
-                // `.libraryWindowBackground()` picks the best
-                // API for the running OS: `containerBackground`
-                // (macOS 15+) → `background` (macOS 14). See the
-                // extension below for the `#available` selector
-                // and Apple doc citations.
-                .libraryWindowBackground()
+                // Window background is left to the system. On
+                // macOS 26 the `NavigationSplitView` + sidebar
+                // + toolbar combination automatically renders
+                // with Liquid Glass chrome; on earlier macOS
+                // the default window background / vibrancy
+                // applies. Any custom `containerBackground` or
+                // `background(.ultraThinMaterial)` here fights
+                // the standard split-view chrome and — combined
+                // with toolbar-background overrides — produces
+                // a transparent window with a floating sidebar
+                // (observed regression on macOS 26).
+                // Principle from Apple's adoption guide: "use
+                // standard app structures, toolbars, search
+                // placements, and controls" and let the system
+                // do the glass.
                 .sheet(isPresented: Bindable(appState).showAddImage) {
                     AddImageSheet()
                         .environment(appState)
@@ -161,38 +164,11 @@ struct SpooktacularApp: App {
     }
 }
 
-// MARK: - Library window background
-
-private extension View {
-
-    /// Applies the Liquid Glass window background to the library
-    /// window, picking the best Apple API for the running OS.
-    ///
-    /// - **macOS 15+**:
-    ///   `containerBackground(.ultraThinMaterial, for: .window)`
-    ///   — purpose-built for window-wide material fills,
-    ///   resilient to split-view reshuffling. This is the
-    ///   recommended API in Apple's
-    ///   ["Giving a window a custom background"](https://developer.apple.com/documentation/swiftui/view/containerbackground(_:for:))
-    ///   sample.
-    /// - **macOS 14**: `background(.ultraThinMaterial)` —
-    ///   visually identical under the library's single
-    ///   `NavigationSplitView`, and the documented
-    ///   ["Material"](https://developer.apple.com/documentation/swiftui/material)
-    ///   pattern for general material fills on SwiftUI views.
-    ///
-    /// Using an `#available` guard (rather than a shared
-    /// deployment-target bump) keeps macOS 14 users' install
-    /// count valid through Spooktacular's pre-1.0 phase; both
-    /// paths produce the same pixel effect, so there's no
-    /// feature-parity risk.
-    func libraryWindowBackground() -> some View {
-        Group {
-            if #available(macOS 15.0, *) {
-                self.containerBackground(.ultraThinMaterial, for: .window)
-            } else {
-                self.background(.ultraThinMaterial)
-            }
-        }
-    }
-}
+// No custom window-background helper. The library window uses
+// the system default on every macOS version — Liquid Glass on
+// 26+, vibrancy + material on 14–15 — because custom container
+// backgrounds fight the standard `NavigationSplitView` chrome
+// and produce a transparent window with a floating sidebar on
+// macOS 26. Principle from Apple's adoption guide: "use
+// standard app structures, toolbars, search placements, and
+// controls" and let the system apply the glass.

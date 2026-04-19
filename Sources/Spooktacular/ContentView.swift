@@ -61,7 +61,6 @@ struct ContentView: View {
             appState.loadVMs()
             restorePreviouslyOpenWorkspaces()
         }
-        .toolbarApplyingGlassContainer()
     }
 
     /// Re-opens workspace windows that were open at last quit.
