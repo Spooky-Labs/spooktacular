@@ -40,21 +40,25 @@ struct VMDetailView: View {
 
     private var heroPane: some View {
         VStack(spacing: 20) {
-            Image(systemName: "macwindow")
-                .font(.system(size: 72))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
+            // Use the VM's own rendered icon (same visual the
+            // workspace-window stopped state shows) instead of a
+            // generic SF Symbol — keeps the library and workspace
+            // visually consistent and lets the custom `iconSpec`
+            // in the bundle metadata carry identity across both
+            // surfaces.
+            WorkspaceIconView(
+                spec: bundle.metadata.iconSpec ?? .defaultSpec,
+                size: 140
+            )
+            .accessibilityHidden(true)
 
             VStack(spacing: 6) {
-                Text(name).font(.largeTitle.weight(.semibold))
-                HStack(spacing: 16) {
-                    Label("\(bundle.spec.cpuCount) CPU", systemImage: "cpu")
-                    Label("\(bundle.spec.memorySizeInGigabytes) GB", systemImage: "memorychip")
-                    Label("\(bundle.spec.diskSizeInGigabytes) GB", systemImage: "internaldrive")
-                }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
+                Text(name)
+                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                Text("\(bundle.spec.cpuCount) CPU · \(bundle.spec.memorySizeInGigabytes) GB RAM · \(bundle.spec.diskSizeInGigabytes) GB disk")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
                 if isRunning {
                     Label("Running", systemImage: "circle.fill")

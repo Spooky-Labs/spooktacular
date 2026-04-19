@@ -98,9 +98,51 @@ public enum VirtualMachineConfiguration {
             configuration.directorySharingDevices = makeSharing(spec.sharedFolders)
         }
 
-        if spec.clipboardSharingEnabled {
-            Log.config.warning("Clipboard sharing is only supported for Linux guests. macOS guests do not support clipboard synchronization through the Virtualization framework.")
+        // ────── Clipboard sharing ──────
+        //
+        // Apple's supported clipboard-sharing path is
+        // `VZSpiceAgentPortAttachment` (macOS 13.0+). It relays
+        // the host pasteboard into a named VirtIO console port
+        // (`com.redhat.spice.0`) that the SPICE vdagent inside
+        // the guest reads. On Linux guests this Just Works once
+        // `spice-vdagent` is installed; on macOS guests there's
+        // no `spice-vdagent` implementation so the port stays
+        // attached but idle — that's where our existing vsock
+        // `ClipboardBridge` (in the GUI layer) takes over.
+        //
+        // Attaching unconditionally when the spec asks for
+        // clipboard sharing is safe: the port costs essentially
+        // nothing on the guest side if no vdagent connects, and
+        // it lets Linux guests sync without any per-guest-OS
+        // branching on the host.
+        //
+        // Docs:
+        // - https://developer.apple.com/documentation/virtualization/clipboard-sharing
+        // - https://developer.apple.com/documentation/virtualization/vzspiceagentportattachment
+        if spec.clipboardSharingEnabled, #available(macOS 13.0, *) {
+            configuration.consoleDevices.append(makeSpiceClipboardConsole())
         }
+    }
+
+    /// Builds a VirtIO console device carrying a single SPICE
+    /// agent port with clipboard sharing enabled.
+    ///
+    /// Port name comes from
+    /// `VZSpiceAgentPortAttachment.spiceAgentPortName` (the
+    /// `com.redhat.spice.0` constant the vdagent looks for), so
+    /// callers never hard-code the magic string.
+    @available(macOS 13.0, *)
+    private static func makeSpiceClipboardConsole() -> VZVirtioConsoleDeviceConfiguration {
+        let attachment = VZSpiceAgentPortAttachment()
+        attachment.sharesClipboard = true
+
+        let port = VZVirtioConsolePortConfiguration()
+        port.name = VZSpiceAgentPortAttachment.spiceAgentPortName
+        port.attachment = attachment
+
+        let device = VZVirtioConsoleDeviceConfiguration()
+        device.ports[0] = port
+        return device
     }
 
     private static func makeGraphics(
