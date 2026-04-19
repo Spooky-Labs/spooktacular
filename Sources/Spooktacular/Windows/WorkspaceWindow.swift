@@ -61,8 +61,17 @@ struct WorkspaceWindow: View {
     @ViewBuilder
     private func content(for bundle: VirtualMachineBundle) -> some View {
         if let vm = appState.runningVMs[vmName] {
+            // No `.ignoresSafeArea()` here — the previous
+            // revision let the VZVirtualMachineView extend under
+            // the window's title bar + toolbar, which clipped
+            // the top row of the guest's menu bar and display
+            // pixels on every workspace window. Apple's safe
+            // area on macOS is exactly the window's content
+            // inset region; honouring it keeps the guest
+            // display below the chrome.
+            //
+            // Docs: https://developer.apple.com/documentation/swiftui/view/ignoressafearea(_:edges:)
             VMDisplayView(name: vmName, virtualMachine: vm)
-                .ignoresSafeArea()
                 .toolbar { runningToolbar }
         } else {
             WorkspaceLaunchView(name: vmName, bundle: bundle)

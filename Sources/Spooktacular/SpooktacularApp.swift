@@ -45,6 +45,18 @@ struct SpooktacularApp: App {
             ContentView()
                 .environment(appState)
                 .frame(minWidth: 720, minHeight: 460)
+                // Opaque glass-material background on the library
+                // window. Without this, the window content area is
+                // fully transparent — the desktop wallpaper bleeds
+                // through (observed: user report "main app's
+                // background is clear and that's weird").
+                //
+                // `.libraryWindowBackground()` picks the best
+                // API for the running OS: `containerBackground`
+                // (macOS 15+) → `background` (macOS 14). See the
+                // extension below for the `#available` selector
+                // and Apple doc citations.
+                .libraryWindowBackground()
                 .sheet(isPresented: Bindable(appState).showAddImage) {
                     AddImageSheet()
                         .environment(appState)
@@ -144,6 +156,42 @@ struct SpooktacularApp: App {
 
             Button("Release Notes") {
                 NSWorkspace.shared.open(URL(string: "https://github.com/Spooky-Labs/spooktacular/releases")!)
+            }
+        }
+    }
+}
+
+// MARK: - Library window background
+
+private extension View {
+
+    /// Applies the Liquid Glass window background to the library
+    /// window, picking the best Apple API for the running OS.
+    ///
+    /// - **macOS 15+**:
+    ///   `containerBackground(.ultraThinMaterial, for: .window)`
+    ///   — purpose-built for window-wide material fills,
+    ///   resilient to split-view reshuffling. This is the
+    ///   recommended API in Apple's
+    ///   ["Giving a window a custom background"](https://developer.apple.com/documentation/swiftui/view/containerbackground(_:for:))
+    ///   sample.
+    /// - **macOS 14**: `background(.ultraThinMaterial)` —
+    ///   visually identical under the library's single
+    ///   `NavigationSplitView`, and the documented
+    ///   ["Material"](https://developer.apple.com/documentation/swiftui/material)
+    ///   pattern for general material fills on SwiftUI views.
+    ///
+    /// Using an `#available` guard (rather than a shared
+    /// deployment-target bump) keeps macOS 14 users' install
+    /// count valid through Spooktacular's pre-1.0 phase; both
+    /// paths produce the same pixel effect, so there's no
+    /// feature-parity risk.
+    func libraryWindowBackground() -> some View {
+        Group {
+            if #available(macOS 15.0, *) {
+                self.containerBackground(.ultraThinMaterial, for: .window)
+            } else {
+                self.background(.ultraThinMaterial)
             }
         }
     }
