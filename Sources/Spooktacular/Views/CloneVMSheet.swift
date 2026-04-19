@@ -100,7 +100,7 @@ struct CloneVMSheet: View {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
             Button("Clone") { performClone() }
-                .glassButton()
+                .glassProminentButton()
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canClone || isCloning)
         }

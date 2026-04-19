@@ -38,14 +38,14 @@ struct AddImageSheet: View {
                 // Source type picker
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Source").font(.headline).glassSectionHeader()
+                        Text("Source").font(.headline)
 
                         Picker("Source", selection: $sourceType) {
                             ForEach(SourceType.allCases, id: \.self) { type in
                                 Text(type.rawValue).tag(type)
                             }
                         }
-                        .pickerStyle(.radioGroup)
+                        .pickerStyle(.segmented)
                         .labelsHidden()
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

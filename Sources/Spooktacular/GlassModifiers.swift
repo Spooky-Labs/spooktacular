@@ -3,17 +3,51 @@ import SwiftUI
 // MARK: - Glass Button Modifier
 
 /// Applies `.buttonStyle(.glass)` on macOS 26+ (Liquid Glass),
-/// falls back to `.borderedProminent` on older versions.
+/// falls back to `.bordered` on older versions.
 ///
-/// The `.glass` button style only exists in the macOS 26 SDK
-/// (Swift 6.2+ / Xcode 26). On older SDKs the symbol is undefined, so
-/// we gate it with `#if compiler(>=6.2)` at compile time,
-/// then use `#available` for the runtime check.
+/// Use for **secondary** actions — the translucent variant that
+/// shows the content behind it. Pair with
+/// ``glassProminentButton()`` for the primary-action counterpart.
+///
+/// Apple guidance: "Controls like sliders and toggles fluidly
+/// morph into menus and popovers" — you don't need to override
+/// shapes; the system supplies the right shape per platform when
+/// you use `.buttonStyle(.glass)` with the default border shape.
+///
+/// Docs:
+/// - https://developer.apple.com/documentation/swiftui/buttonstyle-swift.type/glass
 struct GlassButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) {
             content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+        #else
+        content.buttonStyle(.bordered)
+        #endif
+    }
+}
+
+// MARK: - Glass Prominent Button Modifier
+
+/// Applies `.buttonStyle(.glassProminent)` on macOS 26+,
+/// `.borderedProminent` on older versions.
+///
+/// Use for the **primary** action in a given context — Create,
+/// Save, Open Workspace, Start. Opaque variant that doesn't
+/// show content through — makes the CTA stand out from the
+/// secondary glass controls around it. Per Apple's guidance,
+/// use sparingly: one prominent button per logical action area.
+///
+/// Docs:
+/// - https://developer.apple.com/documentation/swiftui/buttonstyle-swift.type/glassprominent
+struct GlassProminentButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.buttonStyle(.glassProminent)
         } else {
             content.buttonStyle(.borderedProminent)
         }
@@ -104,30 +138,78 @@ struct GlassSectionHeaderModifier: ViewModifier {
     }
 }
 
+// MARK: - Background Extension Effect
+
+/// `ViewModifier` form of `backgroundExtensionEffect()` —
+/// keeps the wrapped view's identity stable across layout
+/// changes, which a free-standing `@ViewBuilder` `if #available`
+/// function does not (it produces `_ConditionalContent` that
+/// tears the subtree down when the branch flips). The struct
+/// form returns a stable concrete `some View` whose body does
+/// the runtime `#available` check.
+///
+/// Docs: https://developer.apple.com/documentation/swiftui/viewmodifier
+struct BackgroundExtensionModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            content.backgroundExtensionEffect()
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 // MARK: - View Extensions
 
 extension View {
-    /// Wraps the toolbar region in a `GlassEffectContainer` on
-    /// macOS 26+ so related toolbar glass elements share a
-    /// single material layer. No-op on earlier versions.
-    @ViewBuilder
-    func toolbarApplyingGlassContainer() -> some View {
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) {
-            self.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-                .containerBackground(.clear, for: .window)
-        } else {
-            self
-        }
-        #else
-        self
-        #endif
-    }
+
+    // Note: a previous helper `toolbarApplyingGlassContainer()`
+    // was removed. It called `containerBackground(.clear, for:
+    // .window)` on macOS 26 which made the window background
+    // fully transparent (sidebar floated detached, wallpaper /
+    // other apps showed through). Standard `NavigationSplitView`
+    // + toolbars already render Liquid Glass correctly without
+    // any wrapper — do not reintroduce one.
 
     /// Applies the Liquid Glass button style on macOS 26+,
-    /// `.borderedProminent` on earlier versions.
+    /// `.bordered` on earlier versions. Use for **secondary**
+    /// actions; pair with ``glassProminentButton()`` for primaries.
     func glassButton() -> some View {
         modifier(GlassButtonModifier())
+    }
+
+    /// Applies the prominent Liquid Glass button style on
+    /// macOS 26+, `.borderedProminent` on earlier versions. Use
+    /// for the **primary** action in a given context — exactly
+    /// one per logical action area (per HIG).
+    ///
+    /// Docs: https://developer.apple.com/documentation/swiftui/buttonstyle-swift.type/glassprominent
+    func glassProminentButton() -> some View {
+        modifier(GlassProminentButtonModifier())
+    }
+
+    /// Applies `.backgroundExtensionEffect()` on macOS 26+ so the
+    /// content beneath a sidebar or inspector "peeks through" —
+    /// the sidebar/inspector's Liquid Glass samples a mirrored,
+    /// blurred copy of the content edge. No-op on earlier macOS.
+    ///
+    /// Implemented as a `ViewModifier` rather than a free-standing
+    /// `@ViewBuilder` function — the modifier struct keeps the
+    /// outer view's identity stable across layout changes
+    /// (sidebar collapse, inspector toggle), where a free-standing
+    /// `if #available` function produces `_ConditionalContent`
+    /// that flips the view type and causes SwiftUI to tear down
+    /// and rebuild the subtree. See Apple's SwiftUI performance
+    /// guidance: keep modifier application order and identity
+    /// stable across body re-evaluations.
+    ///
+    /// Docs: https://developer.apple.com/documentation/swiftui/view/backgroundextensioneffect()
+    func backgroundExtendedUnderSidebarsAndInspectors() -> some View {
+        modifier(BackgroundExtensionModifier())
     }
 
     /// Applies a glass card background on macOS 26+,

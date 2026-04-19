@@ -52,19 +52,36 @@ struct SidebarView: View {
         }
         .accessibilityIdentifier(AccessibilityID.vmList)
         .listStyle(.sidebar)
-        .frame(minWidth: 220)
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    appState.showCreateSheet = true
-                } label: {
-                    Label("Create VM", systemImage: "plus.square.on.square")
-                }
-                .glassButton()
-                .help("Create a new virtual machine")
-                .accessibilityIdentifier(AccessibilityID.createVMButton)
-            }
-        }
+        // Per Apple's Sidebars + Split Views HIG: use
+        // `navigationSplitViewColumnWidth(min:ideal:max:)` for
+        // sidebar width, not a plain `.frame(minWidth:)`. This
+        // lets the system apply the correct column-resize
+        // behaviour — fluid drag-resize on macOS 26, respecting
+        // the ideal width as the default — instead of forcing
+        // a single minimum.
+        //
+        // Values chosen per HIG "sidebars are narrow" + the
+        // macOS skill rule of thumb (min: 180, ideal: 220,
+        // max: 320).
+        //
+        // Docs:
+        // - Sidebars: https://developer.apple.com/design/human-interface-guidelines/sidebars
+        // - Split views: https://developer.apple.com/design/human-interface-guidelines/split-views
+        // - `navigationSplitViewColumnWidth`: https://developer.apple.com/documentation/swiftui/view/navigationsplitviewcolumnwidth(min:ideal:max:)
+        .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
+        // Scope `.searchable` to the sidebar's List, not to the
+        // enclosing NavigationSplitView — the split-view-level
+        // `placement: .sidebar` variant fights the column-
+        // collapse animation on macOS 26 and freezes the UI.
+        .searchable(text: $searchText, prompt: "Filter VMs")
+        .navigationTitle("Workspaces")
+        // Primary toolbar actions intentionally DO NOT live on
+        // the sidebar — they're attached to the detail view in
+        // `ContentView` so they remain reachable when the
+        // sidebar is collapsed. Putting Create / Diagnostics on
+        // the sidebar toolbar hid them the moment the user
+        // collapsed the sidebar, which broke the "primary
+        // actions are always a click away" HIG expectation.
         .overlay {
             if filteredVMNames.isEmpty && !searchText.isEmpty {
                 ContentUnavailableView.search(text: searchText)

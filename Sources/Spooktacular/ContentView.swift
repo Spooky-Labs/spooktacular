@@ -16,24 +16,51 @@ struct ContentView: View {
     @State private var showInspector = false
     @State private var didRestoreWorkspaces = false
 
+    /// Explicit sidebar visibility binding. Lets us:
+    /// 1. Persist the collapsed/expanded state across launches
+    ///    via `@AppStorage` (handed down through the app).
+    /// 2. Toggle programmatically from the View menu's
+    ///    `CommandGroup(replacing: .sidebar)` action (macOS HIG:
+    ///    every sidebar should have a keyboard shortcut; ours
+    ///    is ⌃⌘S wired via SwiftUI's default sidebar commands).
+    /// 3. Respond to `openWindow` state restoration cleanly.
+    ///
+    /// Pattern per Hacking with Swift's "How to hide and show
+    /// the sidebar programmatically" (widely adopted):
+    /// https://www.hackingwithswift.com/quick-start/swiftui/how-to-hide-and-show-the-sidebar-programmatically
+    /// and Apple's `NavigationSplitView(columnVisibility:)` docs:
+    /// https://developer.apple.com/documentation/swiftui/navigationsplitview/init(columnvisibility:sidebar:detail:)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+
     var body: some View {
         @Bindable var state = appState
 
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(searchText: $searchText)
                 .accessibilitySortPriority(3)
         } detail: {
             detailContent
                 .accessibilitySortPriority(2)
         }
-        .navigationSplitViewStyle(.balanced)
-        .searchable(
-            text: $searchText,
-            placement: .sidebar,
-            prompt: "Filter VMs"
-        )
+        // Intentionally no `.searchable(placement: .sidebar)` on
+        // the `NavigationSplitView` — that pattern attaches the
+        // search bar to the *split view itself*, which on macOS 26
+        // fights the sidebar-collapse animation and freezes the
+        // UI mid-animation. `.searchable` now lives inside
+        // `SidebarView` on the `List`, so it's scoped to the
+        // sidebar column and only animates when the sidebar
+        // visibility actually changes.
+        //
+        // `.navigationSplitViewStyle(.balanced)` also removed —
+        // the system default picks the best style per platform,
+        // and `.balanced` was causing the detail column to
+        // over-reserve width on macOS 26.
         .sheet(isPresented: $state.showCreateSheet) {
             CreateVMSheet()
+        }
+        .sheet(isPresented: $state.showDoctor) {
+            DoctorSheet()
+                .environment(appState)
         }
         .alert(
             "Error",
@@ -53,12 +80,34 @@ struct ContentView: View {
                 }
             }
         }
-        .onAppear {
+        .task {
+            // `.task` (not `.onAppear`) for two reasons:
+            //
+            // 1. Lifecycle. `.onAppear` can fire multiple times
+            //    during complex layout transitions — when a view's
+            //    identity gets destroyed + recreated as part of
+            //    rapid animations, `onAppear` re-runs. With VM
+            //    loading being synchronous disk I/O (enumerate
+            //    ~/.spooktacular/vms + JSON-decode each bundle),
+            //    repeated fires from sidebar-toggle thrash block
+            //    the main thread and the UI freezes. `.task` is
+            //    guarded by a single `@State didLoad` flag so the
+            //    heavy path is guaranteed to execute once.
+            //
+            // 2. Concurrency. `.task` runs on the view's actor
+            //    context and is cancelled when the view goes away;
+            //    no orphaned work outliving its owner.
+            guard !didLoadInitialState else { return }
+            didLoadInitialState = true
             appState.loadVMs()
             restorePreviouslyOpenWorkspaces()
         }
-        .toolbarApplyingGlassContainer()
     }
+
+    /// Ensures `appState.loadVMs()` runs exactly once per
+    /// `ContentView` lifetime — not on every SwiftUI identity
+    /// re-creation caused by layout thrash.
+    @State private var didLoadInitialState = false
 
     /// Re-opens workspace windows that were open at last quit.
     ///
@@ -85,6 +134,7 @@ struct ContentView: View {
                         .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
                         .accessibilitySortPriority(1)
                 }
+                .toolbar { primaryToolbar }
                 .toolbar {
                     ToolbarItem(placement: .automatic) {
                         Button {
@@ -102,6 +152,7 @@ struct ContentView: View {
                 }
         } else {
             emptyState
+                .toolbar { primaryToolbar }
         }
     }
 
@@ -116,6 +167,32 @@ struct ContentView: View {
                 systemImage: "sidebar.left",
                 description: Text("Choose a workspace from the sidebar.")
             )
+        }
+    }
+
+    /// Primary toolbar items — Create VM + Host Diagnostics.
+    /// Attached to the detail pane (not the sidebar) so they
+    /// survive sidebar collapse. Per macOS HIG: primary actions
+    /// belong in the main window toolbar and should not disappear
+    /// when a secondary column is hidden.
+    @ToolbarContentBuilder
+    private var primaryToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                appState.showCreateSheet = true
+            } label: {
+                Label("Create VM", systemImage: "plus.square.on.square")
+            }
+            .help("Create a new virtual machine (⌘N)")
+            .accessibilityIdentifier(AccessibilityID.createVMButton)
+
+            Button {
+                appState.showDoctor = true
+            } label: {
+                Label("Diagnostics", systemImage: "stethoscope")
+            }
+            .help("Check host readiness — mirrors `spook doctor` (⌃⌘D)")
+            .keyboardShortcut("d", modifiers: [.command, .control])
         }
     }
 }
@@ -144,6 +221,17 @@ struct WorkspacePreviewCard: View {
                 spec: bundle.metadata.iconSpec ?? .defaultSpec,
                 size: 160
             )
+            // `.equatable()` tells SwiftUI to compare this view's
+            // `==` when deciding whether to re-evaluate `body`.
+            // `WorkspaceIconView` is `Equatable` over `(spec, size)`,
+            // so rapid sidebar-collapse animations (which trigger
+            // cascading body re-computes in the enclosing
+            // `NavigationSplitView` detail pane) don't re-render
+            // the 160×160 pixel-art NSImage on every frame.
+            //
+            // Docs: https://developer.apple.com/documentation/swiftui/view/equatable()
+            .equatable()
+            .accessibilityHidden(true)
 
             VStack(spacing: 6) {
                 Text(name)
@@ -166,6 +254,15 @@ struct WorkspacePreviewCard: View {
                 }
             }
 
+            // Primary + secondary actions. Buttons use the
+            // standard `.glassProminent` / `.glass` styles which
+            // on macOS 26+ automatically share a material layer
+            // via the system's built-in container; no explicit
+            // `GlassEffectContainer` wrapper needed around
+            // standard `Button`s (the container is only required
+            // for *custom* views that each apply `.glassEffect()`
+            // manually — per the adoption guide § "Applying
+            // Liquid Glass to custom views").
             HStack(spacing: 12) {
                 Button {
                     openWindow(id: "workspace", value: name)
@@ -174,7 +271,7 @@ struct WorkspacePreviewCard: View {
                         .font(.headline)
                         .padding(.horizontal, 8)
                 }
-                .glassButton()
+                .glassProminentButton()
                 .controlSize(.large)
                 .keyboardShortcut(.return, modifiers: [])
                 .help("Open this workspace in its own window")

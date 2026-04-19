@@ -211,6 +211,10 @@ final class AppState {
     /// Whether the "Add Image" sheet is showing.
     var showAddImage = false
 
+    /// Whether the "Host Diagnostics" sheet is showing. GUI
+    /// counterpart to `spook doctor`.
+    var showDoctor = false
+
     // MARK: - Image Library
 
     /// The local cache of VM images (IPSWs + OCI).

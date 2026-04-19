@@ -197,7 +197,7 @@ struct HardwareEditor: View {
             Button("Cancel") { dismiss() }
                 .keyboardShortcut(.cancelAction)
             Button("Save") { save() }
-                .glassButton()
+                .glassProminentButton()
                 .keyboardShortcut(.defaultAction)
                 .disabled(isRunning || !hasChanges)
         }
