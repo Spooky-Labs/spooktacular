@@ -24,10 +24,33 @@ import os
 ///
 /// ## Thread Safety
 ///
-/// `GuestAgentClient` is an actor, so all methods are isolated and
-/// safe to call from any concurrency context. The underlying
-/// `VZVirtioSocketDevice.connect(toPort:)` call is dispatched to the
-/// main actor internally.
+/// `GuestAgentClient` is `@MainActor`-isolated to satisfy Apple's
+/// requirement that `VZVirtioSocketDevice` calls happen on the
+/// owning VM's dispatch queue. Spooktacular constructs VMs via
+/// `VZVirtualMachine(configuration:)` from `@MainActor` code
+/// (see `VirtualMachine.swift`), which binds each VM's queue to
+/// the main queue — `@MainActor` on this class matches that.
+///
+/// Declaring the class as `actor` placed its methods on a
+/// private serial executor that is not the main queue, and the
+/// first `socketDevice.connect(toPort:)` call trapped with
+/// `dispatch_assert_queue_fail` (crash report
+/// `Spooktacular-2026-04-19-002222.ips`). Apple's documentation
+/// on `VZVirtualMachine.queue`
+/// (https://developer.apple.com/documentation/Virtualization/VZVirtualMachine/queue)
+/// specifies the queue requirement:
+///
+/// > The dispatch queue associated with this virtual machine.
+/// > The framework uses this queue for VM initialization and
+/// > invokes completion handlers on it.
+///
+/// Every field on the class is `let`, so no mutable state
+/// requires actor isolation; the class only needs its methods
+/// run on a specific queue, which is exactly what `@MainActor`
+/// provides. Regression is guarded at runtime by
+/// `MainActor.assertIsolated()` immediately before the
+/// `connect(toPort:)` call, and at the type-system level by
+/// `Tests/SpooktacularKitTests/GuestAgentClientIsolationTests.swift`.
 ///
 /// ## Usage
 ///
@@ -35,52 +58,7 @@ import os
 /// let client = GuestAgentClient(socketDevice: device)
 /// let health = try await client.health()
 /// print(health.version)
-///
-/// let result = try await client.exec("uname -a")
-/// print(result.stdout)
 /// ```
-// MARK: - Concurrency isolation
-//
-// `GuestAgentClient` is `@MainActor` because every call chain
-// eventually invokes `VZVirtioSocketDevice.connect(toPort:)`,
-// and Apple's Virtualization framework requires all VM /
-// VM-device calls to happen on the dispatch queue the
-// owning `VZVirtualMachine` was initialized with.
-//
-// Quoting Apple's documentation for
-// `VZVirtualMachine.queue`:
-//   "The dispatch queue associated with this virtual machine.
-//    The framework uses this queue for VM initialization and
-//    invokes completion handlers on it."
-// (https://developer.apple.com/documentation/Virtualization/VZVirtualMachine/queue)
-//
-// Spooktacular constructs its VMs via the
-// `VZVirtualMachine(configuration:)` convenience initializer
-// from `@MainActor`-isolated code (see `VirtualMachine.swift`).
-// That initializer uses the caller's queue — the main queue —
-// so the VM's `queue` property is the main queue, and every
-// device attached to the VM (storage, network, socket, …)
-// inherits the same queue requirement.
-//
-// Declaring this class as `actor` — as previous revisions did
-// — placed it on a private serial executor that is NOT the
-// main queue. The first call to
-// `socketDevice.connect(toPort:)` from that executor triggered
-// `dispatch_assert_queue_fail` in the Virtualization framework
-// and crashed the app with `EXC_BREAKPOINT` (SIGTRAP).
-// Reproduction evidence:
-// `~/Library/Logs/DiagnosticReports/Retired/
-//  Spooktacular-2026-04-19-002222.ips`, faulting thread 8:
-//   #0 _dispatch_assert_queue_fail
-//   #3 -[VZVirtioSocketDevice connectToPort:completionHandler:]
-//   #4 GuestAgentClient.rawRequest(...)
-//   #5 GuestAgentClient.health()
-//   #6 closure #2 in VMRow.body.getter     // SwiftUI on MainActor
-//
-// Every field is `let` (immutable) so there is no mutable
-// state that requires actor isolation; the class needs only
-// that its methods run on a specific queue, which is exactly
-// what `@MainActor` provides.
 @MainActor
 public final class GuestAgentClient {
 
