@@ -127,12 +127,24 @@ final class ScreenshotTests: XCTestCase {
     /// Opens the sheet and fills in a sample name so the form
     /// looks realistic in the screenshot.
     func test02_CreateVMSheet() {
-        // Open via keyboard shortcut (reliable across layouts).
-        app.typeKey("n", modifierFlags: .command)
+        // Click the EmptyState "Create VM" button directly rather
+        // than relying on the `⌘N` keyboard shortcut — on headless
+        // CI macOS runners `typeKey` occasionally doesn't reach
+        // the app's responder chain (observed: run 24620349705 —
+        // sheet never appeared within 5s). Clicking the button by
+        // accessibility identifier is deterministic.
+        let createButton = app.buttons["createVMButton"]
+        if createButton.waitForExistence(timeout: 5) {
+            createButton.click()
+        } else {
+            // Fallback for subsequent runs where the empty state
+            // is no longer visible (a VM exists). Use ⌘N then.
+            app.typeKey("n", modifierFlags: .command)
+        }
 
         // Wait for the sheet to appear by looking for the name field.
         let nameField = app.textFields["vmNameField"]
-        guard nameField.waitForExistence(timeout: 5) else {
+        guard nameField.waitForExistence(timeout: 10) else {
             XCTFail("Create VM sheet did not appear")
             return
         }
