@@ -112,7 +112,16 @@ struct SpooktacularApp: App {
 
     @CommandsBuilder
     private var workspaceCommands: some Commands {
-        CommandGroup(after: .newItem) {
+        // `replacing: .newItem` (not `after:`) so SwiftUI
+        // *removes* the default "New Window" Cmd+N entry that a
+        // `WindowGroup` otherwise synthesises. Without this,
+        // Cmd+N triggers both our "New Virtual Machine…" and
+        // the default new-window handler — the visible bug was
+        // a second, narrow, empty library window spawning
+        // beside the main one.
+        //
+        // Docs: https://developer.apple.com/documentation/swiftui/commandgroupplacement/newitem
+        CommandGroup(replacing: .newItem) {
             Button("New Virtual Machine…") {
                 appState.showCreateSheet = true
             }

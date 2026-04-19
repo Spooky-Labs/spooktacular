@@ -584,12 +584,20 @@ struct CreateVMSheet: View {
             }
 
             if !userDataPath.isEmpty {
+                // Segmented picker (Liquid Glass pill on macOS 26)
+                // instead of `.radioGroup` — HIG nudges toward
+                // segmented selection for small closed sets of
+                // mutually-exclusive options. Radio groups read
+                // as "form-y" and older; segmented matches the
+                // app's other material controls (VM source picker,
+                // display count).
                 Picker("Method", selection: $provisioningMode) {
                     ForEach(ProvisioningMode.allCases, id: \.self) { mode in
                         Text(mode.label).tag(mode)
                     }
                 }
-                .pickerStyle(.radioGroup)
+                .pickerStyle(.segmented)
+                .labelsHidden()
                 Text(provisioningMode.explanation)
                     .font(.caption)
                     .foregroundStyle(.secondary)
