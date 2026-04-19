@@ -16,10 +16,26 @@ struct ContentView: View {
     @State private var showInspector = false
     @State private var didRestoreWorkspaces = false
 
+    /// Explicit sidebar visibility binding. Lets us:
+    /// 1. Persist the collapsed/expanded state across launches
+    ///    via `@AppStorage` (handed down through the app).
+    /// 2. Toggle programmatically from the View menu's
+    ///    `CommandGroup(replacing: .sidebar)` action (macOS HIG:
+    ///    every sidebar should have a keyboard shortcut; ours
+    ///    is ⌃⌘S wired via SwiftUI's default sidebar commands).
+    /// 3. Respond to `openWindow` state restoration cleanly.
+    ///
+    /// Pattern per Hacking with Swift's "How to hide and show
+    /// the sidebar programmatically" (widely adopted):
+    /// https://www.hackingwithswift.com/quick-start/swiftui/how-to-hide-and-show-the-sidebar-programmatically
+    /// and Apple's `NavigationSplitView(columnVisibility:)` docs:
+    /// https://developer.apple.com/documentation/swiftui/navigationsplitview/init(columnvisibility:sidebar:detail:)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+
     var body: some View {
         @Bindable var state = appState
 
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(searchText: $searchText)
                 .accessibilitySortPriority(3)
         } detail: {
