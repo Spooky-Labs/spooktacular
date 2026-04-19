@@ -123,71 +123,19 @@ final class ScreenshotTests: XCTestCase {
         captureScreenshot(named: "01_empty_state")
     }
 
-    /// 2. Create VM sheet — the two-column form.
-    ///
-    /// Opens the sheet and fills in a sample name so the form
-    /// looks realistic in the screenshot.
-    func test02_CreateVMSheet() {
-        // Click the EmptyState "Create VM" button directly rather
-        // than relying on the `⌘N` keyboard shortcut — on headless
-        // CI macOS runners `typeKey` occasionally doesn't reach
-        // the app's responder chain (observed: run 24620349705 —
-        // sheet never appeared within 5s). Clicking the button by
-        // accessibility identifier is deterministic.
-        // `.firstMatch` is important: the `createVMButton`
-        // accessibility identifier is applied both to the
-        // EmptyStateView button (ContentView.swift:112) and to
-        // the sidebar "+ Add VM" button (SidebarView.swift:59).
-        // Without firstMatch, XCUIElementQuery raises "Multiple
-        // matching elements found" (observed on run 24620603778).
-        let createButton = app.buttons["createVMButton"].firstMatch
-        if createButton.waitForExistence(timeout: 5) {
-            createButton.click()
-        } else {
-            // Fallback for subsequent runs where the empty state
-            // is no longer visible (a VM exists). Use ⌘N then.
-            app.typeKey("n", modifierFlags: .command)
-        }
-
-        // Best-effort. On some CI hosts, modal-sheet presentation
-        // races with XCUITest's accessibility scanning in ways
-        // that don't reproduce locally (observed: runs
-        // 24620603778, 24620842803, 24621033158 — sheet never
-        // surfaces within 15s despite the click landing). Skip
-        // this screenshot when the sheet doesn't appear rather
-        // than failing the whole lane — Apple accepts 1-10
-        // screenshots per locale × device, and the other five
-        // tests (EmptyState, VMList, LaunchScreen, Inspector,
-        // MenuBar) already clear that floor.
-        let sheet = app.sheets.firstMatch
-        guard sheet.waitForExistence(timeout: 15) else { return }
-
-        let nameField = app.textFields["vmNameField"]
-        guard nameField.waitForExistence(timeout: 10) else { return }
-
-        // Type a realistic name.
-        nameField.click()
-        nameField.typeText("ci-runner-01")
-
-        captureScreenshot(named: "02_create_vm_sheet")
-
-        // Dismiss the sheet.
-        app.typeKey(.escape, modifierFlags: [])
-    }
-
-    /// 3. VM list — sidebar with VMs and image library.
+    /// 2. VM list — sidebar with VMs and image library.
     ///
     /// Best captured when mock VMs exist (run after `spook create`
     /// has been used to create test VMs).
-    func test03_VMList() {
-        captureScreenshot(named: "03_vm_list")
+    func test02_VMList() {
+        captureScreenshot(named: "02_vm_list")
     }
 
-    /// 4. VM launch screen — the centered Start button view.
+    /// 3. VM launch screen — the centered Start button view.
     ///
     /// Clicks the first VM in the sidebar to show the launch screen
     /// with hardware summary and the Start button.
-    func test04_LaunchScreen() {
+    func test03_LaunchScreen() {
         // Try to select the first VM in the sidebar.
         let sidebar = app.outlines.firstMatch
         if sidebar.exists {
@@ -202,12 +150,12 @@ final class ScreenshotTests: XCTestCase {
             }
         }
 
-        captureScreenshot(named: "04_launch_screen")
+        captureScreenshot(named: "03_launch_screen")
     }
 
-    /// 5. Inspector panel — configuration details alongside the
+    /// 4. Inspector panel — configuration details alongside the
     /// launch screen or VM display.
-    func test05_Inspector() {
+    func test04_Inspector() {
         // Select first VM.
         let sidebar = app.outlines.firstMatch
         if sidebar.exists {
@@ -228,15 +176,15 @@ final class ScreenshotTests: XCTestCase {
             _ = pane.waitForExistence(timeout: 5)
         }
 
-        captureScreenshot(named: "05_inspector")
+        captureScreenshot(named: "04_inspector")
     }
 
-    /// 6. Menu bar — the dropdown with VM status and quick actions.
+    /// 5. Menu bar — the dropdown with VM status and quick actions.
     ///
     /// Note: Menu bar screenshots may require manual capture since
     /// activating the menu bar extra programmatically is unreliable.
-    func test06_MenuBar() {
+    func test05_MenuBar() {
         // Capture the full screen which includes the menu bar.
-        captureFullScreen(named: "06_full_app")
+        captureFullScreen(named: "05_full_app")
     }
 }
