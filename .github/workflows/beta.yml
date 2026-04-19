@@ -58,33 +58,17 @@ jobs:
         with:
           bundler-cache: true
 
-      # Use the merge commit body as the TestFlight "What to Test"
-      # note. Capped at 3,600 chars (below Apple's limit, with UTF-8
-      # headroom).
-      #
-      # `tr -cd '[:print:]\n\t'` strips every character that isn't
-      # printable ASCII, newline, or tab. Apple's `whatsNew` field
-      # rejects several Unicode punctuation and symbol characters
-      # (observed: ✓ rejected as "Text contains invalid
-      # characters"; pilot also strips `<` server-side). Being
-      # strict here is cheaper than discovering the blocklist
-      # empirically one character at a time.
-      - name: Extract changelog
-        id: changelog
-        run: |
-          MSG=$(git log -1 --pretty=format:%B \
-                | LC_ALL=C tr -cd '[:print:]\n\t' \
-                | head -c 3600)
-          {
-            echo 'changelog<<CHANGELOG_EOF'
-            printf '%s\n' "$MSG"
-            echo 'CHANGELOG_EOF'
-          } >> "$GITHUB_OUTPUT"
-
+      # Don't pass a changelog — fall through to Fastfile's
+      # `default_changelog` (a curated bullet list of features
+      # that's stable across builds). Piping raw `git log` here
+      # put conventional-commit noise into TestFlight's "What to
+      # Test" ("chore(ui_tests): drop the flaky test02…") which
+      # isn't useful to testers and surfaced the ✓-character
+      # rejection from Apple. The curated string in Fastfile
+      # stays ASCII-clean and describes what the app DOES, which
+      # is what internal testers actually want to see.
       - name: fastlane beta
-        env:
-          CHANGELOG: ${{ steps.changelog.outputs.changelog }}
-        run: bundle exec fastlane beta changelog:"${CHANGELOG}"
+        run: bundle exec fastlane beta
 
   # Runs the XCUITest screenshot lane on every merge to `main`,
   # in parallel with the TestFlight upload. Purpose: catch UI

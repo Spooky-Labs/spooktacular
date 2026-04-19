@@ -2,7 +2,9 @@
 # Creates AppIcon.icns from a source PNG or SVG.
 # Usage: ./scripts/create-icns.sh [input.png]
 #
-# If no input is given, converts Resources/icon.svg using sips.
+# If no input is given, renders Resources/icon.svg to PNG via
+# `rsvg-convert` (librsvg) and then generates every required
+# size with `sips`.
 
 set -euo pipefail
 
@@ -14,27 +16,32 @@ OUTPUT="$RESOURCES_DIR/AppIcon.icns"
 
 INPUT="${1:-}"
 
-# If no input, try to render SVG to PNG via qlmanage (built-in)
+# If no input is given, render the canonical SVG to a 1024x1024
+# PNG via `rsvg-convert`. We previously used `qlmanage -t` but
+# Quick Look's SVG thumbnailer produces an all-black image for
+# anything with gradients — the rendered `.icns` looked like a
+# solid black square in TestFlight (screenshot evidence in PR
+# #30's description). `rsvg-convert` is librsvg's reference
+# renderer and handles gradients, text, and nested groups
+# correctly.
 if [ -z "$INPUT" ]; then
     SVG="$RESOURCES_DIR/icon.svg"
     if [ ! -f "$SVG" ]; then
-        echo "Error: No input file and no Resources/icon.svg found."
+        echo "Error: No input file and no Resources/icon.svg found." >&2
         exit 1
     fi
 
-    echo "Rendering SVG to PNG..."
+    if ! command -v rsvg-convert >/dev/null 2>&1; then
+        echo "Error: rsvg-convert not found. Install with:" >&2
+        echo "  brew install librsvg" >&2
+        echo "or pass an already-rendered PNG:" >&2
+        echo "  $0 /path/to/icon.png" >&2
+        exit 2
+    fi
+
+    echo "Rendering SVG to PNG via rsvg-convert..."
     INPUT="$RESOURCES_DIR/icon_1024.png"
-
-    # Use qlmanage to render SVG to PNG (built into macOS)
-    qlmanage -t -s 1024 -o "$RESOURCES_DIR" "$SVG" 2>/dev/null
-    RENDERED="$RESOURCES_DIR/icon.svg.png"
-    if [ -f "$RENDERED" ]; then
-        mv "$RENDERED" "$INPUT"
-    else
-        echo "Error: Failed to render SVG. Provide a 1024x1024 PNG instead."
-        echo "Usage: $0 /path/to/icon.png"
-        exit 1
-    fi
+    rsvg-convert -w 1024 -h 1024 "$SVG" -o "$INPUT"
 fi
 
 if [ ! -f "$INPUT" ]; then
