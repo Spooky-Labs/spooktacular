@@ -208,6 +208,13 @@ final class AppState {
     /// Whether the "Create VM" sheet is showing.
     var showCreateSheet = false
 
+    /// If non-nil when the Create VM sheet opens, pre-seeds the
+    /// sheet's IPSW source to `.local` with this path. Set by
+    /// "Create VM from image" in the image detail view so the
+    /// sheet picks up the image the user just selected instead
+    /// of defaulting to Apple's latest download.
+    var pendingCreateIpswPath: String?
+
     /// Whether the "Add Image" sheet is showing.
     var showAddImage = false
 

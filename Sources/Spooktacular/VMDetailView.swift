@@ -156,6 +156,14 @@ struct ImageDetailView: View {
 
             HStack(spacing: 12) {
                 Button {
+                    // Pre-seed the Create sheet's local IPSW
+                    // path so it opens already pointing at this
+                    // image — no re-browse needed. Works only
+                    // for local-IPSW images; OCI refs fall
+                    // through to the default Apple-download path.
+                    if case .ipsw(let path) = image.source {
+                        appState.pendingCreateIpswPath = path
+                    }
                     appState.showCreateSheet = true
                 } label: {
                     Label("Create VM from image", systemImage: "plus.square.on.square")

@@ -167,6 +167,20 @@ struct CreateVMSheet: View {
             .padding(.horizontal, 24)
             .padding(.top, 20)
             .padding(.bottom, 12)
+            // Runs once when the sheet appears; if
+            // `AppState.pendingCreateIpswPath` is set (e.g. from
+            // "Create VM from image" in the image detail view),
+            // pre-seed the source + path so the user doesn't
+            // have to re-browse for the same file they just
+            // added. Consumed on read so a later open starts
+            // clean.
+            .onAppear {
+                if let preset = appState.pendingCreateIpswPath {
+                    ipswSource = .local
+                    localIpswPath = preset
+                    appState.pendingCreateIpswPath = nil
+                }
+            }
 
             Divider()
 
