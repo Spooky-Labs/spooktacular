@@ -7,7 +7,7 @@ import Security
 /// ## Design: single protected path
 ///
 /// Earlier revisions of this resolver accepted the token via an
-/// environment variable (`SPOOK_GITHUB_TOKEN`), a CLI flag
+/// environment variable (`SPOOKTACULAR_GITHUB_TOKEN`), a CLI flag
 /// (`--github-token`), and a file path (`--github-token-file`).
 /// Each of those is reachable by malware running as the
 /// logged-in user:

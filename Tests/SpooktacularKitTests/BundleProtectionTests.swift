@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 /// Covers the data-at-rest protection policy described in
 /// docs/DATA_AT_REST.md. The runtime behavior on a given host is
@@ -11,20 +11,20 @@ struct BundleProtectionTests {
 
     // MARK: - Policy selection
 
-    @Test("SPOOK_BUNDLE_PROTECTION=none overrides even on a laptop")
+    @Test("SPOOKTACULAR_BUNDLE_PROTECTION=none overrides even on a laptop")
     func envOverrideNoneBeatsLaptop() {
         let (protection, policy) = BundleProtection.recommendedPolicy(
-            environment: ["SPOOK_BUNDLE_PROTECTION": "none"],
+            environment: ["SPOOKTACULAR_BUNDLE_PROTECTION": "none"],
             isPortable: true
         )
         #expect(protection == .none)
         #expect(policy == .overrideNone)
     }
 
-    @Test("SPOOK_BUNDLE_PROTECTION=cufua overrides even on a desktop")
+    @Test("SPOOKTACULAR_BUNDLE_PROTECTION=cufua overrides even on a desktop")
     func envOverrideCUFUABeatsDesktop() {
         let (protection, policy) = BundleProtection.recommendedPolicy(
-            environment: ["SPOOK_BUNDLE_PROTECTION": "cufua"],
+            environment: ["SPOOKTACULAR_BUNDLE_PROTECTION": "cufua"],
             isPortable: false
         )
         #expect(protection == .completeUntilFirstUserAuthentication)
@@ -51,10 +51,10 @@ struct BundleProtectionTests {
         #expect(policy == .autoDesktop)
     }
 
-    @Test("unknown SPOOK_BUNDLE_PROTECTION value falls through to auto-detect")
+    @Test("unknown SPOOKTACULAR_BUNDLE_PROTECTION value falls through to auto-detect")
     func unknownValueFallsThrough() {
         let (protection, policy) = BundleProtection.recommendedPolicy(
-            environment: ["SPOOK_BUNDLE_PROTECTION": "banana"],
+            environment: ["SPOOKTACULAR_BUNDLE_PROTECTION": "banana"],
             isPortable: true
         )
         #expect(protection == .completeUntilFirstUserAuthentication)
@@ -102,7 +102,7 @@ struct BundleProtectionTests {
         let ud = defaults()
         ud.set("none", forKey: BundleProtection.userDefaultsKey)
         let (protection, policy) = BundleProtection.recommendedPolicy(
-            environment: ["SPOOK_BUNDLE_PROTECTION": "cufua"],
+            environment: ["SPOOKTACULAR_BUNDLE_PROTECTION": "cufua"],
             userDefaults: ud,
             isPortable: false
         )

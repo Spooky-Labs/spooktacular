@@ -2,9 +2,9 @@ import Testing
 import Foundation
 @preconcurrency import Virtualization
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 @Suite("VirtualMachineConfiguration", .tags(.lifecycle))
 struct VirtualMachineConfigurationTests {
@@ -264,6 +264,123 @@ struct VirtualMachineConfigurationTests {
                 device.tag == VZVirtioFileSystemDeviceConfiguration.macOSGuestAutomountTag,
                 "First shared folder must use the macOS guest automount tag"
             )
+        }
+    }
+
+    // MARK: - Guest OS (Track H)
+
+    /// Asserts that `applySpec` emits the right Apple-framework
+    /// device classes for each guest-OS branch. These tests
+    /// pin the contract between our `GuestOS` enum and the
+    /// concrete `VZ*` graph so a future refactor can't
+    /// silently flip Linux VMs to `VZMacOSBootLoader` (which
+    /// would fail `configuration.validate()` at VM start).
+    @Suite("Guest OS branching", .tags(.lifecycle))
+    struct GuestOSTests {
+
+        @Test("macOS guest gets VZMacOSBootLoader + Mac-specific peripherals")
+        func macOSBranch() throws {
+            let spec = VirtualMachineSpecification(guestOS: .macOS)
+            let config = VZVirtualMachineConfiguration()
+            try VirtualMachineConfiguration.applySpec(spec, to: config)
+
+            #expect(config.bootLoader is VZMacOSBootLoader)
+            #expect(config.graphicsDevices.first is VZMacGraphicsDeviceConfiguration)
+            #expect(config.keyboards.first is VZMacKeyboardConfiguration)
+            #expect(config.pointingDevices.first is VZMacTrackpadConfiguration)
+            // macOS path doesn't install a USB controller —
+            // Mac peripherals don't go through XHCI.
+            #expect(config.usbControllers.isEmpty)
+        }
+
+        @Test("Linux guest gets VZEFIBootLoader + USB peripherals + explicit XHCI controller")
+        func linuxBranch() throws {
+            let spec = VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+            let config = VZVirtualMachineConfiguration()
+            try VirtualMachineConfiguration.applySpec(spec, to: config)
+
+            #expect(config.bootLoader is VZEFIBootLoader)
+            #expect(config.graphicsDevices.first is VZVirtioGraphicsDeviceConfiguration)
+            #expect(config.keyboards.first is VZUSBKeyboardConfiguration)
+            #expect(config.pointingDevices.first is VZUSBScreenCoordinatePointingDeviceConfiguration)
+            // `applySpec` installs a VZXHCIControllerConfiguration
+            // for every Linux guest.  Apple's
+            // `VZUSBMassStorageDeviceConfiguration` docs are
+            // explicit: "Be sure to add a
+            // VZUSBControllerConfiguration to your configuration
+            // to provide a USB controller."  Without it, the
+            // installer ISO lands in `storageDevices` but has
+            // no bus to terminate on, EFI can't enumerate it,
+            // and the VM boots to a black screen.
+            #expect(config.usbControllers.count == 1)
+            #expect(config.usbControllers.first is VZXHCIControllerConfiguration)
+        }
+
+        @Test("Linux guest honours a 1-CPU spec (macOS floor of 4 does not apply)")
+        func linuxHonoursSingleCPU() {
+            let spec = VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+            #expect(spec.cpuCount == 1)
+        }
+
+        @Test("macOS guest still clamps CPU to 4")
+        func macOSStillClamps() {
+            let spec = VirtualMachineSpecification(cpuCount: 1, guestOS: .macOS)
+            #expect(spec.cpuCount == 4)
+        }
+
+        @Test("applyPlatform on a Linux bundle installs VZGenericPlatformConfiguration + EFI NVRAM")
+        func linuxApplyPlatformLoadsNVRAM() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("linux.vm")
+            let bundle = try VirtualMachineBundle.create(
+                at: bundleURL,
+                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+            )
+
+            let config = VZVirtualMachineConfiguration()
+            try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
+            try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
+
+            #expect(config.platform is VZGenericPlatformConfiguration)
+
+            let efiLoader = try #require(config.bootLoader as? VZEFIBootLoader)
+            let varStore = try #require(efiLoader.variableStore)
+            #expect(varStore.url == bundle.efiVariableStoreURL)
+        }
+
+        // NOTE: applyStorage isn't unit-tested here because
+        // it opens `disk.img` via
+        // `VZDiskImageStorageDeviceAttachment`, which
+        // validates the file as a RAW disk image up front.
+        // Scratch files fail with `NSPOSIXErrorDomain 45
+        // (ENOTSUP)` — VZ's `F_PUNCHHOLE`/`F_PREALLOCATE`
+        // fcntls don't work on test temp files. Integration
+        // coverage for the XHCI-merge contract happens via
+        // Track G's USB-disk tests which ship a genuine
+        // RAW image fixture.
+
+        @Test("Pre-Track-H bundles without guestOS key decode as macOS")
+        func backwardCompatibleDecode() throws {
+            // Minimal pre-Track-H config.json shape: no guestOS
+            // field. `decodeIfPresent` in init(from:) should
+            // substitute .macOS.
+            let json = """
+            {
+              "cpuCount": 8,
+              "memorySizeInBytes": 8589934592,
+              "diskSizeInBytes": 68719476736,
+              "displayCount": 1,
+              "networkMode": { "nat": {} },
+              "audioEnabled": true,
+              "microphoneEnabled": false,
+              "sharedFolders": [],
+              "autoResizeDisplay": true,
+              "clipboardSharingEnabled": true
+            }
+            """.data(using: .utf8)!
+            let spec = try JSONDecoder().decode(VirtualMachineSpecification.self, from: json)
+            #expect(spec.guestOS == .macOS)
+            #expect(spec.cpuCount == 8)
         }
     }
 }

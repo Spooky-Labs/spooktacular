@@ -5,6 +5,12 @@ PROJECT_ROOT = File.expand_path("..", __dir__)
 APP_BUNDLE = File.join(PROJECT_ROOT, "Spooktacular.app")
 PKG_FILE = File.join(PROJECT_ROOT, "Spooktacular.pkg")
 APP_IDENTIFIER = "com.spooktacular.app"
+# Bundle ID for the network-filter system extension.  Must
+# match `CFBundleIdentifier` in
+# `Resources/SpooktacularNetworkFilter-Info.plist` and the
+# `com.apple.application-identifier` value (minus the Team-ID
+# prefix) in `SpooktacularNetworkFilter.entitlements`.
+APP_IDENTIFIER_NETWORK_FILTER = "com.spooktacular.app.NetworkFilter"
 
 # Developer contact fields — sourced from .env so forks can override
 # without editing the Fastfile. Defaults keep Spooktacular's canonical
@@ -452,25 +458,12 @@ platform :mac do
       sh("xcodegen", "generate")
     end
 
-    # No code signing. `project.yml` configures the `Debug` build
-    # config for the `SpooktacularApp` target with:
-    #   - `CODE_SIGNING_ALLOWED: NO`
-    #   - `CODE_SIGN_ENTITLEMENTS: Spooktacular.debug.entitlements`
-    #     (an entitlements file that OMITS
-    #     `com.apple.security.app-sandbox`)
-    #
-    # Without the sandbox entitlement, taskgated lets the app
-    # launch unsigned. Without signing, we don't need a Mac
-    # Development provisioning profile — which would otherwise
-    # require registering each ephemeral CI runner's hardware
-    # UUID with Apple Developer, burning through Apple's 100-
-    # device/year cap.
-    #
-    # This only affects Debug builds inside Spooktacular.xcodeproj.
-    # Production builds go through `build-app.sh` → `swift build
-    # -c release` → `codesign --entitlements
-    # Spooktacular.entitlements` (the real sandboxed one). The
-    # release pipeline is unchanged.
+    # Debug config uses real Apple Development signing via
+    # `match` — the same cert developers install locally.
+    # `setup_ci` (ran in `before_all`) provisions an
+    # ephemeral keychain on CI runners so `match` can import
+    # the cert without prompting; locally, the cert is
+    # already in the login keychain.
     scan(
       project: "Spooktacular.xcodeproj",
       scheme: "SpooktacularApp",

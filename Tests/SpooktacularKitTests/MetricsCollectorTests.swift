@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookApplication
+@testable import SpooktacularApplication
 
 /// Tests for ``MetricsCollector`` — specifically the silent-failure
 /// antipatterns fixed by the sweep: unbounded per-path cardinality

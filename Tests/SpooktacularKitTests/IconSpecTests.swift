@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookCore
+@testable import SpooktacularCore
 
 @Suite("IconSpec", .tags(.configuration))
 struct IconSpecTests {

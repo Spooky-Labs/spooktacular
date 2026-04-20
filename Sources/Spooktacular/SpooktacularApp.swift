@@ -1,4 +1,6 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import SpooktacularInfrastructureApple
 
 /// Spooktacular — macOS virtualization for the datacenter.
 ///
@@ -20,6 +22,12 @@ struct SpooktacularApp: App {
 
     @State private var appState = AppState()
 
+    /// Presentation flag for the File → Import VM Bundle…
+    /// file picker. Lives on the `App` rather than the
+    /// `ContentView` so the keyboard shortcut (⇧⌘O) works
+    /// even when the library window isn't focused.
+    @State private var showImporter: Bool = false
+
     private var menuBarSymbol: String {
         if appState.isAnyVMTransitioning { return "hourglass.circle" }
         return appState.runningVMs.isEmpty
@@ -38,6 +46,45 @@ struct SpooktacularApp: App {
                 )) { _ in
                     appState.stopAllRunningVMs()
                 }
+                // Handles double-clicked `.vm` bundles and the
+                // `Open With → Spooktacular` Finder action.
+                // The CFBundleDocumentTypes + UTExportedTypeDeclarations
+                // entries in Info.plist register us as the
+                // "Owner" handler for
+                // `com.spookylabs.spooktacular.vm-bundle`; Apple
+                // dispatches the URL here via SwiftUI's
+                // `onOpenURL(perform:)`.
+                //
+                // Docs:
+                //   https://developer.apple.com/documentation/swiftui/view/onopenurl(perform:)
+                .onOpenURL { url in
+                    Task { await appState.importBundle(from: url) }
+                }
+                // File → Import VM Bundle… uses Apple's
+                // `.fileImporter` with the typed
+                // `UTType.spooktacularVMBundle` filter so the
+                // picker only surfaces owned bundles and
+                // folders — never stray disk images, IPSWs, or
+                // plaintext files. Multi-select is on so users
+                // can drag three bundles off a USB drive at
+                // once. Docs:
+                // https://developer.apple.com/documentation/swiftui/view/fileimporter(ispresented:allowedcontenttypes:allowsmultipleselection:oncompletion:)
+                .fileImporter(
+                    isPresented: $showImporter,
+                    allowedContentTypes: [.spooktacularVMBundle],
+                    allowsMultipleSelection: true
+                ) { result in
+                    switch result {
+                    case .success(let urls):
+                        Task {
+                            for url in urls {
+                                await appState.importBundle(from: url)
+                            }
+                        }
+                    case .failure(let error):
+                        appState.presentError(error)
+                    }
+                }
         }
         .defaultSize(width: 1000, height: 640)
         .commands {
@@ -55,6 +102,21 @@ struct SpooktacularApp: App {
                     appState.showAddImage = true
                 }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
+
+                Divider()
+
+                // Import VM Bundle… opens `.fileImporter`
+                // filtered by `UTType.spooktacularVMBundle` so
+                // Finder only lets the user pick our owned
+                // UTI. The system's double-click route still
+                // flows through `.onOpenURL` above — this
+                // command is for users who prefer the File
+                // menu or need multi-select import from a USB
+                // stick.
+                Button("Import VM Bundle…") {
+                    showImporter = true
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
             }
 
             // Standard SwiftUI sidebar-toggle command group —

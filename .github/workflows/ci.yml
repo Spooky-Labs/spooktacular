@@ -153,9 +153,9 @@ jobs:
       - name: Generate DocC (combined)
         run: |
           swift package generate-documentation \
-            --target SpookCore \
-            --target SpookApplication \
-            --target SpookInfrastructureApple \
+            --target SpooktacularCore \
+            --target SpooktacularApplication \
+            --target SpooktacularInfrastructureApple \
             --target SpooktacularKit \
             --enable-experimental-combined-documentation
 

@@ -10,14 +10,14 @@ without repeating the architectural decisions we already settled.
 
 The app target depends on three Swift packages in this repo:
 
-- **`SpookCore`** — pure Swift domain types. No AppKit, no
+- **`SpooktacularCore`** — pure Swift domain types. No AppKit, no
   `Virtualization`, no networking. Use it for models, enums,
   and protocol "ports" that describe what the app needs without
   committing to a concrete transport.
-- **`SpookApplication`** — use cases and services that combine
+- **`SpooktacularApplication`** — use cases and services that combine
   domain types into workflows (RBAC evaluation, tenant
   isolation, runner-pool orchestration).
-- **`SpookInfrastructureApple`** — Apple-framework adapters.
+- **`SpooktacularInfrastructureApple`** — Apple-framework adapters.
   Wraps `VZVirtualMachine`, `NSPasteboard`, `NSWorkspace`,
   `Security.framework`, `Network.framework`, `Foundation Models`.
 
@@ -64,7 +64,7 @@ framebuffer inside `WorkspaceWindow`.
 
 ### Per-workspace icons
 
-`IconSpec` (in `SpookCore`) is a `Codable`, `Sendable`,
+`IconSpec` (in `SpooktacularCore`) is a `Codable`, `Sendable`,
 `Hashable` enum with four modes:
 
 - `.cloneApp(bundleID:)` — borrow an installed app's icon
@@ -73,7 +73,7 @@ framebuffer inside `WorkspaceWindow`.
   squircle with a tinted SF Symbol
 - `.preset(name:)` — bundled PNG
 
-`WorkspaceIconRenderer` (in `SpookInfrastructureApple`) is the
+`WorkspaceIconRenderer` (in `SpooktacularInfrastructureApple`) is the
 only place that bridges the domain spec to `NSImage`. Views
 upstream consume a ready-to-use image; the renderer is
 `@MainActor`-isolated because AppKit demands it.

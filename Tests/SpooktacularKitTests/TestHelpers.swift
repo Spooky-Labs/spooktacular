@@ -1,8 +1,8 @@
 import Foundation
 import Testing
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 // MARK: - Shared Mock: Node Client
 

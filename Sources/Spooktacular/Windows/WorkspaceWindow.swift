@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 @preconcurrency import Virtualization
-import SpookInfrastructureApple
+import SpooktacularInfrastructureApple
 import SpooktacularKit
 
 /// A window dedicated to a single VM workspace.
@@ -105,6 +105,14 @@ struct WorkspaceWindow: View {
     @ToolbarContentBuilder
     private var runningToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                Task { await appState.suspendVM(vmName) }
+            } label: {
+                Label("Suspend", systemImage: "pause.fill")
+            }
+            .glassButton()
+            .help("Save VM state and quit — next start picks up where you left off")
+
             Button {
                 Task { await appState.stopVM(vmName) }
             } label: {

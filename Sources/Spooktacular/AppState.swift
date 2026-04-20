@@ -153,6 +153,24 @@ final class AppState {
     /// polling cost.
     private var portMonitors: [String: PortForwardingMonitor] = [:]
 
+    /// Per-VM streaming host-API servers. Each running VM
+    /// publishes live events (metrics, lifecycle, ports) onto a
+    /// Unix-domain socket at
+    /// `~/Library/Application Support/Spooktacular/api/<vm>.sock`,
+    /// so external automation (`curl --unix-socket`, Python,
+    /// shell pipelines, dashboards) can subscribe without the
+    /// CLI+vsock round-trip overhead that request/response APIs
+    /// pay per sample. Bound to the VM's lifetime: created on
+    /// `startVM`, torn down on `stopVM`.
+    private var streamingServers: [String: VMStreamingServer] = [:]
+
+    /// Per-VM publisher Tasks that pump events from their
+    /// source (guest-agent stream, VM state stream, port
+    /// monitor) onto the streaming server. Cancelled on
+    /// `stopVM` so publishers don't outlive the server they
+    /// push to.
+    private var publisherTasks: [String: [Task<Void, Never>]] = [:]
+
     /// The shared clipboard bridge — handles sync between the host
     /// pasteboard and the focused workspace.
     let clipboardBridge = ClipboardBridge()
@@ -270,6 +288,54 @@ final class AppState {
         runningVMs[name] != nil
     }
 
+    /// Imports a portable `.vm` bundle into the local VM
+    /// directory, wiring it into the library as if the user had
+    /// created it locally.
+    ///
+    /// Invoked from three places:
+    ///
+    /// 1. **SwiftUI `.onOpenURL`** — when Finder sends a
+    ///    double-clicked or dropped `.vm` bundle to the app.
+    ///    Apple's UTI / `CFBundleDocumentTypes` plumbing routes
+    ///    the URL here via the Info.plist export of
+    ///    `com.spookylabs.spooktacular.vm-bundle`.
+    /// 2. **`spooktacular bundle import`** — the CLI uses the
+    ///    same `BundleImporter` primitive underneath.
+    /// 3. **Drag-and-drop onto the sidebar** — future Track B
+    ///    polish; the same entry point.
+    ///
+    /// Copy semantics: the source bundle is **cloned** via
+    /// APFS `clonefile(2)` (through `FileManager.copyItem`) so
+    /// importing a 64 GB VM from a thumb drive into `~/.spooktacular/vms/`
+    /// completes in milliseconds when the source is already on
+    /// an APFS volume. On cross-volume imports (USB / SMB),
+    /// FileManager falls back to a full read+write — same as
+    /// Finder's drag behavior.
+    ///
+    /// Machine identifier + MAC address are **regenerated** on
+    /// import. The bundle's `machine-identifier.bin` and
+    /// `spec.macAddress` are unique to the host that originally
+    /// created them; two running copies sharing either would
+    /// collide on the host network and in Apple's VZ hardware
+    /// identification. The regeneration matches `CloneManager`'s
+    /// behaviour so imported and cloned bundles are
+    /// indistinguishable downstream.
+    func importBundle(from sourceURL: URL) async {
+        do {
+            let bundle = try BundleImporter.import(
+                sourceURL: sourceURL,
+                intoDirectory: vmsDirectory
+            )
+            loadVMs()
+            selectedVM = bundle.url.deletingPathExtension().lastPathComponent
+            AccessibilityNotification.Announcement(
+                "Imported virtual machine \(selectedVM ?? "")"
+            ).post()
+        } catch {
+            presentError(error)
+        }
+    }
+
     /// Starts a VM by name.
     ///
     /// Marks the VM as transitioning for the duration of the start
@@ -289,12 +355,24 @@ final class AppState {
 
         do {
             let vm = try VirtualMachine(bundle: bundle)
-            try await vm.start(startUpFromMacOSRecovery: recovery)
+            // `startOrResume` transparently restores from a saved-
+            // state file when one exists (the "close the laptop"
+            // workflow from Suspend), falling back to a cold boot
+            // if restore fails or when booting into Recovery.
+            try await vm.startOrResume(startUpFromMacOSRecovery: recovery)
             runningVMs[name] = vm
 
             if let socketDevice = vm.vzVM?.socketDevices.first as? VZVirtioSocketDevice {
                 agentClients[name] = GuestAgentClient(socketDevice: socketDevice)
             }
+
+            // Start the streaming host-API server and kick off
+            // the domain publishers that feed it. Failures here
+            // are non-fatal — the VM itself still boots cleanly
+            // and the GUI's in-process Swift paths (chart model,
+            // port monitor) continue to work. Only the external
+            // UDS surface is affected.
+            await startStreamingServices(for: name, vm: vm)
 
             AccessibilityNotification.Announcement(
                 "Virtual machine \(name) started"
@@ -304,6 +382,175 @@ final class AppState {
             notifications.notifyFailed(name, error: error.localizedDescription)
             presentError(error)
         }
+    }
+
+    /// Boots the per-VM ``VMStreamingServer`` and spawns the
+    /// publisher tasks that feed its topic bus:
+    ///
+    /// - **`.metrics`** — one frame per sample the guest agent
+    ///   emits on `/api/v1/stats/stream` (~1 Hz). `GuestStatsResponse`
+    ///   is mapped 1:1 to ``VMMetricsSnapshot``.
+    /// - **`.lifecycle`** — one frame per VM state transition
+    ///   published on `VirtualMachine.stateStream`.
+    /// - **`.ports`** — fed later from the existing
+    ///   ``PortForwardingMonitor``; placeholder until the
+    ///   monitor exposes an async stream (follow-up polish).
+    ///
+    /// Each publisher runs in its own `Task` so failure of one
+    /// (e.g., an older guest agent that doesn't speak
+    /// `/api/v1/stats/stream`) doesn't take down the others.
+    /// Publisher loops exit cleanly when
+    /// ``stopStreamingServices(for:)`` cancels them.
+    private func startStreamingServices(for name: String, vm: VirtualMachine) async {
+        do {
+            let socketURL = try SpooktacularPaths.apiSocketURL(for: name)
+            let server = VMStreamingServer(vmName: name, socketURL: socketURL)
+            try await server.start()
+            streamingServers[name] = server
+
+            var tasks: [Task<Void, Never>] = []
+
+            // Unified guest event publisher. One vsock
+            // connection carries `.stats`, `.ports`, and
+            // `.appsFrontmost` frames; we demux and republish
+            // each onto the matching streaming-server topic.
+            // Replaces the previous `statsStream()`-only path
+            // so external automation subscribing to the UDS
+            // `ports` topic gets push events instead of the
+            // polling fallback.
+            if let client = agentClients[name] {
+                tasks.append(Task { [weak server] in
+                    do {
+                        for try await event in client.eventStream() {
+                            guard !Task.isCancelled else { return }
+                            switch event {
+                            case .stats(let stats):
+                                let snapshot = VMMetricsSnapshot(
+                                    at: Date(),
+                                    cpuUsage: stats.cpuUsage,
+                                    memoryUsedBytes: stats.memoryUsedBytes,
+                                    memoryTotalBytes: stats.memoryTotalBytes,
+                                    loadAverage1m: stats.loadAverage1m,
+                                    processCount: stats.processCount,
+                                    uptime: stats.uptime
+                                )
+                                await server?.publish(topic: .metrics, payload: snapshot)
+                            case .ports(let entries):
+                                let snapshot = VMPortsSnapshot(
+                                    at: Date(),
+                                    ports: entries.map {
+                                        .init(port: $0.port, processName: $0.processName)
+                                    }
+                                )
+                                await server?.publish(topic: .ports, payload: snapshot)
+                            case .appsFrontmost:
+                                // No VMStreamingProtocol topic
+                                // for frontmost yet — reserved
+                                // for Track J dock-icon mirroring.
+                                break
+                            }
+                        }
+                    } catch {
+                        // Older agents without
+                        // `/api/v1/events/stream` terminate with
+                        // a 404-equivalent. Silent no-op; other
+                        // topics continue.
+                    }
+                })
+            }
+
+            // Lifecycle publisher — each VM state transition
+            // becomes one frame on `.lifecycle`.
+            let lifecycleStream = vm.stateStream
+            tasks.append(Task { [weak server] in
+                for await state in lifecycleStream {
+                    guard !Task.isCancelled else { return }
+                    let event = VMLifecycleEvent(
+                        at: Date(),
+                        state: state.rawValue
+                    )
+                    await server?.publish(topic: .lifecycle, payload: event)
+                }
+            })
+
+            publisherTasks[name] = tasks
+        } catch {
+            Log.vm.warning(
+                "Streaming server failed to start for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+            )
+        }
+    }
+
+    /// Symmetric teardown for ``startStreamingServices(for:vm:)``.
+    private func stopStreamingServices(for name: String) async {
+        if let tasks = publisherTasks.removeValue(forKey: name) {
+            for task in tasks { task.cancel() }
+        }
+        if let server = streamingServers.removeValue(forKey: name) {
+            await server.stop()
+        }
+    }
+
+    /// Suspends a running VM to disk and shuts it down.
+    ///
+    /// Mirrors ``stopVM(_:)`` but instead of a clean shutdown
+    /// writes a `SavedState.vzstate` file into the bundle. A
+    /// later ``startVM(_:)`` transparently restores from that
+    /// file — the user picks up with every app open, every
+    /// document unsaved, exactly where they left off.
+    ///
+    /// Same re-entry guard as `stopVM`: rapid Suspend-button
+    /// taps collapse to a single suspend.
+    func suspendVM(_ name: String) async {
+        guard let vm = runningVMs[name] else { return }
+        guard !transitioningVMs.contains(name) else { return }
+
+        transitioningVMs.insert(name)
+        defer { transitioningVMs.remove(name) }
+
+        do {
+            try await vm.suspend()
+            runningVMs.removeValue(forKey: name)
+            agentClients.removeValue(forKey: name)
+            await stopStreamingServices(for: name)
+
+            AccessibilityNotification.Announcement(
+                "Virtual machine \(name) suspended"
+            ).post()
+            notifications.notifyStopped(name)
+        } catch {
+            presentError(error)
+        }
+    }
+
+    /// Discards the suspend file for `name` without starting the
+    /// VM. Equivalent to `spook discard-suspend` on the CLI —
+    /// the next `startVM` is guaranteed to cold-boot.
+    ///
+    /// Synchronous because the VM is known to be stopped (or
+    /// else this wouldn't be meaningful — you'd use `suspend`
+    /// or `stop`). Returns `true` when a file was removed so the
+    /// UI can surface "already cold" without a follow-up query.
+    @discardableResult
+    func discardSuspend(_ name: String) -> Bool {
+        guard let bundle = vms[name] else { return false }
+        let url = bundle.savedStateURL
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            presentError(error)
+            return false
+        }
+    }
+
+    /// `true` when the VM's bundle carries a `SavedState.vzstate`
+    /// file, meaning the next `startVM` will resume. Drives the
+    /// Resume-vs-Start label in the GUI.
+    func isSuspended(_ name: String) -> Bool {
+        guard let bundle = vms[name] else { return false }
+        return bundle.hasSavedState
     }
 
     /// Stops a VM by name.
@@ -328,6 +575,7 @@ final class AppState {
             try await vm.stop(graceful: false)
             runningVMs.removeValue(forKey: name)
             agentClients.removeValue(forKey: name)
+            await stopStreamingServices(for: name)
 
             AccessibilityNotification.Announcement(
                 "Virtual machine \(name) stopped"
@@ -344,6 +592,7 @@ final class AppState {
             do {
                 if let vm = runningVMs.removeValue(forKey: name) {
                     agentClients.removeValue(forKey: name)
+                    await stopStreamingServices(for: name)
                     Log.vm.info("Stopping running VM '\(name, privacy: .public)' before deletion")
                     try await vm.stop(graceful: false)
                 }

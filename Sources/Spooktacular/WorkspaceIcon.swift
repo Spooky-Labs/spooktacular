@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
-import SpookCore
-import SpookInfrastructureApple
+import SpooktacularCore
+import SpooktacularInfrastructureApple
 
 /// Swaps the process's Dock tile to reflect the frontmost workspace.
 ///

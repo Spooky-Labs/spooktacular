@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 @Suite("VirtualMachineBundle", .tags(.lifecycle))
 struct VirtualMachineBundleTests {
@@ -368,6 +368,73 @@ struct VirtualMachineBundleTests {
             let reloaded = try VirtualMachineBundle.load(from: bundleURL)
             #expect(reloaded.spec == updatedSpec)
             #expect(reloaded.metadata.id == bundle.metadata.id)
+        }
+
+        @Test("savedStateURL points inside the bundle and hasSavedState reflects file presence", .timeLimit(.minutes(1)))
+        func savedStateHelpers() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+
+            // File name matches Apple's sample code
+            // ("Running macOS in a Virtual Machine on Apple Silicon")
+            // which uses `SaveFile.vzvmsave`.
+            #expect(bundle.savedStateURL == bundleURL.appendingPathComponent("SaveFile.vzvmsave"))
+            #expect(bundle.hasSavedState == false)
+
+            try Data("fake-state".utf8).write(to: bundle.savedStateURL)
+            #expect(bundle.hasSavedState == true)
+
+            try FileManager.default.removeItem(at: bundle.savedStateURL)
+            #expect(bundle.hasSavedState == false)
+        }
+
+        // MARK: - Track H.2 — Linux bundle artifacts
+
+        @Test("Linux bundle provisions an EFI NVRAM file at create time", .timeLimit(.minutes(1)))
+        func linuxBundleProvisionsNVRAM() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("linux.vm")
+            let bundle = try VirtualMachineBundle.create(
+                at: bundleURL,
+                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+            )
+            #expect(bundle.hasEFIVariableStore)
+            #expect(bundle.efiVariableStoreURL == bundleURL.appendingPathComponent("efi-nvram.bin"))
+            #expect(FileManager.default.fileExists(atPath: bundle.efiVariableStoreURL.path))
+        }
+
+        @Test("macOS bundle does NOT provision an EFI NVRAM file", .timeLimit(.minutes(1)))
+        func macOSBundleSkipsNVRAM() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("mac.vm")
+            let bundle = try VirtualMachineBundle.create(
+                at: bundleURL,
+                spec: VirtualMachineSpecification(guestOS: .macOS)
+            )
+            #expect(bundle.hasEFIVariableStore == false)
+        }
+
+        @Test("hasInstallerISO reflects installer.iso file presence", .timeLimit(.minutes(1)))
+        func installerISOHelper() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("linux-with-iso.vm")
+            let bundle = try VirtualMachineBundle.create(
+                at: bundleURL,
+                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+            )
+            #expect(bundle.installerISOURL == bundleURL.appendingPathComponent("installer.iso"))
+            #expect(bundle.hasInstallerISO == false)
+
+            // Drop a stand-in file — the config layer treats
+            // any file at this path as a mountable ISO
+            // regardless of its contents; actual ISO9660 bytes
+            // aren't required for the bundle-layer test.
+            try Data("stand-in-iso".utf8).write(to: bundle.installerISOURL)
+            #expect(bundle.hasInstallerISO == true)
+
+            try FileManager.default.removeItem(at: bundle.installerISOURL)
+            #expect(bundle.hasInstallerISO == false)
         }
     }
 

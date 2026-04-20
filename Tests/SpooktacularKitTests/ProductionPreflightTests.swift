@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookApplication
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
 
 /// Covers the fail-fast startup gate that refuses to launch a
 /// multi-tenant `spook serve` when the enterprise-review controls

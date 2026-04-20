@@ -4,20 +4,27 @@ import SpooktacularKit
 
 /// Compact Swift Charts panel shown in the workspace inspector.
 ///
-/// Plots two metrics over a rolling 60-second window:
+/// Plots four metrics over a rolling 60-second window:
 ///
+/// - **CPU usage** — guest-side fraction, pushed by the agent
+/// - **Memory usage** — guest-side fraction, pushed by the agent
+/// - **Agent latency** — host-observed round-trip in milliseconds
 /// - **Listening ports** — count reported by the guest agent
-/// - **Agent latency** — round-trip health probe in milliseconds
 ///
-/// Both come from the existing ``GuestAgentClient`` so there's no
-/// guest-side change required. Metrics are sampled on the host at
-/// 5 s (matches the port monitor) and decay off the chart after
-/// 60 s of history.
+/// CPU / memory / load / process count arrive as server-pushed
+/// NDJSON frames on a single vsock connection to
+/// `/api/v1/stats/stream`. The host never polls them — the guest
+/// owns the cadence and pushes one frame per second as long as
+/// the workspace view stays on screen. This keeps the UI
+/// responsive under contention and matches how production
+/// observability agents (Prometheus `stream` exporters, eBPF
+/// tracers) expose time-series to their consumers.
 ///
-/// This is deliberately not a VM-internal CPU/disk graph: those
-/// need guest-agent extensions, which are better shipped as a
-/// separate release. The host-observable metrics here give an
-/// immediately useful "is the workspace healthy" pulse.
+/// Latency and listening ports remain host-polled because they're
+/// host-measurable (round-trip clock, Bonjour-style port probe)
+/// and don't benefit from pushing. The two loops are merged by
+/// the stream frame arrival event — a fresh stats frame triggers
+/// a combined sample with the latest measured latency/ports.
 @MainActor
 @Observable
 final class WorkspaceStatsModel {
@@ -27,12 +34,10 @@ final class WorkspaceStatsModel {
         let at: Date
         let portCount: Int
         let latencyMs: Double?
-        /// CPU usage fraction (0…1). `nil` when the agent
-        /// doesn't yet support `/api/v1/stats` (older builds) or
-        /// when this is the first tick after the agent booted.
+        /// CPU usage fraction (0…1). `nil` on the first frame
+        /// after the agent boots (delta needs two observations).
         let cpuUsage: Double?
-        /// Memory usage fraction (0…1), or `nil` when stats
-        /// aren't available.
+        /// Memory usage fraction (0…1).
         let memoryUsage: Double?
     }
 
@@ -42,70 +47,88 @@ final class WorkspaceStatsModel {
     /// Seconds of history kept on-screen.
     static let window: TimeInterval = 60
 
-    /// Poll interval. Matches ``PortForwardingMonitor`` so the two
-    /// surfaces stay in sync.
-    static let pollInterval: Duration = .seconds(5)
+    /// How often the host-side probes (latency + ports) refresh
+    /// between stream frames.
+    static let hostProbeInterval: Duration = .seconds(5)
 
-    private var pollTask: Task<Void, Never>?
+    private var streamTask: Task<Void, Never>?
+    private var hostProbeTask: Task<Void, Never>?
 
-    /// Begins polling. Safe to call multiple times.
+    /// Latest host-side probes, refreshed independently of the
+    /// stream. Each new stats frame combines them into the
+    /// rolling sample buffer.
+    private var lastLatencyMs: Double?
+    private var lastPortCount: Int = 0
+
+    /// Subscribes to the guest's push stream. Safe to call
+    /// multiple times — previous tasks are cancelled first.
     func start(client: GuestAgentClient) {
-        pollTask?.cancel()
-        pollTask = Task { [weak self] in
+        streamTask?.cancel()
+        hostProbeTask?.cancel()
+
+        hostProbeTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.tick(client: client)
-                try? await Task.sleep(for: Self.pollInterval)
+                await self?.probeHostMetrics(client: client)
+                try? await Task.sleep(for: Self.hostProbeInterval)
+            }
+        }
+
+        streamTask = Task { [weak self] in
+            do {
+                // Filter to `.stats` only — the stats sidebar
+                // doesn't consume `.ports` or `.appsFrontmost`
+                // frames, so asking the server to skip them
+                // halves the per-tick bytes on the wire.
+                for try await event in client.eventStream(filter: .statsOnly) {
+                    guard !Task.isCancelled else { return }
+                    guard case .stats(let stats) = event else { continue }
+                    await self?.appendFrame(stats: stats)
+                }
+            } catch {
+                // Stream ended (VM stopped, connection dropped,
+                // older agent without /api/v1/stats/stream). The
+                // existing samples stay on-screen so the graph
+                // doesn't flash to empty.
             }
         }
     }
 
-    /// Stops polling. Samples are retained so returning to the
-    /// view while the VM is stopped still shows the last graph.
+    /// Stops the stream and host probe. Samples are retained so
+    /// the chart still renders the last window while the VM is
+    /// stopped.
     func stop() {
-        pollTask?.cancel()
-        pollTask = nil
+        streamTask?.cancel()
+        streamTask = nil
+        hostProbeTask?.cancel()
+        hostProbeTask = nil
     }
 
-    private func tick(client: GuestAgentClient) async {
-        let started = Date()
-        var latency: Double?
-        var portCount: Int = 0
-        var cpuUsage: Double?
-        var memoryUsage: Double?
-        do {
-            _ = try await client.health()
-            latency = Date().timeIntervalSince(started) * 1000
-        } catch {
-            latency = nil
-        }
-        do {
-            let ports = try await client.listeningPorts()
-            portCount = ports.count
-        } catch {
-            portCount = 0
-        }
-        // `stats()` is best-effort — older guest agents don't
-        // yet know the `/api/v1/stats` endpoint and will 404.
-        // That's a soft failure: we keep charting latency +
-        // ports while the CPU / memory lines stay empty.
-        do {
-            let stats = try await client.stats()
-            cpuUsage = stats.cpuUsage
-            memoryUsage = stats.memoryUsageFraction
-        } catch {
-            cpuUsage = nil
-            memoryUsage = nil
-        }
+    private func appendFrame(stats: GuestStatsResponse) {
         let sample = Sample(
             at: Date(),
-            portCount: portCount,
-            latencyMs: latency,
-            cpuUsage: cpuUsage,
-            memoryUsage: memoryUsage
+            portCount: lastPortCount,
+            latencyMs: lastLatencyMs,
+            cpuUsage: stats.cpuUsage,
+            memoryUsage: stats.memoryUsageFraction
         )
         samples.append(sample)
         let cutoff = Date().addingTimeInterval(-Self.window)
         samples.removeAll { $0.at < cutoff }
+    }
+
+    private func probeHostMetrics(client: GuestAgentClient) async {
+        let started = Date()
+        do {
+            _ = try await client.health()
+            lastLatencyMs = Date().timeIntervalSince(started) * 1000
+        } catch {
+            lastLatencyMs = nil
+        }
+        do {
+            lastPortCount = try await client.listeningPorts().count
+        } catch {
+            lastPortCount = 0
+        }
     }
 }
 

@@ -1,8 +1,8 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 /// Coverage for the round-2 enterprise-review fixes — S3 tee,
 /// DynamoDB lock, and TLS 1.3 defaults. These tests don't hit

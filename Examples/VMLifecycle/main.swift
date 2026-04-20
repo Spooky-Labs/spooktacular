@@ -1,7 +1,7 @@
 import Foundation
-import SpookCore
-import SpookApplication
-import SpookInfrastructureApple
+import SpooktacularCore
+import SpooktacularApplication
+import SpooktacularInfrastructureApple
 
 /// Minimum-viable embedding example: load an existing VM bundle, boot
 /// it, wait for it to run, then request a graceful stop.
@@ -11,8 +11,8 @@ import SpookInfrastructureApple
 ///     swift run VMLifecycle <vm-name>
 ///
 /// This is the "reference architecture in one file" — read it top to
-/// bottom to see how `SpookCore`, `SpookApplication`, and
-/// `SpookInfrastructureApple` compose without any other dependency.
+/// bottom to see how `SpooktacularCore`, `SpooktacularApplication`, and
+/// `SpooktacularInfrastructureApple` compose without any other dependency.
 /// For the full create-from-IPSW flow, see ``RestoreImageManager``'s
 /// documentation — the `spook create` CLI command is the canonical
 /// caller.

@@ -122,22 +122,22 @@ SpookApplication depends on SpookCore only. Infrastructure wraps Apple framework
 
 | Feature | Source | Description |
 |---|---|---|
-| VM Creation | [`RestoreImageManager.swift`](Sources/SpookInfrastructureApple/RestoreImageManager.swift) | Auto-download latest compatible macOS IPSW, install |
-| APFS Cloning | [`CloneManager.swift`](Sources/SpookInfrastructureApple/CloneManager.swift) | Copy-on-write clone with new MachineIdentifier |
-| VM Lifecycle | [`VirtualMachine.swift`](Sources/SpookInfrastructureApple/VirtualMachine.swift) | Start, stop, pause, resume, save/restore state |
-| Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpookInfrastructureApple/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
-| SSH Provisioning | [`SSHExecutor.swift`](Sources/SpookInfrastructureApple/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
-| Disk-Inject | [`DiskInjector.swift`](Sources/SpookInfrastructureApple/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
+| VM Creation | [`RestoreImageManager.swift`](Sources/SpooktacularInfrastructureApple/RestoreImageManager.swift) | Auto-download latest compatible macOS IPSW, install |
+| APFS Cloning | [`CloneManager.swift`](Sources/SpooktacularInfrastructureApple/CloneManager.swift) | Copy-on-write clone with new MachineIdentifier |
+| VM Lifecycle | [`VirtualMachine.swift`](Sources/SpooktacularInfrastructureApple/VirtualMachine.swift) | Start, stop, pause, resume, save/restore state |
+| Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularInfrastructureApple/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
+| SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularInfrastructureApple/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
+| Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularInfrastructureApple/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
 | Guest Agent | [`spooktacular-agent/`](Sources/spooktacular-agent/) | 12 HTTP endpoints: clipboard, exec, apps, files, ports, health |
-| Agent Client | [`GuestAgentClient.swift`](Sources/SpookInfrastructureApple/GuestAgentClient.swift) | Host-side actor for all guest agent operations |
-| Templates | [`GitHubRunnerTemplate.swift`](Sources/SpookApplication/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
-| Ephemeral Runners | [`Start.swift`](Sources/spook/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
-| Snapshots | [`SnapshotManager.swift`](Sources/SpookInfrastructureApple/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
-| Capacity Check | [`CapacityCheck.swift`](Sources/SpookInfrastructureApple/CapacityCheck.swift) | Enforces 2-VM kernel limit with actionable errors |
-| HTTP API | [`HTTPAPIServer.swift`](Sources/SpookInfrastructureApple/HTTPAPIServer.swift) | 9 REST endpoints, TLS support, bearer token auth |
-| Kubernetes | [`Sources/spook-controller/`](Sources/spook-controller/) | MacOSVM CRD, Swift controller, Helm chart |
-| Service | [`ServicePlist.swift`](Sources/SpookApplication/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
-| Networking | [`VirtualMachineConfiguration.swift`](Sources/SpookInfrastructureApple/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
+| Agent Client | [`GuestAgentClient.swift`](Sources/SpooktacularInfrastructureApple/GuestAgentClient.swift) | Host-side actor for all guest agent operations |
+| Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularApplication/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
+| Ephemeral Runners | [`Start.swift`](Sources/spooktacular-cli/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
+| Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularInfrastructureApple/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
+| Capacity Check | [`CapacityCheck.swift`](Sources/SpooktacularInfrastructureApple/CapacityCheck.swift) | Enforces 2-VM kernel limit with actionable errors |
+| HTTP API | [`HTTPAPIServer.swift`](Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift) | 9 REST endpoints, TLS support, bearer token auth |
+| Kubernetes | [`Sources/spooktacular-controller/`](Sources/spooktacular-controller/) | MacOSVM CRD, Swift controller, Helm chart |
+| Service | [`ServicePlist.swift`](Sources/SpooktacularApplication/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
+| Networking | [`VirtualMachineConfiguration.swift`](Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
 | Accessibility | GUI sources | Full VoiceOver: labels, hints, identifiers, announcements |
 
 ## CLI Reference
@@ -199,7 +199,7 @@ spook remote apps my-vm
 spook remote ports my-vm
 ```
 
-The host-side [`GuestAgentClient`](Sources/SpookInfrastructureApple/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spooktacular-agent --install-agent` (LaunchAgent for clipboard/app access).
+The host-side [`GuestAgentClient`](Sources/SpooktacularInfrastructureApple/GuestAgentClient.swift) provides a typed Swift API for all endpoints. Install the agent in the guest with `spooktacular-agent --install-agent` (LaunchAgent for clipboard/app access).
 
 ## Runner Pools (Kubernetes)
 

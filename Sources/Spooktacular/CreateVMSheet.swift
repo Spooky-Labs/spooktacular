@@ -1,6 +1,7 @@
 import SwiftUI
 import SpooktacularKit
 import UniformTypeIdentifiers
+import Virtualization
 import Darwin
 
 /// Entry for a shared folder in the create form.
@@ -25,6 +26,12 @@ struct CreateVMSheet: View {
     // MARK: - State
 
     @State private var name = ""
+    /// Guest operating system.  Branches the create flow
+    /// between the macOS installer (IPSW → `VZMacOSInstaller`)
+    /// and the Linux installer (ISO → `VZEFIBootLoader` +
+    /// `VZUSBMassStorageDeviceConfiguration`).  Mirrors the
+    /// CLI's `--os macos|linux` flag on `spooktacular create`.
+    @State private var guestOS: GuestOS = .macOS
     /// Source of the macOS install media. `.latest` asks Apple's
     /// signing service for the newest IPSW compatible with this
     /// host (the default, ~12 GB download); `.local` points at an
@@ -32,6 +39,20 @@ struct CreateVMSheet: View {
     /// workflows live entirely in `.local`.
     @State private var ipswSource: IPSWSource = .latest
     @State private var localIpswPath: String = ""
+    /// Path to the Linux installer ISO when
+    /// ``guestOS`` is ``GuestOS/linux``.  Copied into the
+    /// bundle at create time so the install flow owns its
+    /// own media (no dangling references to the source file
+    /// if the user later moves it).  Mirrors the CLI's
+    /// `--installer-iso` flag.
+    @State private var installerISOPath: String = ""
+
+    /// Expose Rosetta 2 to the Linux guest as a virtio-fs
+    /// share.  Only shown when ``guestOS`` is
+    /// ``GuestOS/linux``; disabled when Rosetta is not
+    /// available on the host.  Mirrors the CLI's
+    /// `--rosetta` flag.
+    @State private var rosettaEnabled: Bool = false
     @State private var cpuCount: Double = 4
     @State private var memorySizeInGigabytes: Double = 8
     @State private var diskSizeInGigabytes: Double = 64
@@ -188,13 +209,29 @@ struct CreateVMSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     nameRow
-                    sourceRow
+                    osRow
+                    switch guestOS {
+                    case .macOS:
+                        sourceRow
+                    case .linux:
+                        installerISORow
+                        rosettaRow
+                    }
                     hardwareRow
                     displayRow
                     networkRow
                     audioRow
                     sharedFoldersRow
-                    provisioningRow
+                    // Provisioning templates are macOS-only
+                    // for now (OpenClaw + RemoteDesktop are
+                    // Apple-framework templates, GitHub
+                    // Runner's LaunchDaemon injection targets
+                    // APFS).  Linux VMs get a vanilla install
+                    // and can be provisioned later via SSH or
+                    // cloud-init.
+                    if guestOS == .macOS {
+                        provisioningRow
+                    }
                 }
                 .padding(24)
             }
@@ -249,16 +286,21 @@ struct CreateVMSheet: View {
     /// by transient filesystem state while typing.
     private var canCreate: Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
-        if ipswSource == .local,
-           localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty {
-            return false
-        }
-        switch template {
-        case .githubRunner:
-            return !githubRepo.trimmingCharacters(in: .whitespaces).isEmpty
-                && !githubKeychainAccount.trimmingCharacters(in: .whitespaces).isEmpty
-        default:
-            return true
+        switch guestOS {
+        case .macOS:
+            if ipswSource == .local,
+               localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty {
+                return false
+            }
+            switch template {
+            case .githubRunner:
+                return !githubRepo.trimmingCharacters(in: .whitespaces).isEmpty
+                    && !githubKeychainAccount.trimmingCharacters(in: .whitespaces).isEmpty
+            default:
+                return true
+            }
+        case .linux:
+            return !installerISOPath.trimmingCharacters(in: .whitespaces).isEmpty
         }
     }
 
@@ -292,6 +334,66 @@ struct CreateVMSheet: View {
                 A unique name for this virtual machine. Used in the \
                 CLI as 'spook start <name>' and shown in Kubernetes \
                 as the resource name.
+                """
+        )
+    }
+
+    private var osRow: some View {
+        row(
+            control: {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Guest OS").font(.headline).glassSectionHeader()
+                    Picker("Guest OS", selection: $guestOS) {
+                        Text("macOS").tag(GuestOS.macOS)
+                        Text("Linux").tag(GuestOS.linux)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("macOS uses Apple's IPSW installer; Linux boots an installer ISO via EFI.")
+                }
+            },
+            explanation: guestOSExplanation
+        )
+    }
+
+    private var guestOSExplanation: String {
+        switch guestOS {
+        case .macOS:
+            return """
+                Installs a macOS guest from an Apple IPSW. \
+                Uses VZMacOSInstaller under the hood and \
+                produces a Mac-style VM bundle with hardware \
+                model, aux storage, and NVRAM.
+                """
+        case .linux:
+            return """
+                Boots a Linux installer ISO via EFI firmware \
+                (VZEFIBootLoader) and installs onto a fresh \
+                sparse disk. Supports any UEFI-bootable ARM64 \
+                distribution (Fedora, Ubuntu, Debian, …).
+                """
+        }
+    }
+
+    private var installerISORow: some View {
+        row(
+            control: {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Installer ISO").font(.headline).glassSectionHeader()
+                    HStack {
+                        TextField("~/Downloads/Fedora-Workstation-Live-43.aarch64.iso", text: $installerISOPath)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Browse…") { browseForInstallerISO() }
+                    }
+                }
+            },
+            explanation: """
+                Path to a UEFI-bootable ARM64 installer ISO. \
+                Copied into the VM bundle at create time, then \
+                exposed to the guest firmware as a USB mass \
+                storage device so EFI's boot manager finds it \
+                first. Remove the ISO from the bundle after \
+                the guest OS is installed.
                 """
         )
     }
@@ -736,6 +838,75 @@ struct CreateVMSheet: View {
     /// treats IPSWs by signature internally.
     ///
     /// Docs: https://developer.apple.com/documentation/uniformtypeidentifiers/uttype/init(filenameextension:conformingto:)
+    /// Rosetta toggle + availability hint.  Disables the
+    /// toggle (and forces it off) when the host reports
+    /// Rosetta as unavailable, so the user can't arm a
+    /// flag that'll silently no-op at VM start.  The
+    /// availability check hits the framework directly
+    /// rather than caching a value — Rosetta can transition
+    /// from uninstalled to installed if the user runs
+    /// `softwareupdate --install-rosetta` while this sheet
+    /// is open.
+    private var rosettaRow: some View {
+        let available = VZLinuxRosettaDirectoryShare.availability == .installed
+        return row(
+            control: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Rosetta 2").font(.headline).glassSectionHeader()
+                    Toggle("Enable Rosetta in guest", isOn: $rosettaEnabled)
+                        .disabled(!available)
+                        .onChange(of: available) { _, newValue in
+                            if !newValue { rosettaEnabled = false }
+                        }
+                    if !available {
+                        Text("Rosetta is not installed on this Mac. Run `softwareupdate --install-rosetta` in Terminal, then reopen this sheet.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            },
+            explanation: """
+                Exposes Apple's Rosetta 2 translator to the \
+                Linux guest via a virtio-fs share. After \
+                install, x86_64 ELF binaries run natively in \
+                the guest without QEMU — great for Docker \
+                cross-arch builds, CI runners handling \
+                legacy binaries, or running x86-only tools \
+                on Apple silicon.
+                """
+        )
+    }
+
+    /// Opens an `NSOpenPanel` restricted to disk-image files.
+    /// `UTType.diskImage` (`public.disk-image`) is the system
+    /// UTI that covers ISO, DMG, IMG, and related mountable
+    /// formats; its subtype hierarchy includes
+    /// `public.iso-image` so `.iso` files pass the filter.
+    /// We also synthesize an explicit `.iso` UTType from the
+    /// filename extension so distros that ship ISOs without
+    /// the expected UTI metadata still appear enabled in the
+    /// picker.
+    ///
+    /// Docs:
+    /// - [UTType.diskImage](https://developer.apple.com/documentation/uniformtypeidentifiers/uttype-swift.struct/diskimage)
+    /// - [UTType(filenameExtension:conformingTo:)](https://developer.apple.com/documentation/uniformtypeidentifiers/uttype/init(filenameextension:conformingto:))
+    private func browseForInstallerISO() {
+        let panel = NSOpenPanel()
+        panel.title = "Select Linux Installer ISO"
+        panel.prompt = "Select"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        var allowed: [UTType] = [.diskImage]
+        if let isoType = UTType(filenameExtension: "iso", conformingTo: .diskImage) {
+            allowed.append(isoType)
+        }
+        panel.allowedContentTypes = allowed
+        if panel.runModal() == .OK, let url = panel.url {
+            installerISOPath = url.path
+        }
+    }
+
     private func browseForIPSW() {
         let panel = NSOpenPanel()
         panel.title = "Select IPSW File"
@@ -753,7 +924,7 @@ struct CreateVMSheet: View {
     /// the user's `provisioningMode` selection.
     ///
     /// Script cleanup policy matches
-    /// `Sources/spook/Commands/Create.swift`: template-generated
+    /// `Sources/spooktacular-cli/Commands/Create.swift`: template-generated
     /// scripts live under `~/Library/Caches/com.spooktacular/`
     /// and are removed post-injection to shrink the on-disk
     /// window for the GitHub registration token.
@@ -816,6 +987,106 @@ struct CreateVMSheet: View {
         }
     }
 
+    /// Build a Linux VM bundle: empty disk + installer ISO +
+    /// EFI NVRAM + machine identifier.  No IPSW, no
+    /// `VZMacOSInstaller`, no post-install provisioning
+    /// (first boot is interactive into the distro's
+    /// installer).  Mirrors
+    /// `runLinuxCreate` in the CLI.
+    @MainActor
+    private func createLinuxVM(
+        trimmedName: String,
+        spec: VirtualMachineSpecification,
+        bundleURL: URL?
+    ) async {
+        statusMessage = "Preparing Linux VM bundle…"
+        progress = 0
+
+        let trimmedISOPath = installerISOPath.trimmingCharacters(in: .whitespaces)
+        let expanded = (trimmedISOPath as NSString).expandingTildeInPath
+        let isoURL = URL(filePath: expanded)
+        guard FileManager.default.fileExists(atPath: isoURL.path) else {
+            errorMessage = "Installer ISO not found at '\(expanded)'."
+            isCreating = false
+            creationTask = nil
+            return
+        }
+
+        guard let targetBundleURL = bundleURL ?? (try? SpooktacularPaths.bundleURL(for: trimmedName)) else {
+            errorMessage = "Could not resolve VM bundle path for '\(trimmedName)'."
+            isCreating = false
+            creationTask = nil
+            return
+        }
+
+        do {
+            try Task.checkCancellation()
+
+            // Bundle skeleton — writes config.json,
+            // metadata.json, and (because
+            // spec.guestOS == .linux) the empty EFI NVRAM
+            // file + generic machine identifier.
+            let bundle = try VirtualMachineBundle.create(
+                at: targetBundleURL,
+                spec: spec
+            )
+            progress = 0.2
+            statusMessage = "Allocating \(Int(diskSizeInGigabytes)) GB disk…"
+
+            // Disk allocation goes through the shared
+            // `DiskImageAllocator` which prefers ASIF
+            // (Apple Sparse Image Format) and falls back to
+            // RAW on older hosts.  See its docs for the
+            // portability / APFS tradeoff — ASIF-backed
+            // `.spook.vm` bundles survive cross-filesystem
+            // transfers without materializing zeros.
+            let diskURL = targetBundleURL.appendingPathComponent(
+                VirtualMachineBundle.diskImageFileName
+            )
+            let diskFormat = try await DiskImageAllocator.create(
+                at: diskURL,
+                sizeInBytes: spec.diskSizeInBytes
+            )
+            statusMessage = "Allocated \(diskFormat.rawValue.uppercased()) disk…"
+            try Task.checkCancellation()
+
+            progress = 0.5
+            statusMessage = "Copying installer ISO…"
+            // FileManager.copyItem picks up APFS clonefile
+            // semantics when source and destination live on
+            // the same volume — the 2–4 GB copy is typically
+            // near-instant.
+            try FileManager.default.copyItem(at: isoURL, to: bundle.installerISOURL)
+            progress = 0.9
+            statusMessage = "Finalizing…"
+
+            appState.loadVMs()
+            appState.selectedVM = trimmedName
+            isCreating = false
+            creationTask = nil
+            dismiss()
+        } catch is CancellationError {
+            try? FileManager.default.removeItem(at: targetBundleURL)
+            isCreating = false
+            creationTask = nil
+            progress = 0
+            statusMessage = "Cancelled."
+            dismiss()
+        } catch {
+            try? FileManager.default.removeItem(at: targetBundleURL)
+            if let localized = error as? LocalizedError,
+               let description = localized.errorDescription {
+                let suggestion = localized.recoverySuggestion.map { " \($0)" } ?? ""
+                errorMessage = description + suggestion
+            } else {
+                errorMessage = error.localizedDescription
+            }
+            isCreating = false
+            creationTask = nil
+            progress = 0
+        }
+    }
+
     @MainActor
     private func createVM() async {
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
@@ -838,11 +1109,25 @@ struct CreateVMSheet: View {
                 SharedFolder(hostPath: $0.hostPath, tag: $0.tag, readOnly: $0.readOnly)
             },
             autoResizeDisplay: autoResizeDisplay,
-            clipboardSharingEnabled: clipboardSharingEnabled
+            clipboardSharingEnabled: clipboardSharingEnabled,
+            guestOS: guestOS,
+            rosettaEnabled: guestOS == .linux ? rosettaEnabled : false
         )
 
-        let manager = RestoreImageManager(cacheDirectory: appState.ipswCacheDirectory)
         let bundleURL = (try? SpooktacularPaths.bundleURL(for: trimmedName))
+
+        // Linux branch is short-and-straightforward —
+        // allocate the bundle, sparse-truncate the disk,
+        // copy the installer ISO.  No IPSW download, no
+        // `VZMacOSInstaller`, no provisioning (yet).  Mirrors
+        // `runLinuxCreate` in
+        // `Sources/spooktacular-cli/Commands/Create.swift`.
+        if guestOS == .linux {
+            await createLinuxVM(trimmedName: trimmedName, spec: spec, bundleURL: bundleURL)
+            return
+        }
+
+        let manager = RestoreImageManager(cacheDirectory: appState.ipswCacheDirectory)
 
         do {
             statusMessage = "Fetching restore image info…"
@@ -860,7 +1145,7 @@ struct CreateVMSheet: View {
                 // creation even when the user supplies their
                 // own IPSW, so we keep that call above and only
                 // skip the download here. Mirrors the CLI's
-                // branching in `Sources/spook/Commands/Create.swift`.
+                // branching in `Sources/spooktacular-cli/Commands/Create.swift`.
                 let trimmedPath = localIpswPath.trimmingCharacters(in: .whitespaces)
                 let expanded = (trimmedPath as NSString).expandingTildeInPath
                 let candidate = URL(filePath: expanded)
@@ -891,7 +1176,7 @@ struct CreateVMSheet: View {
 
             statusMessage = "Writing base disk…"
             progress = 0.5
-            let bundle = try manager.createBundle(
+            let bundle = try await manager.createBundle(
                 named: trimmedName, in: appState.vmsDirectory,
                 from: restoreImage, spec: spec
             )
@@ -963,11 +1248,14 @@ struct CreateVMSheet: View {
 /// we can't attribute elsewhere.
 private enum CreateVMSheetError: LocalizedError {
     case userDataNotFound(path: String)
+    case diskAllocationFailed(path: String, reason: String)
 
     var errorDescription: String? {
         switch self {
         case .userDataNotFound(let path):
             return "User-data script not found at '\(path)'."
+        case .diskAllocationFailed(let path, let reason):
+            return "Failed to allocate sparse disk image at '\(path)': \(reason)."
         }
     }
 
@@ -975,6 +1263,8 @@ private enum CreateVMSheetError: LocalizedError {
         switch self {
         case .userDataNotFound:
             return "Pick an existing shell script with the Browse… button, or remove the template selection."
+        case .diskAllocationFailed:
+            return "Check free disk space and that the bundles directory is writable, then try again."
         }
     }
 }

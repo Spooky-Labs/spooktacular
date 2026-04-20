@@ -1,8 +1,8 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookCore
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularInfrastructureApple
 
 /// Tests for ``WebhookAuditSink`` configuration + signing math.
 ///

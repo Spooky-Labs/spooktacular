@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookApplication
+@testable import SpooktacularApplication
 
 /// Tests for ``SignedRequestVerifier`` — the shared per-request
 /// signature auth path used by both the guest agent and the
@@ -19,7 +19,7 @@ struct SignedRequestVerifierTests {
 
     // MARK: - Signing helper
 
-    /// Produces a valid X-Spook-* header triple plus the body
+    /// Produces a valid X-Spooktacular-* header triple plus the body
     /// for a round-trip test, signed by the given software key.
     /// Mirrors the canonical-string construction the host-side
     /// `GuestAgentClient.sign(...)` performs.
@@ -41,9 +41,9 @@ struct SignedRequestVerifierTests {
         let ecdsa: P256.Signing.ECDSASignature = try signer.signature(for: Data(canonical.utf8))
 
         return [
-            "x-spook-timestamp": ts,
-            "x-spook-nonce": nonce,
-            "x-spook-signature": ecdsa.rawRepresentation.base64EncodedString()
+            "x-spooktacular-timestamp": ts,
+            "x-spooktacular-nonce": nonce,
+            "x-spooktacular-signature": ecdsa.rawRepresentation.base64EncodedString()
         ]
     }
 
@@ -107,13 +107,13 @@ struct SignedRequestVerifierTests {
 
     // MARK: - Missing headers
 
-    @Test("Missing X-Spook-Signature is rejected as missingHeaders")
+    @Test("Missing X-Spooktacular-Signature is rejected as missingHeaders")
     func missingSignatureHeader() {
         let key = P256.Signing.PrivateKey()
         let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
         let headers = [
-            "x-spook-timestamp": "2026-04-17T18:30:00Z",
-            "x-spook-nonce": UUID().uuidString
+            "x-spooktacular-timestamp": "2026-04-17T18:30:00Z",
+            "x-spooktacular-nonce": UUID().uuidString
         ]
         #expect(throws: SignedRequestVerifier.VerifyError.missingHeaders) {
             try verifier.verify(method: "GET", path: "/health", headers: headers, body: Data())
@@ -277,9 +277,9 @@ struct SignedRequestVerifierTests {
         let key = P256.Signing.PrivateKey()
         let verifier = SignedRequestVerifier(trustedKeys: [key.publicKey])
         let headers = [
-            "x-spook-timestamp": ISO8601DateFormatter().string(from: Date()),
-            "x-spook-nonce": UUID().uuidString,
-            "x-spook-signature": "not-base64!!!"
+            "x-spooktacular-timestamp": ISO8601DateFormatter().string(from: Date()),
+            "x-spooktacular-nonce": UUID().uuidString,
+            "x-spooktacular-signature": "not-base64!!!"
         ]
         #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(method: "GET", path: "/health", headers: headers, body: Data())
@@ -293,9 +293,9 @@ struct SignedRequestVerifierTests {
         // Base64 of 8 bytes instead of 64.
         let shortSig = Data([0, 1, 2, 3, 4, 5, 6, 7]).base64EncodedString()
         let headers = [
-            "x-spook-timestamp": ISO8601DateFormatter().string(from: Date()),
-            "x-spook-nonce": UUID().uuidString,
-            "x-spook-signature": shortSig
+            "x-spooktacular-timestamp": ISO8601DateFormatter().string(from: Date()),
+            "x-spooktacular-nonce": UUID().uuidString,
+            "x-spooktacular-signature": shortSig
         ]
         #expect(throws: SignedRequestVerifier.VerifyError.invalidSignature) {
             try verifier.verify(method: "GET", path: "/health", headers: headers, body: Data())

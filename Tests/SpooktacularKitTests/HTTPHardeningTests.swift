@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 /// Adversarial HTTP-edge hardening tests.
 ///
@@ -204,7 +204,7 @@ struct HTTPHardeningTests {
             vmDirectory: tmpDir.url,
             insecureMode: true
         )
-        // Server defaults to SPOOK_TRUST_FORWARDED_FOR=0.
+        // Server defaults to SPOOKTACULAR_TRUST_FORWARDED_FOR=0.
         // A caller who sends two distinct X-Forwarded-For values
         // should NOT bypass the shared rate-limit bucket.
         let ip1 = "direct-caller"

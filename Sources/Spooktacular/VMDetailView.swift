@@ -80,15 +80,25 @@ struct VMDetailView: View {
                 .keyboardShortcut(.return, modifiers: [])
 
                 let transitioning = appState.transitioningVMs.contains(name)
+                let suspended = !isRunning && appState.isSuspended(name)
                 if isRunning {
                     Button {
-                        Task { await appState.stopVM(name) }
+                        Task { await appState.suspendVM(name) }
                     } label: {
                         if transitioning {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("Stop", systemImage: "stop.fill")
+                            Label("Suspend", systemImage: "pause.fill")
                         }
+                    }
+                    .controlSize(.large)
+                    .disabled(transitioning)
+                    .help("Save VM state and quit. Next start picks up exactly where you left off.")
+
+                    Button {
+                        Task { await appState.stopVM(name) }
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
                     }
                     .controlSize(.large)
                     .disabled(transitioning)
@@ -99,12 +109,18 @@ struct VMDetailView: View {
                         if transitioning {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("Start", systemImage: "play.fill")
+                            Label(
+                                suspended ? "Resume" : "Start",
+                                systemImage: suspended ? "play.rectangle.fill" : "play.fill"
+                            )
                         }
                     }
                     .controlSize(.large)
                     .tint(.green)
                     .disabled(transitioning)
+                    .help(suspended
+                        ? "Restore from the saved state and continue."
+                        : "Cold-boot the VM.")
                 }
             }
         }

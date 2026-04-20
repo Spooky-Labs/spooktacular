@@ -1,6 +1,6 @@
 import Foundation
-import SpookCore
-import SpookInfrastructureApple
+import SpooktacularCore
+import SpooktacularInfrastructureApple
 
 /// Runs a shell command inside an already-running VM over vsock.
 ///
