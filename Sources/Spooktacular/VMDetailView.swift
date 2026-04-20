@@ -43,137 +43,214 @@ struct VMDetailView: View {
         }
     }
 
-    // MARK: - Hero
+    // MARK: - Hero card
+    //
+    // One rounded-rect glass surface with a subtle state-tinted
+    // gradient wash. Inside, a top-to-bottom stack:
+    //
+    //   1. Icon medallion (WorkspaceIconView over a glowing
+    //      tinted shadow — keeps the user's custom icon front
+    //      and center, adds state meaning around it).
+    //   2. Title + uppercased state eyebrow.
+    //   3. Spec chips (CPU / RAM / Disk / guest OS) — individual
+    //      glass capsules with SF-Symbol leading glyphs, grouped
+    //      in a GlassEffectContainer so they render as one
+    //      blend-aware material pane.
+    //   4. Status pill (Running / Suspended / Stopped).
+    //   5. Action bar — already-existing glass-container layout.
+    //
+    // The whole pane follows the same aesthetic as
+    // `ImageDetailView.heroCard`, so the library feels
+    // coherent across selection types (VM vs Image).
 
     private var heroPane: some View {
-        VStack(spacing: 20) {
-            // Use the VM's own rendered icon (same visual the
-            // workspace-window stopped state shows) instead of a
-            // generic SF Symbol — keeps the library and workspace
-            // visually consistent and lets the custom `iconSpec`
-            // in the bundle metadata carry identity across both
-            // surfaces.
-            WorkspaceIconView(
-                spec: bundle.metadata.iconSpec ?? .defaultSpec,
-                size: 140
-            )
-            .accessibilityHidden(true)
+        VStack(spacing: 24) {
+            iconMedallion
+            titleBlock
+            specChips
+            statusPill
+            actionBar
+        }
+        .padding(.vertical, 40)
+        .padding(.horizontal, 32)
+        .frame(maxWidth: 640)
+        .background(heroBackground)
+        .clipShape(.rect(cornerRadius: 24))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(stateTint.opacity(0.25), lineWidth: 1)
+        )
+        .frame(maxWidth: .infinity)
+    }
 
-            VStack(spacing: 6) {
-                Text(name)
-                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                Text("\(bundle.spec.cpuCount) CPU · \(bundle.spec.memorySizeInGigabytes) GB RAM · \(bundle.spec.diskSizeInGigabytes) GB disk")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+    /// Full-bleed gradient pane behind the hero content. The
+    /// top-left/bottom-right axis gives the card a light source,
+    /// the tint is state-driven (green running, orange suspended,
+    /// neutral gray stopped) so the card's color alone signals
+    /// lifecycle at a glance.
+    private var heroBackground: some View {
+        LinearGradient(
+            colors: [
+                stateTint.opacity(0.28),
+                stateTint.opacity(0.10),
+                .black.opacity(0.05),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
 
-                statusPill
+    /// The user's custom `WorkspaceIconView` sitting over a
+    /// tinted blur halo. Landmarks uses the same "hero image +
+    /// radial glow" shape for landmark badges — it draws the
+    /// eye to the subject while the color ring carries the
+    /// state signal.
+    private var iconMedallion: some View {
+        WorkspaceIconView(
+            spec: bundle.metadata.iconSpec ?? .defaultSpec,
+            size: 140
+        )
+        .shadow(color: stateTint.opacity(0.45), radius: 36, y: 12)
+        .accessibilityHidden(true)
+    }
+
+    private var titleBlock: some View {
+        VStack(spacing: 6) {
+            Text(name)
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .multilineTextAlignment(.center)
+            Text(guestOSLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(stateTint)
+                .textCase(.uppercase)
+                .tracking(1.2)
+        }
+    }
+
+    /// CPU / RAM / Disk spec chips — three glass capsules
+    /// wrapped in a `GlassEffectContainer` so they render as
+    /// one batched material surface and can morph on hover.
+    /// Each chip carries a category-specific SF Symbol so the
+    /// scanning eye reads the numbers + their meaning
+    /// simultaneously.
+    private var specChips: some View {
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 12) {
+                specChip(
+                    systemImage: "cpu",
+                    text: "\(bundle.spec.cpuCount) CPU"
+                )
+                specChip(
+                    systemImage: "memorychip",
+                    text: "\(bundle.spec.memorySizeInGigabytes) GB"
+                )
+                specChip(
+                    systemImage: "internaldrive",
+                    text: "\(bundle.spec.diskSizeInGigabytes) GB"
+                )
             }
+        }
+    }
 
-            // Wrap the action row in a `GlassEffectContainer` so
-            // the prominent + secondary buttons share one glass
-            // pane and morph smoothly when Start/Suspend/Stop
-            // swap in and out. `spacing: 8` is slightly larger
-            // than the `HStack`'s 12 so adjacent buttons blend
-            // at the capsule edges under the pointer.
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 12) {
+    private func specChip(systemImage: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.system(.caption, design: .monospaced).weight(.medium))
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    private var actionBar: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    openWindow(id: "workspace", value: name)
+                } label: {
+                    Label("Open Workspace", systemImage: "macwindow")
+                        .padding(.horizontal, 8)
+                }
+                .glassProminentButton()
+                .controlSize(.large)
+                .keyboardShortcut(.return, modifiers: [])
+
+                let transitioning = appState.transitioningVMs.contains(name)
+                let suspended = !isRunning && appState.isSuspended(name)
+                if isRunning {
                     Button {
-                        openWindow(id: "workspace", value: name)
+                        Task { await appState.suspendVM(name) }
                     } label: {
-                        Label("Open Workspace", systemImage: "macwindow")
-                            .padding(.horizontal, 8)
+                        if transitioning {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Suspend", systemImage: "pause.fill")
+                        }
                     }
-                    .glassProminentButton()
+                    .glassButton()
                     .controlSize(.large)
-                    .keyboardShortcut(.return, modifiers: [])
+                    .disabled(transitioning)
+                    .help("Save VM state and quit. Next start picks up exactly where you left off.")
 
-                    let transitioning = appState.transitioningVMs.contains(name)
-                    let suspended = !isRunning && appState.isSuspended(name)
-                    if isRunning {
+                    Button {
+                        Task { await appState.stopVM(name) }
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .glassButton()
+                    .controlSize(.large)
+                    .disabled(transitioning)
+                } else {
+                    Button {
+                        Task { await appState.startVM(name) }
+                    } label: {
+                        if transitioning {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label(
+                                suspended ? "Resume" : "Start",
+                                systemImage: suspended ? "play.rectangle.fill" : "play.fill"
+                            )
+                        }
+                    }
+                    .glassButton()
+                    .controlSize(.large)
+                    .tint(.green)
+                    .disabled(transitioning)
+                    .help(suspended
+                        ? "Restore from the saved state and continue."
+                        : "Cold-boot the VM.")
+
+                    if bundle.spec.guestOS == .macOS {
                         Button {
-                            Task { await appState.suspendVM(name) }
+                            appState.installGuestAgent(name)
                         } label: {
                             if transitioning {
                                 ProgressView().controlSize(.small)
                             } else {
-                                Label("Suspend", systemImage: "pause.fill")
+                                Label("Install Agent", systemImage: "arrow.down.circle")
                             }
                         }
                         .glassButton()
                         .controlSize(.large)
                         .disabled(transitioning)
-                        .help("Save VM state and quit. Next start picks up exactly where you left off.")
-
-                        Button {
-                            Task { await appState.stopVM(name) }
-                        } label: {
-                            Label("Stop", systemImage: "stop.fill")
-                        }
-                        .glassButton()
-                        .controlSize(.large)
-                        .disabled(transitioning)
-                    } else {
-                        Button {
-                            Task { await appState.startVM(name) }
-                        } label: {
-                            if transitioning {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Label(
-                                    suspended ? "Resume" : "Start",
-                                    systemImage: suspended ? "play.rectangle.fill" : "play.fill"
-                                )
-                            }
-                        }
-                        .glassButton()
-                        .controlSize(.large)
-                        .tint(.green)
-                        .disabled(transitioning)
-                        .help(suspended
-                            ? "Restore from the saved state and continue."
-                            : "Cold-boot the VM.")
-
-                        // Only macOS guests can host the
-                        // Darwin agent. `DiskInjector` also
-                        // requires APFS — Linux guests use
-                        // ext4/btrfs/xfs and wouldn't survive
-                        // the mount step. Linux VMs get the
-                        // Spooktacular Linux agent via the
-                        // separate `LinuxAgent/` SwiftPM
-                        // package inside the guest.
-                        if bundle.spec.guestOS == .macOS {
-                            Button {
-                                appState.installGuestAgent(name)
-                            } label: {
-                                if transitioning {
-                                    ProgressView().controlSize(.small)
-                                } else {
-                                    Label("Install Agent", systemImage: "arrow.down.circle")
-                                }
-                            }
-                            .glassButton()
-                            .controlSize(.large)
-                            .disabled(transitioning)
-                            .help("Disk-inject the guest agent so the live-metrics chart will populate on next start. Idempotent — safe to click multiple times.")
-                        }
+                        .help("Disk-inject the guest agent so the live-metrics chart will populate on next start. Idempotent — safe to click multiple times.")
                     }
                 }
             }
         }
-        .padding(.vertical, 24)
     }
 
     /// Tinted Liquid Glass pill showing the current lifecycle
-    /// state.
-    ///
-    /// Only the leading glyph carries the bright semantic color
-    /// (green dot = running, orange pause-circle = suspended);
-    /// the text stays default foreground so it reads cleanly
-    /// against the tinted glass background. This matches the
-    /// HIG's "color carries meaning once, text stays neutral"
-    /// pattern and avoids the previous "whole pill is neon
-    /// green" look.
+    /// state. Only the leading glyph carries the bright semantic
+    /// color; text stays neutral against the tinted glass
+    /// background, per Apple's HIG "color carries meaning once"
+    /// pattern.
     @ViewBuilder
     private var statusPill: some View {
         if isRunning {
@@ -186,7 +263,6 @@ struct VMDetailView: View {
                     .font(.caption.weight(.semibold))
             }
             .glassStatusPill()
-            .padding(.top, 4)
         } else if appState.isSuspended(name) {
             HStack(spacing: 6) {
                 Image(systemName: "pause.circle.fill")
@@ -196,7 +272,39 @@ struct VMDetailView: View {
                     .font(.caption.weight(.semibold))
             }
             .glassStatusPill()
-            .padding(.top, 4)
+        } else {
+            HStack(spacing: 6) {
+                Image(systemName: "circle")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.secondary)
+                Text("Stopped")
+                    .font(.caption.weight(.semibold))
+            }
+            .glassStatusPill()
+        }
+    }
+
+    // MARK: - Derived state
+
+    /// State-driven tint for the hero card. Green for running
+    /// (matches the macOS system green used in menu-bar indicators
+    /// for live services), orange for suspended (matches the
+    /// pause-state convention), gray for stopped (neutral — no
+    /// alarm, just "not running").
+    private var stateTint: Color {
+        if isRunning { return .green }
+        if appState.isSuspended(name) { return .orange }
+        return Color(white: 0.5)
+    }
+
+    /// Uppercased eyebrow under the title — "macOS VIRTUAL
+    /// MACHINE" or "LINUX VIRTUAL MACHINE". Gives the hero a
+    /// secondary readable label that doesn't compete with the
+    /// VM name for visual weight.
+    private var guestOSLabel: String {
+        switch bundle.spec.guestOS {
+        case .macOS: "macOS Virtual Machine"
+        case .linux: "Linux Virtual Machine"
         }
     }
 
@@ -374,8 +482,21 @@ struct ImageDetailView: View {
         GlassEffectContainer(spacing: 8) {
             HStack(spacing: 12) {
                 Button {
+                    // Route to the correct pre-seed channel
+                    // based on file extension:
+                    //   .iso  → Linux installer path (guestOS
+                    //           becomes .linux in the sheet)
+                    //   else  → macOS IPSW path (guestOS stays
+                    //           .macOS)
+                    // OCI images have no filesystem path; the
+                    // sheet opens without any pre-seed so the
+                    // user can choose.
                     if case .ipsw(let path) = image.source {
-                        appState.pendingCreateIpswPath = path
+                        if path.lowercased().hasSuffix(".iso") {
+                            appState.pendingCreateISOPath = path
+                        } else {
+                            appState.pendingCreateIpswPath = path
+                        }
                     }
                     appState.showCreateSheet = true
                 } label: {

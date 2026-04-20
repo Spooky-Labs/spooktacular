@@ -188,18 +188,24 @@ struct CreateVMSheet: View {
             .padding(.horizontal, 24)
             .padding(.top, 20)
             .padding(.bottom, 12)
-            // Runs once when the sheet appears; if
-            // `AppState.pendingCreateIpswPath` is set (e.g. from
-            // "Create VM from image" in the image detail view),
-            // pre-seed the source + path so the user doesn't
-            // have to re-browse for the same file they just
-            // added. Consumed on read so a later open starts
-            // clean.
+            // Runs once when the sheet appears. Two mutually-
+            // exclusive pre-seed paths set by "Create VM from
+            // image" in the image detail view — one for macOS
+            // IPSWs, one for Linux ISOs — so the sheet lands
+            // on the right guest-OS pane + prefilled path and
+            // the user doesn't have to re-browse for the same
+            // file they just selected. Both are consumed on
+            // read so a subsequent "New VM" open starts clean.
             .onAppear {
-                if let preset = appState.pendingCreateIpswPath {
+                if let ipsw = appState.pendingCreateIpswPath {
+                    guestOS = .macOS
                     ipswSource = .local
-                    localIpswPath = preset
+                    localIpswPath = ipsw
                     appState.pendingCreateIpswPath = nil
+                } else if let iso = appState.pendingCreateISOPath {
+                    guestOS = .linux
+                    installerISOPath = iso
+                    appState.pendingCreateISOPath = nil
                 }
             }
 

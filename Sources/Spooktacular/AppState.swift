@@ -233,6 +233,15 @@ final class AppState {
     /// of defaulting to Apple's latest download.
     var pendingCreateIpswPath: String?
 
+    /// Sibling of ``pendingCreateIpswPath`` for Linux installer
+    /// ISOs. When set, the Create sheet's `.onAppear` switches
+    /// `guestOS` to `.linux` and prefills the installer-ISO
+    /// path. Without this split, "Create VM from image" on an
+    /// ISO-in-the-image-library would route through the macOS
+    /// IPSW path and Apple's `VZMacOSRestoreImage.load(from:)`
+    /// would reject the file as the wrong type.
+    var pendingCreateISOPath: String?
+
     /// Whether the "Add Image" sheet is showing.
     var showAddImage = false
 
