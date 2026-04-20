@@ -245,6 +245,27 @@ final class AppState {
     /// Whether the "Add Image" sheet is showing.
     var showAddImage = false
 
+    /// One `VZVirtualMachineView` per running VM, pre-created
+    /// BEFORE `VZVirtualMachine.start()` so the framebuffer
+    /// pipeline is subscribed at boot time — matches Apple's
+    /// "Running macOS in a Virtual Machine" sample order.
+    ///
+    /// If we instead created the view inside SwiftUI's
+    /// `NSViewRepresentable.makeNSView` (i.e., after the VM
+    /// had already started), the VZ framework would buffer
+    /// the guest's initial frames and a later view-attach
+    /// wouldn't reliably flush them — surfacing as a blank
+    /// workspace window. Keeping the view alive here means
+    /// `VMDisplayView` is a thin wrapper that returns the
+    /// already-attached NSView every time SwiftUI calls
+    /// `makeNSView`, instead of creating a fresh view each
+    /// time the workspace window opens/closes.
+    ///
+    /// Nulled out in `stopVM` / `deleteVM` so the next start
+    /// cycle allocates a fresh view (and a fresh framebuffer
+    /// subscription).
+    var graphicsViews: [String: VZVirtualMachineView] = [:]
+
     // MARK: - Pending creations
     //
     // When the Create sheet kicks off a create, we move the
@@ -421,6 +442,30 @@ final class AppState {
 
         do {
             let vm = try VirtualMachine(bundle: bundle)
+
+            // Pre-create the VZVirtualMachineView and wire it
+            // to the VM BEFORE start(). Apple's VZ framework
+            // subscribes the guest's graphics device to
+            // whatever `view.virtualMachine` points at when
+            // the guest issues its first framebuffer command.
+            // If the view doesn't exist yet at boot, those
+            // early commands get buffered and a later attach
+            // doesn't reliably flush them (blank workspace).
+            //
+            // The view can live detached from any window
+            // until WorkspaceWindow opens — the VZ pipeline
+            // only needs the view-to-VM association, not a
+            // window hierarchy, at subscription time.
+            if let vzVM = vm.vzVM {
+                let view = VZVirtualMachineView()
+                view.virtualMachine = vzVM
+                view.capturesSystemKeys = true
+                view.automaticallyReconfiguresDisplay = true
+                view.setAccessibilityLabel("Virtual machine display for \(name)")
+                view.setAccessibilityRole(.group)
+                graphicsViews[name] = view
+            }
+
             // `startOrResume` transparently restores from a saved-
             // state file when one exists (the "close the laptop"
             // workflow from Suspend), falling back to a cold boot
@@ -595,6 +640,10 @@ final class AppState {
             try await vm.suspend()
             runningVMs.removeValue(forKey: name)
             agentClients.removeValue(forKey: name)
+            // Drop the pre-created VZVirtualMachineView so the
+            // next start cycle allocates a fresh one (and a
+            // fresh framebuffer subscription).
+            graphicsViews.removeValue(forKey: name)
             await stopStreamingServices(for: name)
 
             AccessibilityNotification.Announcement(
@@ -658,6 +707,10 @@ final class AppState {
             try await vm.stop(graceful: false)
             runningVMs.removeValue(forKey: name)
             agentClients.removeValue(forKey: name)
+            // Drop the pre-created VZVirtualMachineView so the
+            // next start cycle allocates a fresh one (and a
+            // fresh framebuffer subscription).
+            graphicsViews.removeValue(forKey: name)
             await stopStreamingServices(for: name)
 
             AccessibilityNotification.Announcement(
@@ -964,6 +1017,10 @@ final class AppState {
                     try await vm.stop(graceful: false)
                     runningVMs.removeValue(forKey: name)
                     agentClients.removeValue(forKey: name)
+            // Drop the pre-created VZVirtualMachineView so the
+            // next start cycle allocates a fresh one (and a
+            // fresh framebuffer subscription).
+            graphicsViews.removeValue(forKey: name)
                 }
 
                 // Delete the bundle directory. If it's already

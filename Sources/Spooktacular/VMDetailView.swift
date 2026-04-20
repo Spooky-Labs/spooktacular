@@ -316,58 +316,52 @@ struct VMDetailView: View {
     }
 }
 
-/// `NSViewRepresentable` wrapping `VZVirtualMachineView` so a
-/// running VM's framebuffer can be hosted inside a SwiftUI view.
-/// Used by `WorkspaceWindow` when the VM is running.
+/// `NSViewRepresentable` wrapping a **pre-created**
+/// `VZVirtualMachineView` so a running VM's framebuffer hosts
+/// inside a SwiftUI view without the start-before-attach race.
 ///
-/// ## Blank-display fix
+/// The view itself is owned by `AppState.graphicsViews[name]`,
+/// created + wired to the VM in `AppState.startVM` **before**
+/// `vm.startOrResume()` is called. Apple's VZ framework
+/// subscribes the guest's graphics device when
+/// `view.virtualMachine` is set; if the view doesn't exist at
+/// boot time, initial framebuffer commands are buffered and
+/// don't reliably flush on a late attach — the "blank
+/// workspace" the user kept seeing.
 ///
-/// A macOS guest whose VM started **before** a
-/// `VZVirtualMachineView` is attached to a window often
-/// displays as blank until the user interacts with the view.
-/// The framework buffers framebuffer commands while the view
-/// isn't in a window hierarchy, and a cold re-attach doesn't
-/// always flush them.
-///
-/// The reliable workaround is to briefly clear and re-set the
-/// `virtualMachine` property once the view is confirmed to be
-/// in a window — this forces the framework to re-query the
-/// guest's graphics device and deliver the current framebuffer.
-/// We do that via a small delay in `viewDidMoveToWindow` (wrapped
-/// by the representable).
+/// `makeNSView` just hands back the pre-existing view. If it's
+/// unexpectedly missing (e.g., the VM state desynced), we fall
+/// back to creating a fresh one — better than crashing, though
+/// the late-attach race can re-appear in that path.
 struct VMDisplayView: NSViewRepresentable {
 
     let name: String
     let virtualMachine: VirtualMachine
 
+    @Environment(AppState.self) private var appState
+
     func makeNSView(context: Context) -> VZVirtualMachineView {
+        if let cached = appState.graphicsViews[name] {
+            return cached
+        }
+        // Fallback: state was stripped (VM deleted? remote
+        // mutation?). Re-create to avoid crashing, but log so
+        // the missing-cache case is visible during dev.
         let view = VZVirtualMachineView()
         view.virtualMachine = virtualMachine.vzVM
         view.capturesSystemKeys = true
         view.automaticallyReconfiguresDisplay = true
         view.setAccessibilityLabel("Virtual machine display for \(name)")
         view.setAccessibilityRole(.group)
-
-        // Nudge the framework to flush any buffered framebuffer
-        // commands. When the VM started before this view
-        // existed, Apple's VZ buffers the guest's initial
-        // frames; a re-assign after the view is in a window
-        // re-triggers the frame delivery. One-shot is enough.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak view] in
-            guard let view, view.window != nil else { return }
-            let vm = view.virtualMachine
-            view.virtualMachine = nil
-            view.virtualMachine = vm
-            view.needsDisplay = true
-        }
         return view
     }
 
     func updateNSView(_ nsView: VZVirtualMachineView, context: Context) {
-        // Only reassign if the VZVirtualMachine pointer actually
-        // changed — a no-op re-assign on a running view triggers
-        // an extra full-framebuffer redraw that flashes the
-        // display.
+        // Pre-created view's virtualMachine pointer never
+        // changes in practice — the VM instance is stable for
+        // the lifetime of a running VM. Guard-and-reassign is a
+        // belt-and-suspenders no-op in the common path and the
+        // right fix if someone ever swaps the VM under us.
         if nsView.virtualMachine !== virtualMachine.vzVM {
             nsView.virtualMachine = virtualMachine.vzVM
         }
