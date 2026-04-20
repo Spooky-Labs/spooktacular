@@ -140,12 +140,19 @@ public struct VMStreamingError: Sendable, Codable, Error, Equatable, LocalizedEr
     public let code: Code
     public let reason: String
 
+    /// Wire-level error codes for the streaming protocol.
+    ///
+    /// Raw values use `snake_case` so the on-wire JSON is
+    /// stable regardless of Swift identifier style changes,
+    /// and so external consumers (UDS subscribers written in
+    /// Go, Python, Node) parse the enum with their idiomatic
+    /// conventions without a naming shim.
     public enum Code: String, Sendable, Codable {
-        case unknownTopic
-        case subscriptionDenied
-        case vmStopped
-        case protocolMismatch
-        case internalError
+        case unknownTopic = "unknown_topic"
+        case subscriptionDenied = "subscription_denied"
+        case vmStopped = "vm_stopped"
+        case protocolMismatch = "protocol_mismatch"
+        case internalError = "internal_error"
     }
 
     public init(code: Code, reason: String) {
@@ -251,12 +258,19 @@ public struct VMHealthSample: Sendable, Codable, Equatable {
 /// Apple's own usage pattern and avoids a gratuitous lock on
 /// the hot path.
 public enum VMStreamingCodec {
+    /// Shared binary-plist encoder used for every outbound
+    /// stream frame. Configured with `.binary` output so the
+    /// wire bytes are compact and byte-stable across runs.
     public static let encoder: PropertyListEncoder = {
         let e = PropertyListEncoder()
         e.outputFormat = .binary
         return e
     }()
 
+    /// Shared binary-plist decoder used for every inbound
+    /// stream frame. `PropertyListDecoder` is thread-safe for
+    /// concurrent reads so the single static instance covers
+    /// all consumers.
     public static let decoder = PropertyListDecoder()
 
     /// Serializes a Codable payload to the binary-plist bytes

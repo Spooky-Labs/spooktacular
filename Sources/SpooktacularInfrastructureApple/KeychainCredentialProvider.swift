@@ -248,4 +248,3 @@ public actor KeychainCredentialProvider: SigV4RequestSigner.CredentialProvider {
         }
     }
 }
-

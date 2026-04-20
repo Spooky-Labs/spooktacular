@@ -118,6 +118,14 @@ public final class BridgeMonitor {
         label: "com.spooktacular.bridge-monitor"
     )
 
+    /// Creates a bridge monitor for the given VM + host
+    /// interface.
+    ///
+    /// - Parameters:
+    ///   - virtualMachine: VM whose bridged attachment should
+    ///     be re-armed when the host link flaps.
+    ///   - interface: BSD interface name (e.g., `en0`) the VM
+    ///     bridges onto.
     public init(
         virtualMachine: VZVirtualMachine,
         interface: String

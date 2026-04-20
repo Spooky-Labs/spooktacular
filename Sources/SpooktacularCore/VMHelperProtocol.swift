@@ -77,5 +77,8 @@ import Foundation
 /// Declared in Core (alongside the protocol) so callers on
 /// both sides of the wire read the same constant.
 public enum VMHelperServiceName {
+    /// Mach service name of the out-of-process VM helper XPC
+    /// bundle. Matches `CFBundleIdentifier` in the helper's
+    /// `Info.plist` and the `XPCService` `ServiceType` key.
     public static let helper = "com.spooktacular.app.VMHelper"
 }

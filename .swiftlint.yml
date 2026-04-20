@@ -135,7 +135,7 @@ custom_rules:
       - string
     message: "Raw shell execution detected. Use ProcessRunner or guest agent exec endpoint."
     severity: error
-    included: "Sources/SpookCore/.*|Sources/SpookApplication/.*|Sources/SpookInfrastructureApple/(Entities|UseCases|Interfaces)/.*"
+    included: "Sources/SpooktacularCore/.*|Sources/SpooktacularApplication/.*|Sources/SpooktacularInfrastructureApple/(Entities|UseCases|Interfaces)/.*"
 
   plaintext_secret:
     name: "Plaintext Secret"
@@ -170,4 +170,4 @@ custom_rules:
     # `http://www.apple.com/DTDs/PropertyList-1.0.dtd` per the
     # Core Foundation plist spec; W3C XML-dsig identifiers are
     # fixed strings in the XMLDSig standard.
-    excluded: "Tests/.*|Sources/spooktacular-agent/LaunchDaemon\\.swift|Sources/SpookApplication/ServicePlist\\.swift|Sources/SpookInfrastructureApple/SAMLAssertionVerifier\\.swift|Sources/SpookInfrastructureApple/XMLCanonicalization\\.swift|Sources/SpookInfrastructureApple/DiskInjector\\.swift|Sources/SpookInfrastructureApple/SharedFolderProvisioner\\.swift"
+    excluded: "Tests/.*|Sources/spooktacular-agent/LaunchDaemon\\.swift|Sources/SpooktacularApplication/ServicePlist\\.swift|Sources/SpooktacularInfrastructureApple/SAMLAssertionVerifier\\.swift|Sources/SpooktacularInfrastructureApple/XMLCanonicalization\\.swift|Sources/SpooktacularInfrastructureApple/DiskInjector\\.swift|Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner\\.swift"

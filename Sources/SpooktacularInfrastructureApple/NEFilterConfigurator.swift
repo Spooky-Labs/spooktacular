@@ -80,6 +80,9 @@ public actor NEFilterConfigurator {
     /// `localizedDescription` of the provider configuration.
     public static let filterLocalizedDescription = "Spooktacular — VM Egress Policy"
 
+    /// Trivial initializer. The configurator is stateless —
+    /// all state lives in the `NEFilterManager` shared
+    /// instance the methods below fetch at call time.
     public init() {}
 
     /// Writes the active policies to the shared

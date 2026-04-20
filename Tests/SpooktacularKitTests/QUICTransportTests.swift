@@ -113,7 +113,7 @@ struct QUICTransportTests {
 ///
 /// No Keychain side effects.  Calling ``cleanup()``
 /// removes the temp directory.
-fileprivate final class TestCertFactory {
+private final class TestCertFactory {
     let identity: SecIdentity
     private let tempDir: URL
 
@@ -247,7 +247,7 @@ fileprivate final class TestCertFactory {
 /// `@unchecked Sendable` is the standard pattern for
 /// moving Security-framework references across
 /// `@Sendable` closure boundaries in tests.
-fileprivate struct SendableIdentityBox: @unchecked Sendable {
+private struct SendableIdentityBox: @unchecked Sendable {
     let identity: SecIdentity
     init(_ identity: SecIdentity) { self.identity = identity }
 }

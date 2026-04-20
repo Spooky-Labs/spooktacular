@@ -45,6 +45,9 @@ public actor VMStreamingClient {
         category: "vm-streaming-client"
     )
 
+    /// Unix-domain-socket path this client dials. Readable so
+    /// diagnostics ("which socket is this client attached to?")
+    /// don't need to reach into private state.
     public let socketURL: URL
 
     private let connection: NWConnection
@@ -100,6 +103,12 @@ public actor VMStreamingClient {
     private var readBuffer = Data()
     private var didStart = false
 
+    /// Creates a client that dials the given UDS path. Does
+    /// not connect until ``start()`` is called.
+    ///
+    /// - Parameter socketURL: File URL to a Unix-domain socket
+    ///   the server has already bound (typically written by
+    ///   ``VMStreamingServer``).
     public init(socketURL: URL) {
         self.socketURL = socketURL
         let endpoint = NWEndpoint.unix(path: socketURL.path)
@@ -223,11 +232,10 @@ public actor VMStreamingClient {
 
     private func receiveChunk() async throws -> Data? {
         try await withCheckedThrowingContinuation { continuation in
-            connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
-                data, _, isComplete, error in
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, error in
                 if let error {
                     continuation.resume(throwing: error)
-                } else if isComplete, (data?.isEmpty ?? true) {
+                } else if isComplete, data?.isEmpty ?? true {
                     continuation.resume(returning: nil)
                 } else {
                     continuation.resume(returning: data)

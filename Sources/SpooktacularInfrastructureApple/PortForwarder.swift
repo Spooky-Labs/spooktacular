@@ -75,6 +75,15 @@ public final class PortForwarder {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.spooktacular.port-forwarder")
 
+    /// Creates a forwarder that splices `hostPort` on the host
+    /// to `guestPort` inside the VM via vsock.
+    ///
+    /// - Parameters:
+    ///   - hostPort: Local TCP port the host listens on.
+    ///   - guestPort: TCP port inside the guest to splice to.
+    ///   - socketDevice: VM's VirtIO socket device for dialing.
+    ///   - hostSigner: Optional P-256 signer for attaching the
+    ///     host-identity signature on the tunnel handshake.
     public init(
         hostPort: UInt16,
         guestPort: UInt16,

@@ -92,7 +92,6 @@ struct HTTPSClientPipelineTests {
         #expect(decoded == value)
     }
 
-
     @Test("Signer uses session-token when present, omits when nil")
     func sessionTokenConditional() async throws {
         let withToken = SigV4Signer.Credentials(

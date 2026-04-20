@@ -91,6 +91,14 @@ public actor EBSNBDServer {
     /// Bound TCP port once the listener is started.
     public private(set) var listenPort: UInt16?
 
+    /// Creates a server backed by an EBS snapshot.
+    ///
+    /// - Parameters:
+    ///   - snapshotID: EBS snapshot identifier (`snap-…`).
+    ///   - volumeSizeBytes: Logical size of the snapshot, used
+    ///     to sanity-check NBD `NBD_OPT_EXPORT_NAME` replies.
+    ///   - ebs: Signed EBS Direct API client the server uses
+    ///     to fault in blocks on demand.
     public init(
         snapshotID: String,
         volumeSizeBytes: UInt64,
@@ -155,7 +163,7 @@ public actor EBSNBDServer {
     // MARK: - Token cache
 
     private func refreshTokenCache() async throws {
-        var nextToken: String? = nil
+        var nextToken: String?
         var cache: [Int: String] = [:]
         repeat {
             let page = try await ebs.listSnapshotBlocks(

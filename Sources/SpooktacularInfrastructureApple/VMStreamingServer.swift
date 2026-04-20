@@ -87,6 +87,14 @@ public actor VMStreamingServer {
     /// itself runs off the queue via detached Tasks.
     private let queue = DispatchQueue(label: "com.spooktacular.vm-streaming-server")
 
+    /// Creates a streaming server for one VM.
+    ///
+    /// - Parameters:
+    ///   - vmName: VM identifier used in log lines and for
+    ///     cross-referencing with the bundle directory.
+    ///   - socketURL: Unix-domain-socket path the listener
+    ///     binds. Typically `~/Library/Application Support/
+    ///     Spooktacular/streaming/<vm>.sock`.
     public init(vmName: String, socketURL: URL) {
         self.vmName = vmName
         self.socketURL = socketURL
@@ -442,11 +450,10 @@ private extension NWConnection {
         maximumLength max: Int
     ) async throws -> Data? {
         try await withCheckedThrowingContinuation { continuation in
-            self.receive(minimumIncompleteLength: min, maximumLength: max) {
-                data, _, isComplete, error in
+            self.receive(minimumIncompleteLength: min, maximumLength: max) { data, _, isComplete, error in
                 if let error {
                     continuation.resume(throwing: error)
-                } else if isComplete, (data?.isEmpty ?? true) {
+                } else if isComplete, data?.isEmpty ?? true {
                     continuation.resume(returning: nil)
                 } else {
                     continuation.resume(returning: data)
