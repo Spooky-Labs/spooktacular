@@ -33,10 +33,23 @@ opt_in_rules:
   - raw_value_for_camel_cased_codable_enum
   - redundant_nil_coalescing
   - unowned_variable_capture
-  - unused_capture_list
+  # `unused_capture_list` was removed from SwiftLint ≥ 0.56;
+  # keeping it in opt_in_rules emits "not a valid rule
+  # identifier" warnings that Danger's `fail_on_errors: true`
+  # flips into errors. Handling of redundant captures is now
+  # folded into `unused_closure_parameter` + default rules.
+  - yoda_condition
+
+# `unused_declaration` and `unused_import` only fire under
+# `swiftlint analyze`, not `swiftlint lint`. SwiftLint emits a
+# "should be listed in 'analyzer_rules'" warning when they sit
+# in opt_in_rules — warning that Danger's strict mode promotes
+# to a build-failing error. Moving them here silences that
+# warning without losing the rule; the `Lint` CI job would need
+# to switch from `lint` to `analyze` to actually enforce them.
+analyzer_rules:
   - unused_declaration
   - unused_import
-  - yoda_condition
   # Owns the "every public symbol has a docstring" quality
   # contract, previously enforced by DocC
   # `--warnings-as-errors`. SwiftLint catches this across every
