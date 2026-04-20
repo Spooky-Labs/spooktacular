@@ -87,7 +87,7 @@ final class WorkspaceStatsModel {
                 for try await event in listener.events() {
                     guard !Task.isCancelled else { return }
                     guard case .stats(let stats) = event else { continue }
-                    await self?.appendFrame(stats: stats)
+                    self?.appendFrame(stats: stats)
                 }
             } catch {
                 // Stream ended (VM stopped, connection dropped,

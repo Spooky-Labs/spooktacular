@@ -224,14 +224,24 @@ public enum P256KeyStore {
     }
 
     /// Non-prompting existence check.
+    ///
+    /// Apple deprecated `kSecUseAuthenticationUIFail` in macOS
+    /// 11.0 with a documented replacement: pass an `LAContext`
+    /// whose `interactionNotAllowed = true` via
+    /// `kSecUseAuthenticationContext`. That path returns
+    /// `errSecInteractionNotAllowed` when an authenticated item
+    /// exists (same signal as the old "Fail" flag) without
+    /// triggering a Touch ID / passcode prompt.
     public static func exists(service: String, label: String) -> Bool {
+        let context = LAContext()
+        context.interactionNotAllowed = true
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: label,
             kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
+            kSecUseAuthenticationContext as String: context
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)

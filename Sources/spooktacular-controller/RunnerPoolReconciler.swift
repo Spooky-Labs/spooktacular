@@ -729,7 +729,7 @@ actor RunnerPoolReconciler {
                         // by createRunner. The node's start handler executes it via
                         // the provisioning mode (SSH, disk-inject, or agent).
                         // Here we verify the VM is healthy after provisioning.
-                        let healthy = try await URLSession.shared.data(
+                        _ = try await URLSession.shared.data(
                             from: endpoint.apiURL.appendingPathComponent("/v1/vms/\(runnerName)/ip")
                         )
                         logger.info("Provisioning health check for '\(runnerName, privacy: .public)': ok")

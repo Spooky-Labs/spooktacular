@@ -364,7 +364,7 @@ private actor NBDSession {
         // NBD_INFO_EXPORT: uint16 type + uint64 size + uint16 flags.
         var exportInfo = Data()
         exportInfo.appendBigEndian(Self.NBD_INFO_EXPORT)
-        exportInfo.appendBigEndian(await server.volumeSizeBytes)
+        exportInfo.appendBigEndian(server.volumeSizeBytes)
         exportInfo.appendBigEndian(Self.NBD_FLAG_HAS_FLAGS | Self.NBD_FLAG_READ_ONLY)
         try await sendOptionReply(option: option, type: Self.NBD_REP_INFO, data: exportInfo)
 
@@ -386,7 +386,7 @@ private actor NBDSession {
     /// flags + 124 bytes zeroed.
     private func sendExportName() async throws {
         var data = Data()
-        data.appendBigEndian(await server.volumeSizeBytes)
+        data.appendBigEndian(server.volumeSizeBytes)
         data.appendBigEndian(Self.NBD_FLAG_HAS_FLAGS | Self.NBD_FLAG_READ_ONLY)
         data.append(Data(count: 124))
         try await send(data)

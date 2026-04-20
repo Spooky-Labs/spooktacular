@@ -86,7 +86,8 @@ public final class AgentEventListener: NSObject {
             // agent dialed in before the UI subscribed), wire
             // it up immediately.
             if let connection {
-                spawnReader(connection: connection, continuation: continuation)
+                let fd = dup(connection.fileDescriptor)
+                spawnReader(fd: fd, continuation: continuation)
             }
         }
     }
@@ -103,15 +104,15 @@ public final class AgentEventListener: NSObject {
 
     // MARK: - Reader
 
-    /// Off-main reader task. `VZVirtioSocketConnection.fileDescriptor`
-    /// is safe to touch from any thread once the connection is
-    /// established — the `@MainActor` requirement applies only
-    /// to the `connect`/`setSocketListener` call sites.
+    /// Off-main reader task. Takes an owned file descriptor
+    /// (the caller already dup'd it from
+    /// `VZVirtioSocketConnection.fileDescriptor` on the delegate
+    /// thread — safe per Apple's docs) and wraps it in a
+    /// FileHandle that closes on dealloc.
     private func spawnReader(
-        connection: VZVirtioSocketConnection,
+        fd: Int32,
         continuation: AsyncThrowingStream<GuestEvent, Error>.Continuation
     ) {
-        let fd = dup(connection.fileDescriptor)
         guard fd >= 0 else {
             continuation.finish(throwing: CocoaError(.fileReadUnknown))
             return
@@ -179,15 +180,38 @@ extension AgentEventListener: VZVirtioSocketListenerDelegate {
         shouldAcceptNewConnection connection: VZVirtioSocketConnection,
         from socketDevice: VZVirtioSocketDevice
     ) -> Bool {
-        // Bounce onto the main actor to update our connection
-        // and wake any waiting consumer.
+        // `VZVirtioSocketConnection` isn't Sendable, so we can't
+        // capture the reference across the main-actor hop without
+        // a data-race warning. `fileDescriptor` is documented as
+        // safe to read from any thread once the connection is
+        // established, so dup it here (on the delegate thread),
+        // then hand only the plain `Int32` across the isolation
+        // boundary. The `Sendable` box around the original
+        // connection lets us keep a reference for an eventual
+        // close() without tripping the checker.
+        let fd = dup(connection.fileDescriptor)
+        let box = UnsafeConnectionBox(connection: connection)
         Task { @MainActor in
             self.connection?.close()
-            self.connection = connection
+            self.connection = box.connection
             if let continuation = self.continuation {
-                self.spawnReader(connection: connection, continuation: continuation)
+                self.spawnReader(fd: fd, continuation: continuation)
+            } else if fd >= 0 {
+                // No subscriber yet — the dup'd fd would leak.
+                // The connection is kept alive by
+                // `self.connection = …`; close the extra fd.
+                close(fd)
             }
         }
         return true
     }
+}
+
+/// Wraps a non-Sendable `VZVirtioSocketConnection` reference
+/// explicitly for the single "hand off across main-actor hop"
+/// use case. The reference is touched only on the main actor
+/// after hop, and only read-only by the delegate thread, so the
+/// `@unchecked Sendable` is an accurate assertion.
+private struct UnsafeConnectionBox: @unchecked Sendable {
+    let connection: VZVirtioSocketConnection
 }

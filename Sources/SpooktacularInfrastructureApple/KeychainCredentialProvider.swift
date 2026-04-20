@@ -153,7 +153,7 @@ public actor KeychainCredentialProvider: SigV4RequestSigner.CredentialProvider {
     /// switch so the next user doesn't inherit creds.
     public func invalidate() {
         memoryCache = nil
-        var query: [CFString: Any] = [
+        let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account,
@@ -231,7 +231,7 @@ public actor KeychainCredentialProvider: SigV4RequestSigner.CredentialProvider {
         // the biometry / accessibility flags take effect on
         // every rotation (SecItemUpdate preserves the
         // original ACL).
-        var deleteQuery: [CFString: Any] = [
+        let deleteQuery: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account,

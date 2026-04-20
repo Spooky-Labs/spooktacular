@@ -173,7 +173,7 @@ public actor VMStreamingClient {
     ) -> AsyncThrowingStream<Payload, any Error> {
         AsyncThrowingStream { continuation in
             let sink = TypedSink<Payload>(continuation: continuation)
-            Task { await self.register(topic: topic, sink: sink) }
+            Task { self.register(topic: topic, sink: sink) }
 
             continuation.onTermination = { [weak self] _ in
                 // `onTermination` can fire on any thread; hop

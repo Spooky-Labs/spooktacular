@@ -604,18 +604,52 @@ final class AppState {
     }
 
     /// Deletes a VM by name, stopping it first if running.
+    ///
+    /// The published `vms` / `runningVMs` / `agentClients` state
+    /// is updated **only after** the corresponding side effect
+    /// succeeds (stop → remove from runningVMs; FS delete →
+    /// remove from vms). Earlier revisions removed from the
+    /// observable dictionaries up-front so the sidebar row
+    /// disappeared immediately, then on FS-delete failure the
+    /// bundle remained on disk with no UI to get it back — the
+    /// "row disappeared but error thrown" UX bug the user
+    /// flagged.
+    ///
+    /// Orphaned-on-disk handling: if the bundle directory is
+    /// already missing when we try to delete it, treat that as
+    /// success (the dict entry is stale — a previous partial
+    /// delete or an out-of-band `rm -rf`) and still remove
+    /// from `vms` so the row clears.
     func deleteVM(_ name: String) {
+        guard let bundle = vms[name] else { return }
+        guard !transitioningVMs.contains(name) else { return }
+
+        transitioningVMs.insert(name)
         Task {
+            defer { transitioningVMs.remove(name) }
             do {
-                if let vm = runningVMs.removeValue(forKey: name) {
-                    agentClients.removeValue(forKey: name)
-                    await stopStreamingServices(for: name)
+                // Stop first — but keep runningVMs/agentClients
+                // populated until stop succeeds. A stop failure
+                // should leave the row AND the running-state
+                // indicator consistent with disk reality.
+                if let vm = runningVMs[name] {
                     Log.vm.info("Stopping running VM '\(name, privacy: .public)' before deletion")
+                    await stopStreamingServices(for: name)
                     try await vm.stop(graceful: false)
+                    runningVMs.removeValue(forKey: name)
+                    agentClients.removeValue(forKey: name)
                 }
-                if let bundle = vms.removeValue(forKey: name) {
-                    try FileManager.default.removeItem(at: bundle.url)
+
+                // Delete the bundle directory. If it's already
+                // missing, fall through — the dict entry is
+                // orphaned.
+                let fm = FileManager.default
+                if fm.fileExists(atPath: bundle.url.path) {
+                    try fm.removeItem(at: bundle.url)
                 }
+                // Only remove from the observable dict once
+                // the filesystem agrees.
+                vms.removeValue(forKey: name)
                 if selectedVM == name {
                     selectedVM = nil
                 }
@@ -624,7 +658,11 @@ final class AppState {
                     "Virtual machine \(name) deleted"
                 ).post()
             } catch {
+                Log.vm.error("Delete failed for '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
                 presentError(error)
+                // Re-sync observable state from disk in case
+                // stop() partially succeeded.
+                loadVMs()
             }
         }
     }

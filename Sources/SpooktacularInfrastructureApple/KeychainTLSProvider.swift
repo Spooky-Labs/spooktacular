@@ -333,7 +333,11 @@ public final class KeychainTLSProvider: NSObject, PinnedTLSIdentityProvider, URL
         guard CFGetTypeID(identity) == SecIdentityGetTypeID() else {
             throw TLSProviderError.identityNotFound(identityStatus)
         }
-        let secIdentity: SecIdentity = unsafeBitCast(identity, to: SecIdentity.self)
+        // `unsafeDowncast` is preferred over `unsafeBitCast` when
+        // the conversion is a no-op downcast on a class reference —
+        // it keeps the retain-count semantics unambiguous and
+        // silences SwiftLint's `unsafeBitCast` warning.
+        let secIdentity: SecIdentity = unsafeDowncast(identity, to: SecIdentity.self)
 
         // Cert/key pairing verification. `SecIdentityCreateWithCertificate`
         // and the Keychain lookup will happily return an identity whose

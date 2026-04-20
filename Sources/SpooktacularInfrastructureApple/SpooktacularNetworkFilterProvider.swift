@@ -123,7 +123,14 @@ open class SpooktacularNetworkFilterProvider: NEFilterDataProvider {
         vmBySourceIP: [:]
     )
 
-    public override func startFilter(completionHandler: @escaping (Error?) -> Void) {
+    /// Apple's async `startFilter()` — the Swift-6 idiomatic
+    /// override avoids capturing the caller's non-Sendable
+    /// completion handler inside a `@Sendable` closure (which
+    /// is what the legacy `completionHandler:` override did, and
+    /// what the compiler correctly flagged as a race risk). The
+    /// async variant is documented at
+    /// https://developer.apple.com/documentation/networkextension/nefilterprovider/startfilter()
+    public override func startFilter() async throws {
         loadConfig()
         // Compile IP/CIDR rules into NEFilterSettings so the
         // kernel can short-circuit matching flows without
@@ -138,13 +145,13 @@ open class SpooktacularNetworkFilterProvider: NEFilterDataProvider {
             \(settings.rules.count) kernel fast-path rule(s)
             """
         )
-        apply(settings) { error in
-            if let error {
-                Self.log.error(
-                    "apply(settings:) failed: \(error.localizedDescription, privacy: .public)"
-                )
-            }
-            completionHandler(error)
+        do {
+            try await apply(settings)
+        } catch {
+            Self.log.error(
+                "apply(settings:) failed: \(error.localizedDescription, privacy: .public)"
+            )
+            throw error
         }
     }
 
