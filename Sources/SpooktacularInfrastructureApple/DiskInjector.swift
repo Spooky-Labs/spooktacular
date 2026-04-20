@@ -250,9 +250,24 @@ public enum DiskInjector {
     /// - Throws: ``DiskInjectorError/mountFailed(reason:)`` if no
     ///   data volume is found or mounting fails.
     static func mountDataVolume(devicePath: String) throws -> String {
-        // List APFS volumes scoped to our device to avoid matching unrelated containers.
+        // Enumerate every APFS container on the system, then
+        // filter to the one whose `DesignatedPhysicalStore`
+        // lives on the disk image we just attached.
+        //
+        // Important: we CANNOT pass `devicePath` (e.g., `/dev/disk25`)
+        // to `diskutil apfs list -plist <device>`. That form expects
+        // an APFS-container device — a synthesized `diskN` backed by
+        // a container — NOT the whole-disk GUID-partition-scheme
+        // node that `hdiutil attach` returns, and not the raw
+        // physical-store partition (`/dev/disk25s2`). Passing either
+        // of those triggers `disk25 is not an APFS Container`, which
+        // surfaces to callers as a cryptic "Could not parse APFS
+        // container list" in the old code path. Listing everything
+        // and filtering locally is the Apple-sanctioned pattern —
+        // it's what `diskutil apfs list` without args does by
+        // design.
         let listOutput = try runProcess("/usr/sbin/diskutil", arguments: [
-            "apfs", "list", "-plist", devicePath,
+            "apfs", "list", "-plist",
         ])
 
         guard let data = listOutput.data(using: .utf8),
@@ -266,15 +281,21 @@ public enum DiskInjector {
             )
         }
 
-        let devicePrefix = devicePath.hasSuffix("/") ? devicePath : devicePath + "/"
+        // `devicePath` looks like `/dev/disk25` (whole-disk
+        // GUID-partition-scheme node). `DesignatedPhysicalStore`
+        // values come back as bare identifiers like `disk25s2`
+        // (partition of the whole disk). Normalize by extracting
+        // the whole-disk identifier ("disk25") so we can match
+        // any of its partitions regardless of `/dev/` prefix.
+        let wholeDiskIdentifier = (devicePath as NSString).lastPathComponent
         for container in containers {
-            guard let designatedPhysicalStore = container["DesignatedPhysicalStore"] as? String,
-                  designatedPhysicalStore == devicePath
-                      || designatedPhysicalStore.hasPrefix(devicePrefix)
-                      || devicePath.hasPrefix(
-                          URL(filePath: designatedPhysicalStore).parentPath + "/"
-                      )
+            guard let designatedPhysicalStore = container["DesignatedPhysicalStore"] as? String
             else { continue }
+            // Accept either the bare form (`disk25s2`) or the
+            // fully-qualified form (`/dev/disk25s2`) as long as
+            // the partition belongs to our whole-disk device.
+            let bareStore = (designatedPhysicalStore as NSString).lastPathComponent
+            guard bareStore.hasPrefix(wholeDiskIdentifier) else { continue }
 
             guard let volumes = container["Volumes"] as? [[String: Any]] else { continue }
 
