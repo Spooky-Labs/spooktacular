@@ -935,26 +935,68 @@ struct CreateVMSheet: View {
     /// window for the GitHub registration token.
     @MainActor
     private func provisionBundle(_ bundle: VirtualMachineBundle) async throws {
-        let scriptURL: URL?
-        let ownsScript: Bool
-        (scriptURL, ownsScript) = try resolveProvisionScript()
+        let (userScriptURL, ownsUserScript) = try resolveProvisionScript()
 
-        guard let script = scriptURL else { return }
+        // ALWAYS try to inject the agent-install bootstrap.
+        // Without it, a fresh macOS guest has no
+        // spooktacular-agent binary and will never push metrics
+        // frames on the host's VZVirtioSocketListener — the
+        // "empty chart forever" bug. The bootstrap auto-
+        // installs the agent as a LaunchDaemon on first boot.
+        //
+        // If the user also picked a template (GitHub runner,
+        // OpenClaw, remote desktop, custom), we concatenate
+        // the template's bash AFTER the agent install so both
+        // run from one LaunchDaemon invocation.
+        let userScriptContent: String?
+        if let userScriptURL {
+            userScriptContent = try? String(
+                contentsOf: userScriptURL,
+                encoding: .utf8
+            )
+        } else {
+            userScriptContent = nil
+        }
 
-        statusMessage = "Injecting first-boot script…"
+        guard let agentBinary = AgentBootstrapTemplate.locateAgentBinary() else {
+            // No bundled agent available (dev env without the
+            // built binary). Fall back to injecting just the
+            // user script if present — preserves the old
+            // behavior so we don't regress existing workflows.
+            if let userScriptURL {
+                statusMessage = "Injecting first-boot script…"
+                progress = 1.0
+                try await Task.detached(priority: .userInitiated) {
+                    try DiskInjector.inject(script: userScriptURL, into: bundle)
+                }.value
+                if ownsUserScript {
+                    try? ScriptFile.cleanup(scriptURL: userScriptURL)
+                }
+            }
+            return
+        }
+
+        statusMessage = "Injecting agent bootstrap…"
         progress = 1.0
+
+        let combinedScript = try AgentBootstrapTemplate.generate(
+            agentBinaryURL: agentBinary,
+            appending: userScriptContent
+        )
 
         // `hdiutil attach/detach` + APFS mount is synchronous and
         // takes ~2-3s. Move it off the main actor so the progress
         // bar keeps animating.
         try await Task.detached(priority: .userInitiated) {
-            try DiskInjector.inject(script: script, into: bundle)
+            try DiskInjector.inject(script: combinedScript, into: bundle)
         }.value
 
-        if ownsScript {
-            // `ScriptFile.cleanup` is best-effort — failures are
-            // logged by the shared path and don't abort the flow.
-            try? ScriptFile.cleanup(scriptURL: script)
+        // Clean up the combined script (always owned — we just
+        // generated it) and the user-supplied script if we
+        // owned that too.
+        try? ScriptFile.cleanup(scriptURL: combinedScript)
+        if let userScriptURL, ownsUserScript {
+            try? ScriptFile.cleanup(scriptURL: userScriptURL)
         }
     }
 

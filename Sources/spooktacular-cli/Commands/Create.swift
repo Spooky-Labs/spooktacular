@@ -461,6 +461,35 @@ extension Spooktacular {
                     provisionScript = URL(filePath: path)
                 }
 
+                // Always install the guest agent on first boot.
+                // Without it the host's VZVirtioSocketListener
+                // sits waiting and the UI's live-metrics chart
+                // stays empty. If there's also a user-supplied
+                // template or `--user-data`, its content is
+                // concatenated after the agent install so both
+                // run from one LaunchDaemon invocation.
+                if let agentBinary = AgentBootstrapTemplate.locateAgentBinary() {
+                    let userContent: String?
+                    if let script = provisionScript {
+                        userContent = try? String(contentsOf: script, encoding: .utf8)
+                    } else {
+                        userContent = nil
+                    }
+                    // Clean up the pre-existing user script
+                    // file (we already read its content into
+                    // `userContent`) before replacing
+                    // `provisionScript` with the combined
+                    // agent-bootstrap.
+                    if let script = provisionScript, ownsScript {
+                        try? ScriptFile.cleanup(scriptURL: script)
+                    }
+                    provisionScript = try AgentBootstrapTemplate.generate(
+                        agentBinaryURL: agentBinary,
+                        appending: userContent
+                    )
+                    ownsScript = true
+                }
+
                 if let script = provisionScript {
                     // Cleanup policy: only delete the host-side script
                     // AFTER the VM has actually consumed it (disk
