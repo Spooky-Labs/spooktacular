@@ -287,6 +287,12 @@ struct CryptoHardeningTests {
             let jti = "ticket-flood"
             let exp = Date().addingTimeInterval(600)
             var successes = 0
+            // `for _ in 0..<500 where cache.tryConsume(...)` is
+            // what SwiftLint's `for_where` rule suggests, but
+            // `where` is a pure-filter clause on the iteration —
+            // it can't also be the side-effecting call whose
+            // result we count. Disable inline.
+            // swiftlint:disable:next for_where
             for _ in 0..<500 {
                 if cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 5) {
                     successes += 1

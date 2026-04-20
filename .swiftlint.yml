@@ -151,6 +151,10 @@ custom_rules:
       - string
     message: "Possible plaintext secret. Store in the macOS Keychain and read via SecItemCopyMatching."
     severity: error
+    # Tests legitimately declare `let secret = "..."` fixtures;
+    # the rule exists to catch production code, not to noise-
+    # flag every HMAC roundtrip test. Sources/ still enforces.
+    excluded: "Tests/.*"
 
   force_http:
     name: "Force HTTP"

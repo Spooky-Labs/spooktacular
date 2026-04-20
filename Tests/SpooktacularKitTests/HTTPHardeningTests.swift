@@ -136,8 +136,8 @@ struct HTTPHardeningTests {
         let serialized = String(data: rewritten.serialize(), encoding: .utf8) ?? ""
         #expect(serialized.contains("X-Request-ID: new-id"))
         struct Env: Decodable {
-            struct E: Decodable { let requestId: String }
-            let error: E?
+            struct Entry: Decodable { let requestId: String }
+            let error: Entry?
         }
         let body = try JSONDecoder().decode(Env.self, from: rewritten.body)
         #expect(body.error?.requestId == "new-id",
