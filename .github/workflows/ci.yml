@@ -44,7 +44,18 @@ jobs:
     name: Lint (SwiftLint + metadata)
     runs-on: macos-26
     steps:
+      # `fetch-depth: 0` pulls the full history — Danger computes
+      # a diff between `danger_base` (main) and `danger_head` (the
+      # PR tip) via `git merge-base`, which silently fails on the
+      # default depth-1 shallow clone with
+      #   "Cannot find a merge base between danger_base and
+      #    danger_head. If you are using shallow clone/fetch,
+      #    try increasing the --depth"
+      # and returns exit 1, which Danger's --fail-on-errors flips
+      # into a build failure.
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
 
       - name: Install SwiftLint
         run: |
