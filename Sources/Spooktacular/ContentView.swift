@@ -48,7 +48,20 @@ struct ContentView: View {
                 appState.errorSuggestedAction = nil
             }
         } message: {
-            if let message = appState.errorMessage { Text(message) }
+            if let message = appState.errorMessage {
+                if let suggestion = appState.errorSuggestedAction {
+                    Text("\(message)\n\n\(suggestion)")
+                } else {
+                    Text(message)
+                }
+            }
+        }
+        .alert("Done", isPresented: $state.infoPresented) {
+            Button("OK", role: .cancel) {
+                appState.infoMessage = nil
+            }
+        } message: {
+            if let message = appState.infoMessage { Text(message) }
         }
         .task {
             guard !didLoad else { return }

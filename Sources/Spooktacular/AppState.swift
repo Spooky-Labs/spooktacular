@@ -221,6 +221,15 @@ final class AppState {
     /// Whether the error alert is presented.
     var errorPresented: Bool = false
 
+    /// Success / informational message shown after operations
+    /// like "Install Agent" that would otherwise complete
+    /// silently. Separate from `errorMessage` so success and
+    /// failure get visually distinct dialogs.
+    var infoMessage: String?
+
+    /// Whether the info banner is presented.
+    var infoPresented: Bool = false
+
     // MARK: - Sheet Presentation
 
     /// Whether the "Create VM" sheet is showing.
@@ -1079,8 +1088,9 @@ final class AppState {
     /// tolerate re-registration.
     ///
     /// Requires the VM to be stopped. `DiskInjector` uses
-    /// `hdiutil` which can't mount a disk image that
-    /// `VZVirtualMachine` currently has open.
+    /// `diskutil image attach` which can't mount a disk image
+    /// that `VZVirtualMachine` (or its XPC service) currently
+    /// has open.
     func installGuestAgent(_ name: String) {
         guard let bundle = vms[name] else { return }
         guard runningVMs[name] == nil else {
@@ -1092,6 +1102,19 @@ final class AppState {
             presentError(AgentInstallError.bundledAgentMissing)
             return
         }
+
+        // Defensive: even after a UI-level stop, Apple's VZ XPC
+        // service can linger with the guest disk.img still
+        // held open for a few seconds. `diskutil image attach`
+        // then fails with "Resource temporarily unavailable".
+        // `lsof` confirms who holds the fd; this surfaces a
+        // clear "try again in a moment" rather than a raw
+        // POSIX error.
+        if isDiskInUse(bundle: bundle) {
+            presentError(AgentInstallError.diskInUse(name))
+            return
+        }
+
         transitioningVMs.insert(name)
         Task {
             defer { transitioningVMs.remove(name) }
@@ -1104,6 +1127,15 @@ final class AppState {
                     try DiskInjector.inject(script: script, into: bundle)
                 }.value
                 try? ScriptFile.cleanup(scriptURL: script)
+
+                // Visible success banner — the prior version
+                // only posted an accessibility announcement,
+                // which is invisible to sighted users. Without
+                // visible feedback, a silent success looks
+                // identical to a silent failure.
+                infoMessage = "Guest agent installed in '\(name)'. Start the VM to begin reporting metrics."
+                infoPresented = true
+
                 AccessibilityNotification.Announcement(
                     "Guest agent installed in \(name)"
                 ).post()
@@ -1113,9 +1145,42 @@ final class AppState {
         }
     }
 
+    /// Returns `true` if anything (usually a lingering VZ XPC
+    /// service after a recent Stop) currently has the bundle's
+    /// `disk.img` open. Checked via `lsof` so we don't rely on
+    /// our own `runningVMs` dict being authoritative — the VZ
+    /// process lifecycle can outlive the dict.
+    private func isDiskInUse(bundle: VirtualMachineBundle) -> Bool {
+        let diskPath = bundle.url
+            .appendingPathComponent(VirtualMachineBundle.diskImageFileName)
+            .path
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        process.arguments = [diskPath]
+        let outPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            // lsof exits non-zero with empty output when the
+            // file is not open; non-empty output means at
+            // least one process holds a handle.
+            return !data.isEmpty &&
+                (String(data: data, encoding: .utf8) ?? "").split(separator: "\n").count > 1
+        } catch {
+            // lsof unavailable — skip the pre-check and let
+            // `DiskInjector` surface the raw error if the
+            // attach fails.
+            return false
+        }
+    }
+
     enum AgentInstallError: LocalizedError {
         case vmRunning(String)
         case bundledAgentMissing
+        case diskInUse(String)
 
         var errorDescription: String? {
             switch self {
@@ -1123,6 +1188,8 @@ final class AppState {
                 "Stop '\(name)' before installing the guest agent — disk injection requires the VM to be shut down."
             case .bundledAgentMissing:
                 "Bundled spooktacular-agent binary not found alongside Spooktacular.app."
+            case .diskInUse(let name):
+                "'\(name)''s disk image is still in use by Apple's Virtualization XPC service, which lingers briefly after Stop."
             }
         }
 
@@ -1132,6 +1199,8 @@ final class AppState {
                 "Click Stop, then retry Install Guest Agent."
             case .bundledAgentMissing:
                 "Rebuild the app with `./build-app.sh` — the script now copies the agent binary into Contents/MacOS/."
+            case .diskInUse:
+                "Wait 5-10 seconds for the XPC service to release the disk, then retry. If it persists, Force Quit 'com.apple.Virtualization.VirtualMachine' in Activity Monitor."
             }
         }
     }
