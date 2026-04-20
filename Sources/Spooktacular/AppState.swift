@@ -366,6 +366,18 @@ final class AppState {
                 agentClients[name] = GuestAgentClient(socketDevice: socketDevice)
             }
 
+            // Instantiate the Apple-native event listener
+            // (`VZVirtioSocketListener` on port 9469) **eagerly**
+            // at VM start — not lazily on first detail-view open.
+            // The guest agent dials in as soon as its systemd /
+            // launchd unit runs, often long before the user
+            // navigates to the VM's detail view. If the listener
+            // isn't registered yet, the guest gets connection-
+            // refused and has to wait for its reconnect cycle,
+            // delaying the first stats frame by 2–4 seconds.
+            // Eager creation closes that race.
+            _ = vm.agentEventListener()
+
             // Start the streaming host-API server and kick off
             // the domain publishers that feed it. Failures here
             // are non-fatal — the VM itself still boots cleanly

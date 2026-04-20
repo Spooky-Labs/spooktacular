@@ -111,13 +111,20 @@ extension View {
         modifier(GlassProminentButtonModifier())
     }
 
-    /// A tinted Liquid Glass capsule for status pills —
-    /// "Running", "Suspended", "Stopped". Tint carries the
-    /// semantic: `.green` = running, `.orange` = suspended, etc.
-    func glassStatusPill(tint: Color) -> some View {
+    /// A Liquid Glass capsule for status pills — "Running",
+    /// "Suspended", "Stopped".
+    ///
+    /// Uses `.regular` glass (no tint) so the pill reads as a
+    /// neutral chrome affordance. Semantic color belongs on the
+    /// leading icon inside the pill, not on the pill itself —
+    /// full-strength `Glass.tint(.green)` reads as an alarming
+    /// neon wash at common font sizes and obliterates the text.
+    /// The HIG's guidance: color carries meaning once (the dot),
+    /// not twice (the whole background).
+    func glassStatusPill() -> some View {
         padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .glassEffect(.regular.tint(tint).interactive(), in: .capsule)
+            .glassEffect(.regular, in: .capsule)
     }
 
     /// Applies a Liquid Glass card background.

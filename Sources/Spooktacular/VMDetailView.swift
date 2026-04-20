@@ -141,23 +141,38 @@ struct VMDetailView: View {
     }
 
     /// Tinted Liquid Glass pill showing the current lifecycle
-    /// state. The tint carries the semantic — green for running,
-    /// orange for suspended, none (hidden) for stopped — so the
-    /// user's eye reads state at a glance without parsing text.
+    /// state.
+    ///
+    /// Only the leading glyph carries the bright semantic color
+    /// (green dot = running, orange pause-circle = suspended);
+    /// the text stays default foreground so it reads cleanly
+    /// against the tinted glass background. This matches the
+    /// HIG's "color carries meaning once, text stays neutral"
+    /// pattern and avoids the previous "whole pill is neon
+    /// green" look.
     @ViewBuilder
     private var statusPill: some View {
         if isRunning {
-            Label("Running", systemImage: "circle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.green)
-                .glassStatusPill(tint: .green)
-                .padding(.top, 4)
+            HStack(spacing: 6) {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.green)
+                    .symbolEffect(.pulse, options: .repeating)
+                Text("Running")
+                    .font(.caption.weight(.semibold))
+            }
+            .glassStatusPill()
+            .padding(.top, 4)
         } else if appState.isSuspended(name) {
-            Label("Suspended", systemImage: "pause.circle.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.orange)
-                .glassStatusPill(tint: .orange)
-                .padding(.top, 4)
+            HStack(spacing: 6) {
+                Image(systemName: "pause.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                Text("Suspended")
+                    .font(.caption.weight(.semibold))
+            }
+            .glassStatusPill()
+            .padding(.top, 4)
         }
     }
 
