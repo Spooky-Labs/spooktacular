@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import Virtualization
 import SpooktacularCore
+import os
 
 /// Apple-native host-side receiver for the guest → host event
 /// channel.
@@ -8,56 +9,50 @@ import SpooktacularCore
 /// Wraps `VZVirtioSocketListener` + `VZVirtioSocketListenerDelegate`
 /// — Apple's documented pattern for accepting guest-initiated
 /// vsock connections. When the guest agent boots (macOS or Linux
-/// alike), it dials `VMADDR_CID_HOST` on port ``listenerPort``;
-/// this class accepts the connection, reads length-prefixed
-/// `GuestEvent` frames via ``AgentFrameCodec``, and republishes
-/// them as an `AsyncThrowingStream<GuestEvent, Error>`.
+/// alike), it dials `VMADDR_CID_HOST` on port ``listenerPort``.
+/// This class:
 ///
-/// ## Why `VZVirtioSocketListener` instead of `connect(toPort:)`
+///   1. Accepts the inbound connection via the delegate.
+///   2. Runs a long-lived reader task that decodes
+///      length-prefixed `GuestEvent` frames via
+///      ``AgentFrameCodec``.
+///   3. Broadcasts each decoded event to every current
+///      subscriber (multiple consumers supported — the GUI
+///      chart AND the VMStreamingServer republisher both read
+///      from the same stream without yanking events from each
+///      other).
+///   4. On disconnect, waits for the next reconnect — the
+///      listener stays registered.
 ///
-/// Apple's `VZVirtioSocketDevice.connect(toPort:)` documents
-/// that it "does nothing" when the guest isn't listening on the
-/// specified port — the host-initiated path silently no-ops in
-/// the boot-race window. `VZVirtioSocketListener` inverts this:
-/// the guest declares readiness by dialing in, and the host is
-/// guaranteed to learn about it via the delegate. That matches
-/// "the guest pushes metrics as soon as it can" without any
-/// retry / probe loop on the host.
+/// ## Why a persistent reader, not per-subscriber
 ///
-/// Apple's own docs say:
-/// > "An object that listens for port-based connection requests
-/// > from the guest operating system." — [VZVirtioSocketListener](
-/// > https://developer.apple.com/documentation/virtualization/vzvirtiosocketlistener)
+/// Earlier revisions only spawned a reader when a subscriber
+/// registered. That meant:
 ///
-/// ## Lifecycle
+/// - A guest that dialed in before the UI opened its stats
+///   view got its connection accepted, then its fd closed
+///   because there was no subscriber yet. Frames were lost,
+///   and the connection stayed half-dead until reconnect.
+/// - Two subscribers couldn't coexist — `events()` replaced
+///   the single internal continuation.
 ///
-/// `VirtualMachine.start()` installs the listener after the VM
-/// enters `.running`; `VirtualMachine.stop()` removes it via
-/// `removeSocketListener(forPort:)` before teardown. Between
-/// those bookends the same listener accepts any number of
-/// reconnects from the guest — for example, after the systemd
-/// unit restarts the agent on a crash.
+/// The multi-consumer bus fixes both.
 @MainActor
 public final class AgentEventListener: NSObject {
 
-    /// Vsock port the agent dials to push events. Distinct from
-    /// ports 9470/9471/9472 that carry host-initiated RPC so
-    /// there's no ambiguity between the two channel models.
+    /// Vsock port the agent dials to push events.
     public static let listenerPort: UInt32 = 9469
 
-    /// Latest inbound connection from the guest, replaced on
-    /// reconnect. Kept weak-adjacent — the class itself holds
-    /// the strong reference via the Apple-provided
-    /// `VZVirtioSocketConnection` object.
-    private var connection: VZVirtioSocketConnection?
-
-    /// Continuation for the currently subscribed consumer.
-    /// Only one consumer at a time (the workspace stats model);
-    /// resubscribing cancels the previous stream cleanly.
-    private var continuation: AsyncThrowingStream<GuestEvent, Error>.Continuation?
+    private static let log = Logger(
+        subsystem: "com.spooktacular.infra",
+        category: "agent-event-listener"
+    )
 
     private let socketDevice: VZVirtioSocketDevice
     private let listener: VZVirtioSocketListener
+    private var activeConnection: VZVirtioSocketConnection?
+    private var readerTask: Task<Void, Never>?
+    private var subscribers: [UUID: AsyncThrowingStream<GuestEvent, Error>.Continuation] = [:]
 
     public init(socketDevice: VZVirtioSocketDevice) {
         self.socketDevice = socketDevice
@@ -65,29 +60,23 @@ public final class AgentEventListener: NSObject {
         super.init()
         listener.delegate = self
         socketDevice.setSocketListener(listener, forPort: Self.listenerPort)
+        Self.log.notice("Listener registered on vsock:\(Self.listenerPort, privacy: .public)")
     }
 
-    /// Subscribes to decoded events from the current (or next)
-    /// guest connection. If the guest reconnects, the stream
-    /// stays open and resumes yielding events from the new
-    /// connection — the consumer does not see the reconnect.
+    /// Subscribes to the decoded event stream. Multiple
+    /// subscribers share the same underlying connection; each
+    /// gets its own `AsyncThrowingStream` that yields the same
+    /// events in the same order.
     public func events() -> AsyncThrowingStream<GuestEvent, Error> {
         AsyncThrowingStream { continuation in
-            // Replace any prior continuation — the caller took
-            // a fresh subscription.
-            self.continuation?.finish()
-            self.continuation = continuation
+            let id = UUID()
+            self.subscribers[id] = continuation
+            Self.log.notice("Subscriber \(id.uuidString.prefix(8), privacy: .public) added (total=\(self.subscribers.count, privacy: .public))")
             continuation.onTermination = { [weak self] _ in
                 Task { @MainActor in
-                    self?.continuation = nil
+                    self?.subscribers.removeValue(forKey: id)
+                    Self.log.notice("Subscriber \(id.uuidString.prefix(8), privacy: .public) removed")
                 }
-            }
-            // If a connection is already in flight (e.g., the
-            // agent dialed in before the UI subscribed), wire
-            // it up immediately.
-            if let connection {
-                let fd = dup(connection.fileDescriptor)
-                spawnReader(fd: fd, continuation: continuation)
             }
         }
     }
@@ -96,41 +85,45 @@ public final class AgentEventListener: NSObject {
     /// stop path so the delegate stops receiving acceptance
     /// callbacks for a VM that's going away.
     public func stop() {
+        Self.log.notice("Stopping listener on vsock:\(Self.listenerPort, privacy: .public)")
         socketDevice.removeSocketListener(forPort: Self.listenerPort)
-        continuation?.finish()
-        continuation = nil
-        connection = nil
+        readerTask?.cancel()
+        readerTask = nil
+        activeConnection?.close()
+        activeConnection = nil
+        for continuation in subscribers.values {
+            continuation.finish()
+        }
+        subscribers.removeAll()
     }
 
     // MARK: - Reader
 
-    /// Off-main reader task. Takes an owned file descriptor
-    /// (the caller already dup'd it from
-    /// `VZVirtioSocketConnection.fileDescriptor` on the delegate
-    /// thread — safe per Apple's docs) and wraps it in a
-    /// FileHandle that closes on dealloc.
-    private func spawnReader(
-        fd: Int32,
-        continuation: AsyncThrowingStream<GuestEvent, Error>.Continuation
-    ) {
+    /// Installs the accepted connection and spawns the reader
+    /// task. Called from the delegate on the main actor.
+    fileprivate func adopt(connection: VZVirtioSocketConnection) {
+        Self.log.notice("Guest dialed in — adopting connection (fd=\(connection.fileDescriptor, privacy: .public))")
+
+        // If there's already a connection (rare — should happen
+        // only on a rapid-reconnect edge case), tear it down.
+        readerTask?.cancel()
+        activeConnection?.close()
+        activeConnection = connection
+
+        let fd = dup(connection.fileDescriptor)
         guard fd >= 0 else {
-            continuation.finish(throwing: CocoaError(.fileReadUnknown))
+            Self.log.error("dup(fd) failed — connection unusable")
             return
         }
         let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        Task.detached(priority: .userInitiated) {
+        readerTask = Task.detached(priority: .userInitiated) { [weak self] in
             let decoder = JSONDecoder()
+            var frameCount = 0
             do {
                 while !Task.isCancelled {
                     let event = try AgentFrameCodec.decode(
                         GuestEvent.self,
                         from: { want in
-                            // FileHandle.read(upToCount:) returns
-                            // up to `want` bytes — we loop until
-                            // we have exactly `want` or observe
-                            // EOF, because the codec expects the
-                            // caller to honor the length
-                            // contract.
                             var acc = Data()
                             acc.reserveCapacity(want)
                             while acc.count < want {
@@ -144,16 +137,32 @@ public final class AgentEventListener: NSObject {
                         },
                         decoder: decoder
                     )
-                    continuation.yield(event)
+                    frameCount += 1
+                    await self?.broadcast(event, frameCount: frameCount)
                 }
             } catch AgentFrameCodec.DecodeError.unexpectedEOF {
-                // Clean close — agent shut down or VM stopped.
-                // Don't finish the stream with an error; the
-                // listener may still accept a fresh connection.
-                return
+                await MainActor.run {
+                    Self.log.notice("Reader: clean EOF after \(frameCount, privacy: .public) frames — waiting for next connection")
+                }
             } catch {
-                continuation.finish(throwing: error)
+                let message = error.localizedDescription
+                await MainActor.run {
+                    Self.log.error("Reader: error after \(frameCount, privacy: .public) frames — \(message, privacy: .public)")
+                }
             }
+        }
+    }
+
+    /// Fan-out helper. Yields the event to every subscriber and
+    /// logs the broadcast. The first frame log line is the user-
+    /// visible confirmation that the pipeline is working
+    /// end-to-end.
+    private func broadcast(_ event: GuestEvent, frameCount: Int) {
+        if frameCount == 1 {
+            Self.log.notice("First event received from guest — pipeline live, \(self.subscribers.count, privacy: .public) subscriber(s)")
+        }
+        for continuation in subscribers.values {
+            continuation.yield(event)
         }
     }
 }
@@ -161,57 +170,35 @@ public final class AgentEventListener: NSObject {
 extension AgentEventListener: VZVirtioSocketListenerDelegate {
 
     /// Apple's accept callback. Returning `true` hands the
-    /// connection object to our reader task.
+    /// connection to our reader; `false` would drop it.
     ///
-    /// Apple's docs:
-    /// > "If you don't implement this method, the virtual
-    /// > machine refuses all connection requests as if this
-    /// > method returned false." — [VZVirtioSocketListenerDelegate
-    /// > .listener(_:shouldAcceptNewConnection:from:)](
-    /// > https://developer.apple.com/documentation/virtualization/vzvirtiosocketlistenerdelegate/listener(_:shouldacceptnewconnection:from:))
-    ///
-    /// So implementing it is mandatory. We accept
-    /// unconditionally from the guest that owns this device;
-    /// trust is boot-time (we instantiated the socket device
-    /// for one VM, and only that VM's guest can reach us on
-    /// the returned connection).
+    /// Apple requires this method to be implemented — if the
+    /// delegate protocol method is absent, the VM refuses all
+    /// connections. See
+    /// https://developer.apple.com/documentation/virtualization/vzvirtiosocketlistenerdelegate/listener(_:shouldacceptnewconnection:from:)
     public nonisolated func listener(
         _ listener: VZVirtioSocketListener,
         shouldAcceptNewConnection connection: VZVirtioSocketConnection,
         from socketDevice: VZVirtioSocketDevice
     ) -> Bool {
-        // `VZVirtioSocketConnection` isn't Sendable, so we can't
-        // capture the reference across the main-actor hop without
-        // a data-race warning. `fileDescriptor` is documented as
-        // safe to read from any thread once the connection is
-        // established, so dup it here (on the delegate thread),
-        // then hand only the plain `Int32` across the isolation
-        // boundary. The `Sendable` box around the original
-        // connection lets us keep a reference for an eventual
-        // close() without tripping the checker.
-        let fd = dup(connection.fileDescriptor)
+        // `VZVirtioSocketConnection` isn't Sendable. Ferry the
+        // reference through an explicit `@unchecked Sendable`
+        // box; the receiving main-actor hop touches it only
+        // with actor-ensured exclusivity.
         let box = UnsafeConnectionBox(connection: connection)
         Task { @MainActor in
-            self.connection?.close()
-            self.connection = box.connection
-            if let continuation = self.continuation {
-                self.spawnReader(fd: fd, continuation: continuation)
-            } else if fd >= 0 {
-                // No subscriber yet — the dup'd fd would leak.
-                // The connection is kept alive by
-                // `self.connection = …`; close the extra fd.
-                close(fd)
-            }
+            self.adopt(connection: box.connection)
         }
         return true
     }
 }
 
-/// Wraps a non-Sendable `VZVirtioSocketConnection` reference
-/// explicitly for the single "hand off across main-actor hop"
-/// use case. The reference is touched only on the main actor
-/// after hop, and only read-only by the delegate thread, so the
-/// `@unchecked Sendable` is an accurate assertion.
+/// `VZVirtioSocketConnection` is not `Sendable` (Obj-C class
+/// bridged without `@Sendable` or `@MainActor` isolation). The
+/// box lets us hand it across the main-actor hop for the
+/// `adopt(connection:)` call — we only touch it on the main
+/// actor after the hop, so the `@unchecked` assertion is
+/// accurate.
 private struct UnsafeConnectionBox: @unchecked Sendable {
     let connection: VZVirtioSocketConnection
 }
