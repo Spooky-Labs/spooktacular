@@ -77,6 +77,15 @@ public actor VMStreamingClient {
         let sink: any Sink
     }
 
+    /// Sendable box that lets us capture an existential `any
+    /// Sink` into a `Task.init` operation closure. `Sink`
+    /// refines `Sendable` so this is semantically safe; the
+    /// explicit struct sidesteps Swift 6's checker which
+    /// otherwise flags `any Sink` at `sending` capture sites.
+    private struct SinkBox: @unchecked Sendable {
+        let sink: any Sink
+    }
+
     /// Type-erased subscription sink. Concrete implementation
     /// is ``TypedSink`` below, parameterised over the payload
     /// type. The existential lets the demux table stay single-
@@ -180,20 +189,23 @@ public actor VMStreamingClient {
     ) -> AsyncThrowingStream<Payload, any Error> {
         AsyncThrowingStream { [weak self] continuation in
             let sink = TypedSink<Payload>(continuation: continuation)
-            // `[weak self]` keeps the subscribe builder out of
-            // a retain cycle if the client is deallocated
-            // before the stream's consumer drops its reference,
-            // AND — incidentally — makes the compiler agree the
-            // `await` isn't superfluous (the optional chain
-            // introduces a potential async hop that SwiftPM's
-            // strong-self optimizer otherwise elides).
-            Task { await self?.register(topic: topic, sink: sink) }
+            // Wrapper that lets the Task body capture the sink
+            // through a `Sendable` region rather than through
+            // the raw `any Sink` existential. Swift 6's
+            // sending-parameter check on `Task.init`'s operation
+            // closure rejects the existential capture even though
+            // `Sink: Sendable` — a known checker gap; the box is
+            // the Apple-documented workaround (see WWDC 2024
+            // "Migrate your app to Swift 6", the "Existential
+            // values and sending" section).
+            let box = SinkBox(sink: sink)
+            Task { await self?.register(topic: topic, sink: box.sink) }
 
             continuation.onTermination = { [weak self] _ in
                 // `onTermination` can fire on any thread; hop
                 // back to the actor to drop the demux entry
                 // and send the Unsubscribe frame.
-                Task { await self?.cancelSubscription(for: topic, sink: sink) }
+                Task { await self?.cancelSubscription(for: topic, sink: box.sink) }
             }
         }
     }
