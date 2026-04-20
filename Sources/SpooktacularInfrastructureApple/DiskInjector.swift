@@ -120,6 +120,17 @@ public enum DiskInjector {
             atPath: scriptDirectory,
             withIntermediateDirectories: true
         )
+        // Idempotent overwrite: `FileManager.copyItem` refuses
+        // to overwrite an existing file, so a second Install
+        // Agent click (or a retry after a transient failure)
+        // would fail with
+        //   "couldn't be copied … item with the same name
+        //    already exists"
+        // Nothing about re-injecting the bootstrap is unsafe —
+        // `--install-daemon` and `launchctl bootstrap` are both
+        // idempotent on the guest side — so we remove-then-copy
+        // instead of bailing.
+        try? FileManager.default.removeItem(atPath: scriptDestination)
         try FileManager.default.copyItem(atPath: scriptURL.path, toPath: scriptDestination)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755],
@@ -132,6 +143,10 @@ public enum DiskInjector {
             atPath: plistDirectory,
             withIntermediateDirectories: true
         )
+        // `String.write(toFile:atomically:)` DOES overwrite an
+        // existing file at the destination, so this path is
+        // already idempotent — but keeping the comment here so
+        // the two write paths read the same way at first glance.
         try generateLaunchDaemonPlist().write(toFile: plistPath, atomically: true, encoding: .utf8)
 
         Log.provision.notice("Injected user-data script and LaunchDaemon into guest disk")

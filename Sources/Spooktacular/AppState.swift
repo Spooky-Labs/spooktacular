@@ -230,6 +230,32 @@ final class AppState {
     /// Whether the info banner is presented.
     var infoPresented: Bool = false
 
+    /// Set of VM names whose guest agent has been successfully
+    /// installed at least once. Persisted across app launches
+    /// via `UserDefaults` so the UI can reflect agent status
+    /// without re-mounting the guest disk to probe for the
+    /// LaunchDaemon plist.
+    ///
+    /// Populated on a successful `installGuestAgent` and on any
+    /// agent connection observed by `AgentEventListener` —
+    /// which means running-with-metrics VMs self-register even
+    /// if the original install was via the CLI.
+    ///
+    /// Not authoritative (the plist could be manually removed
+    /// from inside the guest), but good enough for a "Agent
+    /// Installed ✓" button label that replaces the affordance
+    /// once the op is known to have succeeded.
+    var agentsInstalled: Set<String> = Set(
+        UserDefaults.standard.stringArray(forKey: "spook.agentsInstalled") ?? []
+    ) {
+        didSet {
+            UserDefaults.standard.set(
+                Array(agentsInstalled),
+                forKey: "spook.agentsInstalled"
+            )
+        }
+    }
+
     // MARK: - Sheet Presentation
 
     /// Whether the "Create VM" sheet is showing.
@@ -556,10 +582,23 @@ final class AppState {
             // subscribers see stats + ports from the same source
             // the GUI chart consumes.
             if let listener = vm.agentEventListener() {
-                tasks.append(Task { [weak server] in
+                tasks.append(Task { [weak server, weak self] in
                     do {
                         for try await event in listener.events() {
                             guard !Task.isCancelled else { return }
+                            // First event of any kind proves
+                            // the agent is installed and
+                            // running — self-register so the
+                            // button reflects "Agent
+                            // Installed ✓" even for VMs that
+                            // got the agent via CLI or another
+                            // out-of-band path.
+                            if let self,
+                               !self.agentsInstalled.contains(name) {
+                                await MainActor.run {
+                                    self.agentsInstalled.insert(name)
+                                }
+                            }
                             switch event {
                             case .stats(let stats):
                                 let snapshot = VMMetricsSnapshot(
@@ -1127,6 +1166,12 @@ final class AppState {
                     try DiskInjector.inject(script: script, into: bundle)
                 }.value
                 try? ScriptFile.cleanup(scriptURL: script)
+
+                // Record the installation so the sidebar +
+                // detail-view buttons can reflect "Agent
+                // Installed ✓" instead of leaving the user
+                // wondering whether to click again.
+                agentsInstalled.insert(name)
 
                 // Visible success banner — the prior version
                 // only posted an accessibility announcement,

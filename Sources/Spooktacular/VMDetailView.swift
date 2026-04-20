@@ -227,11 +227,15 @@ struct VMDetailView: View {
                         : "Cold-boot the VM.")
 
                     if bundle.spec.guestOS == .macOS {
+                        let isAgentInstalled = appState.agentsInstalled.contains(name)
                         Button {
                             appState.installGuestAgent(name)
                         } label: {
                             if transitioning {
                                 ProgressView().controlSize(.small)
+                            } else if isAgentInstalled {
+                                Label("Agent Installed", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
                             } else {
                                 Label("Install Agent", systemImage: "arrow.down.circle")
                             }
@@ -239,7 +243,9 @@ struct VMDetailView: View {
                         .glassButton()
                         .controlSize(.large)
                         .disabled(transitioning)
-                        .help("Disk-inject the guest agent so the live-metrics chart will populate on next start. Idempotent — safe to click multiple times.")
+                        .help(isAgentInstalled
+                            ? "The guest agent is already installed. Click to reinstall — idempotent and safe."
+                            : "Disk-inject the guest agent so the live-metrics chart will populate on next start.")
                     }
                 }
             }
