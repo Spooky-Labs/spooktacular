@@ -65,9 +65,16 @@ public actor VMStreamingClient {
     /// topic ID.
     private var pending: [Pending] = []
 
+    /// Stores the per-subscription state we need to bind a
+    /// server-assigned `subscriptionID` back to a consumer's
+    /// sink. Holding the sink directly (rather than a closure
+    /// that captures it) keeps the demux-install path a plain
+    /// actor-isolated read — the Swift-6 sending-parameter
+    /// check rejects cross-isolation Task hops that capture
+    /// existential protocol values like `any Sink`.
     private struct Pending {
         let topic: VMStreamingProtocol.Topic
-        let install: (UInt32) -> Void
+        let sink: any Sink
     }
 
     /// Type-erased subscription sink. Concrete implementation
@@ -171,18 +178,16 @@ public actor VMStreamingClient {
         to topic: VMStreamingProtocol.Topic,
         as payloadType: Payload.Type
     ) -> AsyncThrowingStream<Payload, any Error> {
-        AsyncThrowingStream { continuation in
+        AsyncThrowingStream { [weak self] continuation in
             let sink = TypedSink<Payload>(continuation: continuation)
-            // `swift build` on macOS 26 says the inner `await`
-            // is superfluous, but Xcode's Swift-6 sending-
-            // parameter enforcement at `Task.init` disagrees:
-            // without it, the Task body's capture of
-            // `self` + non-Sendable-at-the-capture-site closures
-            // trips a data-race diagnostic. The `await` is the
-            // Apple-canonical way to establish that the Task
-            // body hops back onto the actor before touching
-            // self. Keep it.
-            Task { await self.register(topic: topic, sink: sink) }
+            // `[weak self]` keeps the subscribe builder out of
+            // a retain cycle if the client is deallocated
+            // before the stream's consumer drops its reference,
+            // AND — incidentally — makes the compiler agree the
+            // `await` isn't superfluous (the optional chain
+            // introduces a potential async hop that SwiftPM's
+            // strong-self optimizer otherwise elides).
+            Task { await self?.register(topic: topic, sink: sink) }
 
             continuation.onTermination = { [weak self] _ in
                 // `onTermination` can fire on any thread; hop
@@ -194,16 +199,10 @@ public actor VMStreamingClient {
     }
 
     private func register(topic: VMStreamingProtocol.Topic, sink: any Sink) {
-        pending.append(Pending(topic: topic) { [weak self] subscriptionID in
-            Task { await self?.install(sink: sink, subscriptionID: subscriptionID) }
-        })
+        pending.append(Pending(topic: topic, sink: sink))
         let request = VMStreamSubscribeRequest(topic: topic)
         let payload = (try? VMStreamingCodec.encode(request)) ?? Data()
         send(VMStreamingFrame(kind: .subscribe, topic: 0, payload: payload))
-    }
-
-    private func install(sink: any Sink, subscriptionID: UInt32) {
-        sinks[subscriptionID] = sink
     }
 
     /// Finds the subscription ID associated with this sink (we
@@ -275,7 +274,7 @@ public actor VMStreamingClient {
         case .ack:
             if !pending.isEmpty {
                 let nextPending = pending.removeFirst()
-                nextPending.install(frame.topic)
+                sinks[frame.topic] = nextPending.sink
             }
 
         case .event:
