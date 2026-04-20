@@ -326,33 +326,33 @@ struct VMDetailView: View {
 /// `VZVirtualMachineView` so a running VM's framebuffer hosts
 /// inside a SwiftUI view without the start-before-attach race.
 ///
-/// The view itself is owned by `AppState.graphicsViews[name]`,
+/// The view is owned by `AppState.graphicsViews[name]`,
 /// created + wired to the VM in `AppState.startVM` **before**
-/// `vm.startOrResume()` is called. Apple's VZ framework
-/// subscribes the guest's graphics device when
-/// `view.virtualMachine` is set; if the view doesn't exist at
-/// boot time, initial framebuffer commands are buffered and
-/// don't reliably flush on a late attach — the "blank
-/// workspace" the user kept seeing.
+/// `vm.startOrResume()` — matches Apple's canonical order in
+/// the "Running macOS in a Virtual Machine" sample:
+/// create VM → set delegate → `view.virtualMachine = vm` →
+/// configure → start.
 ///
-/// `makeNSView` just hands back the pre-existing view. If it's
-/// unexpectedly missing (e.g., the VM state desynced), we fall
-/// back to creating a fresh one — better than crashing, though
-/// the late-attach race can re-appear in that path.
+/// The cached view is passed in **explicitly** as an init
+/// parameter (not read from `@Environment` inside `makeNSView`)
+/// — `NSViewRepresentable`'s environment hydration has timing
+/// gotchas and can return a fresh AppState instance whose
+/// `graphicsViews` dict is empty, which silently falls back to
+/// the late-attach path we're trying to avoid.
 struct VMDisplayView: NSViewRepresentable {
 
     let name: String
     let virtualMachine: VirtualMachine
-
-    @Environment(AppState.self) private var appState
+    let cachedView: VZVirtualMachineView?
 
     func makeNSView(context: Context) -> VZVirtualMachineView {
-        if let cached = appState.graphicsViews[name] {
+        if let cached = cachedView {
             return cached
         }
-        // Fallback: state was stripped (VM deleted? remote
-        // mutation?). Re-create to avoid crashing, but log so
-        // the missing-cache case is visible during dev.
+        // Fallback — state was stripped (VM deleted / remote
+        // mutation). Re-create to avoid crashing; the
+        // late-attach race can re-appear in this path but it's
+        // better than a nil-dereference.
         let view = VZVirtualMachineView()
         view.virtualMachine = virtualMachine.vzVM
         view.capturesSystemKeys = true
@@ -363,11 +363,6 @@ struct VMDisplayView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: VZVirtualMachineView, context: Context) {
-        // Pre-created view's virtualMachine pointer never
-        // changes in practice — the VM instance is stable for
-        // the lifetime of a running VM. Guard-and-reassign is a
-        // belt-and-suspenders no-op in the common path and the
-        // right fix if someone ever swaps the VM under us.
         if nsView.virtualMachine !== virtualMachine.vzVM {
             nsView.virtualMachine = virtualMachine.vzVM
         }
