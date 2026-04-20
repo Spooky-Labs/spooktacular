@@ -364,7 +364,7 @@ struct VirtualMachineConfigurationTests {
             // Minimal pre-Track-H config.json shape: no guestOS
             // field. `decodeIfPresent` in init(from:) should
             // substitute .macOS.
-            let json = """
+            let json = Data("""
             {
               "cpuCount": 8,
               "memorySizeInBytes": 8589934592,
@@ -377,7 +377,7 @@ struct VirtualMachineConfigurationTests {
               "autoResizeDisplay": true,
               "clipboardSharingEnabled": true
             }
-            """.data(using: .utf8)!
+            """.utf8)
             let spec = try JSONDecoder().decode(VirtualMachineSpecification.self, from: json)
             #expect(spec.guestOS == .macOS)
             #expect(spec.cpuCount == 8)
