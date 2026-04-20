@@ -245,6 +245,63 @@ final class AppState {
     /// Whether the "Add Image" sheet is showing.
     var showAddImage = false
 
+    // MARK: - Pending creations
+    //
+    // When the Create sheet kicks off a create, we move the
+    // entire pipeline into AppState so the sheet can dismiss
+    // immediately without stranding the Task. The sidebar
+    // renders each entry as a live progress row — ProgressView
+    // + status text + cancel/dismiss affordance — so the user
+    // can keep working with other VMs while a long macOS IPSW
+    // download + install runs in the background.
+
+    /// One row per in-flight or errored VM creation, keyed by
+    /// the target VM name. Dropped on success (the VM then
+    /// appears as a normal `VMRow` once `loadVMs()` picks up
+    /// the written bundle). Left populated on error so the
+    /// user can read the failure + explicitly dismiss.
+    var pendingCreations: [String: PendingCreation] = [:]
+
+    /// Live state of a creation. Observable via `@Observable` on
+    /// AppState; SwiftUI redraws the pending sidebar row as
+    /// progress/status fields mutate.
+    struct PendingCreation: Identifiable, Sendable {
+        let id = UUID()
+        let name: String
+        let guestOSLabel: String
+        var progress: Double = 0
+        var statusMessage: String = "Queued…"
+        var errorMessage: String?
+        /// Task handle so the sidebar row's cancel button can
+        /// trigger cooperative cancellation via
+        /// `Task.checkCancellation()` inside the pipeline.
+        var cancellationTask: Task<Void, Never>?
+    }
+
+    /// Updates progress + status for a pending creation. Called
+    /// from the creation pipeline at every stage boundary
+    /// (download, install, disk inject) so the sidebar row
+    /// animates smoothly.
+    func updateCreation(name: String, progress: Double, status: String) {
+        pendingCreations[name]?.progress = progress
+        pendingCreations[name]?.statusMessage = status
+    }
+
+    /// Marks a pending creation as failed. Row stays visible
+    /// with the error text until the user clicks the dismiss
+    /// glyph, so partial-failure diagnosis isn't lost behind a
+    /// transient alert.
+    func failCreation(name: String, message: String) {
+        pendingCreations[name]?.errorMessage = message
+        pendingCreations[name]?.statusMessage = "Failed"
+    }
+
+    /// Removes a failed (or cancelled) pending row from the
+    /// sidebar.
+    func dismissPending(_ name: String) {
+        pendingCreations.removeValue(forKey: name)
+    }
+
     // MARK: - Image Library
 
     /// The local cache of VM images (IPSWs + OCI).
@@ -609,6 +666,266 @@ final class AppState {
             notifications.notifyStopped(name)
         } catch {
             presentError(error)
+        }
+    }
+
+    // MARK: - Creation pipeline
+
+    /// Parameters the Create sheet hands to AppState when the
+    /// user confirms. Packaged so the sheet can dismiss
+    /// immediately while the Task keeps running.
+    struct MacOSCreationRequest: Sendable {
+        let name: String
+        let spec: VirtualMachineSpecification
+        /// `.local` → use `localIpswPath`; `.latest` → download.
+        let ipswSource: IPSWSource
+        let localIpswPath: String
+        /// If non-nil, injected at first boot via the shared
+        /// `AgentBootstrapTemplate` path. Already-resolved URL +
+        /// ownership flag so the sheet's keychain / template
+        /// resolution happens before we dismiss.
+        let userScriptURL: URL?
+        let ownsUserScript: Bool
+
+        enum IPSWSource: Sendable { case latest, local }
+    }
+
+    struct LinuxCreationRequest: Sendable {
+        let name: String
+        let spec: VirtualMachineSpecification
+        let installerISOPath: String
+    }
+
+    /// Kicks off a macOS VM create in the background. Returns
+    /// immediately; progress flows through
+    /// ``pendingCreations``.
+    func beginCreateMacOSVM(_ request: MacOSCreationRequest) {
+        let name = request.name
+        guard pendingCreations[name] == nil, vms[name] == nil else {
+            presentError(SpooktacularError.invalidVMName(reason: "A VM named '\(name)' already exists or is being created."))
+            return
+        }
+        pendingCreations[name] = PendingCreation(
+            name: name,
+            guestOSLabel: "macOS Virtual Machine"
+        )
+        let task = Task { @MainActor in
+            await runMacOSCreate(request: request)
+        }
+        pendingCreations[name]?.cancellationTask = task
+    }
+
+    /// Linux counterpart — shorter pipeline (no IPSW, no
+    /// `VZMacOSInstaller`, just bundle + disk + ISO copy).
+    func beginCreateLinuxVM(_ request: LinuxCreationRequest) {
+        let name = request.name
+        guard pendingCreations[name] == nil, vms[name] == nil else {
+            presentError(SpooktacularError.invalidVMName(reason: "A VM named '\(name)' already exists or is being created."))
+            return
+        }
+        pendingCreations[name] = PendingCreation(
+            name: name,
+            guestOSLabel: "Linux Virtual Machine"
+        )
+        let task = Task { @MainActor in
+            await runLinuxCreate(request: request)
+        }
+        pendingCreations[name]?.cancellationTask = task
+    }
+
+    /// Cancels the in-flight create Task. The pipeline's
+    /// `Task.checkCancellation()` points throw, the `catch
+    /// CancellationError` branch cleans up any partial bundle,
+    /// and the row moves to an errored-dismissable state.
+    func cancelPending(_ name: String) {
+        pendingCreations[name]?.cancellationTask?.cancel()
+    }
+
+    // MARK: - Creation pipeline (private)
+
+    @MainActor
+    private func runMacOSCreate(request: MacOSCreationRequest) async {
+        let name = request.name
+        let bundleURL = (try? SpooktacularPaths.bundleURL(for: name))
+        let manager = RestoreImageManager(cacheDirectory: ipswCacheDirectory)
+
+        do {
+            updateCreation(name: name, progress: 0, status: "Fetching restore image info…")
+            let restoreImage = try await manager.fetchLatestSupported()
+            try Task.checkCancellation()
+            let v = restoreImage.operatingSystemVersion
+            updateCreation(name: name, progress: 0.05, status: "Found macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)")
+
+            let ipswURL: URL
+            switch request.ipswSource {
+            case .local:
+                let expanded = (request.localIpswPath as NSString).expandingTildeInPath
+                let candidate = URL(filePath: expanded)
+                guard FileManager.default.fileExists(atPath: candidate.path) else {
+                    failCreation(name: name, message: "IPSW file not found at '\(expanded)'.")
+                    return
+                }
+                ipswURL = candidate
+                updateCreation(name: name, progress: 0.5, status: "Using local IPSW at \(candidate.lastPathComponent)…")
+            case .latest:
+                updateCreation(name: name, progress: 0.05, status: "Downloading kernel and firmware…")
+                ipswURL = try await manager.downloadIPSW(from: restoreImage) { [weak self] snap in
+                    Task { @MainActor in
+                        let pct = Int(snap.fraction * 100)
+                        let msg = snap.resumed
+                            ? "Resuming IPSW download (\(pct)%)…"
+                            : "Downloading IPSW (\(pct)%)…"
+                        self?.updateCreation(
+                            name: name,
+                            progress: 0.05 + snap.fraction * 0.45,
+                            status: msg
+                        )
+                    }
+                }
+            }
+            try Task.checkCancellation()
+
+            updateCreation(name: name, progress: 0.5, status: "Writing base disk…")
+            let bundle = try await manager.createBundle(
+                named: name, in: vmsDirectory, from: restoreImage, spec: request.spec
+            )
+            try Task.checkCancellation()
+
+            updateCreation(name: name, progress: 0.55, status: "Installing macOS…")
+            try await manager.install(bundle: bundle, from: ipswURL) { [weak self] fraction in
+                Task { @MainActor in
+                    self?.updateCreation(
+                        name: name,
+                        progress: 0.55 + fraction * 0.4,
+                        status: "Installing macOS (\(Int(fraction * 100))%)…"
+                    )
+                }
+            }
+            try Task.checkCancellation()
+
+            updateCreation(name: name, progress: 0.95, status: "Injecting agent bootstrap…")
+            try await provisionBundleForCreate(
+                bundle: bundle,
+                userScriptURL: request.userScriptURL,
+                ownsUserScript: request.ownsUserScript
+            )
+
+            pendingCreations.removeValue(forKey: name)
+            loadVMs()
+            selectedVM = name
+            // Fire-and-forget accessibility announcement; the
+            // VM now shows up as a VMRow in the sidebar via
+            // loadVMs(), which is the real confirmation.
+            AccessibilityNotification.Announcement(
+                "Virtual machine \(name) created"
+            ).post()
+        } catch is CancellationError {
+            if let url = bundleURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+            pendingCreations.removeValue(forKey: name)
+        } catch {
+            if let url = bundleURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            failCreation(name: name, message: msg)
+        }
+    }
+
+    @MainActor
+    private func runLinuxCreate(request: LinuxCreationRequest) async {
+        let name = request.name
+        let bundleURL = (try? SpooktacularPaths.bundleURL(for: name))
+        guard let target = bundleURL else {
+            failCreation(name: name, message: "Could not resolve VM bundle path for '\(name)'.")
+            return
+        }
+
+        let trimmedISO = request.installerISOPath.trimmingCharacters(in: .whitespaces)
+        let expandedISO = (trimmedISO as NSString).expandingTildeInPath
+        let isoURL = URL(filePath: expandedISO)
+        guard FileManager.default.fileExists(atPath: isoURL.path) else {
+            failCreation(name: name, message: "Installer ISO not found at '\(expandedISO)'.")
+            return
+        }
+
+        do {
+            try Task.checkCancellation()
+            updateCreation(name: name, progress: 0.1, status: "Creating bundle…")
+            let bundle = try VirtualMachineBundle.create(at: target, spec: request.spec)
+
+            updateCreation(name: name, progress: 0.2, status: "Allocating \(request.spec.diskSizeInGigabytes) GB disk…")
+            let diskURL = target.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
+            let format = try await DiskImageAllocator.create(
+                at: diskURL,
+                sizeInBytes: request.spec.diskSizeInBytes
+            )
+            updateCreation(name: name, progress: 0.4, status: "Allocated \(format.rawValue.uppercased()) disk…")
+            try Task.checkCancellation()
+
+            updateCreation(name: name, progress: 0.6, status: "Copying installer ISO…")
+            try FileManager.default.copyItem(at: isoURL, to: bundle.installerISOURL)
+            updateCreation(name: name, progress: 0.95, status: "Finalizing…")
+
+            pendingCreations.removeValue(forKey: name)
+            loadVMs()
+            selectedVM = name
+            // Fire-and-forget accessibility announcement; the
+            // VM now shows up as a VMRow in the sidebar via
+            // loadVMs(), which is the real confirmation.
+            AccessibilityNotification.Announcement(
+                "Virtual machine \(name) created"
+            ).post()
+        } catch is CancellationError {
+            try? FileManager.default.removeItem(at: target)
+            pendingCreations.removeValue(forKey: name)
+        } catch {
+            try? FileManager.default.removeItem(at: target)
+            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            failCreation(name: name, message: msg)
+        }
+    }
+
+    /// Builds the combined agent-bootstrap + optional user
+    /// script and disk-injects it. Same shape as the sheet's
+    /// old `provisionBundle(_:)` but wired to publish into
+    /// `pendingCreations` rather than local sheet state.
+    @MainActor
+    private func provisionBundleForCreate(
+        bundle: VirtualMachineBundle,
+        userScriptURL: URL?,
+        ownsUserScript: Bool
+    ) async throws {
+        let userContent: String?
+        if let userScriptURL {
+            userContent = try? String(contentsOf: userScriptURL, encoding: .utf8)
+        } else {
+            userContent = nil
+        }
+        guard let agentBinary = AgentBootstrapTemplate.locateAgentBinary() else {
+            // No bundled binary — fall back to injecting just
+            // the user script if present.
+            if let userScriptURL {
+                try await Task.detached(priority: .userInitiated) {
+                    try DiskInjector.inject(script: userScriptURL, into: bundle)
+                }.value
+                if ownsUserScript {
+                    try? ScriptFile.cleanup(scriptURL: userScriptURL)
+                }
+            }
+            return
+        }
+        let combined = try AgentBootstrapTemplate.generate(
+            agentBinaryURL: agentBinary,
+            appending: userContent
+        )
+        try await Task.detached(priority: .userInitiated) {
+            try DiskInjector.inject(script: combined, into: bundle)
+        }.value
+        try? ScriptFile.cleanup(scriptURL: combined)
+        if let userScriptURL, ownsUserScript {
+            try? ScriptFile.cleanup(scriptURL: userScriptURL)
         }
     }
 

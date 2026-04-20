@@ -319,6 +319,22 @@ struct VMDetailView: View {
 /// `NSViewRepresentable` wrapping `VZVirtualMachineView` so a
 /// running VM's framebuffer can be hosted inside a SwiftUI view.
 /// Used by `WorkspaceWindow` when the VM is running.
+///
+/// ## Blank-display fix
+///
+/// A macOS guest whose VM started **before** a
+/// `VZVirtualMachineView` is attached to a window often
+/// displays as blank until the user interacts with the view.
+/// The framework buffers framebuffer commands while the view
+/// isn't in a window hierarchy, and a cold re-attach doesn't
+/// always flush them.
+///
+/// The reliable workaround is to briefly clear and re-set the
+/// `virtualMachine` property once the view is confirmed to be
+/// in a window — this forces the framework to re-query the
+/// guest's graphics device and deliver the current framebuffer.
+/// We do that via a small delay in `viewDidMoveToWindow` (wrapped
+/// by the representable).
 struct VMDisplayView: NSViewRepresentable {
 
     let name: String
@@ -331,11 +347,30 @@ struct VMDisplayView: NSViewRepresentable {
         view.automaticallyReconfiguresDisplay = true
         view.setAccessibilityLabel("Virtual machine display for \(name)")
         view.setAccessibilityRole(.group)
+
+        // Nudge the framework to flush any buffered framebuffer
+        // commands. When the VM started before this view
+        // existed, Apple's VZ buffers the guest's initial
+        // frames; a re-assign after the view is in a window
+        // re-triggers the frame delivery. One-shot is enough.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak view] in
+            guard let view, view.window != nil else { return }
+            let vm = view.virtualMachine
+            view.virtualMachine = nil
+            view.virtualMachine = vm
+            view.needsDisplay = true
+        }
         return view
     }
 
     func updateNSView(_ nsView: VZVirtualMachineView, context: Context) {
-        nsView.virtualMachine = virtualMachine.vzVM
+        // Only reassign if the VZVirtualMachine pointer actually
+        // changed — a no-op re-assign on a running view triggers
+        // an extra full-framebuffer redraw that flashes the
+        // display.
+        if nsView.virtualMachine !== virtualMachine.vzVM {
+            nsView.virtualMachine = virtualMachine.vzVM
+        }
     }
 }
 
