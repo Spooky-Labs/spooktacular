@@ -689,6 +689,70 @@ final class AppState {
         }
     }
 
+    /// Injects the agent-install bootstrap into a stopped VM's
+    /// disk so the guest starts pushing metrics on its next
+    /// boot. Idempotent — re-running is a no-op because
+    /// `--install-daemon` and `launchctl bootstrap` both
+    /// tolerate re-registration.
+    ///
+    /// Requires the VM to be stopped. `DiskInjector` uses
+    /// `hdiutil` which can't mount a disk image that
+    /// `VZVirtualMachine` currently has open.
+    func installGuestAgent(_ name: String) {
+        guard let bundle = vms[name] else { return }
+        guard runningVMs[name] == nil else {
+            presentError(AgentInstallError.vmRunning(name))
+            return
+        }
+        guard !transitioningVMs.contains(name) else { return }
+        guard let agentBinary = AgentBootstrapTemplate.locateAgentBinary() else {
+            presentError(AgentInstallError.bundledAgentMissing)
+            return
+        }
+        transitioningVMs.insert(name)
+        Task {
+            defer { transitioningVMs.remove(name) }
+            do {
+                let script = try AgentBootstrapTemplate.generate(
+                    agentBinaryURL: agentBinary,
+                    appending: nil
+                )
+                try await Task.detached(priority: .userInitiated) {
+                    try DiskInjector.inject(script: script, into: bundle)
+                }.value
+                try? ScriptFile.cleanup(scriptURL: script)
+                AccessibilityNotification.Announcement(
+                    "Guest agent installed in \(name)"
+                ).post()
+            } catch {
+                presentError(error)
+            }
+        }
+    }
+
+    enum AgentInstallError: LocalizedError {
+        case vmRunning(String)
+        case bundledAgentMissing
+
+        var errorDescription: String? {
+            switch self {
+            case .vmRunning(let name):
+                "Stop '\(name)' before installing the guest agent — disk injection requires the VM to be shut down."
+            case .bundledAgentMissing:
+                "Bundled spooktacular-agent binary not found alongside Spooktacular.app."
+            }
+        }
+
+        var recoverySuggestion: String? {
+            switch self {
+            case .vmRunning:
+                "Click Stop, then retry Install Guest Agent."
+            case .bundledAgentMissing:
+                "Rebuild the app with `./build-app.sh` — the script now copies the agent binary into Contents/MacOS/."
+            }
+        }
+    }
+
     // MARK: - Workspace Window Lifecycle
 
     /// `@AppStorage`-compatible key for persisted open workspace

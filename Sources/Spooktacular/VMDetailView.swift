@@ -133,6 +133,20 @@ struct VMDetailView: View {
                         .help(suspended
                             ? "Restore from the saved state and continue."
                             : "Cold-boot the VM.")
+
+                        Button {
+                            appState.installGuestAgent(name)
+                        } label: {
+                            if transitioning {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Label("Install Agent", systemImage: "arrow.down.circle")
+                            }
+                        }
+                        .glassButton()
+                        .controlSize(.large)
+                        .disabled(transitioning)
+                        .help("Disk-inject the guest agent so the live-metrics chart will populate on next start. Idempotent — safe to click multiple times.")
                     }
                 }
             }
