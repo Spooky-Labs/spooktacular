@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Glass Button Modifier
+// MARK: - Glass Button Modifiers
 
 /// Applies `.buttonStyle(.glass)` — the macOS 26 Liquid Glass
 /// button style introduced with the Tahoe SDK.
@@ -21,6 +21,21 @@ import SwiftUI
 struct GlassButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.buttonStyle(.glass)
+    }
+}
+
+/// Applies `.buttonStyle(.glassProminent)` — the Liquid Glass
+/// equivalent of `.borderedProminent`. Use for the single
+/// primary action on a surface (the "Open Workspace" button on
+/// the VM detail view, "Create Workspace" on empty state).
+///
+/// Per Apple's [HIG / Liquid Glass guidance](https://developer.apple.com/documentation/TechnologyOverviews/adopting-liquid-glass),
+/// prominent glass draws the user's eye exactly once per view;
+/// surrounding secondary actions should stay on `.glass` or an
+/// even lighter style so the hierarchy reads cleanly.
+struct GlassProminentButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content.buttonStyle(.glassProminent)
     }
 }
 
@@ -86,6 +101,23 @@ extension View {
     /// Applies the Liquid Glass button style.
     func glassButton() -> some View {
         modifier(GlassButtonModifier())
+    }
+
+    /// Applies the prominent Liquid Glass button style. Use for
+    /// the single primary action on a surface — the "Open
+    /// Workspace" button on `VMDetailView`, "Create Workspace"
+    /// on the empty state, etc.
+    func glassProminentButton() -> some View {
+        modifier(GlassProminentButtonModifier())
+    }
+
+    /// A tinted Liquid Glass capsule for status pills —
+    /// "Running", "Suspended", "Stopped". Tint carries the
+    /// semantic: `.green` = running, `.orange` = suspended, etc.
+    func glassStatusPill(tint: Color) -> some View {
+        padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .glassEffect(.regular.tint(tint).interactive(), in: .capsule)
     }
 
     /// Applies a Liquid Glass card background.

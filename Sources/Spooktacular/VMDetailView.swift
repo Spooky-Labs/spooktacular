@@ -67,71 +67,98 @@ struct VMDetailView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
 
-                if isRunning {
-                    Label("Running", systemImage: "circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .padding(.top, 4)
-                }
+                statusPill
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    openWindow(id: "workspace", value: name)
-                } label: {
-                    Label("Open Workspace", systemImage: "macwindow")
-                        .padding(.horizontal, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .keyboardShortcut(.return, modifiers: [])
+            // Wrap the action row in a `GlassEffectContainer` so
+            // the prominent + secondary buttons share one glass
+            // pane and morph smoothly when Start/Suspend/Stop
+            // swap in and out. `spacing: 8` is slightly larger
+            // than the `HStack`'s 12 so adjacent buttons blend
+            // at the capsule edges under the pointer.
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 12) {
+                    Button {
+                        openWindow(id: "workspace", value: name)
+                    } label: {
+                        Label("Open Workspace", systemImage: "macwindow")
+                            .padding(.horizontal, 8)
+                    }
+                    .glassProminentButton()
+                    .controlSize(.large)
+                    .keyboardShortcut(.return, modifiers: [])
 
-                let transitioning = appState.transitioningVMs.contains(name)
-                let suspended = !isRunning && appState.isSuspended(name)
-                if isRunning {
-                    Button {
-                        Task { await appState.suspendVM(name) }
-                    } label: {
-                        if transitioning {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Suspend", systemImage: "pause.fill")
+                    let transitioning = appState.transitioningVMs.contains(name)
+                    let suspended = !isRunning && appState.isSuspended(name)
+                    if isRunning {
+                        Button {
+                            Task { await appState.suspendVM(name) }
+                        } label: {
+                            if transitioning {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Label("Suspend", systemImage: "pause.fill")
+                            }
                         }
-                    }
-                    .controlSize(.large)
-                    .disabled(transitioning)
-                    .help("Save VM state and quit. Next start picks up exactly where you left off.")
+                        .glassButton()
+                        .controlSize(.large)
+                        .disabled(transitioning)
+                        .help("Save VM state and quit. Next start picks up exactly where you left off.")
 
-                    Button {
-                        Task { await appState.stopVM(name) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .controlSize(.large)
-                    .disabled(transitioning)
-                } else {
-                    Button {
-                        Task { await appState.startVM(name) }
-                    } label: {
-                        if transitioning {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label(
-                                suspended ? "Resume" : "Start",
-                                systemImage: suspended ? "play.rectangle.fill" : "play.fill"
-                            )
+                        Button {
+                            Task { await appState.stopVM(name) }
+                        } label: {
+                            Label("Stop", systemImage: "stop.fill")
                         }
+                        .glassButton()
+                        .controlSize(.large)
+                        .disabled(transitioning)
+                    } else {
+                        Button {
+                            Task { await appState.startVM(name) }
+                        } label: {
+                            if transitioning {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Label(
+                                    suspended ? "Resume" : "Start",
+                                    systemImage: suspended ? "play.rectangle.fill" : "play.fill"
+                                )
+                            }
+                        }
+                        .glassButton()
+                        .controlSize(.large)
+                        .tint(.green)
+                        .disabled(transitioning)
+                        .help(suspended
+                            ? "Restore from the saved state and continue."
+                            : "Cold-boot the VM.")
                     }
-                    .controlSize(.large)
-                    .tint(.green)
-                    .disabled(transitioning)
-                    .help(suspended
-                        ? "Restore from the saved state and continue."
-                        : "Cold-boot the VM.")
                 }
             }
         }
         .padding(.vertical, 24)
+    }
+
+    /// Tinted Liquid Glass pill showing the current lifecycle
+    /// state. The tint carries the semantic — green for running,
+    /// orange for suspended, none (hidden) for stopped — so the
+    /// user's eye reads state at a glance without parsing text.
+    @ViewBuilder
+    private var statusPill: some View {
+        if isRunning {
+            Label("Running", systemImage: "circle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.green)
+                .glassStatusPill(tint: .green)
+                .padding(.top, 4)
+        } else if appState.isSuspended(name) {
+            Label("Suspended", systemImage: "pause.circle.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+                .glassStatusPill(tint: .orange)
+                .padding(.top, 4)
+        }
     }
 
     // MARK: - Live stats (Swift Charts)
@@ -196,30 +223,34 @@ struct ImageDetailView: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    // Pre-seed the Create sheet's local IPSW
-                    // path so it opens already pointing at this
-                    // image — no re-browse needed. Works only
-                    // for local-IPSW images; OCI refs fall
-                    // through to the default Apple-download path.
-                    if case .ipsw(let path) = image.source {
-                        appState.pendingCreateIpswPath = path
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 12) {
+                    Button {
+                        // Pre-seed the Create sheet's local IPSW
+                        // path so it opens already pointing at
+                        // this image — no re-browse needed. Works
+                        // only for local-IPSW images; OCI refs
+                        // fall through to Apple's default
+                        // download path.
+                        if case .ipsw(let path) = image.source {
+                            appState.pendingCreateIpswPath = path
+                        }
+                        appState.showCreateSheet = true
+                    } label: {
+                        Label("Create VM from image", systemImage: "plus.square.on.square")
+                            .padding(.horizontal, 8)
                     }
-                    appState.showCreateSheet = true
-                } label: {
-                    Label("Create VM from image", systemImage: "plus.square.on.square")
-                        .padding(.horizontal, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                    .glassProminentButton()
+                    .controlSize(.large)
 
-                Button(role: .destructive) {
-                    try? appState.imageLibrary.remove(id: image.id)
-                } label: {
-                    Label("Delete", systemImage: "trash")
+                    Button(role: .destructive) {
+                        try? appState.imageLibrary.remove(id: image.id)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .glassButton()
+                    .controlSize(.large)
                 }
-                .controlSize(.large)
             }
 
             Spacer()

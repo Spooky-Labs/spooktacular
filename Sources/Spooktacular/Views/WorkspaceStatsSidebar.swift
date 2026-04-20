@@ -143,17 +143,26 @@ struct WorkspaceStatsSidebar: View {
     let model: WorkspaceStatsModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("Live metrics", systemImage: "waveform.path.ecg")
-                .font(.headline)
+        // `GlassEffectContainer` batches the outer card + the
+        // four per-chart surfaces into one render pass and lets
+        // them morph smoothly as samples stream in. Apple's
+        // guidance: use a container whenever multiple glass
+        // surfaces cluster within a common ancestor — avoids
+        // the "every-chart-has-its-own-pane" stacked-glass look
+        // and keeps the GPU from rebuilding overlapping blurs.
+        GlassEffectContainer(spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Live metrics", systemImage: "waveform.path.ecg")
+                    .font(.headline)
 
-            cpuChart
-            memoryChart
-            latencyChart
-            portChart
+                cpuChart
+                memoryChart
+                latencyChart
+                portChart
+            }
+            .padding(16)
+            .glassCard(cornerRadius: 16)
         }
-        .padding(16)
-        .glassCard(cornerRadius: 16)
     }
 
     // CPU usage (0-100%) — sourced from `/api/v1/stats` on the

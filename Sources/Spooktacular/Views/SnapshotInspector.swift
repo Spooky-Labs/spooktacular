@@ -66,6 +66,7 @@ struct SnapshotInspector: View {
                 .font(.headline)
             Spacer()
             Button("Done") { dismiss() }
+                .glassProminentButton()
                 .keyboardShortcut(.defaultAction)
         }
         .padding(16)
@@ -196,6 +197,12 @@ struct SnapshotRow: View {
 
             Spacer()
 
+            // Borderless stays correct for row-embedded actions
+            // — Apple's HIG calls out that densely packed list
+            // rows should avoid per-row glass pills (they turn
+            // into stacked panes and cost render time). Glass
+            // lives on the header/footer CTAs where one prominent
+            // action reads clearly.
             Button("Restore", systemImage: "arrow.uturn.backward", action: onRestore)
                 .buttonStyle(.borderless)
                 .disabled(running)
