@@ -242,26 +242,31 @@ struct CreateVMSheet: View {
                 statusBar
             }
 
-            // Button bar
+            // Button bar — Cancel + Create share a glass
+            // container so both buttons blend on hover/press and
+            // the prominent Create reads as the clear next step.
             Divider()
-            HStack {
-                Button("Cancel") { cancelOrDismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .help("Close the sheet and cancel the in-flight download")
-                    .accessibilityIdentifier(AccessibilityID.cancelButton)
-                Spacer()
-                if isCreating {
-                    ProgressView().controlSize(.small)
+            GlassEffectContainer(spacing: 8) {
+                HStack {
+                    Button("Cancel") { cancelOrDismiss() }
+                        .glassButton()
+                        .keyboardShortcut(.cancelAction)
+                        .help("Close the sheet and cancel the in-flight download")
+                        .accessibilityIdentifier(AccessibilityID.cancelButton)
+                    Spacer()
+                    if isCreating {
+                        ProgressView().controlSize(.small)
+                    }
+                    Button("Create") {
+                        let task = Task { await createVM() }
+                        creationTask = task
+                    }
+                    .glassProminentButton()
+                    .disabled(isCreating || !canCreate)
+                    .keyboardShortcut(.defaultAction)
+                    .help("Download the IPSW, install macOS, and register the bundle")
+                    .accessibilityIdentifier(AccessibilityID.createConfirmButton)
                 }
-                Button("Create") {
-                    let task = Task { await createVM() }
-                    creationTask = task
-                }
-                .glassButton()
-                .disabled(isCreating || !canCreate)
-                .keyboardShortcut(.defaultAction)
-                .help("Download the IPSW, install macOS, and register the bundle")
-                .accessibilityIdentifier(AccessibilityID.createConfirmButton)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
