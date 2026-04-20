@@ -232,80 +232,250 @@ struct VMDisplayView: NSViewRepresentable {
 }
 
 /// Detail view for a selected image in the Images section.
-/// Shows the image's name, source (local IPSW / OCI reference),
-/// size, and a context-menu-equivalent set of actions.
+///
+/// Styled as a gradient "hero card" — full-width background
+/// wash, layered glass surfaces for the icon and metadata,
+/// tinted stroke, the whole thing sitting in a rounded-rect
+/// glass pane. Matches the Liquid Glass data-rich UI pattern
+/// Apple showcases in the "Landmarks" sample: one prominent
+/// hero region per detail view, tint color carrying semantic
+/// weight (IPSW = orange, OCI = blue), supplemental
+/// metadata in glass chip capsules below the title.
 struct ImageDetailView: View {
 
     let image: VirtualMachineImage
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
-
-            Image(systemName: "photo.stack")
-                .font(.system(size: 72))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-
-            VStack(spacing: 6) {
-                Text(image.name).font(.largeTitle.weight(.semibold))
-
-                Text(sourceLabel)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-
-                if let bytes = image.sizeInBytes {
-                    Text(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            GlassEffectContainer(spacing: 8) {
-                HStack(spacing: 12) {
-                    Button {
-                        // Pre-seed the Create sheet's local IPSW
-                        // path so it opens already pointing at
-                        // this image — no re-browse needed. Works
-                        // only for local-IPSW images; OCI refs
-                        // fall through to Apple's default
-                        // download path.
-                        if case .ipsw(let path) = image.source {
-                            appState.pendingCreateIpswPath = path
-                        }
-                        appState.showCreateSheet = true
-                    } label: {
-                        Label("Create VM from image", systemImage: "plus.square.on.square")
-                            .padding(.horizontal, 8)
-                    }
-                    .glassProminentButton()
-                    .controlSize(.large)
-
-                    Button(role: .destructive) {
-                        try? appState.imageLibrary.remove(id: image.id)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    .glassButton()
-                    .controlSize(.large)
-                }
-            }
-
+        VStack(spacing: 0) {
+            heroCard
             Spacer()
         }
-        .frame(maxWidth: 560)
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle(image.name)
     }
 
-    private var sourceLabel: String {
+    // MARK: - Hero
+
+    private var heroCard: some View {
+        VStack(spacing: 24) {
+            iconMedallion
+            titleBlock
+            metadataRow
+            actionBar
+        }
+        .padding(.vertical, 40)
+        .padding(.horizontal, 32)
+        .frame(maxWidth: 640)
+        .background(heroBackground)
+        .clipShape(.rect(cornerRadius: 24))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24)
+                .stroke(tintColor.opacity(0.25), lineWidth: 1)
+        )
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Full-bleed gradient pane behind the hero content. Uses
+    /// the source-specific tint so IPSW + OCI images are
+    /// visually distinguishable at a glance.
+    private var heroBackground: some View {
+        LinearGradient(
+            colors: [
+                tintColor.opacity(0.30),
+                tintColor.opacity(0.10),
+                .black.opacity(0.05),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
+    /// Circular glass medallion around the SF Symbol, tinted
+    /// to match the hero. `glassEffect(.regular.tint(...)
+    /// .interactive(), in: .circle)` gives the round capsule
+    /// a subtle pressure/hover response per Apple's Liquid
+    /// Glass interactive-variant guidance.
+    private var iconMedallion: some View {
+        Image(systemName: iconName)
+            .font(.system(size: 56, weight: .regular))
+            .foregroundStyle(.white)
+            .frame(width: 120, height: 120)
+            .glassEffect(
+                .regular.tint(tintColor).interactive(),
+                in: .circle
+            )
+            .shadow(color: tintColor.opacity(0.35), radius: 30, y: 10)
+            .accessibilityHidden(true)
+    }
+
+    private var titleBlock: some View {
+        VStack(spacing: 6) {
+            Text(image.name)
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .multilineTextAlignment(.center)
+            Text(sourceKindLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tintColor)
+                .textCase(.uppercase)
+                .tracking(1.2)
+        }
+    }
+
+    /// Two glass chips: source detail + size. Truncates the
+    /// source detail in the middle so long IPSW hashes don't
+    /// dominate the hero — Apple's `.middle` truncation mode
+    /// preserves both ends (build + extension).
+    private var metadataRow: some View {
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 12) {
+                metadataChip(
+                    systemImage: sourceIcon,
+                    text: sourceDetailLabel,
+                    truncation: .middle
+                )
+                if let bytes = image.sizeInBytes {
+                    metadataChip(
+                        systemImage: "internaldrive",
+                        text: ByteCountFormatter.string(
+                            fromByteCount: Int64(bytes),
+                            countStyle: .file
+                        ),
+                        truncation: .tail
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func metadataChip(
+        systemImage: String,
+        text: String,
+        truncation: Text.TruncationMode
+    ) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(truncation)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: .capsule)
+    }
+
+    private var actionBar: some View {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 12) {
+                Button {
+                    if case .ipsw(let path) = image.source {
+                        appState.pendingCreateIpswPath = path
+                    }
+                    appState.showCreateSheet = true
+                } label: {
+                    Label("Create VM from image", systemImage: "plus.square.on.square")
+                        .padding(.horizontal, 8)
+                }
+                .glassProminentButton()
+                .controlSize(.large)
+
+                Button(role: .destructive) {
+                    try? appState.imageLibrary.remove(id: image.id)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .glassButton()
+                .controlSize(.large)
+            }
+        }
+    }
+
+    // MARK: - Derived (image-kind detection)
+
+    /// Three visual flavors of the image hero: macOS IPSW,
+    /// Linux ISO, or OCI reference. The `VirtualMachineImage`
+    /// enum only distinguishes `.ipsw` vs `.oci` today, so we
+    /// disambiguate Linux ISOs from macOS IPSWs by looking at
+    /// the file extension. Any local file ending in `.iso` is
+    /// treated as Linux — there's no other vendor that ships
+    /// ARM64 OS install media as a plain `.iso` for consumption
+    /// by `VZEFIBootLoader`.
+    private enum HeroKind { case macOS, linux, oci }
+
+    private var kind: HeroKind {
         switch image.source {
         case .ipsw(let path):
-            return "Local IPSW · \((path as NSString).lastPathComponent)"
+            return (path.lowercased().hasSuffix(".iso")) ? .linux : .macOS
+        case .oci:
+            return .oci
+        }
+    }
+
+    /// The large white glyph inside the medallion. `applelogo`
+    /// for macOS IPSWs (unambiguous Apple-provenance cue);
+    /// `opticaldisc.fill` for Linux ISOs (thematic — ISO is
+    /// literally a disc image); `cube.transparent` for OCI
+    /// references (container ecosystem iconography).
+    private var iconName: String {
+        switch kind {
+        case .macOS: "applelogo"
+        case .linux: "opticaldisc.fill"
+        case .oci: "cube.transparent"
+        }
+    }
+
+    /// Small SF Symbol in the source-detail chip.
+    private var sourceIcon: String {
+        switch kind {
+        case .macOS: "doc.zipper"
+        case .linux: "opticaldisc"
+        case .oci: "shippingbox"
+        }
+    }
+
+    /// Uppercased eyebrow label under the title.
+    private var sourceKindLabel: String {
+        switch kind {
+        case .macOS: "Local IPSW"
+        case .linux: "Linux ISO"
+        case .oci: "OCI Image"
+        }
+    }
+
+    private var sourceDetailLabel: String {
+        switch image.source {
+        case .ipsw(let path):
+            (path as NSString).lastPathComponent
         case .oci(let reference):
-            return "OCI · \(reference)"
+            reference
+        }
+    }
+
+    /// Mascot/classic palette — semantic colors rooted in
+    /// each ecosystem's own iconography rather than the
+    /// generic system palette:
+    ///
+    /// - **macOS IPSW** → Apple's system blue (`Color.blue`).
+    ///   Matches Apple's own marketing + the `applelogo`
+    ///   glyph's canonical default color.
+    /// - **Linux ISO** → Tux-gold `#FFCC33`. The color of
+    ///   Tux the Penguin's beak and feet — the only Linux
+    ///   color that's genuinely shared across every distro,
+    ///   not co-opted from a specific one (Ubuntu orange,
+    ///   Fedora blue, Debian red all spoken for).
+    /// - **OCI** → purple. Keeps the container ecosystem
+    ///   visually distinct from both Apple blue and Tux gold.
+    private var tintColor: Color {
+        switch kind {
+        case .macOS: .blue
+        case .linux: Color(red: 1.0, green: 0.8, blue: 0.2)   // #FFCC33
+        case .oci: .purple
         }
     }
 }

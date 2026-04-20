@@ -114,7 +114,19 @@ struct ContentView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Workspaces")
-        .searchable(text: $searchText, prompt: "Filter")
+        // Placing the search field explicitly in the sidebar
+        // (`.sidebar`) renders it inside the sidebar's title
+        // region instead of the toolbar. On macOS 26 this slot
+        // auto-adopts the Liquid Glass styling Apple uses in
+        // Finder's sidebar — rounded, translucent, tinted by
+        // the window chrome — rather than the flat
+        // `NSSearchToolbarItem` that `.automatic` placement
+        // produces.
+        .searchable(
+            text: $searchText,
+            placement: .sidebar,
+            prompt: Text("Filter workspaces")
+        )
     }
 
     // MARK: - Detail

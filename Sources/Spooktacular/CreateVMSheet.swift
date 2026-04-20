@@ -205,36 +205,138 @@ struct CreateVMSheet: View {
 
             Divider()
 
-            // Two-column scrollable content
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    nameRow
-                    osRow
-                    switch guestOS {
-                    case .macOS:
-                        sourceRow
-                    case .linux:
-                        installerISORow
-                        rosettaRow
+            // `Form(formStyle: .grouped)` on macOS 26 renders
+            // Liquid Glass-backed section cards + places Section
+            // footers BELOW the content (like Apple's System
+            // Settings). Input controls — Picker, Stepper,
+            // Slider, Toggle, TextField — auto-adopt the
+            // Liquid Glass chrome inside a grouped Form.
+            //
+            // Previously this sheet rolled its own two-column
+            // layout with glass-chip headers + side
+            // explanations, which:
+            //   1. overrode the system Form styling, losing
+            //      auto-glass on pickers / steppers / sliders;
+            //   2. pushed long descriptions into a 200pt side
+            //      column that truncated awkwardly;
+            //   3. diverged from every other macOS app's
+            //      expected "new VM / new …" sheet layout.
+            // Converting to Form eliminates all three issues
+            // and removes ~100 lines of layout plumbing.
+            Form {
+                Section {
+                    TextField("my-vm", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier(AccessibilityID.vmNameField)
+                } header: {
+                    Text("Name")
+                } footer: {
+                    Text("A unique name for this virtual machine. Used in the CLI as 'spook start <name>' and shown in Kubernetes as the resource name.")
+                }
+
+                Section {
+                    Picker("Guest OS", selection: $guestOS) {
+                        Text("macOS").tag(GuestOS.macOS)
+                        Text("Linux").tag(GuestOS.linux)
                     }
-                    hardwareRow
-                    displayRow
-                    networkRow
-                    audioRow
-                    sharedFoldersRow
-                    // Provisioning templates are macOS-only
-                    // for now (OpenClaw + RemoteDesktop are
-                    // Apple-framework templates, GitHub
-                    // Runner's LaunchDaemon injection targets
-                    // APFS).  Linux VMs get a vanilla install
-                    // and can be provisioned later via SSH or
-                    // cloud-init.
-                    if guestOS == .macOS {
-                        provisioningRow
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("macOS uses Apple's IPSW installer; Linux boots an installer ISO via EFI.")
+                } header: {
+                    Text("Guest OS")
+                } footer: {
+                    Text(guestOSExplanation)
+                }
+
+                switch guestOS {
+                case .macOS:
+                    Section {
+                        sourceControl
+                    } header: {
+                        Text("macOS Source")
+                    } footer: {
+                        Text("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
+                    }
+                case .linux:
+                    Section {
+                        HStack {
+                            TextField(
+                                "~/Downloads/Fedora-Workstation-Live-43.aarch64.iso",
+                                text: $installerISOPath
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            Button("Browse…") { browseForInstallerISO() }
+                        }
+                    } header: {
+                        Text("Installer ISO")
+                    } footer: {
+                        Text("Path to a UEFI-bootable ARM64 installer ISO. Copied into the VM bundle at create time, then exposed to the guest firmware as a USB mass storage device so EFI's boot manager finds it first. Remove the ISO from the bundle after the guest OS is installed.")
+                    }
+                    rosettaSection
+                }
+
+                Section {
+                    hardwareControls
+                } header: {
+                    Text("Hardware")
+                } footer: {
+                    Text("macOS VMs require at least 4 CPU cores. Memory is allocated from your Mac's unified RAM. The disk uses APFS sparse storage — it only consumes host disk space as the guest writes data.")
+                }
+
+                Section {
+                    Picker("Monitors", selection: $displayCount) {
+                        Text("1 Display").tag(1)
+                        Text("2 Displays").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityIdentifier(AccessibilityID.displayPicker)
+                    .help("Number of virtual monitors attached to the guest. Each uses a Metal-accelerated GPU.")
+                    Toggle("Auto-resize display", isOn: $autoResizeDisplay)
+                        .help("Adjust the guest resolution automatically when you resize the window. Recommended for remote desktop.")
+                } header: {
+                    Text("Display")
+                } footer: {
+                    Text("Each display is backed by a Metal-accelerated GPU. Auto-resize adjusts the guest resolution when you resize the window — essential for remote desktop use.")
+                }
+
+                Section {
+                    networkControls
+                } header: {
+                    Text("Network")
+                } footer: {
+                    Text(networkExplanation)
+                }
+
+                Section {
+                    Toggle("Speaker output", isOn: $audioEnabled)
+                    Toggle("Microphone input", isOn: $microphoneEnabled)
+                    Toggle("Clipboard sharing", isOn: $clipboardSharingEnabled)
+                } header: {
+                    Text("Audio & Sharing")
+                } footer: {
+                    Text("Audio uses VirtIO sound devices. Clipboard sharing is only supported for Linux guests; macOS guests do not support clipboard synchronization through the Virtualization framework.")
+                }
+
+                Section {
+                    sharedFoldersControls
+                } header: {
+                    Text("Shared Folders")
+                } footer: {
+                    Text("Shared folders appear in the guest at /Volumes/My Shared Files/. Use them to pass build artifacts, training data, or configuration files between host and guest without networking.")
+                }
+
+                if guestOS == .macOS {
+                    Section {
+                        provisioningControls
+                    } header: {
+                        Text("Provisioning")
+                    } footer: {
+                        Text(template.explanation)
                     }
                 }
-                .padding(24)
             }
+            .formStyle(.grouped)
 
             // Status bar
             if isCreating || errorMessage != nil {
@@ -323,43 +425,7 @@ struct CreateVMSheet: View {
         }
     }
 
-    // MARK: - Rows (two-column: control | explanation)
-
-    private var nameRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Name").font(.headline).glassSectionHeader()
-                    TextField("my-vm", text: $name)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier(AccessibilityID.vmNameField)
-                }
-            },
-            explanation: """
-                A unique name for this virtual machine. Used in the \
-                CLI as 'spook start <name>' and shown in Kubernetes \
-                as the resource name.
-                """
-        )
-    }
-
-    private var osRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Guest OS").font(.headline).glassSectionHeader()
-                    Picker("Guest OS", selection: $guestOS) {
-                        Text("macOS").tag(GuestOS.macOS)
-                        Text("Linux").tag(GuestOS.linux)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .help("macOS uses Apple's IPSW installer; Linux boots an installer ISO via EFI.")
-                }
-            },
-            explanation: guestOSExplanation
-        )
-    }
+    // MARK: - Section controls (plain — Form wraps)
 
     private var guestOSExplanation: String {
         switch guestOS {
@@ -380,54 +446,23 @@ struct CreateVMSheet: View {
         }
     }
 
-    private var installerISORow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Installer ISO").font(.headline).glassSectionHeader()
-                    HStack {
-                        TextField("~/Downloads/Fedora-Workstation-Live-43.aarch64.iso", text: $installerISOPath)
-                            .textFieldStyle(.roundedBorder)
-                        Button("Browse…") { browseForInstallerISO() }
-                    }
-                }
-            },
-            explanation: """
-                Path to a UEFI-bootable ARM64 installer ISO. \
-                Copied into the VM bundle at create time, then \
-                exposed to the guest firmware as a USB mass \
-                storage device so EFI's boot manager finds it \
-                first. Remove the ISO from the bundle after \
-                the guest OS is installed.
-                """
-        )
-    }
+    @ViewBuilder
+    private var sourceControl: some View {
+        Picker("Source", selection: $ipswSource) {
+            Text("Latest compatible").tag(IPSWSource.latest)
+            Text("Local IPSW file").tag(IPSWSource.local)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .help("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
 
-    private var sourceRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("macOS Source").font(.headline).glassSectionHeader()
-
-                    Picker("Source", selection: $ipswSource) {
-                        Text("Latest compatible").tag(IPSWSource.latest)
-                        Text("Local IPSW file").tag(IPSWSource.local)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .help("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
-
-                    if ipswSource == .local {
-                        HStack {
-                            TextField("~/Downloads/macOS.ipsw", text: $localIpswPath)
-                                .textFieldStyle(.roundedBorder)
-                            Button("Browse…") { browseForIPSW() }
-                        }
-                    }
-                }
-            },
-            explanation: ipswSourceExplanation
-        )
+        if ipswSource == .local {
+            HStack {
+                TextField("~/Downloads/macOS.ipsw", text: $localIpswPath)
+                    .textFieldStyle(.roundedBorder)
+                Button("Browse…") { browseForIPSW() }
+            }
+        }
     }
 
     private var ipswSourceExplanation: String {
@@ -449,123 +484,68 @@ struct CreateVMSheet: View {
         }
     }
 
-    private var hardwareRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Hardware").font(.headline).glassSectionHeader()
-
-                    HStack {
-                        Text("CPU")
-                            .frame(width: 70, alignment: .leading)
-                        Stepper(
-                            value: $cpuCount,
-                            in: 4...Double(ProcessInfo.processInfo.processorCount),
-                            step: 1
-                        ) {
-                            Text("\(Int(cpuCount)) cores")
-                                .monospacedDigit()
-                        }
-                        .accessibilityIdentifier(AccessibilityID.cpuStepper)
-                        .help("Number of virtual CPU cores. Minimum 4, maximum is this Mac's logical core count.")
-                        .accessibilityValue("\(Int(cpuCount)) CPU cores")
-                    }
-
-                    HStack {
-                        Text("Memory")
-                            .frame(width: 70, alignment: .leading)
-                        Slider(value: $memorySizeInGigabytes, in: 4...64, step: 4)
-                            .accessibilityIdentifier(AccessibilityID.memorySlider)
-                            .help("Guest RAM in gigabytes. Allocated from your Mac's unified memory.")
-                            .accessibilityValue("\(Int(memorySizeInGigabytes)) gigabytes RAM")
-                        Text("\(Int(memorySizeInGigabytes)) GB")
-                            .monospacedDigit()
-                            .frame(width: 45, alignment: .trailing)
-                    }
-
-                    HStack {
-                        Text("Disk")
-                            .frame(width: 70, alignment: .leading)
-                        Slider(value: $diskSizeInGigabytes, in: 32...500, step: 32)
-                            .accessibilityIdentifier(AccessibilityID.diskSlider)
-                            .help("Virtual disk size. APFS sparse — only host space the guest actually writes is consumed.")
-                            .accessibilityValue("\(Int(diskSizeInGigabytes)) gigabytes disk")
-                        Text("\(Int(diskSizeInGigabytes)) GB")
-                            .monospacedDigit()
-                            .frame(width: 45, alignment: .trailing)
-                    }
-                }
-            },
-            explanation: """
-                macOS VMs require at least 4 CPU cores. Memory is \
-                allocated from your Mac's unified RAM. The disk uses \
-                APFS sparse storage — it only consumes host disk \
-                space as the guest writes data.
-                """
-        )
+    @ViewBuilder
+    private var hardwareControls: some View {
+        HStack {
+            Text("CPU").frame(width: 70, alignment: .leading)
+            Stepper(
+                value: $cpuCount,
+                in: 4...Double(ProcessInfo.processInfo.processorCount),
+                step: 1
+            ) {
+                Text("\(Int(cpuCount)) cores").monospacedDigit()
+            }
+            .accessibilityIdentifier(AccessibilityID.cpuStepper)
+            .help("Number of virtual CPU cores. Minimum 4, maximum is this Mac's logical core count.")
+            .accessibilityValue("\(Int(cpuCount)) CPU cores")
+        }
+        HStack {
+            Text("Memory").frame(width: 70, alignment: .leading)
+            Slider(value: $memorySizeInGigabytes, in: 4...64, step: 4)
+                .accessibilityIdentifier(AccessibilityID.memorySlider)
+                .help("Guest RAM in gigabytes. Allocated from your Mac's unified memory.")
+                .accessibilityValue("\(Int(memorySizeInGigabytes)) gigabytes RAM")
+            Text("\(Int(memorySizeInGigabytes)) GB")
+                .monospacedDigit()
+                .frame(width: 45, alignment: .trailing)
+        }
+        HStack {
+            Text("Disk").frame(width: 70, alignment: .leading)
+            Slider(value: $diskSizeInGigabytes, in: 32...500, step: 32)
+                .accessibilityIdentifier(AccessibilityID.diskSlider)
+                .help("Virtual disk size. APFS sparse — only host space the guest actually writes is consumed.")
+                .accessibilityValue("\(Int(diskSizeInGigabytes)) gigabytes disk")
+            Text("\(Int(diskSizeInGigabytes)) GB")
+                .monospacedDigit()
+                .frame(width: 45, alignment: .trailing)
+        }
     }
 
-    private var displayRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Display").font(.headline).glassSectionHeader()
+    @ViewBuilder
+    private var networkControls: some View {
+        Picker("Mode", selection: $networkKind) {
+            Text("NAT (shared)").tag(NetworkKind.nat)
+            Text("Bridged (own IP)").tag(NetworkKind.bridged)
+            Text("Isolated (no network)").tag(NetworkKind.isolated)
+        }
+        .labelsHidden()
+        .accessibilityIdentifier(AccessibilityID.networkPicker)
+        .help("Networking mode. Bridged requires the com.apple.vm.networking entitlement.")
 
-                    Picker("Monitors", selection: $displayCount) {
-                        Text("1 Display").tag(1)
-                        Text("2 Displays").tag(2)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .accessibilityIdentifier(AccessibilityID.displayPicker)
-                    .help("Number of virtual monitors attached to the guest. Each uses a Metal-accelerated GPU.")
-
-                    Toggle("Auto-resize display", isOn: $autoResizeDisplay)
-                        .help("Adjust the guest resolution automatically when you resize the window. Recommended for remote desktop.")
+        if networkKind == .bridged {
+            Picker("Interface", selection: $bridgedInterface) {
+                ForEach(availableBridgedInterfaces(), id: \.self) { iface in
+                    Text(iface).tag(iface)
                 }
-            },
-            explanation: """
-                Each display is backed by a Metal-accelerated GPU. \
-                Auto-resize adjusts the guest resolution when you \
-                resize the window — essential for remote desktop use.
-                """
-        )
-    }
-
-    private var networkRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Network").font(.headline).glassSectionHeader()
-
-                    Picker("Mode", selection: $networkKind) {
-                        Text("NAT (shared)").tag(NetworkKind.nat)
-                        Text("Bridged (own IP)").tag(NetworkKind.bridged)
-                        Text("Isolated (no network)").tag(NetworkKind.isolated)
-                    }
-                    .labelsHidden()
-                    .accessibilityIdentifier(AccessibilityID.networkPicker)
-                    .help("Networking mode. Bridged requires the com.apple.vm.networking entitlement.")
-
-                    if networkKind == .bridged {
-                        Picker("Interface", selection: $bridgedInterface) {
-                            ForEach(availableBridgedInterfaces(), id: \.self) { iface in
-                                Text(iface).tag(iface)
-                            }
-                        }
-                        .help("Host network interface to bridge onto. Typically en0 for Wi-Fi, en1 for Ethernet.")
-                        .onAppear {
-                            // Preselect the first interface if none chosen.
-                            if bridgedInterface.isEmpty,
-                               let first = availableBridgedInterfaces().first {
-                                bridgedInterface = first
-                            }
-                        }
-                    }
+            }
+            .help("Host network interface to bridge onto. Typically en0 for Wi-Fi, en1 for Ethernet.")
+            .onAppear {
+                if bridgedInterface.isEmpty,
+                   let first = availableBridgedInterfaces().first {
+                    bridgedInterface = first
                 }
-            },
-            explanation: networkExplanation
-        )
+            }
+        }
     }
 
     /// Enumerates host network interface names via `getifaddrs`
@@ -593,95 +573,50 @@ struct CreateVMSheet: View {
         return result.sorted()
     }
 
-    private var audioRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Audio & Sharing").font(.headline).glassSectionHeader()
-
-                    Toggle("Speaker output", isOn: $audioEnabled)
-                    Toggle("Microphone input", isOn: $microphoneEnabled)
-                    Toggle("Clipboard sharing", isOn: $clipboardSharingEnabled)
+    @ViewBuilder
+    private var sharedFoldersControls: some View {
+        ForEach($sharedFolders) { $folder in
+            HStack {
+                Image(systemName: "folder").foregroundStyle(.secondary)
+                Text(folder.hostPath).lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Text(folder.readOnly ? "ro" : "rw")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button(role: .destructive) {
+                    sharedFolders.removeAll { $0.id == folder.id }
+                } label: {
+                    Image(systemName: "minus.circle")
                 }
-            },
-            explanation: """
-                Audio uses VirtIO sound devices. Clipboard sharing \
-                is only supported for Linux guests; macOS guests \
-                do not support clipboard synchronization through \
-                the Virtualization framework.
-                """
-        )
+                .buttonStyle(.plain)
+            }
+        }
+        Button {
+            addSharedFolder()
+        } label: {
+            Label("Add Folder…", systemImage: "plus")
+        }
     }
 
-    private var sharedFoldersRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Shared Folders").font(.headline).glassSectionHeader()
+    @ViewBuilder
+    private var provisioningControls: some View {
+        Picker("Template", selection: $template) {
+            ForEach(ProvisioningTemplate.allCases, id: \.self) { kind in
+                Text(kind.label).tag(kind)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .help("Pick a built-in first-boot template or provide a custom script.")
 
-                    ForEach($sharedFolders) { $folder in
-                        HStack {
-                            Image(systemName: "folder")
-                                .foregroundStyle(.secondary)
-                            Text(folder.hostPath)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer()
-                            Text(folder.readOnly ? "ro" : "rw")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Button(role: .destructive) {
-                                sharedFolders.removeAll { $0.id == folder.id }
-                            } label: {
-                                Image(systemName: "minus.circle")
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    Button {
-                        addSharedFolder()
-                    } label: {
-                        Label("Add Folder…", systemImage: "plus")
-                    }
-                }
-            },
-            explanation: """
-                Shared folders appear in the guest at \
-                /Volumes/My Shared Files/. Use them to pass \
-                build artifacts, training data, or configuration \
-                files between host and guest without networking.
-                """
-        )
-    }
-
-    private var provisioningRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Provisioning").font(.headline).glassSectionHeader()
-
-                    Picker("Template", selection: $template) {
-                        ForEach(ProvisioningTemplate.allCases, id: \.self) { kind in
-                            Text(kind.label).tag(kind)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .help("Pick a built-in first-boot template or provide a custom script.")
-
-                    switch template {
-                    case .none, .openclaw, .remoteDesktop:
-                        EmptyView()
-                    case .githubRunner:
-                        githubRunnerFields
-                    case .custom:
-                        customScriptFields
-                    }
-                }
-            },
-            explanation: template.explanation
-        )
+        switch template {
+        case .none, .openclaw, .remoteDesktop:
+            EmptyView()
+        case .githubRunner:
+            githubRunnerFields
+        case .custom:
+            customScriptFields
+        }
     }
 
     @ViewBuilder
@@ -720,24 +655,6 @@ struct CreateVMSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        }
-    }
-
-    // MARK: - Two-Column Row Builder
-
-    private func row<C: View>(
-        @ViewBuilder control: () -> C,
-        explanation: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 24) {
-            control()
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(explanation)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 200, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -852,34 +769,25 @@ struct CreateVMSheet: View {
     /// from uninstalled to installed if the user runs
     /// `softwareupdate --install-rosetta` while this sheet
     /// is open.
-    private var rosettaRow: some View {
+    @ViewBuilder
+    private var rosettaSection: some View {
         let available = VZLinuxRosettaDirectoryShare.availability == .installed
-        return row(
-            control: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Rosetta 2").font(.headline).glassSectionHeader()
-                    Toggle("Enable Rosetta in guest", isOn: $rosettaEnabled)
-                        .disabled(!available)
-                        .onChange(of: available) { _, newValue in
-                            if !newValue { rosettaEnabled = false }
-                        }
-                    if !available {
-                        Text("Rosetta is not installed on this Mac. Run `softwareupdate --install-rosetta` in Terminal, then reopen this sheet.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+        Section {
+            Toggle("Enable Rosetta in guest", isOn: $rosettaEnabled)
+                .disabled(!available)
+                .onChange(of: available) { _, newValue in
+                    if !newValue { rosettaEnabled = false }
                 }
-            },
-            explanation: """
-                Exposes Apple's Rosetta 2 translator to the \
-                Linux guest via a virtio-fs share. After \
-                install, x86_64 ELF binaries run natively in \
-                the guest without QEMU — great for Docker \
-                cross-arch builds, CI runners handling \
-                legacy binaries, or running x86-only tools \
-                on Apple silicon.
-                """
-        )
+            if !available {
+                Text("Rosetta is not installed on this Mac. Run `softwareupdate --install-rosetta` in Terminal, then reopen this sheet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Rosetta 2")
+        } footer: {
+            Text("Exposes Apple's Rosetta 2 translator to the Linux guest via a virtio-fs share. After install, x86_64 ELF binaries run natively in the guest without QEMU — great for Docker cross-arch builds, CI runners handling legacy binaries, or running x86-only tools on Apple silicon.")
+        }
     }
 
     /// Opens an `NSOpenPanel` restricted to disk-image files.
