@@ -173,7 +173,16 @@ public actor VMStreamingClient {
     ) -> AsyncThrowingStream<Payload, any Error> {
         AsyncThrowingStream { continuation in
             let sink = TypedSink<Payload>(continuation: continuation)
-            Task { self.register(topic: topic, sink: sink) }
+            // `swift build` on macOS 26 says the inner `await`
+            // is superfluous, but Xcode's Swift-6 sending-
+            // parameter enforcement at `Task.init` disagrees:
+            // without it, the Task body's capture of
+            // `self` + non-Sendable-at-the-capture-site closures
+            // trips a data-race diagnostic. The `await` is the
+            // Apple-canonical way to establish that the Task
+            // body hops back onto the actor before touching
+            // self. Keep it.
+            Task { await self.register(topic: topic, sink: sink) }
 
             continuation.onTermination = { [weak self] _ in
                 // `onTermination` can fire on any thread; hop
