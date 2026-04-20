@@ -94,7 +94,12 @@ mkdir -p "$MACOS_DIR" "$RESOURCES" "$SYSEX_MACOS" "$XPC_HELPER_MACOS"
 # Copy binaries
 cp "$BINARY_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$BINARY_DIR/$CLI_TARGET" "$MACOS_DIR/$CLI_NAME"
-chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME"
+# Bundle the guest agent alongside the CLI + app so the GUI's
+# pre-boot agent-bootstrap injection can find it without a
+# second download. `AgentBootstrapScript.locateAgentBinary()`
+# walks up from the running executable to find this path.
+cp "$BINARY_DIR/spooktacular-agent" "$MACOS_DIR/spooktacular-agent"
+chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME" "$MACOS_DIR/spooktacular-agent"
 
 # 3a. Assemble system-extension bundle (Track F'').
 #

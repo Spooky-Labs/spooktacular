@@ -47,17 +47,6 @@ let package = Package(
             url: "https://github.com/apple/swift-argument-parser",
             from: "1.5.0"
         ),
-        // `swift-docc-plugin` surfaces the
-        // `swift package generate-documentation` SwiftPM
-        // subcommand the `docs` CI job drives. Without this
-        // dependency the job errors with
-        //   "Unknown subcommand or plugin name
-        //    'generate-documentation'"
-        // See https://github.com/swiftlang/swift-docc-plugin
-        .package(
-            url: "https://github.com/swiftlang/swift-docc-plugin",
-            from: "1.3.0"
-        ),
     ],
     targets: [
         // ──────────────────────────────────────────────

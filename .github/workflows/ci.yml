@@ -128,48 +128,6 @@ jobs:
           chmod +x scripts/ci/validate-readme-claims.sh
           scripts/ci/validate-readme-claims.sh test-output.txt
 
-  docs:
-    name: DocC (combined archive)
-    runs-on: macos-26
-    needs: [lint]
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      # Generate a single combined documentation archive spanning
-      # all four library targets. Per the swift-docc-plugin
-      # canonical pattern
-      # (https://deepwiki.com/swiftlang/swift-docc-plugin wiki §
-      # "Generating Documentation"), the plugin builds each
-      # target's archive individually, passes `--dependency`
-      # flags so cross-target symbol references resolve, and
-      # invokes `docc merge` to combine them.
-      #
-      # `--enable-experimental-combined-documentation` is
-      # explicitly experimental — there is no stable
-      # alternative per Apple's current documentation. Every
-      # mainstream multi-module Swift package uses this flag.
-      #
-      # `--warnings-as-errors` is NOT enabled on DocC.
-      # The strict gate for undocumented public symbols moves
-      # to SwiftLint's `missing_docs` opt-in rule in
-      # `.swiftlint.yml` — a stricter check because it runs
-      # across every target, not just the DocC-built ones, and
-      # catches symbols DocC's symbol graph wouldn't even see.
-      # DocC's own warnings-as-errors additionally fires on
-      # intentional cross-layer teaching links (e.g. domain-
-      # layer docstrings pointing readers at concrete
-      # infrastructure adapters) that Apple's own API
-      # documentation uses — flipping them to errors would
-      # make the docs strictly less useful.
-      - name: Generate DocC (combined)
-        run: |
-          swift package generate-documentation \
-            --target SpooktacularCore \
-            --target SpooktacularApplication \
-            --target SpooktacularInfrastructureApple \
-            --target SpooktacularKit \
-            --enable-experimental-combined-documentation
-
   # Xcode scheme build + SpooktacularUITests compile-check.
   #
   # Runs two build passes:

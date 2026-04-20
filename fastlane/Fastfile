@@ -554,17 +554,6 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # DocC — Generate documentation
-  # ──────────────────────────────────────────────────
-
-  desc "Generate DocC documentation"
-  lane :generate_docs do
-    Dir.chdir(PROJECT_ROOT) do
-      sh("./scripts/build-docs.sh", "--static")
-    end
-  end
-
-  # ──────────────────────────────────────────────────
   # Lint — SwiftLint + App Store metadata
   # ──────────────────────────────────────────────────
 
