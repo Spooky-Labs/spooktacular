@@ -158,10 +158,60 @@ if [ -f "$ICNS" ]; then
 fi
 
 # Embed provisioning profile if PROVISIONING_PROFILE path is set
-# (Fastlane sets this after match runs)
+# (Fastlane sets this after match runs).
+#
+# Restricted entitlements (NetworkExtension, system-extension install)
+# require a matching embedded.provisionprofile or AMFI rejects the
+# binary at execve time with "completely unsigned code" — even when
+# codesign itself validates. When no profile is available, build a
+# "dev" variant that strips the restricted entitlements so the app
+# launches locally. pf egress (Track F') still works; NEFilter
+# system extension (Track F'' Phase B) is disabled until a full
+# signed build with profile runs.
+HAVE_PROFILE=0
 if [ -n "${PROVISIONING_PROFILE:-}" ] && [ -f "$PROVISIONING_PROFILE" ]; then
     echo "Embedding provisioning profile: $(basename "$PROVISIONING_PROFILE")"
     cp "$PROVISIONING_PROFILE" "$CONTENTS/embedded.provisionprofile"
+    HAVE_PROFILE=1
+else
+    echo "No PROVISIONING_PROFILE set — building dev variant (NEFilter disabled)."
+    # Remove the embedded system extension from the bundle entirely:
+    # without provisioning it cannot load, and leaving it in forces
+    # the main app to sign against restricted entitlements it no
+    # longer needs.
+    rm -rf "$CONTENTS/Library/SystemExtensions"
+    # Emit a dev-variant app entitlements file without the NE keys.
+    # /usr/libexec/PlistBuddy is the Apple-sanctioned way to edit
+    # plists in shell; `Delete :key` is a no-op if the key is absent
+    # already, so the script stays idempotent across reruns.
+    # Strip restricted entitlements: these require an embedded
+    # provisioning profile whose allowlist matches. Without one,
+    # amfid rejects launch with:
+    #   AppleMobileFileIntegrityError Code=-413 "No matching profile found"
+    # and the kernel refuses to map the binary.
+    DEV_ENTITLEMENTS="$(mktemp -t spook-ent).plist"
+    cp "$ENTITLEMENTS" "$DEV_ENTITLEMENTS"
+    for key in \
+        com.apple.developer.networking.networkextension \
+        com.apple.application-identifier \
+        com.apple.developer.team-identifier; do
+        /usr/libexec/PlistBuddy -c "Delete :$key" "$DEV_ENTITLEMENTS" 2>/dev/null || true
+    done
+    ENTITLEMENTS="$DEV_ENTITLEMENTS"
+    # Strip the same keys from the CLI and XPC-helper entitlements
+    # files so their signatures stay profile-free too.
+    DEV_CLI_ENTITLEMENTS="$(mktemp -t spook-cli-ent).plist"
+    cp "$CLI_ENTITLEMENTS" "$DEV_CLI_ENTITLEMENTS"
+    for key in com.apple.application-identifier com.apple.developer.team-identifier; do
+        /usr/libexec/PlistBuddy -c "Delete :$key" "$DEV_CLI_ENTITLEMENTS" 2>/dev/null || true
+    done
+    CLI_ENTITLEMENTS="$DEV_CLI_ENTITLEMENTS"
+    DEV_XPC_ENTITLEMENTS="$(mktemp -t spook-xpc-ent).plist"
+    cp "$XPC_HELPER_ENTITLEMENTS" "$DEV_XPC_ENTITLEMENTS"
+    for key in com.apple.application-identifier com.apple.developer.team-identifier; do
+        /usr/libexec/PlistBuddy -c "Delete :$key" "$DEV_XPC_ENTITLEMENTS" 2>/dev/null || true
+    done
+    XPC_HELPER_ENTITLEMENTS="$DEV_XPC_ENTITLEMENTS"
 fi
 
 # 4. Code sign
@@ -218,8 +268,10 @@ TIMESTAMP_FLAG="--timestamp"
 #   3. CLI binary (sibling of the app binary).
 #   4. App binary.
 #   5. App bundle root (covers everything above).
-codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_MACOS/$SYSEX_ID"
-codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_DIR"
+if [ "$HAVE_PROFILE" = "1" ]; then
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_MACOS/$SYSEX_ID"
+    codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_DIR"
+fi
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$XPC_HELPER_ENTITLEMENTS" "$XPC_HELPER_MACOS/$XPC_HELPER_ID"
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$XPC_HELPER_ENTITLEMENTS" "$XPC_HELPER_DIR"
 # CLI gets its own entitlements (`com.apple.security.inherit`
