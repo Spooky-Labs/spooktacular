@@ -44,9 +44,8 @@ if arguments.contains("--install-unit") {
     exit(0)
 }
 
-log("spooktacular-agent (linux) starting on vsock:\(readonlyPort)")
-let router = Router(statsActor: StatsCoordinator())
-VsockServer(port: readonlyPort, router: router).run()
+log("spooktacular-agent (linux) starting — dialing host vsock:\(HostDialer.eventPort)")
+HostDialer(stats: StatsCoordinator()).run()
 
 // MARK: - systemd install
 

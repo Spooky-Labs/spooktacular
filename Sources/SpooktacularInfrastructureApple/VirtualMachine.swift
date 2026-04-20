@@ -291,6 +291,44 @@ public final class VirtualMachine: NSObject {
         )
     }
 
+    /// Returns the Apple-native event listener for this VM,
+    /// creating it on first access.
+    ///
+    /// The listener uses `VZVirtioSocketListener` —
+    /// [Apple's documented pattern](https://developer.apple.com/documentation/virtualization/vzvirtiosocketlistener)
+    /// for accepting guest-initiated connections — so the guest
+    /// agent pushes events as soon as it boots instead of
+    /// waiting for a host probe. Consumers subscribe via
+    /// ``AgentEventListener/events()`` to get an
+    /// `AsyncThrowingStream<GuestEvent, Error>`.
+    ///
+    /// Returns `nil` if the VM has no vsock device in its
+    /// configuration — the same shape as
+    /// ``makeGuestAgentClient(hostSigner:breakGlassToken:)``.
+    public func agentEventListener() -> AgentEventListener? {
+        guard let vzVM,
+              let socketDevice = vzVM.socketDevices.first as? VZVirtioSocketDevice else {
+            return nil
+        }
+        if let cached = cachedEventListener { return cached }
+        let listener = AgentEventListener(socketDevice: socketDevice)
+        cachedEventListener = listener
+        return listener
+    }
+
+    /// Per-VM event listener cache. Created lazily on first
+    /// `agentEventListener()` call; torn down by
+    /// ``shutdownEventListener()`` when the VM stops.
+    private var cachedEventListener: AgentEventListener?
+
+    /// Tears down the event listener. Called from the stop
+    /// path so the `VZVirtioSocketListener` delegate stops
+    /// receiving acceptance callbacks for a departing VM.
+    public func shutdownEventListener() {
+        cachedEventListener?.stop()
+        cachedEventListener = nil
+    }
+
     /// Starts the virtual machine.
     ///
     /// The VM transitions from ``VirtualMachineState/stopped`` to

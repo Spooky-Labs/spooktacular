@@ -418,10 +418,15 @@ final class AppState {
             // so external automation subscribing to the UDS
             // `ports` topic gets push events instead of the
             // polling fallback.
-            if let client = agentClients[name] {
+            // Re-publish the Apple-native listener's events onto
+            // the external VMStreamingServer topics. Replaces the
+            // prior `client.eventStream()` HTTP path so UDS
+            // subscribers see stats + ports from the same source
+            // the GUI chart consumes.
+            if let listener = vm.agentEventListener() {
                 tasks.append(Task { [weak server] in
                     do {
-                        for try await event in client.eventStream() {
+                        for try await event in listener.events() {
                             guard !Task.isCancelled else { return }
                             switch event {
                             case .stats(let stats):

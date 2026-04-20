@@ -1,82 +1,108 @@
 # Spooktacular Linux Guest Agent
 
-Minimal Swift-on-Linux port of `spooktacular-agent`. Runs inside a
-Linux guest VM, listens on a VirtIO-socket port, and speaks the
-same HTTP/1.1 wire protocol the macOS agent uses — so the host's
-`GuestAgentClient` doesn't care which OS is answering.
+Minimal Swift-on-Linux port of `spooktacular-agent`. Runs inside
+a Linux guest VM and pushes metrics to the host using Apple's
+documented `VZVirtioSocketListener` pattern — the guest-to-host
+direction of `Virtualization.framework`.
 
-## What it serves
+## Wire architecture
+
+The host registers a `VZVirtioSocketListener` on port **9469**
+via `VZVirtioSocketDevice.setSocketListener(_:forPort:)`. This
+agent dials `VMADDR_CID_HOST:9469` at boot, keeps the connection
+open, and pushes length-prefixed `GuestEvent` JSON frames:
 
 ```
-GET /health                               → {"ok":true}
-GET /api/v1/stats                         → one-shot GuestStatsResponse
-GET /api/v1/events/stream?topics=stats,ports → NDJSON event stream
-GET /api/v1/ports                         → [GuestPortInfo]
+┌──────────────────────┬──────────────────────────────┐
+│  4-byte big-endian   │  N bytes of JSONEncoder      │
+│  unsigned length N   │  output (a `GuestEvent` body)│
+└──────────────────────┴──────────────────────────────┘
 ```
 
-Everything else (exec, clipboard, apps, break-glass tickets) is
-macOS-only and this Linux build genuinely cannot serve them.
+The framing lives in `SpooktacularCore.AgentFrameCodec` on the
+host; the Linux agent re-implements the same shape verbatim so
+the host's `AsyncThrowingStream<GuestEvent, Error>` decodes
+identically regardless of which OS answered.
+
+Per Apple's docs:
+
+> *"An object that listens for port-based connection requests
+> from the guest operating system."* — [VZVirtioSocketListener](
+> https://developer.apple.com/documentation/virtualization/vzvirtiosocketlistener)
+
+This is the Apple-sanctioned direction for guest-pushed streams.
+`VZVirtioSocketDevice.connect(toPort:)` in the opposite direction
+silently no-ops if the guest isn't listening yet — the classic
+"empty chart after fresh boot" we had before this migration.
+
+## What the Linux agent emits
+
+Currently `GuestEvent.stats(GuestStatsResponse)` once per second.
+Sources:
+
+| Metric | Linux source |
+|---|---|
+| `cpuUsage`        | `/proc/stat` tick delta |
+| `memoryUsedBytes` | `/proc/meminfo` (`MemTotal - MemAvailable`) |
+| `memoryTotalBytes`| `/proc/meminfo` (`MemTotal`) |
+| `loadAverage1m`   | `/proc/loadavg` |
+| `processCount`    | count of numeric `/proc/<pid>` entries |
+| `uptime`          | `/proc/uptime` |
+
+Adding ports / apps-frontmost frames is straightforward — same
+NDJSON envelope, new topic case in `HostDialer.pumpUntilDisconnect`.
 
 ## Build
 
-Inside the Linux guest (e.g., Fedora):
+Inside the Linux guest:
 
 ```bash
 # One-time: install Swift if missing
-sudo dnf install -y swift-lang          # Fedora 41+
-# (or download from https://swift.org/install/linux/)
+sudo dnf install -y swift-lang           # Fedora 41+
+# or https://swift.org/install/linux/ for other distros
 
 git clone https://github.com/Spooky-Labs/spooktacular.git
 cd spooktacular/LinuxAgent
 swift build -c release
 ```
 
-Produces `.build/release/spooktacular-agent`.
+Produces `.build/release/spooktacular-agent` (~10 MB).
 
 ## Install
 
 ```bash
-sudo install -m 0755 .build/release/spooktacular-agent \
-    /usr/local/bin/spooktacular-agent
-sudo /usr/local/bin/spooktacular-agent --install-unit
+sudo ./install-in-guest.sh
 ```
 
-The installer writes `/etc/systemd/system/spooktacular-agent.service`,
-runs `systemctl daemon-reload`, and `systemctl enable --now`. Check:
+Which copies the binary to `/usr/local/bin/spooktacular-agent`
+and runs `--install-unit` to drop a systemd service at
+`/etc/systemd/system/spooktacular-agent.service` +
+`systemctl enable --now`.
+
+Verify:
 
 ```bash
 systemctl status spooktacular-agent
-journalctl -u spooktacular-agent -f
+journalctl -u   spooktacular-agent -f
 ```
 
-## Verify from the host
+The host's workspace chart should start populating within one
+second of the service's first successful `connect()`.
 
-From the macOS side, the chart in the GUI should start populating
-within a second of the service coming up. For a quick sanity check
-outside the GUI:
+## Why a separate SwiftPM package
 
-```bash
-# Host-side:
-spook remote curl <vm-name> /api/v1/stats | jq
-```
-
-## Why a separate SwiftPM package?
-
-The main repo's `Package.swift` targets `.macOS("26.0")` and its
-libraries import `Virtualization`, `AppKit`, `Security`, `CryptoKit`,
+The main repo's `Package.swift` targets `.macOS("26.0")` and
+imports `Virtualization`, `AppKit`, `Security`, `CryptoKit`,
 and `os` — none of which are available on Linux. Isolating the
-Linux agent into its own subdirectory means:
+Linux agent:
 
 - `swift build` in the repo root stays Apple-only.
-- The Linux build has a clean dependency graph (Foundation + Glibc
-  + one C shim for `<linux/vm_sockets.h>`).
-- There's no `#if os(Linux)` rot threading through the main
-  codebase.
+- The Linux build has a clean dep graph: Foundation + Glibc +
+  a 6-line C shim for `<linux/vm_sockets.h>`.
+- No `#if os(Linux)` rot threads through the main codebase.
 
-Wire-protocol parity is maintained by hand: the JSON shapes emitted
-here (`StatsFrame`, `PortEntry`, the `{topic,data}` envelope) match
-the types the host decodes in `SpooktacularCore.GuestEvent` /
-`GuestStatsResponse` / `GuestPortInfo`. Any change to one must be
-reflected in the other — a small CI check that diffs the two
-encoders would be useful once the Linux agent graduates past
-metrics-only.
+Wire-protocol parity is hand-maintained: the Linux agent's
+`Stats` struct (in `HostDialer.swift`) has the same field names
+and types as `GuestStatsResponse` in the main repo's
+`SpooktacularCore`, and both use a `{topic, data}` envelope to
+match `GuestEvent`'s Codable synthesis.

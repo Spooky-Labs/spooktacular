@@ -28,8 +28,15 @@ struct VMDetailView: View {
         }
         .navigationTitle(name)
         .task(id: "\(name)-\(isRunning)") {
-            if isRunning, let client = appState.agentClients[name] {
-                stats.start(client: client)
+            // Route stats through the Apple-native
+            // `VZVirtioSocketListener` the VM exposes via
+            // `agentEventListener()`. The RPC client stays
+            // wired for host-observable probes (latency, port
+            // count).
+            if isRunning,
+               let client = appState.agentClients[name],
+               let listener = appState.runningVMs[name]?.agentEventListener() {
+                stats.start(listener: listener, client: client)
             } else {
                 stats.stop()
             }

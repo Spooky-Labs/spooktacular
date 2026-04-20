@@ -62,7 +62,16 @@ final class WorkspaceStatsModel {
 
     /// Subscribes to the guest's push stream. Safe to call
     /// multiple times — previous tasks are cancelled first.
-    func start(client: GuestAgentClient) {
+    ///
+    /// - Parameters:
+    ///   - listener: The Apple-native ``AgentEventListener`` for
+    ///     this VM. The guest agent dials into it on boot and
+    ///     pushes length-prefixed ``GuestEvent`` frames — this
+    ///     is the sole source of `.stats` samples.
+    ///   - client: Host-side RPC client used for latency and
+    ///     port-count probes. These measurements are host-
+    ///     observable so they don't belong on the push stream.
+    func start(listener: AgentEventListener, client: GuestAgentClient) {
         streamTask?.cancel()
         hostProbeTask?.cancel()
 
@@ -75,20 +84,15 @@ final class WorkspaceStatsModel {
 
         streamTask = Task { [weak self] in
             do {
-                // Filter to `.stats` only — the stats sidebar
-                // doesn't consume `.ports` or `.appsFrontmost`
-                // frames, so asking the server to skip them
-                // halves the per-tick bytes on the wire.
-                for try await event in client.eventStream(filter: .statsOnly) {
+                for try await event in listener.events() {
                     guard !Task.isCancelled else { return }
                     guard case .stats(let stats) = event else { continue }
                     await self?.appendFrame(stats: stats)
                 }
             } catch {
                 // Stream ended (VM stopped, connection dropped,
-                // older agent without /api/v1/stats/stream). The
-                // existing samples stay on-screen so the graph
-                // doesn't flash to empty.
+                // agent not running). Existing samples stay
+                // on-screen so the graph doesn't flash empty.
             }
         }
     }

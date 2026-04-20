@@ -176,6 +176,13 @@ enum SpooktacularAgent {
         log.notice(
             "spooktacular-agent starting: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort), signatures=\(AgentHTTPServer.signatureVerifier != nil ? "enabled" : "disabled"), tickets=\(AgentHTTPServer.ticketVerifier != nil ? "enabled" : "disabled")"
         )
+        // Apple-native event push. Dials the host's
+        // `VZVirtioSocketListener` on port 9469 and streams
+        // length-prefixed `GuestEvent` frames. Runs on a
+        // detached thread alongside the HTTP listeners so
+        // request/response RPCs (exec, clipboard, apps, …)
+        // keep their HTTP path.
+        HostEventDialer.start()
         AgentHTTPServer.listenAll(
             readonlyPort: readonlyPort,
             runnerPort: runnerPort,
