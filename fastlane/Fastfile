@@ -191,6 +191,44 @@ platform :mac do
     )
   end
 
+  desc "Sync development cert + profile for local builds (NEFilter included)"
+  #
+  # Local builds need a *development* provisioning profile whose
+  # allowlist includes `com.apple.developer.networking.networkextension`
+  # for NEFilter. Without it, amfid rejects launch with
+  # "No matching profile found" (AMFIError -413) because those are
+  # restricted entitlements. `bundle exec fastlane signing_dev`
+  # downloads the profile and installs it under
+  # `~/Library/MobileDevice/Provisioning Profiles/`, where
+  # `build-app.sh` auto-discovers it by app-identifier.
+  #
+  # Auth: prefers App Store Connect API key env vars when set
+  # (matches CI's non-interactive flow); otherwise falls through
+  # to fastlane's default Apple-ID auth chain (interactive
+  # keychain / `fastlane-session`). This is the canonical local-
+  # dev shape — a developer on their own Mac should not need the
+  # API key secret just to install a profile.
+  lane :signing_dev do
+    # Empty-string env vars are treated as unset. GitHub Actions
+    # `env:` blocks export an empty string when the secret is
+    # unresolved, and `ENV[..] || ""` treats "" as truthy in Ruby —
+    # so we check `.empty?` explicitly to gate API-key use.
+    args = {
+      type: "development",
+      readonly: is_ci
+    }
+    if !(ENV["APPLE_API_KEY_ID"] || "").empty? &&
+       !(ENV["APPLE_API_ISSUER_ID"] || "").empty? &&
+       !(ENV["APPLE_API_KEY_P8"] || "").empty?
+      args[:api_key] = get_api_key
+    else
+      # No API creds → fall through to Apple-ID interactive auth
+      # (the local-dev flow; reads from Keychain or prompts).
+      args[:username] = APPLE_ID
+    end
+    match(**args)
+  end
+
   # ──────────────────────────────────────────────────
   # Notarize — Direct distribution
   # ──────────────────────────────────────────────────

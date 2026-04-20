@@ -595,10 +595,17 @@ public final class VirtualMachine: NSObject {
     /// > disk image after saving invalidates the state file.
     public func saveState(to url: URL) async throws {
         guard let vm = vzVM else { throw VirtualMachineInvalidatedError() }
-        guard vm.canPause else {
+        // Apple's `saveMachineStateTo(url:)` requires the VM to
+        // already be paused — see
+        // https://developer.apple.com/documentation/virtualization/vzvirtualmachine/savemachinestateto(url:)
+        // The previous `canPause` guard was wrong in both
+        // directions: it rejected paused VMs (the one state this
+        // API actually accepts) and would have let a running VM
+        // through (where save crashes inside VZ).
+        guard state == .paused else {
             throw VirtualMachineLifecycleError.invalidTransition(
                 from: state, to: .paused,
-                reason: "VM must be in a pausable state to save (save requires pausing first)"
+                reason: "VM must be paused before saving state (call pause() first)"
             )
         }
         Log.vm.info("Saving VM state to \(url.lastPathComponent, privacy: .public)")

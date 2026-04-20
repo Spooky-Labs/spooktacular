@@ -65,7 +65,21 @@ struct ContentView: View {
         List(selection: $selection) {
             Section("Virtual Machines") {
                 ForEach(filteredVMs, id: \.self) { name in
-                    VMRow(name: name).tag(SidebarSelection.vm(name))
+                    VMRow(name: name)
+                        .tag(SidebarSelection.vm(name))
+                        // `swipeActions` on macOS 13+ surfaces the
+                        // same trailing-swipe affordance iOS users
+                        // expect. The `allowsFullSwipe: true` lets
+                        // a full trailing swipe trigger delete
+                        // without a secondary tap.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                appState.deleteVM(name)
+                                if selection == .vm(name) { selection = nil }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                 }
             }
             Section("Images") {
@@ -79,6 +93,14 @@ struct ContentView: View {
                             Divider()
                             Button("Delete", role: .destructive) {
                                 try? appState.imageLibrary.remove(id: image.id)
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                try? appState.imageLibrary.remove(id: image.id)
+                                if selection == .image(image.id) { selection = nil }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
                         }
                 }

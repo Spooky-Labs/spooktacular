@@ -157,38 +157,58 @@ if [ -f "$ICNS" ]; then
     cp "$ICNS" "$RESOURCES/AppIcon.icns"
 fi
 
-# Embed provisioning profile if PROVISIONING_PROFILE path is set
-# (Fastlane sets this after match runs).
+# Resolve the provisioning profile.
 #
-# Restricted entitlements (NetworkExtension, system-extension install)
-# require a matching embedded.provisionprofile or AMFI rejects the
-# binary at execve time with "completely unsigned code" — even when
-# codesign itself validates. When no profile is available, build a
-# "dev" variant that strips the restricted entitlements so the app
-# launches locally. pf egress (Track F') still works; NEFilter
-# system extension (Track F'' Phase B) is disabled until a full
-# signed build with profile runs.
-HAVE_PROFILE=0
-if [ -n "${PROVISIONING_PROFILE:-}" ] && [ -f "$PROVISIONING_PROFILE" ]; then
+# Restricted entitlements — NetworkExtension, application-identifier,
+# team-identifier — require an embedded.provisionprofile in
+# Contents/ whose allowlist covers each one. Without it, amfid
+# rejects launch with "No matching profile found" (AMFIError -413)
+# even when codesign itself validates.
+#
+# Discovery order:
+#   1. `$PROVISIONING_PROFILE` — fastlane's `build` lane sets this
+#      after `signing` (appstore) or `signing_dev` (development).
+#   2. Newest profile in `~/Library/MobileDevice/Provisioning
+#      Profiles/` whose application-identifier matches the app.
+#   3. If neither resolves: build a **dev variant** with restricted
+#      entitlements stripped. This mirrors Xcode's own behavior when
+#      a developer opens a project with no profile: it signs a
+#      local-run copy so the app launches on the developer's own
+#      Mac. The dev variant drops the NEFilter system extension
+#      (it cannot load without provisioning); NEFilter lights up
+#      automatically on any build where the full profile is present.
+#      This is NOT an alternate architecture — NEFilter stays the
+#      single egress-enforcement path. It's the standard
+#      local-dev signing shape Apple's tooling produces.
+if [ -z "${PROVISIONING_PROFILE:-}" ]; then
+    PROVISIONING_PROFILE="$("$PROJECT_DIR/scripts/find-provisioning-profile.sh" \
+        com.spooktacular.app 2>/dev/null || true)"
+fi
+
+DEV_VARIANT=0
+if [ -n "${PROVISIONING_PROFILE:-}" ] && [ -f "${PROVISIONING_PROFILE}" ]; then
     echo "Embedding provisioning profile: $(basename "$PROVISIONING_PROFILE")"
     cp "$PROVISIONING_PROFILE" "$CONTENTS/embedded.provisionprofile"
-    HAVE_PROFILE=1
+
+    SYSEX_PROVISIONING_PROFILE="${SYSEX_PROVISIONING_PROFILE:-}"
+    if [ -z "$SYSEX_PROVISIONING_PROFILE" ]; then
+        SYSEX_PROVISIONING_PROFILE="$("$PROJECT_DIR/scripts/find-provisioning-profile.sh" \
+            "$SYSEX_ID" 2>/dev/null || true)"
+    fi
+    if [ -z "$SYSEX_PROVISIONING_PROFILE" ] || [ ! -f "$SYSEX_PROVISIONING_PROFILE" ]; then
+        echo "✗ Main-app profile present but no profile for $SYSEX_ID." >&2
+        echo "  Run: bundle exec fastlane signing_dev" >&2
+        exit 1
+    fi
+    echo "Embedding sysex profile: $(basename "$SYSEX_PROVISIONING_PROFILE")"
+    cp "$SYSEX_PROVISIONING_PROFILE" "$SYSEX_CONTENTS/embedded.provisionprofile"
 else
-    echo "No PROVISIONING_PROFILE set — building dev variant (NEFilter disabled)."
-    # Remove the embedded system extension from the bundle entirely:
-    # without provisioning it cannot load, and leaving it in forces
-    # the main app to sign against restricted entitlements it no
-    # longer needs.
+    echo "No provisioning profile — building dev variant."
+    echo "  Full NEFilter build: bundle exec fastlane signing_dev && ./build-app.sh"
+    DEV_VARIANT=1
+    # Drop the sysex bundle: it can't load without provisioning.
     rm -rf "$CONTENTS/Library/SystemExtensions"
-    # Emit a dev-variant app entitlements file without the NE keys.
-    # /usr/libexec/PlistBuddy is the Apple-sanctioned way to edit
-    # plists in shell; `Delete :key` is a no-op if the key is absent
-    # already, so the script stays idempotent across reruns.
-    # Strip restricted entitlements: these require an embedded
-    # provisioning profile whose allowlist matches. Without one,
-    # amfid rejects launch with:
-    #   AppleMobileFileIntegrityError Code=-413 "No matching profile found"
-    # and the kernel refuses to map the binary.
+    # Strip restricted entitlements from every signed component.
     DEV_ENTITLEMENTS="$(mktemp -t spook-ent).plist"
     cp "$ENTITLEMENTS" "$DEV_ENTITLEMENTS"
     for key in \
@@ -198,8 +218,6 @@ else
         /usr/libexec/PlistBuddy -c "Delete :$key" "$DEV_ENTITLEMENTS" 2>/dev/null || true
     done
     ENTITLEMENTS="$DEV_ENTITLEMENTS"
-    # Strip the same keys from the CLI and XPC-helper entitlements
-    # files so their signatures stay profile-free too.
     DEV_CLI_ENTITLEMENTS="$(mktemp -t spook-cli-ent).plist"
     cp "$CLI_ENTITLEMENTS" "$DEV_CLI_ENTITLEMENTS"
     for key in com.apple.application-identifier com.apple.developer.team-identifier; do
@@ -268,7 +286,7 @@ TIMESTAMP_FLAG="--timestamp"
 #   3. CLI binary (sibling of the app binary).
 #   4. App binary.
 #   5. App bundle root (covers everything above).
-if [ "$HAVE_PROFILE" = "1" ]; then
+if [ "$DEV_VARIANT" != "1" ]; then
     codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_MACOS/$SYSEX_ID"
     codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_DIR"
 fi
