@@ -75,22 +75,44 @@ public enum DiskInjector {
 
         Log.provision.info("Mounting guest disk for injection: \(diskPath, privacy: .public)")
 
-        let attachOutput = try runProcess("/usr/bin/hdiutil", arguments: [
-            "attach", diskPath, "-nomount", "-plist",
+        // `diskutil image attach` is Apple's macOS-26 replacement
+        // for `hdiutil attach`. The older tool doesn't support
+        // ASIF (Apple Sparse Image Format) disks and errors with
+        //   "hdiutil: this image format is not supported by
+        //    hdiutil. Please use 'diskutil image attach'"
+        // `diskutil image attach` handles both ASIF and
+        // legacy RAW/UDRW images, so we use it unconditionally.
+        //
+        // Output plist shape differs slightly from hdiutil's:
+        // `dev-entry` values are bare identifiers ("disk25")
+        // rather than fully-qualified paths ("/dev/disk25").
+        // `parseDeviceFromPlist` now normalizes by stripping
+        // any leading "/dev/" so downstream code doesn't care
+        // which attach tool produced the plist.
+        let attachOutput = try runProcess("/usr/sbin/diskutil", arguments: [
+            "image", "attach", "--nomount", "--plist", diskPath,
         ])
 
         guard let devicePath = parseDeviceFromPlist(attachOutput) else {
             throw DiskInjectorError.mountFailed(
-                reason: "Could not parse device path from hdiutil output"
+                reason: "Could not parse device path from diskutil image attach output"
             )
         }
 
         defer {
+            // `hdiutil detach` works for images attached via
+            // either `hdiutil attach` OR `diskutil image attach`
+            // — the underlying kernel driver is the same, only
+            // the attach-tool wrappers differ. `diskutil image`
+            // does NOT have a `detach` subcommand as of
+            // macOS 26 (only `attach`/`info`/`create`), so we
+            // use hdiutil here regardless of which tool
+            // attached the image.
             _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", devicePath, "-force"])
             Log.provision.debug("Detached disk image")
         }
 
-        let volumePath = try mountDataVolume(devicePath: devicePath)
+        let volumePath = try ensureDataVolume(devicePath: devicePath)
 
         let scriptDestination = "\(volumePath)\(guestScriptPath)"
         let scriptDirectory = URL(filePath: scriptDestination).parentPath
@@ -212,15 +234,22 @@ public enum DiskInjector {
         }
     }
 
-    /// Parses the whole-disk device path from `hdiutil attach -plist` output.
+    /// Parses the whole-disk device path from the attach-plist
+    /// produced by `diskutil image attach --plist`.
     ///
     /// The plist contains a `system-entities` array. The entry whose
     /// `content-hint` is `GUID_partition_scheme` (or the first entry
-    /// with a `dev-entry`) gives us the whole-disk device node
-    /// (e.g. `/dev/disk4`).
+    /// with a `dev-entry`) gives us the whole-disk device node.
     ///
-    /// - Parameter plistOutput: The XML plist string from `hdiutil`.
-    /// - Returns: The device path, or `nil` if parsing failed.
+    /// Normalization: `diskutil image attach` returns bare
+    /// identifiers ("disk25") whereas `hdiutil attach` returned
+    /// fully-qualified paths ("/dev/disk25"). We return the
+    /// fully-qualified form unconditionally so downstream code
+    /// (`mountDataVolume`, the detach path) has a single contract.
+    ///
+    /// - Parameter plistOutput: The XML plist string.
+    /// - Returns: The device path prefixed with `/dev/`, or `nil` if
+    ///   parsing failed.
     static func parseDeviceFromPlist(_ plistOutput: String) -> String? {
         guard let data = plistOutput.data(using: .utf8),
               let plist = try? PropertyListSerialization.propertyList(
@@ -231,12 +260,16 @@ public enum DiskInjector {
             return nil
         }
 
-        if let guid = entities.first(where: { ($0["content-hint"] as? String) == "GUID_partition_scheme" }),
-           let devEntry = guid["dev-entry"] as? String {
-            return devEntry
+        let rawEntry: String?
+        if let guid = entities.first(where: { ($0["content-hint"] as? String) == "GUID_partition_scheme" }) {
+            rawEntry = guid["dev-entry"] as? String
+        } else {
+            rawEntry = entities.first?["dev-entry"] as? String
         }
 
-        return entities.first?["dev-entry"] as? String
+        guard let entry = rawEntry else { return nil }
+        // Normalize bare "disk25" → "/dev/disk25".
+        return entry.hasPrefix("/dev/") ? entry : "/dev/\(entry)"
     }
 
     /// Mounts the APFS data volume from an attached disk device.
@@ -249,6 +282,69 @@ public enum DiskInjector {
     /// - Returns: The mount point path of the data volume.
     /// - Throws: ``DiskInjectorError/mountFailed(reason:)`` if no
     ///   data volume is found or mounting fails.
+    /// Calls `mountDataVolume` and — if no Data-role APFS
+    /// volume exists on the attached disk — eagerly creates
+    /// one via `diskutil apfs addVolume` and retries.
+    ///
+    /// Freshly-installed macOS guests that have never booted
+    /// have a partition layout with System / Preboot / Recovery
+    /// / Update volumes but no Data volume — APFS creates the
+    /// Data volume lazily at first boot. Without it, there's
+    /// nowhere to write a LaunchDaemon plist (System is sealed
+    /// and read-only; Preboot is SSV-protected).
+    ///
+    /// The fix: spawn the Data volume ourselves. `diskutil apfs
+    /// addVolume <container> APFS Data -role D` produces the
+    /// same volume the guest's first-boot would have produced,
+    /// and the subsequent guest boot adopts it as its writable
+    /// data volume.
+    static func ensureDataVolume(devicePath: String) throws -> String {
+        do {
+            return try mountDataVolume(devicePath: devicePath)
+        } catch DiskInjectorError.mountFailed {
+            Log.provision.notice(
+                "No Data volume on \(devicePath, privacy: .public) — creating one via diskutil apfs addVolume"
+            )
+        }
+        // Find the APFS container whose physical store is on
+        // our attached disk, then add a Data-role volume to it.
+        let listOutput = try runProcess("/usr/sbin/diskutil", arguments: [
+            "apfs", "list", "-plist",
+        ])
+        guard let data = listOutput.data(using: .utf8),
+              let plist = try? PropertyListSerialization.propertyList(
+                  from: data, format: nil
+              ) as? [String: Any],
+              let containers = plist["Containers"] as? [[String: Any]]
+        else {
+            throw DiskInjectorError.mountFailed(reason: "Could not parse APFS container list while ensuring Data volume")
+        }
+        let whole = (devicePath as NSString).lastPathComponent
+        // Prefer the container with a System-role volume — that's
+        // the main macOS install container, not Recovery or ISC.
+        var targetContainer: String?
+        for container in containers {
+            let store = (container["DesignatedPhysicalStore"] as? String ?? "")
+            guard (store as NSString).lastPathComponent.hasPrefix(whole) else { continue }
+            let volumes = container["Volumes"] as? [[String: Any]] ?? []
+            let hasSystem = volumes.contains {
+                ($0["Roles"] as? [String] ?? []).contains("System")
+            }
+            if hasSystem, let containerRef = container["ContainerReference"] as? String {
+                targetContainer = containerRef
+                break
+            }
+        }
+        guard let container = targetContainer else {
+            throw DiskInjectorError.mountFailed(reason: "Could not locate the macOS System container on \(devicePath) — disk may be uninstalled or corrupt")
+        }
+        _ = try runProcess("/usr/sbin/diskutil", arguments: [
+            "apfs", "addVolume", container, "APFS", "Data", "-role", "D",
+        ])
+        // Retry — the new volume shows up in the next list.
+        return try mountDataVolume(devicePath: devicePath)
+    }
+
     static func mountDataVolume(devicePath: String) throws -> String {
         // Enumerate every APFS container on the system, then
         // filter to the one whose `DesignatedPhysicalStore`
