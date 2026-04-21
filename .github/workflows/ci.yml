@@ -44,7 +44,7 @@ jobs:
     name: Lint (SwiftLint + metadata)
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install SwiftLint
         run: |
@@ -86,7 +86,7 @@ jobs:
     runs-on: macos-26
     needs: [lint]
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # Reads `.ruby-version`, installs that Ruby, reads
       # `Gemfile.lock`'s `BUNDLED WITH` to install the matching
@@ -122,7 +122,7 @@ jobs:
     runs-on: macos-26
     needs: [lint]
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # Generate a single combined documentation archive spanning
       # all four library targets. Per the swift-docc-plugin
@@ -186,7 +186,7 @@ jobs:
     runs-on: macos-26
     needs: [lint]
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Build Spooktacular scheme via Xcode
         run: |
