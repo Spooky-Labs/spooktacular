@@ -20,7 +20,7 @@ struct SharePersistenceTests {
     ) throws -> (bundle: VirtualMachineBundle, tmp: TempDirectory) {
         let tmp = TempDirectory()
         let bundleURL = tmp.file("test.vm")
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
+        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec, displayName: "test")
         return (bundle, tmp)
     }
 

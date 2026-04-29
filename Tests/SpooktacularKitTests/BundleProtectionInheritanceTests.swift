@@ -38,7 +38,8 @@ struct BundleProtectionInheritanceTests {
 
         let bundle = try VirtualMachineBundle.create(
             at: url,
-            spec: VirtualMachineSpecification()
+            spec: VirtualMachineSpecification(),
+            displayName: "test"
         )
 
         // Force CUFUA regardless of host form factor so the test
@@ -88,7 +89,7 @@ struct BundleProtectionInheritanceTests {
             let destURL = URL(filePath: NSTemporaryDirectory() + "clone-\(UUID().uuidString).vm")
             defer { try? FileManager.default.removeItem(at: destURL) }
 
-            _ = try CloneManager.clone(source: source, to: destURL)
+            _ = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
 
             let srcClass = try BundleProtection.current(at: source.url)
             let dstClass = try BundleProtection.current(at: destURL)

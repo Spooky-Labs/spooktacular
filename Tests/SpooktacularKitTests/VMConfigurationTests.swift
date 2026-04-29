@@ -334,7 +334,8 @@ struct VirtualMachineConfigurationTests {
             let bundleURL = tmp.file("linux.vm")
             let bundle = try VirtualMachineBundle.create(
                 at: bundleURL,
-                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux),
+                displayName: "linux"
             )
 
             let config = VZVirtualMachineConfiguration()

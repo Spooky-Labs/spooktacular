@@ -24,7 +24,7 @@ struct CapacityCheckTests {
         let configData = try VirtualMachineBundle.encoder.encode(spec)
         try configData.write(to: bundleURL.appendingPathComponent("config.json"))
 
-        let metadata = VirtualMachineMetadata()
+        let metadata = VirtualMachineMetadata(displayName: "test")
         let metadataData = try VirtualMachineBundle.encoder.encode(metadata)
         try metadataData.write(to: bundleURL.appendingPathComponent("metadata.json"))
 

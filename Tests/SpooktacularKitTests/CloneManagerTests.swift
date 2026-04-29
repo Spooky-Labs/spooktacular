@@ -13,7 +13,8 @@ struct CloneManagerTests {
         let bundleURL = tmp.url.appendingPathComponent("source.vm")
         let bundle = try VirtualMachineBundle.create(
             at: bundleURL,
-            spec: VirtualMachineSpecification(cpuCount: 6)
+            spec: VirtualMachineSpecification(cpuCount: 6),
+            displayName: "source"
         )
 
         for (name, content) in [
@@ -38,7 +39,7 @@ struct CloneManagerTests {
             let outer = CloneManagerTests()
             let source = try outer.makeTestBundle(in: tmp)
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            let clone = try CloneManager.clone(source: source, to: destURL)
+            let clone = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             return (source, clone, tmp)
         }
 
@@ -120,7 +121,7 @@ struct CloneManagerTests {
             let outer = CloneManagerTests()
             let source = try outer.makeTestBundle(in: tmp)
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            _ = try CloneManager.clone(source: source, to: destURL)
+            _ = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             return (source, destURL, tmp)
         }
 
@@ -178,7 +179,8 @@ struct CloneManagerTests {
         let destURL = tmp.url.appendingPathComponent("clone.vm")
         let clone = try CloneManager.clone(
             source: try VirtualMachineBundle.load(from: source.url),
-            to: destURL
+            to: destURL,
+            displayName: "clone"
         )
 
         #expect(clone.metadata.setupCompleted == true)
@@ -195,10 +197,10 @@ struct CloneManagerTests {
             let outer = CloneManagerTests()
             let source = try outer.makeTestBundle(in: tmp)
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            _ = try CloneManager.clone(source: source, to: destURL)
+            _ = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
 
             #expect {
-                try CloneManager.clone(source: source, to: destURL)
+                try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             } throws: { error in
                 guard let bundleError = error as? VirtualMachineBundleError else { return false }
                 return bundleError == .alreadyExists(url: destURL)
@@ -227,7 +229,7 @@ struct CloneManagerTests {
             let destURL = tmp.url.appendingPathComponent("rollback-clone.vm")
 
             #expect(throws: Error.self) {
-                try CloneManager.clone(source: source, to: destURL)
+                try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             }
 
             #expect(
@@ -242,7 +244,8 @@ struct CloneManagerTests {
             let sourceURL = tmp.url.appendingPathComponent("sparse.vm")
             let source = try VirtualMachineBundle.create(
                 at: sourceURL,
-                spec: VirtualMachineSpecification()
+                spec: VirtualMachineSpecification(),
+                displayName: "sparse"
             )
 
             try Data("fake-mid".utf8).write(
@@ -250,7 +253,7 @@ struct CloneManagerTests {
             )
 
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            let clone = try CloneManager.clone(source: source, to: destURL)
+            let clone = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
 
             // Same field-by-field comparison as `cloneIsLoadable`.
             // The clone's MAC is regenerated; every other field

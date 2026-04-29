@@ -136,7 +136,7 @@ struct VirtualMachineMetadataMigrationTests {
 
     @Test("Current metadata round-trips with iconSpec")
     func currentMetadataRoundTrip() throws {
-        var metadata = VirtualMachineMetadata()
+        var metadata = VirtualMachineMetadata(displayName: "test")
         metadata.iconSpec = .glassFrame(symbol: "cpu", tint: .teal)
 
         let data = try JSONEncoder().encode(metadata)

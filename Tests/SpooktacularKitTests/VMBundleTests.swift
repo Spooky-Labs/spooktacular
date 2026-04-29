@@ -222,15 +222,15 @@ struct VirtualMachineBundleTests {
 
         @Test("Generates a unique ID on creation")
         func uniqueID() {
-            let a = VirtualMachineMetadata()
-            let b = VirtualMachineMetadata()
+            let a = VirtualMachineMetadata(displayName: "test")
+            let b = VirtualMachineMetadata(displayName: "test")
             #expect(a.id != b.id)
         }
 
         @Test("Records creation date within current time window")
         func creationDate() {
             let before = Date()
-            let metadata = VirtualMachineMetadata()
+            let metadata = VirtualMachineMetadata(displayName: "test")
             let after = Date()
             #expect(metadata.createdAt >= before)
             #expect(metadata.createdAt <= after)
@@ -238,14 +238,14 @@ struct VirtualMachineBundleTests {
 
         @Test("Defaults setupCompleted to false and lastBootedAt to nil")
         func defaults() {
-            let metadata = VirtualMachineMetadata()
+            let metadata = VirtualMachineMetadata(displayName: "test")
             #expect(metadata.setupCompleted == false)
             #expect(metadata.lastBootedAt == nil)
         }
 
         @Test("Round-trips all fields through encoder")
         func fullRoundTrip() throws {
-            var metadata = VirtualMachineMetadata()
+            var metadata = VirtualMachineMetadata(displayName: "test")
             metadata.setupCompleted = true
             metadata.lastBootedAt = Date()
 
@@ -267,7 +267,7 @@ struct VirtualMachineBundleTests {
 
         @Test("Tracks setup completion state")
         func setupCompletion() {
-            var metadata = VirtualMachineMetadata()
+            var metadata = VirtualMachineMetadata(displayName: "test")
             #expect(metadata.setupCompleted == false)
             metadata.setupCompleted = true
             #expect(metadata.setupCompleted == true)
@@ -283,7 +283,7 @@ struct VirtualMachineBundleTests {
         func createBundle() throws {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
-            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
 
             #expect(FileManager.default.fileExists(atPath: bundleURL.path))
             #expect(bundle.url == bundleURL)
@@ -295,7 +295,7 @@ struct VirtualMachineBundleTests {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
             let spec = VirtualMachineSpecification(cpuCount: 8, memorySizeInBytes: 16_000_000_000)
-            _ = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: spec, displayName: "test")
 
             let data = try Data(contentsOf: bundleURL.appendingPathComponent("config.json"))
             let decoded = try VirtualMachineBundle.decoder.decode(VirtualMachineSpecification.self, from: data)
@@ -306,7 +306,7 @@ struct VirtualMachineBundleTests {
         func writesMetadata() throws {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
-            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
 
             let metadataURL = bundleURL.appendingPathComponent("metadata.json")
             try #require(
@@ -324,7 +324,8 @@ struct VirtualMachineBundleTests {
             let bundleURL = tmp.file("test.vm")
             let original = try VirtualMachineBundle.create(
                 at: bundleURL,
-                spec: VirtualMachineSpecification(cpuCount: 6)
+                spec: VirtualMachineSpecification(cpuCount: 6),
+                displayName: "test"
             )
 
             let loaded = try VirtualMachineBundle.load(from: bundleURL)
@@ -336,7 +337,7 @@ struct VirtualMachineBundleTests {
         func writeMetadataRoundTrip() throws {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
-            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
             try #require(bundle.metadata.setupCompleted == false)
 
             var updated = bundle.metadata
@@ -353,7 +354,7 @@ struct VirtualMachineBundleTests {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
             let originalSpec = VirtualMachineSpecification(cpuCount: 4, memorySizeInBytes: 8 * 1024 * 1024 * 1024)
-            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: originalSpec)
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: originalSpec, displayName: "test")
             try #require(bundle.spec.cpuCount == 4)
 
             let updatedSpec = VirtualMachineSpecification(
@@ -374,7 +375,7 @@ struct VirtualMachineBundleTests {
         func savedStateHelpers() throws {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
-            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
 
             // File name matches Apple's sample code
             // ("Running macOS in a Virtual Machine on Apple Silicon")
@@ -397,7 +398,8 @@ struct VirtualMachineBundleTests {
             let bundleURL = tmp.file("linux.vm")
             let bundle = try VirtualMachineBundle.create(
                 at: bundleURL,
-                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux),
+                displayName: "linux"
             )
             #expect(bundle.hasEFIVariableStore)
             #expect(bundle.efiVariableStoreURL == bundleURL.appendingPathComponent("efi-nvram.bin"))
@@ -410,7 +412,8 @@ struct VirtualMachineBundleTests {
             let bundleURL = tmp.file("mac.vm")
             let bundle = try VirtualMachineBundle.create(
                 at: bundleURL,
-                spec: VirtualMachineSpecification(guestOS: .macOS)
+                spec: VirtualMachineSpecification(guestOS: .macOS),
+                displayName: "mac"
             )
             #expect(bundle.hasEFIVariableStore == false)
         }
@@ -421,7 +424,8 @@ struct VirtualMachineBundleTests {
             let bundleURL = tmp.file("linux-with-iso.vm")
             let bundle = try VirtualMachineBundle.create(
                 at: bundleURL,
-                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux)
+                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux),
+                displayName: "linux-with-iso"
             )
             #expect(bundle.installerISOURL == bundleURL.appendingPathComponent("installer.iso"))
             #expect(bundle.hasInstallerISO == false)
@@ -458,7 +462,7 @@ struct VirtualMachineBundleTests {
         func loadCorruptConfig() throws {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
-            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
 
             try Data("not-json".utf8).write(
                 to: bundleURL.appendingPathComponent("config.json")
@@ -476,7 +480,7 @@ struct VirtualMachineBundleTests {
         func loadCorruptMetadata() throws {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
-            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
 
             try Data("not-json".utf8).write(
                 to: bundleURL.appendingPathComponent("metadata.json")
@@ -494,10 +498,10 @@ struct VirtualMachineBundleTests {
         func createAtExistingPath() throws {
             let tmp = TempDirectory()
             let bundleURL = tmp.file("test.vm")
-            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+            _ = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
 
             #expect {
-                try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification())
+                try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
             } throws: { error in
                 guard let bundleError = error as? VirtualMachineBundleError else { return false }
                 return bundleError == .alreadyExists(url: bundleURL)
