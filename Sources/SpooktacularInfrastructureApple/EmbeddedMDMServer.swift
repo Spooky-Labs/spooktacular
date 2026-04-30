@@ -60,12 +60,15 @@ public actor EmbeddedMDMServer {
 
     static let checkInPath = "/mdm/checkin"
     static let commandPath = "/mdm/server"
+    static let manifestPathPrefix = "/mdm/manifest/"
+    static let pkgPathPrefix = "/mdm/pkg/"
 
     // MARK: - Properties
 
     private let host: String
     private let port: NWEndpoint.Port
     private let handler: any MDMServerHandler
+    private let contentStore: MDMContentStore?
     private let logger: Logger
     private var listener: NWListener?
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
@@ -85,6 +88,7 @@ public actor EmbeddedMDMServer {
         host: String = "127.0.0.1",
         port: UInt16 = defaultPort,
         handler: any MDMServerHandler,
+        contentStore: MDMContentStore? = nil,
         logger: Logger = Logger(
             subsystem: "com.spookylabs.spooktacular",
             category: "mdm.server"
@@ -105,6 +109,7 @@ public actor EmbeddedMDMServer {
         self.host = host
         self.port = nwPort
         self.handler = handler
+        self.contentStore = contentStore
         self.logger = logger
     }
 
@@ -264,17 +269,70 @@ public actor EmbeddedMDMServer {
     // MARK: - Dispatch
 
     private func dispatch(_ request: HTTPRequest, on connection: NWConnection) async {
+        // Static routes first.
         switch request.path {
         case Self.checkInPath:
             await handleCheckIn(request, on: connection)
+            return
         case Self.commandPath:
             await handleCommand(request, on: connection)
+            return
         default:
-            sendResponse(
-                statusCode: 404, body: nil,
-                contentType: nil, on: connection
-            )
+            break
         }
+        // Prefix-matched manifest + pkg routes — only on GET,
+        // since the device fetches them with HTTP GET when
+        // resolving the InstallEnterpriseApplication command.
+        if request.method == "GET" {
+            if let id = idFrom(path: request.path, prefix: Self.manifestPathPrefix) {
+                await handleManifestFetch(id: id, on: connection)
+                return
+            }
+            if let id = idFrom(path: request.path, prefix: Self.pkgPathPrefix) {
+                await handlePkgFetch(id: id, on: connection)
+                return
+            }
+        }
+        sendResponse(
+            statusCode: 404, body: nil,
+            contentType: nil, on: connection
+        )
+    }
+
+    private nonisolated func idFrom(path: String, prefix: String) -> UUID? {
+        guard path.hasPrefix(prefix) else { return nil }
+        let raw = String(path.dropFirst(prefix.count))
+        return UUID(uuidString: raw)
+    }
+
+    private func handleManifestFetch(id: UUID, on connection: NWConnection) async {
+        guard let store = contentStore,
+              let bytes = await store.manifest(forID: id) else {
+            sendResponse(statusCode: 404, body: nil, contentType: nil, on: connection)
+            return
+        }
+        sendResponse(
+            statusCode: 200,
+            body: bytes,
+            contentType: "application/xml",
+            on: connection
+        )
+    }
+
+    private func handlePkgFetch(id: UUID, on connection: NWConnection) async {
+        guard let store = contentStore,
+              let bytes = await store.pkg(forID: id) else {
+            sendResponse(statusCode: 404, body: nil, contentType: nil, on: connection)
+            return
+        }
+        sendResponse(
+            statusCode: 200,
+            body: bytes,
+            // Apple's installer recognizes pkg payloads by
+            // content-type or by the magic bytes; both are fine.
+            contentType: "application/octet-stream",
+            on: connection
+        )
     }
 
     private func handleCheckIn(_ request: HTTPRequest, on connection: NWConnection) async {

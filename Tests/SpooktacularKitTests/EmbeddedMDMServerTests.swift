@@ -268,4 +268,184 @@ struct EmbeddedMDMServerTests {
         )
         #expect(response.statusCode == 400)
     }
+
+    // MARK: - Manifest + pkg endpoints (Phase 7 GETs)
+
+    /// Same test rig as `makeRig()` but threads through a
+    /// content store the server can read for /mdm/manifest
+    /// + /mdm/pkg fetches.
+    private struct ContentRig {
+        let server: EmbeddedMDMServer
+        let handler: SpooktacularMDMHandler
+        let contentStore: MDMContentStore
+        let baseURL: URL
+    }
+
+    private func makeContentRig() async throws -> ContentRig {
+        let store = MDMDeviceStore()
+        let queue = MDMCommandQueue()
+        let handler = SpooktacularMDMHandler(
+            deviceStore: store,
+            commandQueue: queue
+        )
+        let content = MDMContentStore()
+        let server = try EmbeddedMDMServer(
+            host: "127.0.0.1",
+            port: 0,
+            handler: handler,
+            contentStore: content
+        )
+        try await server.start()
+        let port = await server.boundPort
+        guard let port else { throw EmbeddedMDMServerTestError.noBoundPort }
+        let baseURL = try #require(URL(string: "http://127.0.0.1:\(port)"))
+        return ContentRig(
+            server: server,
+            handler: handler,
+            contentStore: content,
+            baseURL: baseURL
+        )
+    }
+
+    @Test("GET /mdm/manifest/<id> returns the registered manifest bytes")
+    func manifestGetReturnsBytes() async throws {
+        let rig = try await makeContentRig()
+        defer { Task { await rig.server.stop() } }
+
+        let manifestBytes = Data("<plist>...</plist>".utf8)
+        let id = await rig.contentStore.register(
+            pkgData: Data("PKG".utf8),
+            manifestData: manifestBytes,
+            bundleIdentifier: "com.example.x"
+        )
+
+        var req = URLRequest(url: rig.baseURL.appendingPathComponent("/mdm/manifest/\(id.uuidString)"))
+        req.httpMethod = "GET"
+        let (body, response) = try await URLSession.shared.data(for: req)
+        let http = try #require(response as? HTTPURLResponse)
+        #expect(http.statusCode == 200)
+        #expect(body == manifestBytes)
+    }
+
+    @Test("GET /mdm/pkg/<id> returns the registered pkg bytes")
+    func pkgGetReturnsBytes() async throws {
+        let rig = try await makeContentRig()
+        defer { Task { await rig.server.stop() } }
+
+        let pkgBytes = Data("PKG-BYTES-HERE".utf8)
+        let id = await rig.contentStore.register(
+            pkgData: pkgBytes,
+            manifestData: Data("M".utf8),
+            bundleIdentifier: "com.example.x"
+        )
+
+        var req = URLRequest(url: rig.baseURL.appendingPathComponent("/mdm/pkg/\(id.uuidString)"))
+        req.httpMethod = "GET"
+        let (body, response) = try await URLSession.shared.data(for: req)
+        let http = try #require(response as? HTTPURLResponse)
+        #expect(http.statusCode == 200)
+        #expect(body == pkgBytes)
+    }
+
+    @Test("GET /mdm/pkg/<unknown-id> returns 404")
+    func pkgGetUnknown() async throws {
+        let rig = try await makeContentRig()
+        defer { Task { await rig.server.stop() } }
+        let bogusID = UUID().uuidString
+        var req = URLRequest(url: rig.baseURL.appendingPathComponent("/mdm/pkg/\(bogusID)"))
+        req.httpMethod = "GET"
+        let (_, response) = try await URLSession.shared.data(for: req)
+        let http = try #require(response as? HTTPURLResponse)
+        #expect(http.statusCode == 404)
+    }
+
+    @Test("GET /mdm/pkg/<malformed-id> returns 404 (not a parseable UUID)")
+    func pkgGetMalformedID() async throws {
+        let rig = try await makeContentRig()
+        defer { Task { await rig.server.stop() } }
+        var req = URLRequest(url: rig.baseURL.appendingPathComponent("/mdm/pkg/not-a-uuid"))
+        req.httpMethod = "GET"
+        let (_, response) = try await URLSession.shared.data(for: req)
+        let http = try #require(response as? HTTPURLResponse)
+        #expect(http.statusCode == 404)
+    }
+
+    // MARK: - End-to-end through the dispatcher
+
+    @Test("Dispatcher → server → simulated device retrieves manifest + pkg over real HTTP")
+    func endToEndDispatcherRoundTrip() async throws {
+        let rig = try await makeContentRig()
+        defer { Task { await rig.server.stop() } }
+
+        // Pre-enroll a device
+        await rig.handler.didReceiveAuthenticate(.init(
+            udid: udid, topic: topic, model: nil, osVersion: nil
+        ))
+
+        // Wire up a dispatcher pointed at the same content store
+        // and the server's actual base URL.
+        struct CannedBuilder: MDMUserDataPkgBuilding {
+            func buildPkg(scriptBody: Data, scriptName: String) async throws -> MDMUserDataBuiltPackage {
+                MDMUserDataBuiltPackage(
+                    pkgData: Data("FAKE-PKG-PAYLOAD".utf8),
+                    bundleIdentifier: "com.example.userdata.e2e"
+                )
+            }
+        }
+        let dispatcher = MDMUserDataDispatcher(
+            handler: rig.handler,
+            contentStore: rig.contentStore,
+            pkgBuilder: CannedBuilder(),
+            baseURL: rig.baseURL
+        )
+        let dispatched = try await dispatcher.dispatch(
+            scriptBody: Data("#!/bin/bash\necho hi".utf8),
+            scriptName: "hi.sh",
+            toUDID: udid
+        )
+
+        // Simulate the device's idle poll → server returns
+        // the InstallEnterpriseApplication command pointing
+        // at the dispatcher's manifestURL
+        let idleBody = try plist([
+            "Status": "Idle",
+            "UDID": udid
+        ])
+        let (cmdResponseBody, cmdResp) = try await putPlist(
+            idleBody, path: "/mdm/server", baseURL: rig.baseURL
+        )
+        #expect(cmdResp.statusCode == 200)
+        let cmdPlist = try #require(
+            try PropertyListSerialization.propertyList(
+                from: cmdResponseBody, options: [], format: nil
+            ) as? [String: Any]
+        )
+        let inner = try #require(cmdPlist["Command"] as? [String: Any])
+        let manifestURLString = try #require(inner["ManifestURL"] as? String)
+        #expect(manifestURLString == dispatched.manifestURL.absoluteString)
+
+        // Now simulate the device fetching the manifest URL
+        let manifestURL = try #require(URL(string: manifestURLString))
+        let (manifestData, manifestResp) = try await URLSession.shared.data(from: manifestURL)
+        let manifestHTTP = try #require(manifestResp as? HTTPURLResponse)
+        #expect(manifestHTTP.statusCode == 200)
+
+        // Manifest plist's asset URL points at the pkg endpoint
+        let manifest = try #require(
+            try PropertyListSerialization.propertyList(
+                from: manifestData, options: [], format: nil
+            ) as? [String: Any]
+        )
+        let asset = try #require(
+            ((manifest["items"] as? [[String: Any]])?.first?["assets"] as? [[String: Any]])?.first
+        )
+        let pkgURLString = try #require(asset["url"] as? String)
+        let pkgURL = try #require(URL(string: pkgURLString))
+
+        // Device fetches the pkg
+        let (pkgBody, pkgResp) = try await URLSession.shared.data(from: pkgURL)
+        let pkgHTTP = try #require(pkgResp as? HTTPURLResponse)
+        #expect(pkgHTTP.statusCode == 200)
+        #expect(pkgBody == Data("FAKE-PKG-PAYLOAD".utf8))
+    }
 }
