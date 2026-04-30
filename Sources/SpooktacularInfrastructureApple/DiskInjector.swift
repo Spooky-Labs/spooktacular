@@ -53,103 +53,196 @@ public enum DiskInjector {
     /// on the mounted volume is `<mountpoint>/usr/local/bin/spooktacular-user-data.sh`.
     public static let guestScriptPath = "/usr/local/bin/spooktacular-user-data.sh"
 
-    /// Injects a script into the VM's disk image as a LaunchDaemon.
+    /// Installs `Spooktacular Guest Tools.app` into a stopped
+    /// VM's `/Applications/` directory.
     ///
-    /// The VM must be stopped. The disk image is mounted temporarily,
-    /// the script and a LaunchDaemon plist are written, then the disk
-    /// is unmounted.
+    /// The Apple-native equivalent of what the legacy
+    /// script-based ``inject(script:into:)`` path does for the
+    /// `spooktacular-agent` Mach-O: mount the guest's APFS
+    /// data volume, `/usr/bin/ditto` the bundle onto it
+    /// (ditto preserves `.app` metadata — resource forks,
+    /// xattrs, symlinks, Frameworks/ directory structure —
+    /// natively, where a `tar` or shell-level `cp -R` would
+    /// require flag juggling), unmount.
+    ///
+    /// No bash script runs on the guest; no base64 encoding
+    /// step; no tarball round-trip. By the time the VM boots
+    /// the app is just *there* in `/Applications/`, signed
+    /// exactly as it shipped from the host.
+    ///
+    /// Launch-at-login is owned by the Guest Tools app
+    /// itself (via `SMAppService.mainApp` from its menu-bar
+    /// UI), not by the host installer — so this function
+    /// never writes to `/Library/LaunchAgents/`, never asks
+    /// the user for their admin password, and never drops
+    /// to `osascript`. A CI-runner VM created with
+    /// ``GuestToolsInstallMode/disabled`` skips this
+    /// function entirely; a VDI VM created with
+    /// ``GuestToolsInstallMode/installed`` gets the `.app`
+    /// in `/Applications/`, the user opens it once, and
+    /// flips the toggle.
     ///
     /// - Parameters:
-    ///   - scriptURL: Path to the shell script to inject.
-    ///   - bundle: The target VM bundle (must contain `disk.img`).
-    /// - Throws: ``DiskInjectorError`` if mounting, writing, or unmounting fails.
-    public static func inject(script scriptURL: URL, into bundle: VirtualMachineBundle) throws {
-        let diskPath = bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName).path
+    ///   - appBundle: Path to the host-side `.app` bundle.
+    ///     Typically resolved via
+    ///     ``AppBundleBootstrapTemplate/locateGuestToolsBundle()``.
+    ///   - bundle: The target VM bundle (must contain
+    ///     `disk.img`; VM must be stopped).
+    /// - Throws: ``DiskInjectorError`` if mounting, copying,
+    ///   or unmounting fails.
+    public static func installGuestTools(
+        appBundle appBundleURL: URL,
+        into bundle: VirtualMachineBundle
+    ) throws {
+        let diskPath = bundle.url
+            .appendingPathComponent(VirtualMachineBundle.diskImageFileName)
+            .path
 
         guard FileManager.default.fileExists(atPath: diskPath) else {
             throw DiskInjectorError.diskImageNotFound(path: diskPath)
         }
-        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-            throw DiskInjectorError.scriptNotFound(path: scriptURL.path)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: appBundleURL.path, isDirectory: &isDir),
+              isDir.boolValue
+        else {
+            throw DiskInjectorError.scriptNotFound(path: appBundleURL.path)
         }
 
-        Log.provision.info("Mounting guest disk for injection: \(diskPath, privacy: .public)")
+        Log.provision.info(
+            "Installing guest tools into VM disk: \(diskPath, privacy: .public)"
+        )
 
-        // `diskutil image attach` is Apple's macOS-26 replacement
-        // for `hdiutil attach`. The older tool doesn't support
-        // ASIF (Apple Sparse Image Format) disks and errors with
-        //   "hdiutil: this image format is not supported by
-        //    hdiutil. Please use 'diskutil image attach'"
-        // `diskutil image attach` handles both ASIF and
-        // legacy RAW/UDRW images, so we use it unconditionally.
-        //
-        // Output plist shape differs slightly from hdiutil's:
-        // `dev-entry` values are bare identifiers ("disk25")
-        // rather than fully-qualified paths ("/dev/disk25").
-        // `parseDeviceFromPlist` now normalizes by stripping
-        // any leading "/dev/" so downstream code doesn't care
-        // which attach tool produced the plist.
         let attachOutput = try runProcess("/usr/sbin/diskutil", arguments: [
             "image", "attach", "--nomount", "--plist", diskPath,
         ])
-
         guard let devicePath = parseDeviceFromPlist(attachOutput) else {
             throw DiskInjectorError.mountFailed(
                 reason: "Could not parse device path from diskutil image attach output"
             )
         }
-
         defer {
-            // `hdiutil detach` works for images attached via
-            // either `hdiutil attach` OR `diskutil image attach`
-            // — the underlying kernel driver is the same, only
-            // the attach-tool wrappers differ. `diskutil image`
-            // does NOT have a `detach` subcommand as of
-            // macOS 26 (only `attach`/`info`/`create`), so we
-            // use hdiutil here regardless of which tool
-            // attached the image.
-            _ = try? runProcess("/usr/bin/hdiutil", arguments: ["detach", devicePath, "-force"])
+            _ = try? runProcess(
+                "/usr/bin/hdiutil",
+                arguments: ["detach", devicePath, "-force"]
+            )
             Log.provision.debug("Detached disk image")
         }
 
         let volumePath = try ensureDataVolume(devicePath: devicePath)
 
-        let scriptDestination = "\(volumePath)\(guestScriptPath)"
-        let scriptDirectory = URL(filePath: scriptDestination).parentPath
+        // 1. ditto the .app into /Applications on the guest.
+        //    Apple's `ditto` with no flags is the correct
+        //    primitive here — it preserves every macOS-specific
+        //    bundle attribute (xattrs, symlinks, resource
+        //    forks, HFS+ compression markers), replaces an
+        //    existing bundle atomically, and is what Xcode
+        //    itself uses when installing apps during
+        //    development. No `rm -rf` before, no post-install
+        //    `xattr -rd` workaround.
+        let applicationsDir = "\(volumePath)/Applications"
         try FileManager.default.createDirectory(
-            atPath: scriptDirectory,
+            atPath: applicationsDir,
             withIntermediateDirectories: true
         )
-        // Idempotent overwrite: `FileManager.copyItem` refuses
-        // to overwrite an existing file, so a second Install
-        // Agent click (or a retry after a transient failure)
-        // would fail with
-        //   "couldn't be copied … item with the same name
-        //    already exists"
-        // Nothing about re-injecting the bootstrap is unsafe —
-        // `--install-daemon` and `launchctl bootstrap` are both
-        // idempotent on the guest side — so we remove-then-copy
-        // instead of bailing.
-        try? FileManager.default.removeItem(atPath: scriptDestination)
-        try FileManager.default.copyItem(atPath: scriptURL.path, toPath: scriptDestination)
-        try FileManager.default.setAttributes(
+        let destinationApp = "\(applicationsDir)/\(appBundleURL.lastPathComponent)"
+        try runProcess("/usr/bin/ditto", arguments: [
+            appBundleURL.path,
+            destinationApp,
+        ])
+
+        Log.provision.notice(
+            "Installed guest tools on guest data volume (destination=\(destinationApp, privacy: .public))"
+        )
+    }
+
+    /// Writes a user-data script to the VM bundle's provisioning
+    /// share as `first-boot.sh`. The Guest Tools LaunchDaemon
+    /// inside the guest picks it up on its next boot, runs it
+    /// as root, archives the body, and removes the trigger so
+    /// subsequent boots no-op.
+    ///
+    /// Replaces any previously-injected script — a user who
+    /// injects twice before the next boot gets the second one.
+    /// Previous run logs (`first-boot.stdout.log`, `.stderr.log`,
+    /// `.exit-code`) are left alone; the UI surfaces them as
+    /// "last run" while the pending script waits.
+    ///
+    /// - Parameters:
+    ///   - scriptURL: Path to the shell script to inject.
+    ///   - bundle: The target VM bundle.
+    /// - Throws: ``DiskInjectorError`` on I/O failure.
+    public static func inject(script scriptURL: URL, into bundle: VirtualMachineBundle) throws {
+        guard FileManager.default.fileExists(atPath: scriptURL.path) else {
+            throw DiskInjectorError.scriptNotFound(path: scriptURL.path)
+        }
+
+        let fm = FileManager.default
+        try fm.createDirectory(
+            at: bundle.provisionDirectoryURL,
+            withIntermediateDirectories: true
+        )
+        let destination = bundle.provisionScriptURL
+        try? fm.removeItem(at: destination)
+        try fm.copyItem(at: scriptURL, to: destination)
+        Log.provision.notice(
+            "Wrote first-boot script to \(destination.path, privacy: .public) — runs on next VM boot once Guest Tools provisioner is enabled"
+        )
+    }
+
+    /// Writes raw script bytes to the VM bundle's provisioning
+    /// share as `first-boot.sh`. Functionally identical to
+    /// ``inject(script:into:)`` but takes the script content
+    /// directly — useful when the bytes are generated rather
+    /// than read from a file (e.g. ``MDMEnrollmentBootstrap``).
+    public static func inject(scriptBytes: Data, into bundle: VirtualMachineBundle) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(
+            at: bundle.provisionDirectoryURL,
+            withIntermediateDirectories: true
+        )
+        let destination = bundle.provisionScriptURL
+        try? fm.removeItem(at: destination)
+        try scriptBytes.write(to: destination, options: .atomic)
+        // Make the script executable. The `mount_virtiofs` host
+        // → guest mapping doesn't preserve POSIX modes
+        // identically, but the guest-side runner shells out via
+        // `/bin/bash <path>` rather than relying on +x, so
+        // setting it here is for parity + Finder visibility.
+        try fm.setAttributes(
             [.posixPermissions: 0o755],
-            ofItemAtPath: scriptDestination
+            ofItemAtPath: destination.path
         )
-
-        let plistPath = "\(volumePath)/Library/LaunchDaemons/\(daemonLabel).plist"
-        let plistDirectory = URL(filePath: plistPath).parentPath
-        try FileManager.default.createDirectory(
-            atPath: plistDirectory,
-            withIntermediateDirectories: true
+        Log.provision.notice(
+            "Wrote \(scriptBytes.count) bytes to \(destination.path, privacy: .public)"
         )
-        // `String.write(toFile:atomically:)` DOES overwrite an
-        // existing file at the destination, so this path is
-        // already idempotent — but keeping the comment here so
-        // the two write paths read the same way at first glance.
-        try generateLaunchDaemonPlist().write(toFile: plistPath, atomically: true, encoding: .utf8)
+    }
 
-        Log.provision.notice("Injected user-data script and LaunchDaemon into guest disk")
+    /// Renders an MDM enrollment bootstrap into the bundle's
+    /// `first-boot.sh`. Requires the guest to have already
+    /// installed `Spooktacular Provisioner.pkg` (which
+    /// installs the LaunchDaemon that runs `first-boot.sh` at
+    /// boot). After this call:
+    ///
+    /// 1. Next VM boot triggers the provisioner runner →
+    ///    `first-boot.sh`.
+    /// 2. `first-boot.sh` (generated by
+    ///    ``MDMEnrollmentBootstrap``) drops the
+    ///    `.mobileconfig` to `/var/db/spooktacular/` and
+    ///    invokes `profiles install`.
+    /// 3. `mdmclient` enrolls against the host's embedded MDM
+    ///    server.
+    /// 4. After enrollment, host pushes commands directly via
+    ///    ``MDMUserDataDispatcher`` — no further bootstrap
+    ///    runs needed.
+    public static func injectMDMEnrollment(
+        bootstrap: MDMEnrollmentBootstrap,
+        into bundle: VirtualMachineBundle
+    ) throws {
+        let scriptBytes = try bootstrap.script()
+        try inject(scriptBytes: scriptBytes, into: bundle)
+        Log.provision.notice(
+            "Injected MDM enrollment bootstrap targeting \(bootstrap.profile.serverURL.absoluteString, privacy: .public) into VM \(bundle.id.uuidString, privacy: .public)"
+        )
     }
 
     // MARK: - LaunchDaemon Plist Generation
@@ -416,9 +509,22 @@ public enum DiskInjector {
                       let deviceIdentifier = volume["DeviceIdentifier"] as? String
                 else { continue }
 
-                let mountOutput = try runProcess("/usr/sbin/diskutil", arguments: [
-                    "mount", deviceIdentifier,
-                ])
+                // If the Data volume is FileVault-encrypted
+                // (the macOS default once Setup Assistant
+                // completes), `diskutil mount` bails with
+                // "This is an encrypted and locked APFS
+                // Volume". The raw error message is accurate
+                // but not actionable — translate it into a
+                // typed error the GUI can explain clearly.
+                let mountOutput: String
+                do {
+                    mountOutput = try runProcess("/usr/sbin/diskutil", arguments: [
+                        "mount", deviceIdentifier,
+                    ])
+                } catch let DiskInjectorError.processFailed(_, stderr, _)
+                    where stderr.contains("encrypted and locked APFS Volume") {
+                    throw DiskInjectorError.guestVolumeEncrypted
+                }
 
                 let infoOutput = try runProcess("/usr/sbin/diskutil", arguments: [
                     "info", "-plist", deviceIdentifier,
@@ -455,6 +561,13 @@ public enum DiskInjector {
             reason: "No APFS data volume found on device \(devicePath)"
         )
     }
+
+    // Host-side user-data delivery writes a single
+    // `first-boot.sh` to the bundle's `provision/` share.
+    // The guest's Guest Tools LaunchDaemon mounts that share
+    // via `mount_virtiofs` on boot and runs the script once.
+    // See `ProvisionerInstaller` in `SpooktacularGuestTools`
+    // and `applyProvisioning` in `VirtualMachineConfiguration`.
 }
 
 // MARK: - Errors
@@ -489,6 +602,24 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
     ///   - exitCode: The process exit code.
     case processFailed(command: String, stderr: String, exitCode: Int32)
 
+    /// Running the privileged chown step failed. The user
+    /// either declined the admin-auth prompt, or the
+    /// underlying `chown` exited non-zero.
+    ///
+    /// - Parameter reason: Human-readable description,
+    ///   already lightly cleaned of shell prefixes.
+    case chownFailed(reason: String)
+
+    /// The guest's APFS Data volume is FileVault-encrypted
+    /// and locked. macOS enables FileVault by default during
+    /// Setup Assistant, so any attempt to inject a
+    /// LaunchDaemon into a guest that has already finished
+    /// first-boot hits this path. The mount call surfaces
+    /// `"This is an encrypted and locked APFS Volume"` —
+    /// accurate but not actionable. We translate it into a
+    /// typed case with a clear recovery suggestion.
+    case guestVolumeEncrypted
+
     // MARK: - LocalizedError
 
     public var errorDescription: String? {
@@ -507,6 +638,10 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
                 return "Command failed with exit code \(exitCode): \(command)."
             }
             return "Command failed with exit code \(exitCode): \(command). stderr: \(snippet)"
+        case .chownFailed(let reason):
+            return "Couldn't set root ownership on the guest LaunchDaemon: \(reason)"
+        case .guestVolumeEncrypted:
+            return "The guest's Data volume is locked by FileVault. Spooktacular Guest Tools can only be installed before the guest's Setup Assistant finishes — once a user account exists, macOS encrypts the volume with a key the host doesn't hold, so disk-injection can no longer reach the guest filesystem."
         }
     }
 
@@ -523,6 +658,18 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
         case .processFailed:
             "Check that macOS system tools (hdiutil, diskutil) are available. "
             + "This operation requires running on a Mac with full disk access."
+        case .chownFailed:
+            "Approve the admin-password prompt when re-running "
+            + "'Install Guest Agent'. Apple's launchd silently ignores "
+            + "LaunchDaemon plists that aren't owned by root:wheel, and the "
+            + "kernel only honours that ownership when set by a privileged "
+            + "process on the host."
+        case .guestVolumeEncrypted:
+            "Delete this VM and create a new one with Guest Tools enabled in "
+            + "the create sheet — the tools bundle is injected before first boot, "
+            + "before macOS encrypts the Data volume. Retroactive install on a "
+            + "set-up VM isn't possible without the FileVault recovery key, "
+            + "which the host never sees."
         }
     }
 }
