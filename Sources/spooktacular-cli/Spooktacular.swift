@@ -39,6 +39,7 @@ struct Spooktacular: AsyncParsableCommand {
             Egress.self,
             IAM.self,
             Identity.self,
+            MDM.self,
             Incident.self,
             SignRequest.self,
             SecurityControls.self,
