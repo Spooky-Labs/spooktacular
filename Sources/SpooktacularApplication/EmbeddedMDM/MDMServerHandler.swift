@@ -65,48 +65,5 @@ public protocol MDMServerHandler: Sendable {
     ) async
 }
 
-/// A command queued for delivery to a specific enrolled device.
-/// Phase 3 surfaces the type; Phase 4 fills in the cases.
-public struct MDMCommand: Sendable, Equatable {
-    /// Stable UUID Apple's MDM protocol uses to correlate
-    /// command + ServerCommandResponse acknowledgements.
-    public let commandUUID: UUID
-
-    /// The actual command to run. Phase 4 expands this enum;
-    /// for now the placeholder lets the rest of the protocol
-    /// compile.
-    public let kind: Kind
-
-    public init(commandUUID: UUID = UUID(), kind: Kind) {
-        self.commandUUID = commandUUID
-        self.kind = kind
-    }
-
-    public enum Kind: Sendable, Equatable {
-        /// Phase 4 will replace this with concrete cases:
-        /// `.installApplication(manifestURL: URL, identifier: String)`,
-        /// `.installProfile(payload: Data)`, etc.
-        case placeholder
-    }
-}
-
-/// Status field of a ServerCommandResponse — what Apple's
-/// MDM Protocol Reference calls the four legal values for the
-/// `Status` plist key.
-public enum MDMCommandResponseStatus: String, Sendable, Equatable {
-    /// Command completed successfully.
-    case acknowledged = "Acknowledged"
-
-    /// Device is processing; will report final status in a
-    /// subsequent poll.
-    case notNow = "NotNow"
-
-    /// Command failed permanently. ErrorChain in the response
-    /// plist explains why.
-    case error = "Error"
-
-    /// Device is unreachable / shut down. Never sent by
-    /// `mdmclient` itself; emitted by the server when the
-    /// command times out without a response.
-    case idle = "Idle"
-}
+// `MDMCommand` lives in MDMCommand.swift.
+// `MDMCommandResponseStatus` lives in MDMCommandResponse.swift.
