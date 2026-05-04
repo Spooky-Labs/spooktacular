@@ -14,9 +14,9 @@ struct MDMEnrollmentBootstrapTests {
             vmID: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
             payloadUUID: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
             mdmPayloadUUID: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!,
-            identityCertificatePayloadUUID: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!,
             serverURL: URL(string: "https://host.local:8443/mdm/server")!,
-            checkInURL: URL(string: "https://host.local:8443/mdm/checkin")!
+            checkInURL: URL(string: "https://host.local:8443/mdm/checkin")!,
+            signaturePolicy: .unsigned
         )
     }
 

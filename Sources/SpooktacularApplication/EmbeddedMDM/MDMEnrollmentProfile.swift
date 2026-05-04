@@ -56,6 +56,72 @@ import Foundation
 /// ```
 public struct MDMEnrollmentProfile: Sendable, Equatable {
 
+    // MARK: - Signing policy
+
+    /// Whether this enrollment delivers a per-VM identity
+    /// certificate (production) or stays unsigned (dev mode).
+    ///
+    /// Production deployments should always use `.signed(...)`
+    /// — `mdmclient` signs every check-in / response message
+    /// with the identity cert's private key, so the host can
+    /// verify the device hasn't been MITM'd. Without an
+    /// identity cert, the host has to trust whoever connects
+    /// — fine for HTTP-loopback dev traffic, not for
+    /// distributed deployments.
+    public enum SignaturePolicy: Sendable, Equatable {
+
+        /// Dev / loopback testing only. Renders the profile
+        /// with `SignMessage = false` and no
+        /// `IdentityCertificateUUID`. `mdmclient` accepts the
+        /// profile and enrolls without challenging the device's
+        /// identity. The embedded MDM server's per-request mTLS
+        /// is also bypassed (it's HTTP-only in this mode).
+        ///
+        /// We use this exclusively for protocol round-trip
+        /// validation against a real `mdmclient` running in a
+        /// VM on the same host, before Phase 2's CA work
+        /// lands.
+        case unsigned
+
+        /// Production. Embeds a `com.apple.security.pkcs12`
+        /// payload immediately before the `com.apple.mdm`
+        /// payload, with `IdentityCertificateUUID` referring
+        /// to its `PayloadUUID`. `mdmclient` extracts the
+        /// PKCS#12, imports cert+key into the system keychain,
+        /// and uses the cert for all subsequent message
+        /// signing.
+        case signed(identity: IdentityCertificate)
+    }
+
+    /// Per-VM identity certificate + key bundle. Phase 2's CA
+    /// work produces these; the renderer here just embeds
+    /// them as a PKCS#12 payload so the file format stays
+    /// pinned even before Phase 2 lands.
+    public struct IdentityCertificate: Sendable, Equatable {
+        /// `PayloadUUID` for the `com.apple.security.pkcs12`
+        /// payload — referenced by the MDM payload's
+        /// `IdentityCertificateUUID`.
+        public let payloadUUID: UUID
+
+        /// DER-encoded PKCS#12 (.p12) blob containing the
+        /// per-VM certificate + private key, encrypted under
+        /// ``password``.
+        public let pkcs12Data: Data
+
+        /// Password protecting the PKCS#12. Embedded in plain
+        /// text inside the configuration profile (which itself
+        /// rests under the host's filesystem protections).
+        /// Apple's standard practice for MDM enrollment
+        /// profiles.
+        public let password: String
+
+        public init(payloadUUID: UUID, pkcs12Data: Data, password: String) {
+            self.payloadUUID = payloadUUID
+            self.pkcs12Data = pkcs12Data
+            self.password = password
+        }
+    }
+
     // MARK: - Identity
 
     /// The VM this enrollment is scoped to. Used in payload
@@ -75,12 +141,9 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
     /// "unique per payload" rule as ``payloadUUID``.
     public let mdmPayloadUUID: UUID
 
-    /// UUID of the identity-certificate payload that this MDM
-    /// payload references via `IdentityCertificateUUID`. Phase
-    /// 1 leaves the cert payload itself out (added in Phase 2);
-    /// the value is still present here so the wire format is
-    /// stable across phases.
-    public let identityCertificatePayloadUUID: UUID
+    /// Whether and how the rendered profile carries a per-VM
+    /// identity certificate. See ``SignaturePolicy``.
+    public let signaturePolicy: SignaturePolicy
 
     // MARK: - MDM endpoint
 
@@ -121,41 +184,42 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
 
     /// Designated initializer. Callers in tests / manual flows
     /// should supply UUIDs explicitly so the rendered plist is
-    /// deterministic. ``random(vmID:serverURL:checkInURL:)``
+    /// deterministic. ``random(vmID:serverURL:checkInURL:signaturePolicy:)``
     /// covers the runtime case of "fresh enrollment for a new
     /// VM".
     public init(
         vmID: UUID,
         payloadUUID: UUID,
         mdmPayloadUUID: UUID,
-        identityCertificatePayloadUUID: UUID,
         serverURL: URL,
-        checkInURL: URL
+        checkInURL: URL,
+        signaturePolicy: SignaturePolicy
     ) {
         self.vmID = vmID
         self.payloadUUID = payloadUUID
         self.mdmPayloadUUID = mdmPayloadUUID
-        self.identityCertificatePayloadUUID = identityCertificatePayloadUUID
         self.serverURL = serverURL
         self.checkInURL = checkInURL
+        self.signaturePolicy = signaturePolicy
     }
 
-    /// Mints a fresh profile for the given VM — three new
-    /// random payload UUIDs, plus the supplied endpoints. The
-    /// runtime VM-create flow uses this; tests bypass it for
-    /// determinism.
+    /// Mints a fresh profile for the given VM — two new
+    /// random payload UUIDs, plus the supplied endpoints +
+    /// signature policy. The runtime VM-create flow uses this;
+    /// tests bypass it for determinism.
     public static func random(
         vmID: UUID,
         serverURL: URL,
-        checkInURL: URL
+        checkInURL: URL,
+        signaturePolicy: SignaturePolicy = .unsigned
     ) -> MDMEnrollmentProfile {
         MDMEnrollmentProfile(
             vmID: vmID,
             payloadUUID: UUID(),
             mdmPayloadUUID: UUID(),
-            identityCertificatePayloadUUID: UUID(),
             serverURL: serverURL,
-            checkInURL: checkInURL
+            checkInURL: checkInURL,
+            signaturePolicy: signaturePolicy
         )
     }
 
@@ -170,7 +234,20 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
     /// matches what Apple's `profiles` tool emits — important
     /// for parity with off-the-shelf MDM tooling and for our
     /// own debugging.
+    ///
+    /// When ``signaturePolicy`` is `.signed`, the rendered
+    /// profile carries an extra `com.apple.security.pkcs12`
+    /// payload immediately before the MDM payload —
+    /// `mdmclient` walks `PayloadContent` looking up the
+    /// `IdentityCertificateUUID` and pulls the cert+key from
+    /// that payload during enrollment.
     public func mobileconfig() throws -> Data {
+        var content: [[String: Any]] = []
+        if case .signed(let identity) = signaturePolicy {
+            content.append(identityPayloadDictionary(identity))
+        }
+        content.append(mdmPayloadDictionary)
+
         let plist: [String: Any] = [
             "PayloadType": "Configuration",
             "PayloadVersion": 1,
@@ -185,9 +262,7 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
             // VM from MDM during incident response without
             // having to wipe the disk.
             "PayloadRemovalDisallowed": false,
-            "PayloadContent": [
-                mdmPayloadDictionary
-            ]
+            "PayloadContent": content
         ]
         return try PropertyListSerialization.data(
             fromPropertyList: plist,
@@ -196,12 +271,11 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
         )
     }
 
-    /// The inner `com.apple.mdm` payload. Surfaced
-    /// separately so Phase 2 can inject a sibling identity-cert
-    /// payload (PKCS#12) into the same `PayloadContent` array
-    /// without the renderer having to know about it.
+    /// The inner `com.apple.mdm` payload. Conditional keys:
+    /// `IdentityCertificateUUID` + `SignMessage` only present
+    /// when `signaturePolicy == .signed`.
     private var mdmPayloadDictionary: [String: Any] {
-        [
+        var dict: [String: Any] = [
             "PayloadType": "com.apple.mdm",
             "PayloadVersion": 1,
             "PayloadIdentifier": "com.spookylabs.mdm.\(vmID.uuidString.lowercased())",
@@ -213,26 +287,12 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
             "ServerURL": serverURL.absoluteString,
             "CheckInURL": checkInURL.absoluteString,
             "Topic": topic,
-            "IdentityCertificateUUID": identityCertificatePayloadUUID.uuidString,
-
-            // `mdmclient` signs every check-in / response
-            // message with the identity cert's private key.
-            // Without this we'd have to fall back to plaintext
-            // POSTs — fine for local-only links but the wire
-            // format would diverge from real Apple MDM, making
-            // future integration with off-the-shelf MDM
-            // libraries (e.g. NanoMDM) harder.
-            "SignMessage": true,
 
             // Bitmask of the rights we're granting the MDM
             // server. 8191 = 0x1FFF = every documented right
             // through macOS 11 (InspectInstalledProfiles +
-            // InstallApplications + RestartDevice + ...). The
-            // exact bits are documented in Apple's MDM
-            // Protocol Reference Table 5-1; we take the full
-            // set because the host is fully trusted by the VM
-            // (same security domain) and granting partial
-            // rights only adds friction to future commands.
+            // InstallApplications + RestartDevice + ...). See
+            // Apple's MDM Protocol Reference Table 5-1.
             "AccessRights": 8191,
 
             // True so the VM tells the MDM server when its
@@ -242,17 +302,46 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
             "CheckOutWhenRemoved": true,
 
             // Lets us run per-user MDM operations in addition
-            // to per-device ones — needed if we ever push
-            // user-scoped config in addition to device-scoped.
-            // Cheap to enable now since it's just a capability
-            // hint.
+            // to per-device ones.
             "ServerCapabilities": [
                 "com.apple.mdm.per-user-connections"
-            ],
+            ]
+        ]
 
-            // We deliberately DON'T set `UseDevelopmentAPNS`
-            // (default `false`) since we don't use APNs at all
-            // — see the poll-only design in Phase 5.
-        ] as [String: Any]
+        switch signaturePolicy {
+        case .unsigned:
+            // Dev-only: explicitly false so `mdmclient` doesn't
+            // try to sign messages with a non-existent
+            // identity. `IdentityCertificateUUID` is omitted
+            // entirely.
+            dict["SignMessage"] = false
+        case .signed(let identity):
+            dict["IdentityCertificateUUID"] = identity.payloadUUID.uuidString
+            dict["SignMessage"] = true
+        }
+
+        return dict
+    }
+
+    /// PKCS#12 cert payload that precedes the MDM payload when
+    /// ``signaturePolicy == .signed``. `mdmclient` resolves
+    /// the MDM payload's `IdentityCertificateUUID` against
+    /// this payload's `PayloadUUID`, extracts the cert+key,
+    /// and uses them for outgoing message signatures.
+    private func identityPayloadDictionary(
+        _ identity: IdentityCertificate
+    ) -> [String: Any] {
+        [
+            "PayloadType": "com.apple.security.pkcs12",
+            "PayloadVersion": 1,
+            "PayloadIdentifier": "com.spookylabs.mdm.identity.\(vmID.uuidString.lowercased())",
+            "PayloadUUID": identity.payloadUUID.uuidString,
+            "PayloadDisplayName": "Spooktacular MDM Identity",
+            "PayloadDescription": "Per-VM identity certificate the device uses to sign MDM messages.",
+            // Apple expects raw DER bytes under PayloadContent
+            // for the pkcs12 payload, plus a Password field.
+            "PayloadContent": identity.pkcs12Data,
+            "Password": identity.password
+        ]
     }
 }
