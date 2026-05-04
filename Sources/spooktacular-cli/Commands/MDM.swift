@@ -90,6 +90,18 @@ extension Spooktacular {
             )
             var printOnly: Bool = false
 
+            @Flag(
+                name: .customLong("signed"),
+                help: "Mint a per-VM identity certificate and embed it in the enrollment profile. Without this flag the profile is unsigned (dev / loopback only)."
+            )
+            var signed: Bool = false
+
+            @Option(
+                name: .customLong("ca-storage"),
+                help: "Directory to store the MDM root CA. Generated on first --signed call. Defaults to ~/Library/Application Support/Spooktacular/mdm/."
+            )
+            var caStorage: String?
+
             mutating func run() async throws {
                 let bundleURL: URL
                 do {
@@ -116,10 +128,41 @@ extension Spooktacular {
                     throw ExitCode.failure
                 }
 
+                let signaturePolicy: MDMEnrollmentProfile.SignaturePolicy
+                if signed {
+                    let storageDir: URL
+                    if let caStorage {
+                        storageDir = URL(fileURLWithPath: caStorage)
+                    } else {
+                        storageDir = SpooktacularPaths.root
+                            .appendingPathComponent("mdm", isDirectory: true)
+                    }
+                    let issuer: MDMIdentityIssuer
+                    do {
+                        issuer = try MDMIdentityIssuer(storageDirectory: storageDir)
+                    } catch {
+                        print(Style.error("Failed to initialise MDM identity issuer: \(error.localizedDescription)"))
+                        throw ExitCode.failure
+                    }
+                    let identity: MDMEnrollmentProfile.IdentityCertificate
+                    do {
+                        identity = try await issuer.issueIdentity(
+                            forUDID: bundle.id.uuidString
+                        )
+                    } catch {
+                        print(Style.error("Failed to issue identity certificate: \(error.localizedDescription)"))
+                        throw ExitCode.failure
+                    }
+                    signaturePolicy = .signed(identity: identity)
+                } else {
+                    signaturePolicy = .unsigned
+                }
+
                 let profile = MDMEnrollmentProfile.random(
                     vmID: bundle.id,
                     serverURL: serverURL,
-                    checkInURL: checkInURL
+                    checkInURL: checkInURL,
+                    signaturePolicy: signaturePolicy
                 )
                 let bootstrap = MDMEnrollmentBootstrap(profile: profile)
 
@@ -148,6 +191,7 @@ extension Spooktacular {
                 Style.field("VM", bundle.displayName)
                 Style.field("Bundle", Style.dim(bundle.url.path))
                 Style.field("MDM server", serverURL.absoluteString)
+                Style.field("Signing", signed ? "signed (per-VM identity)" : "unsigned (dev mode)")
                 Style.field("First-boot script", bundle.provisionScriptURL.path)
                 print()
                 print(Style.dim("Next boot of this VM will install the enrollment profile."))
