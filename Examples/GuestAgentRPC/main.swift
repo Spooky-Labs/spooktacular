@@ -1,6 +1,6 @@
 import Foundation
-import SpookCore
-import SpookInfrastructureApple
+import SpooktacularCore
+import SpooktacularInfrastructureApple
 
 /// Runs a shell command inside an already-running VM over vsock.
 ///
@@ -35,7 +35,7 @@ struct GuestAgentRPCExample {
         let bundle = try VirtualMachineBundle.load(from: bundleURL)
         let vm = try await MainActor.run { try VirtualMachine(bundle: bundle) }
 
-        guard let client = await vm.makeGuestAgentClient(
+        guard let client = vm.makeGuestAgentClient(
             breakGlassToken: ProcessInfo.processInfo.environment["SPOOK_BREAKGLASS_TICKET"]
         ) else {
             print("error: VM '\(vmName)' has no VirtIO socket device.")

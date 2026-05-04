@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookCore
+@testable import SpooktacularCore
 
 @Suite("IconSpec", .tags(.configuration))
 struct IconSpecTests {
@@ -136,7 +136,7 @@ struct VirtualMachineMetadataMigrationTests {
 
     @Test("Current metadata round-trips with iconSpec")
     func currentMetadataRoundTrip() throws {
-        var metadata = VirtualMachineMetadata()
+        var metadata = VirtualMachineMetadata(displayName: "test")
         metadata.iconSpec = .glassFrame(symbol: "cpu", tint: .teal)
 
         let data = try JSONEncoder().encode(metadata)

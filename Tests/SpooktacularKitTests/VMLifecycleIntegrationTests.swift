@@ -1,8 +1,8 @@
 import Foundation
 import Testing
-@testable import SpookApplication
-@testable import SpookCore
-@testable import SpookInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
+@testable import SpooktacularInfrastructureApple
 @testable import SpooktacularKit
 
 // MARK: - VM Lifecycle Unit Tests

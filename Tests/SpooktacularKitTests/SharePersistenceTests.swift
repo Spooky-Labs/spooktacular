@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 /// Tests for shared folder persistence in VM bundles.
 ///
@@ -20,7 +20,7 @@ struct SharePersistenceTests {
     ) throws -> (bundle: VirtualMachineBundle, tmp: TempDirectory) {
         let tmp = TempDirectory()
         let bundleURL = tmp.file("test.vm")
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
+        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec, displayName: "test")
         return (bundle, tmp)
     }
 

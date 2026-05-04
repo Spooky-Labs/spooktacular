@@ -1,0 +1,4 @@
+module CLinuxVsock {
+    header "include/CLinuxVsock.h"
+    export *
+}

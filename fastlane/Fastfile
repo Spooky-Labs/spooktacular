@@ -5,6 +5,12 @@ PROJECT_ROOT = File.expand_path("..", __dir__)
 APP_BUNDLE = File.join(PROJECT_ROOT, "Spooktacular.app")
 PKG_FILE = File.join(PROJECT_ROOT, "Spooktacular.pkg")
 APP_IDENTIFIER = "com.spooktacular.app"
+# Bundle ID for the network-filter system extension.  Must
+# match `CFBundleIdentifier` in
+# `Resources/SpooktacularNetworkFilter-Info.plist` and the
+# `com.apple.application-identifier` value (minus the Team-ID
+# prefix) in `SpooktacularNetworkFilter.entitlements`.
+APP_IDENTIFIER_NETWORK_FILTER = "com.spooktacular.app.NetworkFilter"
 
 # Developer contact fields — sourced from .env so forks can override
 # without editing the Fastfile. Defaults keep Spooktacular's canonical
@@ -183,6 +189,44 @@ platform :mac do
       additional_cert_types: ["mac_installer_distribution"],
       readonly: is_ci
     )
+  end
+
+  desc "Sync development cert + profile for local builds (NEFilter included)"
+  #
+  # Local builds need a *development* provisioning profile whose
+  # allowlist includes `com.apple.developer.networking.networkextension`
+  # for NEFilter. Without it, amfid rejects launch with
+  # "No matching profile found" (AMFIError -413) because those are
+  # restricted entitlements. `bundle exec fastlane signing_dev`
+  # downloads the profile and installs it under
+  # `~/Library/MobileDevice/Provisioning Profiles/`, where
+  # `build-app.sh` auto-discovers it by app-identifier.
+  #
+  # Auth: prefers App Store Connect API key env vars when set
+  # (matches CI's non-interactive flow); otherwise falls through
+  # to fastlane's default Apple-ID auth chain (interactive
+  # keychain / `fastlane-session`). This is the canonical local-
+  # dev shape — a developer on their own Mac should not need the
+  # API key secret just to install a profile.
+  lane :signing_dev do
+    # Empty-string env vars are treated as unset. GitHub Actions
+    # `env:` blocks export an empty string when the secret is
+    # unresolved, and `ENV[..] || ""` treats "" as truthy in Ruby —
+    # so we check `.empty?` explicitly to gate API-key use.
+    args = {
+      type: "development",
+      readonly: is_ci
+    }
+    if !(ENV["APPLE_API_KEY_ID"] || "").empty? &&
+       !(ENV["APPLE_API_ISSUER_ID"] || "").empty? &&
+       !(ENV["APPLE_API_KEY_P8"] || "").empty?
+      args[:api_key] = get_api_key
+    else
+      # No API creds → fall through to Apple-ID interactive auth
+      # (the local-dev flow; reads from Keychain or prompts).
+      args[:username] = APPLE_ID
+    end
+    match(**args)
   end
 
   # ──────────────────────────────────────────────────
@@ -452,25 +496,12 @@ platform :mac do
       sh("xcodegen", "generate")
     end
 
-    # No code signing. `project.yml` configures the `Debug` build
-    # config for the `SpooktacularApp` target with:
-    #   - `CODE_SIGNING_ALLOWED: NO`
-    #   - `CODE_SIGN_ENTITLEMENTS: Spooktacular.debug.entitlements`
-    #     (an entitlements file that OMITS
-    #     `com.apple.security.app-sandbox`)
-    #
-    # Without the sandbox entitlement, taskgated lets the app
-    # launch unsigned. Without signing, we don't need a Mac
-    # Development provisioning profile — which would otherwise
-    # require registering each ephemeral CI runner's hardware
-    # UUID with Apple Developer, burning through Apple's 100-
-    # device/year cap.
-    #
-    # This only affects Debug builds inside Spooktacular.xcodeproj.
-    # Production builds go through `build-app.sh` → `swift build
-    # -c release` → `codesign --entitlements
-    # Spooktacular.entitlements` (the real sandboxed one). The
-    # release pipeline is unchanged.
+    # Debug config uses real Apple Development signing via
+    # `match` — the same cert developers install locally.
+    # `setup_ci` (ran in `before_all`) provisions an
+    # ephemeral keychain on CI runners so `match` can import
+    # the cert without prompting; locally, the cert is
+    # already in the login keychain.
     scan(
       project: "Spooktacular.xcodeproj",
       scheme: "SpooktacularApp",
@@ -520,17 +551,6 @@ platform :mac do
     )
 
     UI.success("Screenshots captured, processed, and framed.")
-  end
-
-  # ──────────────────────────────────────────────────
-  # DocC — Generate documentation
-  # ──────────────────────────────────────────────────
-
-  desc "Generate DocC documentation"
-  lane :generate_docs do
-    Dir.chdir(PROJECT_ROOT) do
-      sh("./scripts/build-docs.sh", "--static")
-    end
   end
 
   # ──────────────────────────────────────────────────

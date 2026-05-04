@@ -21,7 +21,7 @@
     <key>CFBundleSignature</key>
     <string>????</string>
     <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
+    <string>26.0</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.developer-tools</string>
     <key>NSHumanReadableCopyright</key>
@@ -36,5 +36,66 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+
+    <!-- ======================================================
+         VM bundle document type + exported UTI.
+
+         Registers Spooktacular as a handler for `.vm` packages
+         that declare `com.spookylabs.spooktacular.vm-bundle`
+         conformance. Double-clicking a bundle in Finder (or a
+         drag-drop into the app icon) routes through
+         `.onOpenURL` in SpooktacularApp → AppState.importBundle.
+
+         LSHandlerRank = Default — we claim first-class
+         ownership of our own UTI, but we do NOT claim the
+         generic `.vm` extension (which Parallels, VMware,
+         VirtualBox, UTM all use in different ways). The
+         UTI is what disambiguates.
+
+         Docs:
+           - https://developer.apple.com/documentation/bundleresources/information_property_list/cfbundledocumenttypes
+           - https://developer.apple.com/documentation/uniformtypeidentifiers
+         ====================================================== -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>Spooktacular VM Bundle</string>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.spookylabs.spooktacular.vm-bundle</string>
+            </array>
+            <key>LSTypeIsPackage</key>
+            <true/>
+        </dict>
+    </array>
+
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>com.spookylabs.spooktacular.vm-bundle</string>
+            <key>UTTypeDescription</key>
+            <string>Spooktacular VM Bundle</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>com.apple.package</string>
+                <string>public.composite-content</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>vm</string>
+                </array>
+            </dict>
+            <key>UTTypeIconFile</key>
+            <string>AppIcon</string>
+        </dict>
+    </array>
 </dict>
 </plist>

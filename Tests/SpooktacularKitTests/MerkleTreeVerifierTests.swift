@@ -1,8 +1,8 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookCore
-@testable import SpookApplication
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
 
 @Suite("MerkleTreeVerifier (RFC 6962)")
 struct MerkleTreeVerifierTests {

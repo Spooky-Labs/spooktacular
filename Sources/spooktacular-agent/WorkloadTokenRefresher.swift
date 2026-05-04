@@ -68,7 +68,7 @@ public actor WorkloadTokenRefresher {
             refreshLead: TimeInterval = 120,
             baseBackoff: TimeInterval = 1,
             maxBackoff: TimeInterval = 60,
-            tokenFilePath: String? = ProcessInfo.processInfo.environment["SPOOK_WORKLOAD_TOKEN_FILE"]
+            tokenFilePath: String? = ProcessInfo.processInfo.environment["SPOOKTACULAR_WORKLOAD_TOKEN_FILE"]
         ) {
             self.refreshLead = refreshLead
             self.baseBackoff = baseBackoff

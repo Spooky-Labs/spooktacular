@@ -2,21 +2,63 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.application-identifier</key>
-    <string>4AM5US9G8B.com.spooktacular.app</string>
-    <key>com.apple.developer.team-identifier</key>
-    <string>4AM5US9G8B</string>
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <key>com.apple.security.virtualization</key>
-    <true/>
-    <key>com.apple.security.network.client</key>
-    <true/>
-    <key>com.apple.security.network.server</key>
-    <true/>
-    <key>com.apple.security.files.user-selected.read-write</key>
-    <true/>
-    <key>com.apple.security.files.downloads.read-write</key>
-    <true/>
+	<key>com.apple.application-identifier</key>
+	<string>4AM5US9G8B.com.spooktacular.app</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>4AM5US9G8B</string>
+
+	<!--
+	    Deliberately NOT sandboxed.
+
+	    Apple's app sandbox (`com.apple.security.app-sandbox`)
+	    forbids `hdiutil` from creating IOKit device nodes. A
+	    VM-manager app that mounts guest disk images pre-boot,
+	    spawns `diskutil` / `hdiutil`, talks to VZVirtualMachine,
+	    and ferries files in and out of `~/.spooktacular/vms/`
+	    has fundamentally un-sandboxable surface area.
+
+	    This follows Apple's own "Running macOS in a Virtual
+	    Machine" sample code, which ships without the sandbox
+	    entitlement — and every third-party Virtualization-
+	    framework app (UTM, Tart, Parallels Desktop, VMware
+	    Fusion) also ships un-sandboxed.
+
+	    Distribution constraint: un-sandboxed apps can't go
+	    through the Mac App Store. The target here is Developer
+	    ID + Notarization (TestFlight for Mac works too —
+	    sandboxing is not required there), which is the
+	    standard path for pro developer tools.
+
+	    Sandbox-dependent satellite keys removed alongside:
+	      - com.apple.security.files.downloads.read-write
+	      - com.apple.security.files.user-selected.read-write
+	      - com.apple.security.network.client
+	      - com.apple.security.network.server
+	    None of those are needed without `app-sandbox`; they're
+	    "punch a hole through the sandbox for X" flags, and we
+	    no longer have a sandbox to punch through.
+	-->
+
+	<!--
+	    `com.apple.security.virtualization` is independent of
+	    the sandbox — it's the unconditional gate Apple requires
+	    on any process that instantiates a `VZVirtualMachine`.
+	    Unambiguously required; kept.
+	-->
+	<key>com.apple.security.virtualization</key>
+	<true/>
+
+	<!--
+	    NEFilter system-extension installation. Required for
+	    Track F'' Phase B (tenant egress policy). The
+	    provisioning-profile-gated restriction remains in place
+	    — dev builds where the profile isn't available strip
+	    this key in build-app.sh.
+	-->
+	<key>com.apple.developer.networking.networkextension</key>
+	<array>
+		<string>content-filter-provider</string>
+		<string>content-filter-provider-systemextension</string>
+	</array>
 </dict>
 </plist>

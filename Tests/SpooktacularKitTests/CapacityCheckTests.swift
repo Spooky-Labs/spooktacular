@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 @Suite("CapacityCheck", .tags(.infrastructure))
 struct CapacityCheckTests {
@@ -24,7 +24,7 @@ struct CapacityCheckTests {
         let configData = try VirtualMachineBundle.encoder.encode(spec)
         try configData.write(to: bundleURL.appendingPathComponent("config.json"))
 
-        let metadata = VirtualMachineMetadata()
+        let metadata = VirtualMachineMetadata(displayName: "test")
         let metadataData = try VirtualMachineBundle.encoder.encode(metadata)
         try metadataData.write(to: bundleURL.appendingPathComponent("metadata.json"))
 

@@ -1,5 +1,5 @@
 import Testing
-@testable import SpookCore
+@testable import SpooktacularCore
 
 /// Validates the guest agent HTTP contract.
 ///

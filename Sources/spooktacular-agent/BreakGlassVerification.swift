@@ -1,14 +1,14 @@
 import Foundation
 import CryptoKit
-import SpookCore
-import SpookApplication
+import SpooktacularCore
+import SpooktacularApplication
 
 /// Agent-side verifier for break-glass tickets.
 ///
 /// Lives in the guest-agent target (not in the host-side
-/// `SpookInfrastructureApple` codec module) so the agent binary
-/// stays minimal: it pulls in `SpookCore` for the
-/// ``BreakGlassTicket`` value type and `SpookApplication` for
+/// `SpooktacularInfrastructureApple` codec module) so the agent binary
+/// stays minimal: it pulls in `SpooktacularCore` for the
+/// ``BreakGlassTicket`` value type and `SpooktacularApplication` for
 /// ``UsedTicketCache``, but NOT the full Apple-infrastructure
 /// stack (HTTP server, TLS, audit sinks) that only the host needs.
 ///

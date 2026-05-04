@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 /// Adversarial tests for the Fortune-20 crypto-hardening pass.
 ///
@@ -286,10 +286,13 @@ struct CryptoHardeningTests {
             let cache = UsedTicketCache()
             let jti = "ticket-flood"
             let exp = Date().addingTimeInterval(600)
-            var successes = 0
-            for _ in 0..<500 {
+            // Map each attempt to a Bool via `reduce` — filter
+            // discipline SwiftLint's `for_where` rule wants, but
+            // counting the side-effecting call's `true` results
+            // without the for/if shape the rule rejects.
+            let successes = (0..<500).reduce(into: 0) { count, _ in
                 if cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 5) {
-                    successes += 1
+                    count += 1
                 }
             }
             #expect(successes == 5)

@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularInfrastructureApple
 
 /// Tests for the OIDC Authentication Context Class Reference
 /// (`acr`) enforcement path added to satisfy OWASP ASVS V2.7 and

@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 @Suite("EnterpriseIntegration")
 struct EnterpriseIntegrationTests {

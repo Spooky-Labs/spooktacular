@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookCore
+@testable import SpooktacularCore
 
 /// Covers the max-min fair allocator that sits above the runner
 /// pool reconciler. These are algorithm-level tests — the wiring

@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 @Suite("HTTP API Integration", .tags(.integration, .security))
 struct HTTPAPIIntegrationTests {
@@ -157,7 +157,7 @@ struct HTTPAPIIntegrationTests {
                 insecureMode: true
             )
 
-            // The default read bucket is 120 (SPOOK_RATE_LIMIT / SPOOK_READ_RATE_LIMIT).
+            // The default read bucket is 120 (SPOOKTACULAR_RATE_LIMIT / SPOOKTACULAR_READ_RATE_LIMIT).
             let ip = "10.0.0.1"
             let limit = 120
             for i in 0..<limit {

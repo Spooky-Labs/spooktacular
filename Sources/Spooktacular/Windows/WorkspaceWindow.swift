@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 @preconcurrency import Virtualization
-import SpookInfrastructureApple
+import SpooktacularInfrastructureApple
 import SpooktacularKit
 
 /// A window dedicated to a single VM workspace.
@@ -82,8 +82,21 @@ struct WorkspaceWindow: View {
             // display below the chrome.
             //
             // Docs: https://developer.apple.com/documentation/swiftui/view/ignoressafearea(_:edges:)
-            VMDisplayView(name: vmName, virtualMachine: vm)
-                .toolbar { runningToolbar }
+            VMDisplayView(
+                name: vmName,
+                virtualMachine: vm,
+                // Pass the pre-created NSView explicitly. Reading
+                // from `@Environment(AppState.self)` inside
+                // `NSViewRepresentable.makeNSView` has been
+                // unreliable — Environment hydration can return
+                // a fresh instance whose dict is empty, silently
+                // falling through to the late-attach fallback.
+                // Resolving `appState` here (where Environment
+                // injection is reliable) and passing the value
+                // down sidesteps the whole class of issue.
+                cachedView: appState.graphicsViews[vmName]
+            )
+            .toolbar { runningToolbar }
         } else {
             WorkspaceLaunchView(name: vmName, bundle: bundle)
                 .toolbar { stoppedToolbar }
@@ -105,6 +118,14 @@ struct WorkspaceWindow: View {
     @ToolbarContentBuilder
     private var runningToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                Task { await appState.suspendVM(vmName) }
+            } label: {
+                Label("Suspend", systemImage: "pause.fill")
+            }
+            .glassButton()
+            .help("Save VM state and quit — next start picks up where you left off")
+
             Button {
                 Task { await appState.stopVM(vmName) }
             } label: {

@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 @Suite("CloneManager", .tags(.infrastructure))
 struct CloneManagerTests {
@@ -13,7 +13,8 @@ struct CloneManagerTests {
         let bundleURL = tmp.url.appendingPathComponent("source.vm")
         let bundle = try VirtualMachineBundle.create(
             at: bundleURL,
-            spec: VirtualMachineSpecification(cpuCount: 6)
+            spec: VirtualMachineSpecification(cpuCount: 6),
+            displayName: "source"
         )
 
         for (name, content) in [
@@ -38,7 +39,7 @@ struct CloneManagerTests {
             let outer = CloneManagerTests()
             let source = try outer.makeTestBundle(in: tmp)
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            let clone = try CloneManager.clone(source: source, to: destURL)
+            let clone = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             return (source, clone, tmp)
         }
 
@@ -64,11 +65,48 @@ struct CloneManagerTests {
             #expect(clone.metadata.id != source.metadata.id)
         }
 
+        @Test("Regenerates the MAC address on clone (prevents link-layer collision between siblings)", .timeLimit(.minutes(1)))
+        func regeneratesMAC() throws {
+            let (source, clone, _tmp) = try setup()
+            // A clone must not share its MAC with the source
+            // — two simultaneously-running siblings would fight
+            // for the same DHCP lease on the host bridge. This
+            // is the invariant CI regression-guards.
+            #expect(clone.spec.macAddress != nil)
+            #expect(clone.spec.macAddress != source.spec.macAddress)
+            // And the new MAC must be locally-administered
+            // (first octet `02:…`) per RFC 7042 § 2.1.1 —
+            // the LSB of the first octet set to 1 marks the
+            // address as unicast, and bit 2 marks it as
+            // locally administered.
+            if let mac = clone.spec.macAddress {
+                let firstByteHex = String(mac.description.prefix(2))
+                let firstByte = UInt8(firstByteHex, radix: 16) ?? 0
+                #expect(firstByte & 0b0000_0010 == 0b0000_0010,
+                    "First octet must have locally-administered bit set")
+                #expect(firstByte & 0b0000_0001 == 0,
+                    "First octet must be unicast (low bit clear)")
+            }
+        }
+
         @Test("Clone can be loaded back as a valid VirtualMachineBundle", .timeLimit(.minutes(1)))
         func cloneIsLoadable() throws {
             let (source, clone, _tmp) = try setup()
             let loaded = try VirtualMachineBundle.load(from: clone.url)
-            #expect(loaded.spec == source.spec)
+            // Clone matches source on every axis except the
+            // MAC address — which is deliberately regenerated
+            // so two running clones don't collide at the link
+            // layer. Compare field-by-field (minus MAC) instead
+            // of asserting equality on the whole spec.
+            #expect(loaded.spec.cpuCount == source.spec.cpuCount)
+            #expect(loaded.spec.memorySizeInBytes == source.spec.memorySizeInBytes)
+            #expect(loaded.spec.diskSizeInBytes == source.spec.diskSizeInBytes)
+            #expect(loaded.spec.displayCount == source.spec.displayCount)
+            #expect(loaded.spec.networkMode == source.spec.networkMode)
+            #expect(loaded.spec.audioEnabled == source.spec.audioEnabled)
+            #expect(loaded.spec.sharedFolders == source.spec.sharedFolders)
+            #expect(loaded.spec.macAddress != nil)
+            #expect(loaded.spec.macAddress != source.spec.macAddress)
             #expect(loaded.metadata.id != source.metadata.id)
         }
     }
@@ -83,7 +121,7 @@ struct CloneManagerTests {
             let outer = CloneManagerTests()
             let source = try outer.makeTestBundle(in: tmp)
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            _ = try CloneManager.clone(source: source, to: destURL)
+            _ = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             return (source, destURL, tmp)
         }
 
@@ -141,7 +179,8 @@ struct CloneManagerTests {
         let destURL = tmp.url.appendingPathComponent("clone.vm")
         let clone = try CloneManager.clone(
             source: try VirtualMachineBundle.load(from: source.url),
-            to: destURL
+            to: destURL,
+            displayName: "clone"
         )
 
         #expect(clone.metadata.setupCompleted == true)
@@ -158,10 +197,10 @@ struct CloneManagerTests {
             let outer = CloneManagerTests()
             let source = try outer.makeTestBundle(in: tmp)
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            _ = try CloneManager.clone(source: source, to: destURL)
+            _ = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
 
             #expect {
-                try CloneManager.clone(source: source, to: destURL)
+                try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             } throws: { error in
                 guard let bundleError = error as? VirtualMachineBundleError else { return false }
                 return bundleError == .alreadyExists(url: destURL)
@@ -190,7 +229,7 @@ struct CloneManagerTests {
             let destURL = tmp.url.appendingPathComponent("rollback-clone.vm")
 
             #expect(throws: Error.self) {
-                try CloneManager.clone(source: source, to: destURL)
+                try CloneManager.clone(source: source, to: destURL, displayName: "clone")
             }
 
             #expect(
@@ -205,7 +244,8 @@ struct CloneManagerTests {
             let sourceURL = tmp.url.appendingPathComponent("sparse.vm")
             let source = try VirtualMachineBundle.create(
                 at: sourceURL,
-                spec: VirtualMachineSpecification()
+                spec: VirtualMachineSpecification(),
+                displayName: "sparse"
             )
 
             try Data("fake-mid".utf8).write(
@@ -213,9 +253,16 @@ struct CloneManagerTests {
             )
 
             let destURL = tmp.url.appendingPathComponent("clone.vm")
-            let clone = try CloneManager.clone(source: source, to: destURL)
+            let clone = try CloneManager.clone(source: source, to: destURL, displayName: "clone")
 
-            #expect(clone.spec == source.spec)
+            // Same field-by-field comparison as `cloneIsLoadable`.
+            // The clone's MAC is regenerated; every other field
+            // carries over.
+            #expect(clone.spec.cpuCount == source.spec.cpuCount)
+            #expect(clone.spec.memorySizeInBytes == source.spec.memorySizeInBytes)
+            #expect(clone.spec.networkMode == source.spec.networkMode)
+            #expect(clone.spec.macAddress != nil)
+            #expect(clone.spec.macAddress != source.spec.macAddress)
             #expect(!FileManager.default.fileExists(
                 atPath: destURL.appendingPathComponent("disk.img").path
             ))

@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 @Suite("SnapshotManager", .tags(.infrastructure))
 struct SnapshotManagerTests {
@@ -20,7 +20,8 @@ struct SnapshotManagerTests {
         let bundleURL = tmp.url.appendingPathComponent("test.vm")
         let bundle = try VirtualMachineBundle.create(
             at: bundleURL,
-            spec: VirtualMachineSpecification()
+            spec: VirtualMachineSpecification(),
+            displayName: "test"
         )
 
         for (name, content) in [
@@ -111,7 +112,8 @@ struct SnapshotManagerTests {
             let bundleURL = tmp.url.appendingPathComponent("nodisk.vm")
             let bundle = try VirtualMachineBundle.create(
                 at: bundleURL,
-                spec: VirtualMachineSpecification()
+                spec: VirtualMachineSpecification(),
+                displayName: "nodisk"
             )
 
             #expect {

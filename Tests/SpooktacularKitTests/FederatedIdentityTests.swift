@@ -1,8 +1,8 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 @Suite("FederatedIdentity")
 struct FederatedIdentityTests {

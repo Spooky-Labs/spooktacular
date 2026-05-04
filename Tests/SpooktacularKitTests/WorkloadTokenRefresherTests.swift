@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookCore
+@testable import SpooktacularCore
 
 // NB: WorkloadTokenRefresher lives in the `spooktacular-agent`
 // target, not SpooktacularKit. We ship a test-only shim that

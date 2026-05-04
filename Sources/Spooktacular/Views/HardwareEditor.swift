@@ -50,6 +50,8 @@ struct HardwareEditor: View {
             footer
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 340)
+        // Inherit the `.switch` style to every Toggle in the sheet.
+        .toggleStyle(.switch)
         .task(id: vmName) { loadInitialValues() }
         .alert(
             "Could not save",

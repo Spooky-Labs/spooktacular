@@ -26,7 +26,6 @@ import FoundationModels
 /// views bind to it with `.task` and replace their text buffer
 /// with the latest snapshot as it arrives, matching Siri's
 /// streaming feel.
-@available(macOS 26.0, *)
 @MainActor
 enum ErrorExplainer {
 
@@ -144,28 +143,24 @@ struct ErrorExplainerSheet: View {
     @ViewBuilder
     private var explanationBody: some View {
         #if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            if ErrorExplainer.isAvailable {
-                if explanation.isEmpty && !failed {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Asking the on-device model…")
-                            .foregroundStyle(.secondary)
-                    }
-                } else if failed {
-                    staticFallback(
-                        note: "The on-device model couldn't answer. Here's a generic tip instead."
-                    )
-                } else {
-                    Text(explanation)
-                        .textSelection(.enabled)
+        if ErrorExplainer.isAvailable {
+            if explanation.isEmpty && !failed {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Asking the on-device model…")
+                        .foregroundStyle(.secondary)
                 }
+            } else if failed {
+                staticFallback(
+                    note: "The on-device model couldn't answer. Here's a generic tip instead."
+                )
             } else {
-                staticFallback(note: "Apple Intelligence isn't set up on this Mac.")
+                Text(explanation)
+                    .textSelection(.enabled)
             }
         } else {
-            staticFallback(note: "On-device explanations require macOS 26.")
+            staticFallback(note: "Apple Intelligence isn't set up on this Mac.")
         }
         #else
         staticFallback(note: "Built without Foundation Models support.")
@@ -185,7 +180,6 @@ struct ErrorExplainerSheet: View {
 
     private func streamExplanation() async {
         #if canImport(FoundationModels)
-        guard #available(macOS 26.0, *) else { return }
         guard ErrorExplainer.isAvailable else { return }
         do {
             // Each snapshot is the full explanation so far — replace,

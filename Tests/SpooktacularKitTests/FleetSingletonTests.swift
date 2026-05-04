@@ -1,8 +1,8 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 /// Tests for the ``FleetSingleton`` port + its in-process
 /// implementation. The DynamoDB adapter is exercised by
