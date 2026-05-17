@@ -31,7 +31,10 @@ public actor MDMDeviceStore {
     // MARK: - Types
 
     /// One enrolled-device record. Snapshot value type.
-    public struct Record: Sendable, Equatable {
+    /// `Codable` so the store can persist itself to
+    /// `devices.json` for the `spook mdm devices` CLI to read
+    /// across `serve` restarts.
+    public struct Record: Sendable, Equatable, Codable {
 
         /// Device UDID — primary key in the store.
         public let udid: String
@@ -212,5 +215,24 @@ public actor MDMDeviceStore {
     /// Total record count including checked-out devices.
     public var count: Int {
         records.count
+    }
+
+    /// All checked-out records (visible to audit + persistence
+    /// flushing, hidden from operator-facing listings). Used
+    /// by ``MDMDeviceStorePersister`` to round-trip the full
+    /// state.
+    public func checkedOutRecords() -> [Record] {
+        records.values
+            .filter { $0.checkedOut }
+            .sorted { $0.udid < $1.udid }
+    }
+
+    /// Re-inserts a fully-formed record. Used by
+    /// ``MDMDeviceStorePersister/load()`` to replay a
+    /// persisted snapshot. Overwrites any existing record
+    /// for the same UDID — last-writer-wins so a re-load
+    /// produces deterministic state.
+    public func insert(_ record: Record) {
+        records[record.udid] = record
     }
 }

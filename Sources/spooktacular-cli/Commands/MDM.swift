@@ -138,9 +138,25 @@ extension Spooktacular {
             var storage: String?
 
             mutating func run() async throws {
-                let store = MDMDeviceStore()
+                let storageDir = Init.resolveStorageDir(override: storage)
+                let devicesURL = storageDir
+                    .appendingPathComponent("state", isDirectory: true)
+                    .appendingPathComponent("devices.json")
+                let persister = MDMDeviceStorePersister(fileURL: devicesURL)
+
+                let store: MDMDeviceStore
+                do {
+                    store = try await persister.load()
+                } catch {
+                    print(Style.warning("Failed to load existing device snapshot — starting empty: \(error.localizedDescription)"))
+                    store = MDMDeviceStore()
+                }
                 let queue = MDMCommandQueue()
-                let handler = SpooktacularMDMHandler(deviceStore: store, commandQueue: queue)
+                let handler = SpooktacularMDMHandler(
+                    deviceStore: store,
+                    commandQueue: queue,
+                    persister: persister
+                )
                 let content = MDMContentStore()
 
                 var serverIdentity: EmbeddedMDMServer.ServerIdentity?
@@ -328,24 +344,41 @@ extension Spooktacular {
 
             mutating func run() async throws {
                 let storageDir = Init.resolveStorageDir(override: storage)
-                let snapshotURL = storageDir.appendingPathComponent("devices.json")
-                guard let data = try? Data(contentsOf: snapshotURL),
-                      let records = try? JSONDecoder.iso8601.decode(
-                          [MDMDeviceSnapshot].self, from: data
-                      ) else {
-                    print(Style.dim("No device snapshot yet."))
-                    print(Style.dim("Start `spook mdm serve` and enroll at least one VM."))
+                let snapshotURL = storageDir
+                    .appendingPathComponent("state", isDirectory: true)
+                    .appendingPathComponent("devices.json")
+                let persister = MDMDeviceStorePersister(fileURL: snapshotURL)
+                let records: [MDMDeviceStore.Record]
+                do {
+                    records = try persister.readRecords()
+                } catch {
+                    print(Style.error("Failed to read device snapshot: \(error.localizedDescription)"))
+                    throw ExitCode.failure
+                }
+                let active = records.filter { !$0.checkedOut }
+                if active.isEmpty {
+                    print(Style.dim("No enrolled devices."))
+                    if records.isEmpty {
+                        print(Style.dim("Start `spook mdm serve` and enroll at least one VM."))
+                    } else {
+                        print(Style.dim("\(records.count) device(s) in the snapshot are checked out."))
+                    }
                     return
                 }
-                if records.isEmpty {
-                    print(Style.dim("No devices enrolled."))
-                    return
-                }
-                print(Style.bold("Enrolled devices"))
+                print(Style.bold("Enrolled devices (\(active.count))"))
                 print()
-                for r in records {
-                    Style.field(r.udid, "\(r.model ?? "?") · \(r.osVersion ?? "?") · last seen \(r.lastSeen.description)")
+                for r in active.sorted(by: { $0.udid < $1.udid }) {
+                    let model = r.model ?? "?"
+                    let os = r.osVersion ?? "?"
+                    let seen = Self.relative(r.lastSeen)
+                    Style.field(r.udid, "\(model) · macOS \(os) · last seen \(seen)")
                 }
+            }
+
+            private static func relative(_ date: Date) -> String {
+                let formatter = RelativeDateTimeFormatter()
+                formatter.unitsStyle = .abbreviated
+                return formatter.localizedString(for: date, relativeTo: Date())
             }
         }
 
@@ -400,21 +433,6 @@ extension Spooktacular {
     }
 }
 
-// MARK: - Snapshot DTO + JSONDecoder helper
-
-private struct MDMDeviceSnapshot: Codable {
-    let udid: String
-    let topic: String
-    let model: String?
-    let osVersion: String?
-    let firstSeen: Date
-    let lastSeen: Date
-}
-
-private extension JSONDecoder {
-    static let iso8601: JSONDecoder = {
-        let d = JSONDecoder()
-        d.dateDecodingStrategy = .iso8601
-        return d
-    }()
-}
+// The `Devices` subcommand reads `~/.spooktacular/mdm/state/devices.json`
+// via MDMDeviceStorePersister, which owns the JSON shape. No
+// shadow DTO needed.

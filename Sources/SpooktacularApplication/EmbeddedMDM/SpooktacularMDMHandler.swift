@@ -34,6 +34,7 @@ public actor SpooktacularMDMHandler: MDMServerHandler {
 
     private let deviceStore: MDMDeviceStore
     private let commandQueue: MDMCommandQueue
+    private let persister: MDMDeviceStorePersister?
     private let logger: Logger
 
     /// - Parameters:
@@ -41,11 +42,16 @@ public actor SpooktacularMDMHandler: MDMServerHandler {
     ///     enrolled devices" reads.
     ///   - commandQueue: shared with the user-data dispatcher
     ///     so it can `enqueue` directly.
+    ///   - persister: optional snapshotter. When supplied, the
+    ///     handler flushes ``deviceStore`` to JSON after every
+    ///     mutation so `spook mdm devices` (a different
+    ///     process) can read the current state.
     ///   - logger: subsystem-scoped logger; the server passes
     ///     in its own from `os.Logger`.
     public init(
         deviceStore: MDMDeviceStore,
         commandQueue: MDMCommandQueue,
+        persister: MDMDeviceStorePersister? = nil,
         logger: Logger = Logger(
             subsystem: "com.spookylabs.spooktacular",
             category: "mdm.handler"
@@ -53,7 +59,24 @@ public actor SpooktacularMDMHandler: MDMServerHandler {
     ) {
         self.deviceStore = deviceStore
         self.commandQueue = commandQueue
+        self.persister = persister
         self.logger = logger
+    }
+
+    /// Asynchronously persists the current device-store state.
+    /// Failures are logged but not propagated — losing a
+    /// snapshot is annoying for the operator UI but not
+    /// catastrophic (the in-memory state remains authoritative
+    /// until process exit).
+    private func snapshot() async {
+        guard let persister else { return }
+        do {
+            try await persister.flush(deviceStore)
+        } catch {
+            logger.error(
+                "Device-store snapshot failed: \(String(describing: error), privacy: .public)"
+            )
+        }
     }
 
     // MARK: - MDMServerHandler
@@ -65,6 +88,7 @@ public actor SpooktacularMDMHandler: MDMServerHandler {
             "Authenticate UDID=\(message.udid, privacy: .public) topic=\(message.topic, privacy: .public)"
         )
         await deviceStore.upsertAuthenticate(message)
+        await snapshot()
     }
 
     public func didReceiveTokenUpdate(
@@ -74,6 +98,7 @@ public actor SpooktacularMDMHandler: MDMServerHandler {
             "TokenUpdate UDID=\(message.udid, privacy: .public) hasPushToken=\(message.pushToken != nil)"
         )
         await deviceStore.upsertTokenUpdate(message)
+        await snapshot()
     }
 
     public func didReceiveCheckOut(
@@ -88,6 +113,7 @@ public actor SpooktacularMDMHandler: MDMServerHandler {
         // — operators who want to inspect the dropped commands
         // can read audit instead.
         await commandQueue.removeAll(forUDID: message.udid)
+        await snapshot()
     }
 
     public func nextCommand(forUDID udid: String) async -> MDMCommand? {
