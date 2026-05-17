@@ -246,18 +246,18 @@ public actor EmbeddedMDMServer {
         } else {
             parameters = NWParameters.tcp
         }
-        // Bind to specific host (loopback by default) rather
-        // than 0.0.0.0 so the server is invisible to anything
-        // not on this address. Tests pass "127.0.0.1"; future
-        // production deployments will pass the bridged-NIC IP
-        // VMs reach the host on.
-        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(
-            host: NWEndpoint.Host(host),
-            port: port
-        )
+        // `host` is informational — it's the address VMs will
+        // reach the server on, used for cert SAN matching +
+        // log diagnostics. NWListener doesn't expose a
+        // bind-address-only filter; it always listens on all
+        // interfaces for the supplied port. Setting
+        // `requiredLocalEndpoint` here is wrong (that's for
+        // outbound NWConnections) and triggers `bindFailed`
+        // with EINVAL when paired with a non-`.any` port.
+        //
         // Allow the port to be reused if we recently shut
-        // down — important for tests that bind, tear down, and
-        // re-bind in quick succession.
+        // down — important for tests that bind, tear down,
+        // and re-bind in quick succession.
         parameters.allowLocalEndpointReuse = true
 
         let listener: NWListener

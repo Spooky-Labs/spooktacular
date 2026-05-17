@@ -231,9 +231,22 @@ extension Spooktacular {
                 print()
 
                 let shutdownServer = server
+                // Use a global background queue rather than
+                // `.main` — async/await doesn't pump the GCD
+                // main queue by default, so a signal source on
+                // `.main` would never fire while the parking
+                // loop below is awaiting. Keeping the source
+                // strongly referenced (via `signalSources`)
+                // prevents it from being deallocated, which
+                // would also suppress the callback.
+                let signalQueue = DispatchQueue(
+                    label: "com.spookylabs.spooktacular.mdm.signals",
+                    qos: .userInitiated
+                )
+                var signalSources: [DispatchSourceSignal] = []
                 for sig in [SIGTERM, SIGINT] {
                     signal(sig, SIG_IGN)
-                    let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+                    let source = DispatchSource.makeSignalSource(signal: sig, queue: signalQueue)
                     source.setEventHandler {
                         Task {
                             await shutdownServer.stop()
@@ -241,8 +254,30 @@ extension Spooktacular {
                         }
                     }
                     source.resume()
+                    signalSources.append(source)
                 }
-                try await Task.sleep(for: .seconds(Double(Int.max)))
+                _ = signalSources  // keep alive for the lifetime of run()
+                // Park indefinitely. A bounded-sleep loop avoids
+                // two pitfalls:
+                //
+                // 1. `Task.sleep(for: .seconds(Double(Int.max)))`
+                //    materialises to 9.2e27 ns when the runtime
+                //    converts to a wall-clock deadline, which
+                //    doesn't fit in UInt64. Release builds trap
+                //    on the conversion.
+                //
+                // 2. `withCheckedContinuation { _ in }` parks
+                //    fine but triggers a runtime "continuation
+                //    leak" warning at process exit and gives
+                //    DispatchSource signal handlers no
+                //    suspension points to fire between.
+                //
+                // 1-hour granularity is plenty — the signal
+                // handlers fire immediately via DispatchSource,
+                // they don't wait for this loop.
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(3600))
+                }
             }
         }
 
