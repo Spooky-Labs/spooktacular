@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Security
 import os
 import SpooktacularApplication
 
@@ -69,9 +70,14 @@ public actor EmbeddedMDMServer {
     private let port: NWEndpoint.Port
     private let handler: any MDMServerHandler
     private let contentStore: MDMContentStore?
+    private let serverIdentity: ServerIdentity?
     private let logger: Logger
     private var listener: NWListener?
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
+
+    /// `true` when this server is configured for TLS — i.e. a
+    /// ``ServerIdentity`` was supplied at init.
+    public var isTLSEnabled: Bool { serverIdentity != nil }
 
     // MARK: - Init
 
@@ -89,6 +95,7 @@ public actor EmbeddedMDMServer {
         port: UInt16 = defaultPort,
         handler: any MDMServerHandler,
         contentStore: MDMContentStore? = nil,
+        serverIdentity: ServerIdentity? = nil,
         logger: Logger = Logger(
             subsystem: "com.spookylabs.spooktacular",
             category: "mdm.server"
@@ -110,7 +117,50 @@ public actor EmbeddedMDMServer {
         self.port = nwPort
         self.handler = handler
         self.contentStore = contentStore
+        self.serverIdentity = serverIdentity
         self.logger = logger
+    }
+
+    // MARK: - ServerIdentity
+
+    /// PKCS#12 server identity (cert + private key) the
+    /// listener presents on every TLS handshake.
+    /// ``MDMIdentityIssuer/serverCertificate(forHost:additionalHosts:)``
+    /// produces values of this shape.
+    public struct ServerIdentity: Sendable {
+        /// DER-encoded PKCS#12 blob.
+        public let pkcs12Data: Data
+        /// Password protecting ``pkcs12Data``.
+        public let password: String
+
+        public init(pkcs12Data: Data, password: String) {
+            self.pkcs12Data = pkcs12Data
+            self.password = password
+        }
+
+        /// Imports the PKCS#12 into a `SecIdentity` ready for
+        /// `sec_identity_create(_:)`. Throws when the bytes
+        /// don't parse — most commonly a wrong password or
+        /// corrupted blob.
+        fileprivate func resolveSecIdentity() throws -> SecIdentity {
+            let options: [String: Any] = [
+                kSecImportExportPassphrase as String: password
+            ]
+            var raw: CFArray?
+            let status = SecPKCS12Import(
+                pkcs12Data as CFData,
+                options as CFDictionary,
+                &raw
+            )
+            guard status == errSecSuccess else {
+                throw EmbeddedMDMServerError.pkcs12ImportFailed(status: status)
+            }
+            let items = raw as? [[String: Any]] ?? []
+            guard let identity = items.first?[kSecImportItemIdentity as String] else {
+                throw EmbeddedMDMServerError.pkcs12ImportFailed(status: errSecItemNotFound)
+            }
+            return identity as! SecIdentity
+        }
     }
 
     // MARK: - Lifecycle
@@ -124,7 +174,30 @@ public actor EmbeddedMDMServer {
     public func start() async throws {
         guard listener == nil else { return }
 
-        let parameters = NWParameters.tcp
+        // TLS parameters when ``serverIdentity`` is supplied —
+        // otherwise plain TCP. Apple's `mdmclient` requires
+        // HTTPS for any signed-enrollment profile; unsigned
+        // enrollments can use plain HTTP.
+        let parameters: NWParameters
+        if let serverIdentity {
+            let identity = try serverIdentity.resolveSecIdentity()
+            let tlsOptions = NWProtocolTLS.Options()
+            // Hand the identity to the TLS layer. NWProtocolTLS
+            // calls into sec_protocol_options_set_local_identity
+            // which wants a sec_identity_t — built from
+            // SecIdentity via sec_identity_create.
+            guard let secIdentity = sec_identity_create(identity) else {
+                throw EmbeddedMDMServerError.tlsConfigurationFailed
+            }
+            sec_protocol_options_set_local_identity(
+                tlsOptions.securityProtocolOptions,
+                secIdentity
+            )
+            parameters = NWParameters(tls: tlsOptions)
+            logger.notice("TLS enabled — server identity loaded from PKCS#12")
+        } else {
+            parameters = NWParameters.tcp
+        }
         // Bind to specific host (loopback by default) rather
         // than 0.0.0.0 so the server is invisible to anything
         // not on this address. Tests pass "127.0.0.1"; future
@@ -502,4 +575,12 @@ public enum EmbeddedMDMServerError: Error, Sendable {
     /// Surfaces when the server is asked to shut down during
     /// `start()`.
     case listenerCancelled
+    /// `SecPKCS12Import` rejected the supplied TLS server
+    /// identity blob. The `OSStatus` is preserved for
+    /// diagnostics — most commonly a wrong password.
+    case pkcs12ImportFailed(status: OSStatus)
+    /// `sec_identity_create` returned nil — should be
+    /// impossible after `SecPKCS12Import` succeeded but
+    /// surfaced for completeness.
+    case tlsConfigurationFailed
 }

@@ -53,22 +53,23 @@ public actor MDMIdentityIssuer {
 
     /// Where the CA + serial files live. Must be operator-
     /// readable (we run as the user) but tighten to 0700 at
-    /// init.
-    public let storageDirectory: URL
+    /// init. `nonisolated` because it's a `let` set at init
+    /// time — safe to read from any context.
+    public nonisolated let storageDirectory: URL
 
     /// Path to the openssl binary. Override only in tests.
-    public let opensslPath: String
+    public nonisolated let opensslPath: String
 
     /// CA validity in days when generating fresh.
-    public let caValidityDays: Int
+    public nonisolated let caValidityDays: Int
 
     /// Per-VM identity-cert validity in days. Short enough
     /// that a stale identity isn't a long-term liability,
     /// long enough that ephemeral CI runners don't expire
     /// mid-job.
-    public let identityValidityDays: Int
+    public nonisolated let identityValidityDays: Int
 
-    private let logger: Logger
+    private nonisolated let logger: Logger
 
     /// Cache the root cert's DER bytes after first read so
     /// repeated `rootCertificateDER()` calls don't re-read the
@@ -169,6 +170,107 @@ public actor MDMIdentityIssuer {
 
         logger.notice(
             "Issued MDM identity for UDID=\(udid, privacy: .public) (\(pkcs12Data.count) bytes)"
+        )
+
+        return MDMEnrollmentProfile.IdentityCertificate(
+            payloadUUID: UUID(),
+            pkcs12Data: pkcs12Data,
+            password: password
+        )
+    }
+
+    /// Issues a TLS server certificate signed by the root CA,
+    /// suitable for ``EmbeddedMDMServer``'s `NWProtocolTLS.Options`.
+    ///
+    /// Per Apple's MDM spec, `mdmclient` validates the server
+    /// URL's host against the certificate's SAN (Subject
+    /// Alternative Name) entries. The mint here writes a
+    /// `subjectAltName` extension covering the primary host
+    /// + any additional names (e.g. "localhost",
+    /// "host.docker.internal", or the host's bridged-NIC
+    /// hostname) so the same listener can accept connections
+    /// from VMs reaching it under different addresses.
+    ///
+    /// `keyUsage` is narrowed to `digitalSignature` +
+    /// `keyEncipherment` (the TLS server pair), and
+    /// `extendedKeyUsage=serverAuth` so the device's chain
+    /// validation accepts the cert *only* as a server
+    /// identity — preventing accidental use as a CA or as a
+    /// client cert.
+    public func serverCertificate(
+        forHost host: String,
+        additionalHosts: [String] = []
+    ) async throws -> MDMEnrollmentProfile.IdentityCertificate {
+        try await ensureCA()
+
+        let workingDir = try makeWorkingDirectory()
+        defer { try? FileManager.default.removeItem(at: workingDir) }
+
+        let serverKey = workingDir.appendingPathComponent("server.key")
+        let serverCSR = workingDir.appendingPathComponent("server.csr")
+        let serverPEM = workingDir.appendingPathComponent("server.pem")
+        let serverP12 = workingDir.appendingPathComponent("server.p12")
+        let extfile = workingDir.appendingPathComponent("server.ext")
+
+        // EC P-256 key
+        try runOpenSSL(
+            "ecparam", "-name", "prime256v1", "-genkey", "-noout",
+            "-out", serverKey.path
+        )
+
+        // CSR — CN matches the primary host so casual
+        // inspection (`openssl x509 -text`) is obvious.
+        try runOpenSSL(
+            "req", "-new",
+            "-key", serverKey.path,
+            "-out", serverCSR.path,
+            "-subj", "/CN=\(host)/O=Spooktacular MDM Server"
+        )
+
+        // SAN + EKU extension file. openssl's CLI doesn't
+        // accept `-addext` on `x509 -req` (only on `req`), so
+        // we go via an extension file.
+        let allHosts = [host] + additionalHosts
+        let sanEntries = allHosts
+            .map { Self.isIPAddress($0) ? "IP:\($0)" : "DNS:\($0)" }
+            .joined(separator: ",")
+        let extContent = """
+        subjectAltName=\(sanEntries)
+        extendedKeyUsage=serverAuth
+        keyUsage=critical,digitalSignature,keyEncipherment
+        basicConstraints=CA:FALSE
+        """
+        try extContent.write(to: extfile, atomically: true, encoding: .utf8)
+
+        // Sign with root CA
+        try runOpenSSL(
+            "x509", "-req",
+            "-in", serverCSR.path,
+            "-CA", caCertURL.path,
+            "-CAkey", caKeyURL.path,
+            "-CAcreateserial",
+            "-out", serverPEM.path,
+            "-days", String(identityValidityDays),
+            "-sha256",
+            "-extfile", extfile.path
+        )
+
+        // Export as PKCS#12 for SecPKCS12Import →
+        // SecIdentity → sec_identity_t → NWProtocolTLS.Options.
+        let password = randomPassword()
+        try runOpenSSL(
+            "pkcs12", "-export",
+            "-in", serverPEM.path,
+            "-inkey", serverKey.path,
+            "-out", serverP12.path,
+            "-password", "pass:\(password)",
+            "-name", "Spooktacular MDM Server (\(host))"
+        )
+
+        let pkcs12Data = try Data(contentsOf: serverP12)
+
+        logger.notice(
+            "Issued MDM server certificate for host=\(host, privacy: .public) (\(pkcs12Data.count) bytes)"
         )
 
         return MDMEnrollmentProfile.IdentityCertificate(
@@ -289,6 +391,17 @@ public actor MDMIdentityIssuer {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// Detects whether a host string is an IPv4/IPv6 literal
+    /// vs. a DNS name. Used by ``serverCertificate(forHost:additionalHosts:)``
+    /// to pick the right SAN entry kind (`IP:` vs `DNS:`).
+    static func isIPAddress(_ s: String) -> Bool {
+        var v4 = in_addr()
+        if inet_pton(AF_INET, s, &v4) == 1 { return true }
+        var v6 = in6_addr()
+        if inet_pton(AF_INET6, s, &v6) == 1 { return true }
+        return false
     }
 
     /// Strips the PEM header / footer / line wraps and
