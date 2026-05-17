@@ -256,6 +256,47 @@ struct EmbeddedMDMServerTests {
         #expect(http.statusCode == 404)
     }
 
+    // MARK: - Specific-port bind regression
+
+    @Test("Binds and serves on a specific non-zero port (port-0 path doesn't hide bind bugs)")
+    func bindsOnSpecificPort() async throws {
+        // Pick a high port unlikely to be in use. If it
+        // conflicts on a CI runner, the test will surface a
+        // clear bindFailed rather than silently dodging the
+        // path under test.
+        let port: UInt16 = 27_003
+        let store = MDMDeviceStore()
+        let queue = MDMCommandQueue()
+        let handler = SpooktacularMDMHandler(deviceStore: store, commandQueue: queue)
+        let server = try EmbeddedMDMServer(
+            host: "127.0.0.1",
+            port: port,
+            handler: handler
+        )
+        try await server.start()
+        defer { Task { await server.stop() } }
+
+        let boundPort = try #require(await server.boundPort)
+        #expect(boundPort == port)
+
+        // Round-trip a request to confirm the listener is
+        // actually accepting connections — not just that
+        // start() returned.
+        let body = try plist([
+            "MessageType": "Authenticate",
+            "UDID": udid,
+            "Topic": topic,
+            "Model": "VirtualMac2,1",
+            "OSVersion": "26.4.0"
+        ])
+        let (_, response) = try await putPlist(
+            body,
+            path: "/mdm/checkin",
+            baseURL: URL(string: "http://127.0.0.1:\(boundPort)")!
+        )
+        #expect(response.statusCode == 200)
+    }
+
     @Test("Malformed plist body on /mdm/checkin returns 400")
     func malformedCheckIn() async throws {
         let rig = try await makeRig()
