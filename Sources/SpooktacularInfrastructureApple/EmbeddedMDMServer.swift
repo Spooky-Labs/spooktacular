@@ -71,6 +71,11 @@ public actor EmbeddedMDMServer {
     private let handler: any MDMServerHandler
     private let contentStore: MDMContentStore?
     private let serverIdentity: ServerIdentity?
+    /// Optional CA cert against which incoming client certs
+    /// must chain. When non-nil, the TLS layer rejects
+    /// connections that don't present a client cert chaining
+    /// to this anchor (mTLS).
+    private let clientCAAnchor: SecCertificate?
     private let logger: Logger
     private var listener: NWListener?
     private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
@@ -78,6 +83,13 @@ public actor EmbeddedMDMServer {
     /// `true` when this server is configured for TLS — i.e. a
     /// ``ServerIdentity`` was supplied at init.
     public var isTLSEnabled: Bool { serverIdentity != nil }
+
+    /// `true` when this server enforces mTLS — incoming
+    /// clients must present a cert that chains to the
+    /// configured anchor.
+    public var isMutualTLSEnabled: Bool {
+        serverIdentity != nil && clientCAAnchor != nil
+    }
 
     // MARK: - Init
 
@@ -96,6 +108,7 @@ public actor EmbeddedMDMServer {
         handler: any MDMServerHandler,
         contentStore: MDMContentStore? = nil,
         serverIdentity: ServerIdentity? = nil,
+        clientCAAnchorDER: Data? = nil,
         logger: Logger = Logger(
             subsystem: "com.spookylabs.spooktacular",
             category: "mdm.server"
@@ -118,6 +131,12 @@ public actor EmbeddedMDMServer {
         self.handler = handler
         self.contentStore = contentStore
         self.serverIdentity = serverIdentity
+        self.clientCAAnchor = try clientCAAnchorDER.flatMap { der in
+            guard let cert = SecCertificateCreateWithData(nil, der as CFData) else {
+                throw EmbeddedMDMServerError.invalidClientCAAnchor
+            }
+            return cert
+        }
         self.logger = logger
     }
 
@@ -193,6 +212,35 @@ public actor EmbeddedMDMServer {
                 tlsOptions.securityProtocolOptions,
                 secIdentity
             )
+
+            // mTLS: require + validate the client's certificate
+            // chain when an anchor was supplied. Each incoming
+            // connection's TLS handshake calls our verify block
+            // with the client's sec_trust_t; we pin it against
+            // our root CA and accept only on clean chain.
+            if let anchor = clientCAAnchor {
+                sec_protocol_options_set_peer_authentication_required(
+                    tlsOptions.securityProtocolOptions,
+                    true
+                )
+                let verifier = ClientCertVerifier(anchor: anchor)
+                let verifyQueue = DispatchQueue(
+                    label: "com.spookylabs.spooktacular.mdm.tls-verify",
+                    qos: .userInitiated
+                )
+                sec_protocol_options_set_verify_block(
+                    tlsOptions.securityProtocolOptions,
+                    { metadata, secTrust, complete in
+                        verifier.verify(
+                            secTrust: secTrust,
+                            complete: complete
+                        )
+                    },
+                    verifyQueue
+                )
+                logger.notice("mTLS enabled — client certs must chain to the supplied anchor")
+            }
+
             parameters = NWParameters(tls: tlsOptions)
             logger.notice("TLS enabled — server identity loaded from PKCS#12")
         } else {
@@ -542,6 +590,56 @@ public actor EmbeddedMDMServer {
     }
 }
 
+// MARK: - mTLS client-cert verifier
+
+/// Sendable wrapper that pins a single CA anchor and
+/// validates each incoming client's `sec_trust_t` against
+/// it. The `Network.framework` verify block is called on
+/// the dispatch queue we provide; the verifier internally
+/// dispatches `SecTrustEvaluateAsyncWithError` so we don't
+/// block that queue on cert chain work.
+fileprivate final class ClientCertVerifier: Sendable {
+    private let anchor: SecCertificate
+    private let evaluationQueue: DispatchQueue
+
+    init(anchor: SecCertificate) {
+        self.anchor = anchor
+        self.evaluationQueue = DispatchQueue(
+            label: "com.spookylabs.spooktacular.mdm.client-cert-eval",
+            qos: .userInitiated
+        )
+    }
+
+    /// Pins the supplied trust against ``anchor``, evaluates,
+    /// and invokes `complete` with the boolean outcome.
+    /// `complete` is the (non-Sendable) block the
+    /// `sec_protocol_options_set_verify_block` typedef passes
+    /// us; the queue we call it on is the one the framework
+    /// dispatched onto us, so the non-Sendable-ness is fine.
+    func verify(
+        secTrust: sec_trust_t,
+        complete: @escaping (Bool) -> Void
+    ) {
+        let trust = sec_trust_copy_ref(secTrust).takeRetainedValue()
+        // Tell Security: trust ONLY this anchor, no system
+        // roots. Without this the trust eval would chain via
+        // any locally-installed CA, defeating our pinning.
+        let status = SecTrustSetAnchorCertificates(trust, [anchor] as CFArray)
+        guard status == errSecSuccess else {
+            complete(false)
+            return
+        }
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+
+        // Async eval so the verify queue isn't blocked on
+        // (potential) future I/O — even though our pinned
+        // local chain doesn't need any.
+        SecTrustEvaluateAsyncWithError(trust, evaluationQueue) { _, ok, _ in
+            complete(ok)
+        }
+    }
+}
+
 // MARK: - One-shot guard
 
 /// Tiny lock-protected "resume once" flag used by ``start()``
@@ -583,4 +681,7 @@ public enum EmbeddedMDMServerError: Error, Sendable {
     /// impossible after `SecPKCS12Import` succeeded but
     /// surfaced for completeness.
     case tlsConfigurationFailed
+    /// The supplied DER-encoded client CA anchor didn't parse
+    /// into a `SecCertificate`.
+    case invalidClientCAAnchor
 }
