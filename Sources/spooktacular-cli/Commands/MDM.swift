@@ -234,6 +234,25 @@ extension Spooktacular {
             )
             var port: Int = Int(EmbeddedMDMServer.defaultPort)
 
+            @Flag(
+                name: .customLong("tls"),
+                help: "Terminate TLS using a server cert minted by the embedded MDM issuer. Required for signed enrollment profiles to dial successfully."
+            )
+            var tls: Bool = false
+
+            @Option(
+                name: .customLong("ca-storage"),
+                help: "Directory where the embedded MDM root CA lives. Same path as `spook mdm bootstrap --ca-storage`."
+            )
+            var caStorage: String?
+
+            @Option(
+                name: .customLong("tls-san"),
+                parsing: .upToNextOption,
+                help: "Additional SAN entries for the server certificate (besides --host). Repeatable. Use to cover DNS aliases the VM might reach the server under."
+            )
+            var tlsSANs: [String] = []
+
             mutating func run() async throws {
                 let store = MDMDeviceStore()
                 let queue = MDMCommandQueue()
@@ -243,13 +262,46 @@ extension Spooktacular {
                 )
                 let content = MDMContentStore()
 
+                var serverIdentity: EmbeddedMDMServer.ServerIdentity?
+                if tls {
+                    let storageDir: URL
+                    if let caStorage {
+                        storageDir = URL(fileURLWithPath: caStorage)
+                    } else {
+                        storageDir = SpooktacularPaths.root
+                            .appendingPathComponent("mdm", isDirectory: true)
+                    }
+                    let issuer: MDMIdentityIssuer
+                    do {
+                        issuer = try MDMIdentityIssuer(storageDirectory: storageDir)
+                    } catch {
+                        print(Style.error("Failed to initialise MDM issuer: \(error.localizedDescription)"))
+                        throw ExitCode.failure
+                    }
+                    let cert: MDMEnrollmentProfile.IdentityCertificate
+                    do {
+                        cert = try await issuer.serverCertificate(
+                            forHost: host,
+                            additionalHosts: tlsSANs
+                        )
+                    } catch {
+                        print(Style.error("Failed to mint server certificate: \(error.localizedDescription)"))
+                        throw ExitCode.failure
+                    }
+                    serverIdentity = EmbeddedMDMServer.ServerIdentity(
+                        pkcs12Data: cert.pkcs12Data,
+                        password: cert.password
+                    )
+                }
+
                 let server: EmbeddedMDMServer
                 do {
                     server = try EmbeddedMDMServer(
                         host: host,
                         port: UInt16(port),
                         handler: handler,
-                        contentStore: content
+                        contentStore: content,
+                        serverIdentity: serverIdentity
                     )
                 } catch {
                     print(Style.error("Failed to create MDM server: \(error.localizedDescription)"))
@@ -264,9 +316,11 @@ extension Spooktacular {
                 }
 
                 let actualPort = await server.boundPort ?? UInt16(port)
+                let scheme = (await server.isTLSEnabled) ? "https" : "http"
                 print(Style.bold("Embedded MDM Server"))
                 print()
-                Style.field("Bind", "http://\(host):\(actualPort)")
+                Style.field("Bind", "\(scheme)://\(host):\(actualPort)")
+                Style.field("TLS", (await server.isTLSEnabled) ? "enabled" : "disabled")
                 Style.field("Check-in", "/mdm/checkin")
                 Style.field("Command poll", "/mdm/server")
                 Style.field("Manifest fetch", "/mdm/manifest/<id>")
