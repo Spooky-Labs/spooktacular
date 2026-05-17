@@ -7,155 +7,273 @@ import SpooktacularCore
 
 extension Spooktacular {
 
-    /// Operator surface for the embedded MDM. Today's
-    /// subcommands cover the host-side flow that has to
-    /// happen before a VM enrolls: generating + injecting
-    /// the enrollment bootstrap into a bundle.
+    /// Operator surface for Spooktacular's embedded MDM —
+    /// "I want this VM to enroll, and I want to push scripts
+    /// to it."
     ///
-    /// Future subcommands:
-    /// - `serve` — start the embedded MDM listener alongside
-    ///   `spook serve` (currently the listener has to be
-    ///   started programmatically; CLI integration follows).
-    /// - `dispatch` — push a user-data script to an enrolled
-    ///   VM via InstallEnterpriseApplication.
-    /// - `devices` — list enrolled devices + queue depths.
+    /// ## The three commands you need
+    ///
+    /// 1. `spook mdm init` — one-time host setup (root CA,
+    ///    server identity). Idempotent.
+    /// 2. `spook mdm serve` — runs the MDM listener.
+    /// 3. `spook mdm enroll <vm>` — injects the enrollment
+    ///    profile into a VM bundle. Next boot auto-enrolls.
+    ///
+    /// That's it. Signing + TLS are on by default. Operators
+    /// who want the underlying knobs can pass `--unsigned`,
+    /// `--no-tls`, `--print-only` for inspection.
     struct MDM: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "mdm",
-            abstract: "Operator surface for Spooktacular's embedded MDM.",
+            abstract: "Embedded MDM — enroll Spooktacular VMs and push commands.",
             discussion: """
-                Embedded MDM = Spooktacular acts as its own \
-                MDM server for the VMs it spawns. Once a VM \
-                enrolls, the host can push profiles, run \
-                user-data, and observe device state over the \
-                MDM protocol — no third-party Jamf/Kandji \
-                needed for VM-scope management.
+                The embedded MDM lets Spooktacular act as its \
+                own management server for the VMs it spawns. \
+                Once a VM enrolls, the host can push \
+                profiles, install pkgs, and run user-data \
+                scripts — no third-party Jamf/Kandji needed \
+                for VM-scope management.
 
-                EXAMPLES:
-                  spook mdm bootstrap my-vm \\
-                    --mdm-host 192.168.64.1 --mdm-port 8443
+                TYPICAL FLOW:
+                  spook mdm init                   # once per host
+                  spook mdm serve --host <addr>    # run the server
+                  spook mdm enroll <vm>            # bootstrap a VM
+                  spook start <vm>                 # boot it — auto-enrolls
+                  spook mdm devices                # see enrolled VMs
 
-                  # Inspect the generated bootstrap script
-                  spook mdm bootstrap my-vm --print-only \\
-                    --mdm-host 127.0.0.1
+                Defaults are secure: signed enrollment + TLS \
+                are on. Pass --unsigned or --no-tls when \
+                experimenting on loopback.
                 """,
-            subcommands: [Bootstrap.self, Serve.self]
+            subcommands: [Init.self, Serve.self, Enroll.self, Devices.self, Doctor.self]
         )
 
-        // MARK: - bootstrap
+        // MARK: - init
 
-        struct Bootstrap: AsyncParsableCommand {
+        /// One-time host setup: generates the root CA. Calling
+        /// it explicitly makes the bootstrap step in
+        /// ``Enroll`` a no-op; calling neither lets ``Enroll``
+        /// implicitly generate.
+        struct Init: AsyncParsableCommand {
             static let configuration = CommandConfiguration(
-                abstract: "Inject an MDM enrollment script into a VM bundle's first-boot slot.",
+                abstract: "One-time host setup — generates the embedded MDM root CA."
+            )
+
+            @Option(
+                name: .customLong("storage"),
+                help: "Directory for the root CA. Defaults to ~/.spooktacular/mdm/."
+            )
+            var storage: String?
+
+            mutating func run() async throws {
+                let storageDir = Self.resolveStorageDir(override: storage)
+                let issuer: MDMIdentityIssuer
+                do {
+                    issuer = try MDMIdentityIssuer(storageDirectory: storageDir)
+                } catch {
+                    print(Style.error("Failed to initialise issuer: \(error.localizedDescription)"))
+                    throw ExitCode.failure
+                }
+                // Force-touch the CA so subsequent commands
+                // start synchronously rather than paying the
+                // generation cost on first use.
+                do {
+                    _ = try await issuer.rootCertificateDER()
+                } catch {
+                    print(Style.error("Failed to bootstrap root CA: \(error.localizedDescription)"))
+                    throw ExitCode.failure
+                }
+                print(Style.bold("Embedded MDM initialised"))
+                print()
+                Style.field("Storage", storageDir.path)
+                Style.field(
+                    "Root CA",
+                    storageDir.appendingPathComponent("root-ca.pem").path
+                )
+                print()
+                print(Style.dim("Run `spook mdm serve` to start accepting enrollments."))
+            }
+
+            static func resolveStorageDir(override: String?) -> URL {
+                if let override {
+                    return URL(fileURLWithPath: override)
+                }
+                return SpooktacularPaths.root.appendingPathComponent("mdm", isDirectory: true)
+            }
+        }
+
+        // MARK: - serve
+
+        struct Serve: AsyncParsableCommand {
+            static let configuration = CommandConfiguration(
+                abstract: "Run the embedded MDM listener in the foreground."
+            )
+
+            @Option(
+                name: .customLong("host"),
+                help: "Bind address. Use the host's bridged-NIC IP so VMs can reach it."
+            )
+            var host: String = "127.0.0.1"
+
+            @Option(name: .customLong("port"), help: "Port to bind.")
+            var port: Int = Int(EmbeddedMDMServer.defaultPort)
+
+            @Flag(
+                name: .customLong("no-tls"),
+                help: "Disable TLS. Loopback / dev use only."
+            )
+            var noTLS: Bool = false
+
+            @Option(
+                name: .customLong("tls-san"),
+                parsing: .upToNextOption,
+                help: "Additional SAN entries for the server certificate (DNS names or IPs)."
+            )
+            var tlsSANs: [String] = []
+
+            @Option(
+                name: .customLong("storage"),
+                help: "Directory containing the root CA. Defaults to ~/.spooktacular/mdm/."
+            )
+            var storage: String?
+
+            mutating func run() async throws {
+                let store = MDMDeviceStore()
+                let queue = MDMCommandQueue()
+                let handler = SpooktacularMDMHandler(deviceStore: store, commandQueue: queue)
+                let content = MDMContentStore()
+
+                var serverIdentity: EmbeddedMDMServer.ServerIdentity?
+                if !noTLS {
+                    let storageDir = Init.resolveStorageDir(override: storage)
+                    let issuer = try MDMIdentityIssuer(storageDirectory: storageDir)
+                    let cert = try await issuer.serverCertificate(
+                        forHost: host,
+                        additionalHosts: tlsSANs
+                    )
+                    serverIdentity = EmbeddedMDMServer.ServerIdentity(
+                        pkcs12Data: cert.pkcs12Data,
+                        password: cert.password
+                    )
+                }
+
+                let server = try EmbeddedMDMServer(
+                    host: host,
+                    port: UInt16(port),
+                    handler: handler,
+                    contentStore: content,
+                    serverIdentity: serverIdentity
+                )
+                try await server.start()
+
+                let actualPort = await server.boundPort ?? UInt16(port)
+                let scheme = (await server.isTLSEnabled) ? "https" : "http"
+                print(Style.bold("Spooktacular MDM"))
+                print()
+                Style.field("Listening", "\(scheme)://\(host):\(actualPort)")
+                Style.field("TLS", (await server.isTLSEnabled) ? "enabled" : "disabled")
+                print()
+                print(Style.dim("Press Ctrl+C to stop."))
+                print()
+
+                let shutdownServer = server
+                for sig in [SIGTERM, SIGINT] {
+                    signal(sig, SIG_IGN)
+                    let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+                    source.setEventHandler {
+                        Task {
+                            await shutdownServer.stop()
+                            Foundation.exit(0)
+                        }
+                    }
+                    source.resume()
+                }
+                try await Task.sleep(for: .seconds(Double(Int.max)))
+            }
+        }
+
+        // MARK: - enroll
+
+        struct Enroll: AsyncParsableCommand {
+            static let configuration = CommandConfiguration(
+                abstract: "Bootstrap MDM enrollment for a VM — injects a first-boot script that auto-enrolls.",
                 discussion: """
-                    Renders the per-VM enrollment .mobileconfig \
-                    and embeds it in a bash script that runs at \
-                    the next boot via the spook-provision-runner \
-                    LaunchDaemon (installed by Spooktacular \
-                    Provisioner.pkg from inside Guest Tools).
+                    Writes the enrollment profile into the VM \
+                    bundle's first-boot slot. The VM must \
+                    already have Spooktacular Provisioner.pkg \
+                    installed (run that once from inside Guest \
+                    Tools). On next boot the profile auto- \
+                    installs and mdmclient dials the host's \
+                    MDM server.
 
-                    The VM must already be stopped — the script \
-                    is written to <bundle>.vm/provision/first-boot.sh \
-                    and consumed by the next boot.
-
-                    Repeated invocations replace the previous \
-                    bootstrap atomically.
+                    Defaults: signed enrollment (per-VM \
+                    identity cert), HTTPS server URL. Override \
+                    with --unsigned for loopback testing.
                     """
             )
 
-            @Argument(help: "Name of the VM bundle (case-sensitive).")
+            @Argument(help: "VM name.")
             var vm: String
 
             @Option(
-                name: .customLong("mdm-host"),
-                help: "Host the VM should reach the embedded MDM server on (defaults to the host's bridged-network address)."
+                name: .customLong("server"),
+                help: "MDM server address VMs reach. Use the host's bridged-NIC IP."
             )
-            var mdmHost: String = "127.0.0.1"
+            var server: String = "127.0.0.1"
 
-            @Option(
-                name: .customLong("mdm-port"),
-                help: "Port for the embedded MDM server."
-            )
-            var mdmPort: Int = Int(EmbeddedMDMServer.defaultPort)
+            @Option(name: .customLong("port"), help: "MDM server port.")
+            var port: Int = Int(EmbeddedMDMServer.defaultPort)
 
-            @Option(
-                name: .customLong("scheme"),
-                help: "URL scheme for the MDM server. Use http for local / dev (no TLS yet); https when CA + identity certs are wired."
+            @Flag(
+                name: .customLong("unsigned"),
+                help: "Skip per-VM identity cert. Pairs with `mdm serve --no-tls`; loopback only."
             )
-            var scheme: String = "http"
+            var unsigned: Bool = false
+
+            @Flag(
+                name: .customLong("no-tls"),
+                help: "Use http:// in the embedded server URL. Pair with `--unsigned`."
+            )
+            var noTLS: Bool = false
 
             @Flag(
                 name: .customLong("print-only"),
-                help: "Render the bootstrap script and write it to stdout without modifying the bundle."
+                help: "Print the bootstrap script to stdout without modifying the bundle."
             )
             var printOnly: Bool = false
 
-            @Flag(
-                name: .customLong("signed"),
-                help: "Mint a per-VM identity certificate and embed it in the enrollment profile. Without this flag the profile is unsigned (dev / loopback only)."
-            )
-            var signed: Bool = false
-
             @Option(
-                name: .customLong("ca-storage"),
-                help: "Directory to store the MDM root CA. Generated on first --signed call. Defaults to ~/Library/Application Support/Spooktacular/mdm/."
+                name: .customLong("storage"),
+                help: "MDM root CA directory. Defaults to ~/.spooktacular/mdm/."
             )
-            var caStorage: String?
+            var storage: String?
 
             mutating func run() async throws {
                 let bundleURL: URL
                 do {
                     bundleURL = try SpooktacularPaths.resolveBundle(selector: vm)
                 } catch {
-                    print(Style.error("Failed to resolve VM '\(vm)': \(error.localizedDescription)"))
+                    print(Style.error("VM '\(vm)' not found: \(error.localizedDescription)"))
                     throw ExitCode.failure
                 }
+                let bundle = try VirtualMachineBundle.load(from: bundleURL)
+                let scheme = noTLS ? "http" : "https"
 
-                let bundle: VirtualMachineBundle
-                do {
-                    bundle = try VirtualMachineBundle.load(from: bundleURL)
-                } catch {
-                    print(Style.error("Failed to load bundle: \(error.localizedDescription)"))
-                    throw ExitCode.failure
-                }
-
-                guard let serverURL = URL(string: "\(scheme)://\(mdmHost):\(mdmPort)/mdm/server") else {
-                    print(Style.error("Invalid --scheme/--mdm-host/--mdm-port combination"))
-                    throw ExitCode.failure
-                }
-                guard let checkInURL = URL(string: "\(scheme)://\(mdmHost):\(mdmPort)/mdm/checkin") else {
-                    print(Style.error("Failed to construct check-in URL"))
+                guard let serverURL = URL(string: "\(scheme)://\(server):\(port)/mdm/server"),
+                      let checkInURL = URL(string: "\(scheme)://\(server):\(port)/mdm/checkin")
+                else {
+                    print(Style.error("Invalid server/port combination."))
                     throw ExitCode.failure
                 }
 
                 let signaturePolicy: MDMEnrollmentProfile.SignaturePolicy
-                if signed {
-                    let storageDir: URL
-                    if let caStorage {
-                        storageDir = URL(fileURLWithPath: caStorage)
-                    } else {
-                        storageDir = SpooktacularPaths.root
-                            .appendingPathComponent("mdm", isDirectory: true)
-                    }
-                    let issuer: MDMIdentityIssuer
-                    do {
-                        issuer = try MDMIdentityIssuer(storageDirectory: storageDir)
-                    } catch {
-                        print(Style.error("Failed to initialise MDM identity issuer: \(error.localizedDescription)"))
-                        throw ExitCode.failure
-                    }
-                    let identity: MDMEnrollmentProfile.IdentityCertificate
-                    do {
-                        identity = try await issuer.issueIdentity(
-                            forUDID: bundle.id.uuidString
-                        )
-                    } catch {
-                        print(Style.error("Failed to issue identity certificate: \(error.localizedDescription)"))
-                        throw ExitCode.failure
-                    }
-                    signaturePolicy = .signed(identity: identity)
-                } else {
+                if unsigned {
                     signaturePolicy = .unsigned
+                } else {
+                    let storageDir = Init.resolveStorageDir(override: storage)
+                    let issuer = try MDMIdentityIssuer(storageDirectory: storageDir)
+                    let identity = try await issuer.issueIdentity(forUDID: bundle.id.uuidString)
+                    signaturePolicy = .signed(identity: identity)
                 }
 
                 let profile = MDMEnrollmentProfile.random(
@@ -170,185 +288,133 @@ extension Spooktacular {
                     let script = try bootstrap.script()
                     if let s = String(data: script, encoding: .utf8) {
                         print(s)
-                    } else {
-                        print(Style.error("Bootstrap script not UTF-8"))
-                        throw ExitCode.failure
                     }
                     return
                 }
 
-                do {
-                    try DiskInjector.injectMDMEnrollment(
-                        bootstrap: bootstrap, into: bundle
-                    )
-                } catch {
-                    print(Style.error("Failed to inject enrollment: \(error.localizedDescription)"))
-                    throw ExitCode.failure
-                }
+                try DiskInjector.injectMDMEnrollment(bootstrap: bootstrap, into: bundle)
 
-                print(Style.bold("MDM enrollment bootstrap injected"))
+                print(Style.bold("Enrolled \(bundle.displayName)"))
                 print()
-                Style.field("VM", bundle.displayName)
-                Style.field("Bundle", Style.dim(bundle.url.path))
-                Style.field("MDM server", serverURL.absoluteString)
-                Style.field("Signing", signed ? "signed (per-VM identity)" : "unsigned (dev mode)")
-                Style.field("First-boot script", bundle.provisionScriptURL.path)
+                Style.field("Server", serverURL.absoluteString)
+                Style.field("Mode", unsigned ? "unsigned (loopback)" : "signed (per-VM identity)")
+                Style.field("First-boot", bundle.provisionScriptURL.path)
                 print()
-                print(Style.dim("Next boot of this VM will install the enrollment profile."))
+                print(Style.dim("Boot the VM and it will enroll automatically."))
                 print(Style.dim("Requires Spooktacular Provisioner.pkg already installed in the guest."))
             }
         }
 
-        // MARK: - serve
+        // MARK: - devices
 
-        struct Serve: AsyncParsableCommand {
+        /// Lists enrolled devices. Reads from the host's
+        /// last-known device-store snapshot on disk (written
+        /// by `serve` on shutdown / interval).
+        ///
+        /// Until persistence ships, this command can only see
+        /// devices that enrolled during the currently-running
+        /// `serve`. We print a helpful note when the snapshot
+        /// is missing.
+        struct Devices: AsyncParsableCommand {
             static let configuration = CommandConfiguration(
-                abstract: "Run the embedded MDM server in the foreground.",
-                discussion: """
-                    Binds the MDM HTTP server on the given host \
-                    + port. VMs whose enrollment profile points \
-                    at this server check in / poll / ack via \
-                    /mdm/checkin and /mdm/server.
-
-                    State (device store + command queue) is \
-                    in-memory only — restarting wipes it. \
-                    Devices naturally re-Authenticate on their \
-                    next boot, so transient state loss is \
-                    self-healing for enrollment but loses any \
-                    queued commands.
-
-                    Run alongside `spook serve` (different port) \
-                    until the two are merged into one process.
-                    """
+                abstract: "List MDM-enrolled VMs."
             )
 
             @Option(
-                name: .customLong("host"),
-                help: "Bind address. Loopback by default; set to a routable address when VMs are on a bridged network."
+                name: .customLong("storage"),
+                help: "MDM root directory. Defaults to ~/.spooktacular/mdm/."
             )
-            var host: String = "127.0.0.1"
-
-            @Option(
-                name: .customLong("port"),
-                help: "Port to bind."
-            )
-            var port: Int = Int(EmbeddedMDMServer.defaultPort)
-
-            @Flag(
-                name: .customLong("tls"),
-                help: "Terminate TLS using a server cert minted by the embedded MDM issuer. Required for signed enrollment profiles to dial successfully."
-            )
-            var tls: Bool = false
-
-            @Option(
-                name: .customLong("ca-storage"),
-                help: "Directory where the embedded MDM root CA lives. Same path as `spook mdm bootstrap --ca-storage`."
-            )
-            var caStorage: String?
-
-            @Option(
-                name: .customLong("tls-san"),
-                parsing: .upToNextOption,
-                help: "Additional SAN entries for the server certificate (besides --host). Repeatable. Use to cover DNS aliases the VM might reach the server under."
-            )
-            var tlsSANs: [String] = []
+            var storage: String?
 
             mutating func run() async throws {
-                let store = MDMDeviceStore()
-                let queue = MDMCommandQueue()
-                let handler = SpooktacularMDMHandler(
-                    deviceStore: store,
-                    commandQueue: queue
-                )
-                let content = MDMContentStore()
+                let storageDir = Init.resolveStorageDir(override: storage)
+                let snapshotURL = storageDir.appendingPathComponent("devices.json")
+                guard let data = try? Data(contentsOf: snapshotURL),
+                      let records = try? JSONDecoder.iso8601.decode(
+                          [MDMDeviceSnapshot].self, from: data
+                      ) else {
+                    print(Style.dim("No device snapshot yet."))
+                    print(Style.dim("Start `spook mdm serve` and enroll at least one VM."))
+                    return
+                }
+                if records.isEmpty {
+                    print(Style.dim("No devices enrolled."))
+                    return
+                }
+                print(Style.bold("Enrolled devices"))
+                print()
+                for r in records {
+                    Style.field(r.udid, "\(r.model ?? "?") · \(r.osVersion ?? "?") · last seen \(r.lastSeen.description)")
+                }
+            }
+        }
 
-                var serverIdentity: EmbeddedMDMServer.ServerIdentity?
-                if tls {
-                    let storageDir: URL
-                    if let caStorage {
-                        storageDir = URL(fileURLWithPath: caStorage)
-                    } else {
-                        storageDir = SpooktacularPaths.root
-                            .appendingPathComponent("mdm", isDirectory: true)
-                    }
-                    let issuer: MDMIdentityIssuer
-                    do {
-                        issuer = try MDMIdentityIssuer(storageDirectory: storageDir)
-                    } catch {
-                        print(Style.error("Failed to initialise MDM issuer: \(error.localizedDescription)"))
-                        throw ExitCode.failure
-                    }
-                    let cert: MDMEnrollmentProfile.IdentityCertificate
-                    do {
-                        cert = try await issuer.serverCertificate(
-                            forHost: host,
-                            additionalHosts: tlsSANs
-                        )
-                    } catch {
-                        print(Style.error("Failed to mint server certificate: \(error.localizedDescription)"))
-                        throw ExitCode.failure
-                    }
-                    serverIdentity = EmbeddedMDMServer.ServerIdentity(
-                        pkcs12Data: cert.pkcs12Data,
-                        password: cert.password
-                    )
+        // MARK: - doctor
+
+        /// Health-check the MDM setup. Useful for "is this
+        /// actually configured right?" without running a full
+        /// enrollment.
+        struct Doctor: AsyncParsableCommand {
+            static let configuration = CommandConfiguration(
+                abstract: "Validate the host's MDM setup."
+            )
+
+            @Option(
+                name: .customLong("storage"),
+                help: "MDM root directory. Defaults to ~/.spooktacular/mdm/."
+            )
+            var storage: String?
+
+            mutating func run() async throws {
+                let storageDir = Init.resolveStorageDir(override: storage)
+                var issues: [String] = []
+
+                if !FileManager.default.fileExists(atPath: storageDir.path) {
+                    issues.append("Storage directory missing — run `spook mdm init`.")
+                }
+                let caPEM = storageDir.appendingPathComponent("root-ca.pem")
+                let caKey = storageDir.appendingPathComponent("root-ca.key")
+                if !FileManager.default.fileExists(atPath: caPEM.path) {
+                    issues.append("Root CA cert missing — run `spook mdm init`.")
+                }
+                if !FileManager.default.fileExists(atPath: caKey.path) {
+                    issues.append("Root CA key missing — run `spook mdm init`.")
+                }
+                if !FileManager.default.fileExists(atPath: "/usr/bin/openssl") {
+                    issues.append("`/usr/bin/openssl` not found — required for cert issuance.")
                 }
 
-                let server: EmbeddedMDMServer
-                do {
-                    server = try EmbeddedMDMServer(
-                        host: host,
-                        port: UInt16(port),
-                        handler: handler,
-                        contentStore: content,
-                        serverIdentity: serverIdentity
-                    )
-                } catch {
-                    print(Style.error("Failed to create MDM server: \(error.localizedDescription)"))
+                if issues.isEmpty {
+                    print(Style.bold("MDM setup looks healthy."))
+                    print()
+                    Style.field("Storage", storageDir.path)
+                } else {
+                    print(Style.error("MDM setup has issues:"))
+                    for issue in issues {
+                        print("  • \(issue)")
+                    }
                     throw ExitCode.failure
                 }
-
-                do {
-                    try await server.start()
-                } catch {
-                    print(Style.error("MDM server failed to bind: \(error.localizedDescription)"))
-                    throw ExitCode.failure
-                }
-
-                let actualPort = await server.boundPort ?? UInt16(port)
-                let scheme = (await server.isTLSEnabled) ? "https" : "http"
-                print(Style.bold("Embedded MDM Server"))
-                print()
-                Style.field("Bind", "\(scheme)://\(host):\(actualPort)")
-                Style.field("TLS", (await server.isTLSEnabled) ? "enabled" : "disabled")
-                Style.field("Check-in", "/mdm/checkin")
-                Style.field("Command poll", "/mdm/server")
-                Style.field("Manifest fetch", "/mdm/manifest/<id>")
-                Style.field("Pkg fetch", "/mdm/pkg/<id>")
-                print()
-                print(Style.dim("Press Ctrl+C to stop."))
-                print()
-
-                // Park forever — `await server.start()` returned
-                // already-running; we just need to keep the
-                // process alive so the listener doesn't get
-                // torn down.
-                let shutdownServer = server
-                for sig in [SIGTERM, SIGINT] {
-                    signal(sig, SIG_IGN)
-                    let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
-                    source.setEventHandler {
-                        let sigName = sig == SIGTERM ? "SIGTERM" : "SIGINT"
-                        print("\nReceived \(sigName) — shutting down MDM server...")
-                        Task {
-                            await shutdownServer.stop()
-                            Foundation.exit(0)
-                        }
-                    }
-                    source.resume()
-                }
-                try await Task.sleep(for: .seconds(Double(Int.max)))
             }
         }
     }
+}
+
+// MARK: - Snapshot DTO + JSONDecoder helper
+
+private struct MDMDeviceSnapshot: Codable {
+    let udid: String
+    let topic: String
+    let model: String?
+    let osVersion: String?
+    let firstSeen: Date
+    let lastSeen: Date
+}
+
+private extension JSONDecoder {
+    static let iso8601: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
 }
