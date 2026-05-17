@@ -15,22 +15,29 @@ No third-party Jamf / Kandji needed for VM-scope management.
 - **Multi-tenant** — different egress / profile policies per tenant
   without operator-per-tenant overhead.
 
-## Three commands
+## The flow
 
 ```sh
 # 1. Once per host (idempotent)
 spook mdm init
 
-# 2. Run the MDM server
+# 2. Run the MDM server (foreground; or wrap in launchd)
 spook mdm serve --host 192.168.64.1
 
 # 3. Bootstrap each VM (in a separate terminal)
 spook mdm enroll my-vm --server 192.168.64.1
 spook start my-vm
+# … VM boots → first-boot.sh → mdmclient enrolls
+
+# 4. Push commands as needed
+spook mdm run my-vm ./setup.sh    # push a script
+spook mdm devices                 # list enrolled VMs
 ```
 
-That's it. The VM boots, runs the injected `first-boot.sh`, installs
-the enrollment profile, and `mdmclient` enrolls into the server.
+The VM boots, runs the injected `first-boot.sh`, installs the
+enrollment profile, and `mdmclient` enrolls into the server. From
+that point on, `spook mdm run <vm> <script>` pushes a one-shot pkg
+that runs the script as root inside the guest.
 
 ## Prerequisites
 
@@ -117,7 +124,8 @@ spook start my-vm  ─►                  VM boots
 | `spook mdm init [--storage DIR]` | Generate the root CA. Idempotent. |
 | `spook mdm serve [--host H] [--port P] [--no-tls] [--tls-san DNS]` | Run the MDM listener. |
 | `spook mdm enroll <vm> [--server H] [--unsigned] [--no-tls] [--print-only]` | Inject MDM bootstrap into a VM bundle. |
-| `spook mdm devices` | List enrolled VMs (from snapshot — requires `serve` to have run). |
+| `spook mdm run <vm> <script>` | Push a user-data script to an enrolled VM (`-` for stdin). |
+| `spook mdm devices` | List enrolled VMs. |
 | `spook mdm doctor` | Health-check the host setup. |
 
 ## Architecture notes

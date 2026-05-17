@@ -39,13 +39,14 @@ extension Spooktacular {
                   spook mdm serve --host <addr>    # run the server
                   spook mdm enroll <vm>            # bootstrap a VM
                   spook start <vm>                 # boot it — auto-enrolls
+                  spook mdm run <vm> setup.sh      # push a script
                   spook mdm devices                # see enrolled VMs
 
                 Defaults are secure: signed enrollment + TLS \
                 are on. Pass --unsigned or --no-tls when \
                 experimenting on loopback.
                 """,
-            subcommands: [Init.self, Serve.self, Enroll.self, Devices.self, Doctor.self]
+            subcommands: [Init.self, Serve.self, Enroll.self, Run.self, Devices.self, Doctor.self]
         )
 
         // MARK: - init
@@ -184,10 +185,47 @@ extension Spooktacular {
 
                 let actualPort = await server.boundPort ?? UInt16(port)
                 let scheme = (await server.isTLSEnabled) ? "https" : "http"
+
+                // Start a background outbox-drain loop so
+                // `spook mdm run` from another shell can
+                // dispatch user-data via the filesystem.
+                let outbox = MDMDispatchOutbox(
+                    directory: Init.resolveStorageDir(override: storage)
+                        .appendingPathComponent("state", isDirectory: true)
+                        .appendingPathComponent("outbox", isDirectory: true)
+                )
+                let dispatcher = MDMUserDataDispatcher(
+                    handler: handler,
+                    contentStore: content,
+                    pkgBuilder: MDMUserDataPkgBuilder(),
+                    baseURL: URL(string: "\(scheme)://\(host):\(actualPort)")!
+                )
+                Task.detached {
+                    while !Task.isCancelled {
+                        await outbox.drain { request in
+                            guard let scriptBody = request.scriptBody else {
+                                return .failed(reason: "Malformed script body")
+                            }
+                            do {
+                                _ = try await dispatcher.dispatch(
+                                    scriptBody: scriptBody,
+                                    scriptName: request.scriptName,
+                                    toUDID: request.udid
+                                )
+                                return .delivered
+                            } catch {
+                                return .failed(reason: error.localizedDescription)
+                            }
+                        }
+                        try? await Task.sleep(for: .seconds(2))
+                    }
+                }
+
                 print(Style.bold("Spooktacular MDM"))
                 print()
                 Style.field("Listening", "\(scheme)://\(host):\(actualPort)")
                 Style.field("TLS", (await server.isTLSEnabled) ? "enabled" : "disabled")
+                Style.field("Outbox", outbox.directory.path)
                 print()
                 print(Style.dim("Press Ctrl+C to stop."))
                 print()
@@ -318,6 +356,97 @@ extension Spooktacular {
                 print()
                 print(Style.dim("Boot the VM and it will enroll automatically."))
                 print(Style.dim("Requires Spooktacular Provisioner.pkg already installed in the guest."))
+            }
+        }
+
+        // MARK: - run
+
+        /// Push a user-data script to an enrolled VM. Writes
+        /// to a file-backed outbox; `spook mdm serve` picks
+        /// it up on its next poll, builds the pkg, and
+        /// enqueues an InstallEnterpriseApplication command.
+        struct Run: AsyncParsableCommand {
+            static let configuration = CommandConfiguration(
+                abstract: "Push a user-data script to an enrolled VM."
+            )
+
+            @Argument(help: "VM name (must already be enrolled).")
+            var vm: String
+
+            @Argument(help: "Path to the script to run. Reads from stdin if '-'.")
+            var script: String
+
+            @Option(
+                name: .customLong("storage"),
+                help: "MDM root directory. Defaults to ~/.spooktacular/mdm/."
+            )
+            var storage: String?
+
+            mutating func run() async throws {
+                let bundleURL: URL
+                do {
+                    bundleURL = try SpooktacularPaths.resolveBundle(selector: vm)
+                } catch {
+                    print(Style.error("VM '\(vm)' not found: \(error.localizedDescription)"))
+                    throw ExitCode.failure
+                }
+                let bundle = try VirtualMachineBundle.load(from: bundleURL)
+                let udid = bundle.id.uuidString
+
+                // Validate the VM is enrolled by looking up
+                // the persisted device snapshot. Without
+                // enrollment, the dispatch is meaningless.
+                let storageDir = Init.resolveStorageDir(override: storage)
+                let devicesURL = storageDir
+                    .appendingPathComponent("state", isDirectory: true)
+                    .appendingPathComponent("devices.json")
+                let persister = MDMDeviceStorePersister(fileURL: devicesURL)
+                let records = (try? persister.readRecords()) ?? []
+                guard let record = records.first(where: { $0.udid == udid }),
+                      !record.checkedOut else {
+                    print(Style.error("VM '\(vm)' isn't currently enrolled."))
+                    print(Style.dim("Run `spook mdm enroll \(vm)` + start the VM first."))
+                    throw ExitCode.failure
+                }
+
+                let body: Data
+                if script == "-" {
+                    body = FileHandle.standardInput.readDataToEndOfFile()
+                } else {
+                    let url = URL(fileURLWithPath: script)
+                    guard FileManager.default.fileExists(atPath: url.path) else {
+                        print(Style.error("Script '\(script)' not found."))
+                        throw ExitCode.failure
+                    }
+                    body = try Data(contentsOf: url)
+                }
+                guard !body.isEmpty else {
+                    print(Style.error("Script body is empty."))
+                    throw ExitCode.failure
+                }
+
+                let outbox = MDMDispatchOutbox(
+                    directory: storageDir
+                        .appendingPathComponent("state", isDirectory: true)
+                        .appendingPathComponent("outbox", isDirectory: true)
+                )
+                let scriptName = (script == "-")
+                    ? "stdin.sh"
+                    : URL(fileURLWithPath: script).lastPathComponent
+                let request = MDMDispatchOutbox.Request(
+                    udid: udid,
+                    scriptName: scriptName,
+                    scriptBody: body
+                )
+                let queued = try await outbox.submit(request)
+
+                print(Style.bold("Queued user-data for \(bundle.displayName)"))
+                print()
+                Style.field("Command UUID", queued.commandUUID.uuidString)
+                Style.field("Script", scriptName)
+                Style.field("Bytes", "\(body.count)")
+                print()
+                print(Style.dim("`spook mdm serve` will pick this up on its next poll (≤ 2s)."))
             }
         }
 
