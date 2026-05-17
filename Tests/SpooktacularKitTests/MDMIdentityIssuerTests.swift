@@ -8,7 +8,13 @@ import Testing
 /// resulting PKCS#12 round-trips through Apple's
 /// `SecPKCS12Import`. Skips silently if `/usr/bin/openssl`
 /// isn't available (CI sandboxes / non-macOS).
-@Suite("MDM identity issuer (real openssl)")
+///
+/// `.serialized` is required because `SecPKCS12Import`'s
+/// keychain plumbing serialises internally — concurrent
+/// calls from parallel Swift Testing workers occasionally
+/// return `errSecAuthFailed` even when the password is
+/// correct. Forcing serial execution eliminates the flake.
+@Suite("MDM identity issuer (real openssl)", .serialized)
 struct MDMIdentityIssuerTests {
 
     private func opensslAvailable() -> Bool {

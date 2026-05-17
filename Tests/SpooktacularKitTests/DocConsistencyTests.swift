@@ -129,14 +129,19 @@ struct DocConsistencyTests {
         try assertLayerImports(layer: "Sources/SpooktacularCore")
     }
 
-    @Test("SpooktacularApplication files import only Foundation, SpooktacularCore, or CryptoKit")
+    @Test("SpooktacularApplication files import only Foundation, SpooktacularCore, CryptoKit, or os")
     func applicationLayerCompliance() throws {
         // CryptoKit is allowed in SpooktacularApplication because the shared
         // SignedRequestVerifier + per-request signing primitive need
         // P-256 ECDSA verification. CryptoKit is a system framework
         // (Apple-native, FIPS-validated) so it doesn't violate the
         // "no third-party deps" rule this layer is otherwise protecting.
-        try assertLayerImports(layer: "Sources/SpooktacularApplication", allowed: ["Foundation", "SpooktacularCore", "CryptoKit"])
+        //
+        // `os` is allowed for the same reason: it's the system `os.Logger`
+        // facade, equally Apple-native and equally lightweight (no
+        // architecture coupling). The embedded MDM's actors emit
+        // structured diagnostic logs through it for unified-log filtering.
+        try assertLayerImports(layer: "Sources/SpooktacularApplication", allowed: ["Foundation", "SpooktacularCore", "CryptoKit", "os"])
     }
 
     /// Scans all `.swift` files in the given layer directory and verifies that

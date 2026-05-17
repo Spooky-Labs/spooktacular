@@ -23,13 +23,13 @@ struct RemoteDesktopTemplateTests {
 
     @Test("script includes all required elements",
           arguments: [
-              "ARDAgent.app/Contents/Resources/kickstart",
-              "-activate",
-              "-configure",
-              "-access",
-              "-on",
-              "-privs",
-              "-all",
+              // Modernised script — matches Jamf Pro's
+              // EnableRemoteDesktop policy + Apple's EC2 Mac
+              // VNC enablement docs. No longer shells out to
+              // ARDAgent's kickstart (deprecated since the
+              // Screen Sharing launchd service was promoted).
+              "launchctl enable system/com.apple.screensharing",
+              "launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist",
               "launchctl bootstrap system /System/Library/LaunchDaemons/ssh.plist",
           ])
     func requiredElement(expected: String) {
