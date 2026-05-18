@@ -3,55 +3,35 @@ import SpooktacularCore
 import SpooktacularApplication
 import os
 
-/// Injects a user-data script into a VM's guest disk as a macOS LaunchDaemon.
+/// Stages host-side artifacts into a VM bundle so the guest's
+/// Spooktacular provisioner picks them up at boot.
 ///
-/// Before the VM boots, `DiskInjector` mounts the guest disk image on the host,
-/// writes a standard macOS LaunchDaemon plist and the user's script to the data
-/// volume, then unmounts. When the VM boots, `launchd` picks up the daemon and
-/// executes the script automatically — no SSH, no agent, no network required.
+/// Two responsibilities:
 ///
-/// This uses Apple's `hdiutil` (ships with macOS) to attach APFS disk images
-/// and writes only to the data volume (never the Signed System Volume).
+/// 1. ``installGuestTools(appBundle:into:)`` — mounts the
+///    guest's APFS data volume and `ditto`s
+///    `Spooktacular Guest Tools.app` into `/Applications/`.
+///    This is the only path that touches the guest filesystem
+///    directly; everything else writes into a virtio-fs share
+///    that the guest mounts at runtime.
+/// 2. ``inject(script:into:)`` /
+///    ``inject(scriptBytes:into:)`` /
+///    ``injectMDMEnrollment(bootstrap:into:)`` — writes
+///    `first-boot.sh` into the bundle's `provision/`
+///    subdirectory. On next boot the guest's Spooktacular
+///    Provisioner LaunchDaemon (installed once via
+///    ``ProvisionerInstaller``) picks the file up via the
+///    virtio-fs share and runs it as root. No host-side mount
+///    needed for the script path.
 ///
-/// ## Usage
+/// ## Thread safety
 ///
-/// ```swift
-/// let scriptURL = URL(filePath: "/path/to/setup.sh")
-/// let bundle = try VirtualMachineBundle.load(from: bundleURL)
-/// try DiskInjector.inject(script: scriptURL, into: bundle)
-/// ```
-///
-/// ## How It Works
-///
-/// 1. Attaches the guest's `disk.img` using `hdiutil` without mounting
-///    (to discover the device node).
-/// 2. Finds and mounts the APFS data volume from the attached disk.
-/// 3. Writes the user's script to `/usr/local/bin/spooktacular-user-data.sh`
-///    on the data volume.
-/// 4. Writes a LaunchDaemon plist to `/Library/LaunchDaemons/` that tells
-///    `launchd` to run the script at boot.
-/// 5. Detaches the disk image so the VM can boot cleanly.
-///
-/// ## Thread Safety
-///
-/// All methods are synchronous and use `Process` to invoke `hdiutil`.
-/// Call from a background thread if needed to avoid blocking the main thread.
+/// All methods are synchronous and use `Process` to invoke
+/// `diskutil` / `hdiutil` / `ditto`. Call from a background
+/// thread if needed to avoid blocking the main thread.
 public enum DiskInjector {
 
     // MARK: - Public API
-
-    /// The LaunchDaemon label used for injected user-data scripts.
-    ///
-    /// This identifier is used as the `Label` in the LaunchDaemon
-    /// plist and as the plist file name. It must be unique within
-    /// the guest's `/Library/LaunchDaemons/` directory.
-    public static let daemonLabel = "com.spooktacular.user-data"
-
-    /// The path where the user-data script is installed inside the guest.
-    ///
-    /// This is relative to the data volume root, so the full path
-    /// on the mounted volume is `<mountpoint>/usr/local/bin/spooktacular-user-data.sh`.
-    public static let guestScriptPath = "/usr/local/bin/spooktacular-user-data.sh"
 
     /// Installs `Spooktacular Guest Tools.app` into a stopped
     /// VM's `/Applications/` directory.
@@ -243,70 +223,6 @@ public enum DiskInjector {
         Log.provision.notice(
             "Injected MDM enrollment bootstrap targeting \(bootstrap.profile.serverURL.absoluteString, privacy: .public) into VM \(bundle.id.uuidString, privacy: .public)"
         )
-    }
-
-    // MARK: - LaunchDaemon Plist Generation
-
-    /// Generates the LaunchDaemon plist XML that runs the injected script at boot.
-    ///
-    /// The plist configures `launchd` to:
-    /// - Run `/bin/bash /usr/local/bin/spooktacular-user-data.sh` at load time
-    /// - Log stdout to `/var/log/spooktacular-user-data.log`
-    /// - Log stderr to `/var/log/spooktacular-user-data.error.log`
-    ///
-    /// Values are XML-entity-escaped before interpolation so that
-    /// a future change to ``daemonLabel`` or ``guestScriptPath``
-    /// containing `&`, `<`, `>`, `'`, or `"` cannot produce a plist
-    /// `launchd` refuses to parse.
-    ///
-    /// See Apple's [PropertyListSerialization docs](https://developer.apple.com/documentation/foundation/propertylistserialization)
-    /// for the generic plist format. We emit the XML shape directly
-    /// because `PropertyListSerialization` writes an OS-specific
-    /// binary format by default and emits byte-accurate XML only
-    /// with additional work — the hand-written template is simpler
-    /// to audit.
-    ///
-    /// - Returns: The plist XML as a string.
-    public static func generateLaunchDaemonPlist() -> String {
-        let label = Self.xmlEscape(daemonLabel)
-        let scriptPath = Self.xmlEscape(guestScriptPath)
-        return """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
-        "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>Label</key>
-            <string>\(label)</string>
-            <key>ProgramArguments</key>
-            <array>
-                <string>/bin/bash</string>
-                <string>\(scriptPath)</string>
-            </array>
-            <key>RunAtLoad</key>
-            <true/>
-            <key>StandardOutPath</key>
-            <string>/var/log/spooktacular-user-data.log</string>
-            <key>StandardErrorPath</key>
-            <string>/var/log/spooktacular-user-data.error.log</string>
-        </dict>
-        </plist>
-        """
-    }
-
-    /// Escapes the five XML predefined entities (`&`, `<`, `>`, `'`,
-    /// `"`) so a string can be safely interpolated between
-    /// `<string>` tags in the LaunchDaemon plist template.
-    ///
-    /// Ordering matters — ampersand must be escaped first, otherwise
-    /// it would re-escape the entities we just wrote.
-    static func xmlEscape(_ raw: String) -> String {
-        var result = raw.replacingOccurrences(of: "&", with: "&amp;")
-        result = result.replacingOccurrences(of: "<", with: "&lt;")
-        result = result.replacingOccurrences(of: ">", with: "&gt;")
-        result = result.replacingOccurrences(of: "'", with: "&apos;")
-        result = result.replacingOccurrences(of: "\"", with: "&quot;")
-        return result
     }
 
     // MARK: - Internal Helpers
@@ -602,14 +518,6 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
     ///   - exitCode: The process exit code.
     case processFailed(command: String, stderr: String, exitCode: Int32)
 
-    /// Running the privileged chown step failed. The user
-    /// either declined the admin-auth prompt, or the
-    /// underlying `chown` exited non-zero.
-    ///
-    /// - Parameter reason: Human-readable description,
-    ///   already lightly cleaned of shell prefixes.
-    case chownFailed(reason: String)
-
     /// The guest's APFS Data volume is FileVault-encrypted
     /// and locked. macOS enables FileVault by default during
     /// Setup Assistant, so any attempt to inject a
@@ -638,8 +546,6 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
                 return "Command failed with exit code \(exitCode): \(command)."
             }
             return "Command failed with exit code \(exitCode): \(command). stderr: \(snippet)"
-        case .chownFailed(let reason):
-            return "Couldn't set root ownership on the guest LaunchDaemon: \(reason)"
         case .guestVolumeEncrypted:
             return "The guest's Data volume is locked by FileVault. Spooktacular Guest Tools can only be installed before the guest's Setup Assistant finishes — once a user account exists, macOS encrypts the volume with a key the host doesn't hold, so disk-injection can no longer reach the guest filesystem."
         }
@@ -658,12 +564,6 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
         case .processFailed:
             "Check that macOS system tools (hdiutil, diskutil) are available. "
             + "This operation requires running on a Mac with full disk access."
-        case .chownFailed:
-            "Approve the admin-password prompt when re-running "
-            + "'Install Guest Agent'. Apple's launchd silently ignores "
-            + "LaunchDaemon plists that aren't owned by root:wheel, and the "
-            + "kernel only honours that ownership when set by a privileged "
-            + "process on the host."
         case .guestVolumeEncrypted:
             "Delete this VM and create a new one with Guest Tools enabled in "
             + "the create sheet — the tools bundle is injected before first boot, "
