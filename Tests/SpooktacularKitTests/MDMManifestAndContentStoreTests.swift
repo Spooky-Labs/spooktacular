@@ -117,12 +117,14 @@ struct MDMContentStoreTests {
         return (MDMContentStore(now: { clock.now() }), clock)
     }
 
-    @Test("register stores pkg + manifest under a fresh UUID")
-    func registerRoundTrip() async {
+    @Test("store(id:) round-trips pkg + manifest bytes")
+    func storeRoundTrip() async {
         let (store, _) = makeStore()
         let pkg = Data("PKG".utf8)
         let manifest = Data("MANIFEST".utf8)
-        let id = await store.register(
+        let id = UUID()
+        await store.store(
+            id: id,
             pkgData: pkg,
             manifestData: manifest,
             bundleIdentifier: "com.example.userdata.x"
@@ -135,7 +137,9 @@ struct MDMContentStoreTests {
     @Test("remove drops the item; lookup returns nil")
     func removeDrops() async {
         let (store, _) = makeStore()
-        let id = await store.register(
+        let id = UUID()
+        await store.store(
+            id: id,
             pkgData: Data("p".utf8),
             manifestData: Data("m".utf8),
             bundleIdentifier: "x"
@@ -146,11 +150,13 @@ struct MDMContentStoreTests {
         #expect(await store.count == 0)
     }
 
-    @Test("Two register calls produce distinct IDs")
+    @Test("Two distinct IDs produce two records")
     func distinctIDs() async {
         let (store, _) = makeStore()
-        let a = await store.register(pkgData: Data(), manifestData: Data(), bundleIdentifier: "a")
-        let b = await store.register(pkgData: Data(), manifestData: Data(), bundleIdentifier: "b")
+        let a = UUID()
+        let b = UUID()
+        await store.store(id: a, pkgData: Data(), manifestData: Data(), bundleIdentifier: "a")
+        await store.store(id: b, pkgData: Data(), manifestData: Data(), bundleIdentifier: "b")
         #expect(a != b)
         #expect(await store.count == 2)
     }
@@ -158,7 +164,9 @@ struct MDMContentStoreTests {
     @Test("createdAt is set from the injected clock")
     func createdAt() async {
         let (store, clock) = makeStore()
-        let id = await store.register(
+        let id = UUID()
+        await store.store(
+            id: id,
             pkgData: Data(),
             manifestData: Data(),
             bundleIdentifier: "x"

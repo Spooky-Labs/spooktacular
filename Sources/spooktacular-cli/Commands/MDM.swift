@@ -487,14 +487,10 @@ extension Spooktacular {
 
         // MARK: - devices
 
-        /// Lists enrolled devices. Reads from the host's
-        /// last-known device-store snapshot on disk (written
-        /// by `serve` on shutdown / interval).
-        ///
-        /// Until persistence ships, this command can only see
-        /// devices that enrolled during the currently-running
-        /// `serve`. We print a helpful note when the snapshot
-        /// is missing.
+        /// Lists enrolled devices by reading the JSON snapshot
+        /// at `~/.spooktacular/mdm/state/devices.json`, which
+        /// `spook mdm serve` rewrites on every check-in / command
+        /// response. Empty list when no `serve` has run yet.
         struct Devices: AsyncParsableCommand {
             static let configuration = CommandConfiguration(
                 abstract: "List MDM-enrolled VMs."
@@ -596,7 +592,3 @@ extension Spooktacular {
         }
     }
 }
-
-// The `Devices` subcommand reads `~/.spooktacular/mdm/state/devices.json`
-// via MDMDeviceStorePersister, which owns the JSON shape. No
-// shadow DTO needed.

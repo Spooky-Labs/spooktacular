@@ -25,8 +25,8 @@ import os
 ///
 /// - Audit. `AuditStore` is intentionally not wired in here so
 ///   this type stays pure (no FS dependencies). The host's
-///   `MDMServer` will pump events through `AuditStore` itself
-///   at the transport boundary — see Phase 3c.
+///   `EmbeddedMDMServer` pumps events through `AuditStore`
+///   itself at the transport boundary.
 /// - Auth. Any caller that reaches this handler has already
 ///   passed the transport-layer mTLS check. The check itself
 ///   is the server's job.

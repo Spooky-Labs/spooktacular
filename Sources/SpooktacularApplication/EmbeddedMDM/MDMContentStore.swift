@@ -78,25 +78,12 @@ public actor MDMContentStore {
 
     // MARK: - Mutators
 
-    /// Stores the pkg + manifest under a fresh UUID and
-    /// returns the ID. The dispatcher uses this when it
-    /// doesn't need to know the ID before building.
-    public func register(
-        pkgData: Data,
-        manifestData: Data,
-        bundleIdentifier: String
-    ) -> UUID {
-        let id = UUID()
-        store(id: id, pkgData: pkgData, manifestData: manifestData, bundleIdentifier: bundleIdentifier)
-        return id
-    }
-
     /// Stores the pkg + manifest under a caller-supplied ID.
-    /// The dispatcher uses this so it can mint the ID up
-    /// front, bake it into the manifest URL paths, then
-    /// register the fully-formed bytes — avoiding a
-    /// chicken-and-egg between "the manifest references the
-    /// pkg URL" and "the URL embeds the content-store ID".
+    /// The dispatcher mints the ID up front so it can bake it
+    /// into the manifest URL paths before registering the
+    /// fully-formed bytes — avoiding a chicken-and-egg between
+    /// "the manifest references the pkg URL" and "the URL
+    /// embeds the content-store ID".
     public func store(
         id: UUID,
         pkgData: Data,

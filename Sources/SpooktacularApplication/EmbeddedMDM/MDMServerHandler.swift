@@ -25,15 +25,14 @@ import Foundation
 public protocol MDMServerHandler: Sendable {
 
     /// First contact from a freshly-enrolled VM. Conforming
-    /// implementations register the device, mint its per-device
-    /// command queue, and may immediately enqueue an
-    /// `InstallApplication` for the user-data pkg (Phase 7).
+    /// implementations register the device and mint its
+    /// per-device command queue.
     func didReceiveAuthenticate(_ message: MDMCheckInMessage.Authenticate) async
 
-    /// Push-token + unlock-token delivery. We don't actually
-    /// use APNs (poll-only design — see Phase 5), but persisting
-    /// what `mdmclient` sends keeps diagnostics complete and
-    /// lets future revisions opt into push without a wire-format
+    /// Push-token + unlock-token delivery. The embedded server
+    /// is poll-only (no APNs), so we just persist what
+    /// `mdmclient` sends for diagnostic completeness and to
+    /// enable a future opt-in to push without a wire-format
     /// migration.
     func didReceiveTokenUpdate(_ message: MDMCheckInMessage.TokenUpdate) async
 
@@ -64,6 +63,3 @@ public protocol MDMServerHandler: Sendable {
         status: MDMCommandResponseStatus
     ) async
 }
-
-// `MDMCommand` lives in MDMCommand.swift.
-// `MDMCommandResponseStatus` lives in MDMCommandResponse.swift.

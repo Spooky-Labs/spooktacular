@@ -36,9 +36,8 @@ public enum MDMCheckInMessage: Sendable, Equatable {
 
     /// Sent at enrollment + on every subsequent boot if APNs is
     /// configured. Carries the push token / unlock token / awake
-    /// token. We don't use APNs (poll-only design — see Phase 5),
-    /// so we just persist whatever's here for diagnostic
-    /// completeness.
+    /// token. The embedded server is poll-only (no APNs), so we
+    /// just persist whatever's here for diagnostic completeness.
     case tokenUpdate(TokenUpdate)
 
     /// Device removed our profile; tear down its queue + cert.

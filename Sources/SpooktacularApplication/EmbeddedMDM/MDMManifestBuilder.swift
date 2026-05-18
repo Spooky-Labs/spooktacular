@@ -47,7 +47,7 @@ import CryptoKit
 /// the chain of trust comes from the pkg's Developer ID
 /// signature + notarization, not the manifest hashes. So
 /// using MD5 here is acceptable; the security comes from the
-/// pkg's signature (Phase 2 + the existing build pipeline).
+/// pkg's Developer ID Installer signature.
 public enum MDMManifestBuilder {
 
     /// Default chunk size for the `md5-size` field. 10 MiB

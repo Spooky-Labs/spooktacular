@@ -188,13 +188,7 @@ public protocol MDMUserDataPkgBuilding: Sendable {
     func buildPkg(
         scriptBody: Data,
         scriptName: String
-    ) async throws -> BuiltPackage
-
-    /// Tagged tuple so the protocol stays simple but the
-    /// impl can return more fields later (postinstall path,
-    /// signing identity used, signature digest, etc.) without
-    /// breaking the contract.
-    typealias BuiltPackage = MDMUserDataBuiltPackage
+    ) async throws -> MDMUserDataBuiltPackage
 }
 
 /// Result of ``MDMUserDataPkgBuilding/buildPkg(scriptBody:scriptName:)``.

@@ -38,13 +38,12 @@ import SpooktacularApplication
 /// pushing the "same" script twice to a VM would no-op the
 /// second time even if the script body changed.
 ///
-/// ## Signing + notarization
+/// ## Signing
 ///
-/// Phase 7 ships the unsigned pkg. Phase 2's CA work + a
-/// follow-up commit will plumb in `productsign` (against the
-/// Developer ID Installer cert) and notarytool. Until then the
-/// pkg is unsigned — fine for dev/CI, blocked by Gatekeeper for
-/// distributed deployments.
+/// The pkg is unsigned. Fine for dev / CI / VMs that don't
+/// enforce Gatekeeper. For distribution-grade signing, run
+/// `productsign --sign "Developer ID Installer: ..."` against
+/// the returned bytes before handing them to the dispatcher.
 public struct MDMUserDataPkgBuilder: MDMUserDataPkgBuilding {
 
     /// Override only in tests that mock out the binaries.

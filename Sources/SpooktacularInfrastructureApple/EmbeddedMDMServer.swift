@@ -30,12 +30,13 @@ import SpooktacularApplication
 ///
 /// ## TLS posture
 ///
-/// Phase 3 ships HTTP-on-loopback for local-development /
-/// CI traffic, with a clear hook to swap in
-/// `NWProtocolTLS.Options` once Phase 2's CA work lands.
-/// Production deployments will enforce TLS and reject any
-/// request without a valid client identity cert that chains
-/// to the embedded MDM root CA.
+/// TLS is on by default — callers pass a ``ServerIdentity``
+/// (PKCS#12 server cert) at init and the listener wraps every
+/// connection in `NWProtocolTLS.Options`. Plain HTTP is
+/// supported for loopback dev / CI by passing `nil`. When a
+/// client-CA anchor is also supplied, the listener enforces
+/// mTLS: each connection must present a client cert that
+/// chains to the anchor.
 ///
 /// ## Hardening
 ///

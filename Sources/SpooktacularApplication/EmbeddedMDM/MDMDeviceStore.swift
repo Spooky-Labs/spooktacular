@@ -56,9 +56,9 @@ public actor MDMDeviceStore {
         public let osVersion: String?
 
         /// APNs push token from the most-recent `TokenUpdate`.
-        /// We don't use APNs (poll-only design — see Phase 5
-        /// in plan) but persist it for diagnostic completeness
-        /// and to enable a future opt-in.
+        /// The embedded server is poll-only (no APNs), but we
+        /// persist this for diagnostic completeness and to
+        /// enable a future opt-in.
         public let pushToken: Data?
 
         /// Push-magic string Apple's `mdmclient` uses to

@@ -354,7 +354,9 @@ struct EmbeddedMDMServerTests {
         defer { Task { await rig.server.stop() } }
 
         let manifestBytes = Data("<plist>...</plist>".utf8)
-        let id = await rig.contentStore.register(
+        let id = UUID()
+        await rig.contentStore.store(
+            id: id,
             pkgData: Data("PKG".utf8),
             manifestData: manifestBytes,
             bundleIdentifier: "com.example.x"
@@ -374,7 +376,9 @@ struct EmbeddedMDMServerTests {
         defer { Task { await rig.server.stop() } }
 
         let pkgBytes = Data("PKG-BYTES-HERE".utf8)
-        let id = await rig.contentStore.register(
+        let id = UUID()
+        await rig.contentStore.store(
+            id: id,
             pkgData: pkgBytes,
             manifestData: Data("M".utf8),
             bundleIdentifier: "com.example.x"

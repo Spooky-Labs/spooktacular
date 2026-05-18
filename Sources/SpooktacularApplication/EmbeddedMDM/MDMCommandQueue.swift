@@ -30,11 +30,11 @@ import Foundation
 ///
 /// ## Persistence (intentionally absent)
 ///
-/// MVP keeps everything in memory. After a host restart, any
+/// Everything lives in memory. After a host restart any
 /// in-flight commands are lost — devices retry their last
-/// poll, get a fresh empty response (Idle) or a re-enqueued
-/// command, and life continues. Persisting the queue is a
-/// later phase; this actor's API stays stable.
+/// poll, get a fresh Idle response (or a re-enqueued command),
+/// and life continues. A snapshotter can layer in later
+/// without changing this actor's API.
 public actor MDMCommandQueue {
 
     // MARK: - State

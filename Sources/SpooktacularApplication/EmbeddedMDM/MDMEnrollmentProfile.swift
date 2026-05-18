@@ -21,15 +21,9 @@ import Foundation
 /// ## What this type is
 ///
 /// A pure-Foundation DTO + plist renderer. No networking, no
-/// crypto, no Keychain. Phase 1 of the MDM build (see
-/// `Tests/.../MDMEnrollmentProfileTests.swift`). Later phases
-/// add:
-///
-/// - **Phase 2**: per-VM identity cert generation, embedded into
-///   this profile as a PKCS#12 payload preceding the MDM payload
-///   (so `mdmclient` finds the cert under
-///   `IdentityCertificateUUID` when it tries to authenticate).
-/// - **Phase 3+**: HTTP server, command queue, poll loop.
+/// crypto, no Keychain — ``MDMIdentityIssuer`` mints the
+/// per-VM PKCS#12 bag that the renderer embeds when
+/// ``SignaturePolicy/signed(identity:)`` is selected.
 ///
 /// ## Plist shape
 ///
@@ -41,7 +35,7 @@ import Foundation
 /// ```
 /// Configuration (top-level)
 ///   PayloadContent: [
-///     <Identity cert payload — added in Phase 2>,
+///     <com.apple.security.pkcs12 payload — only when signed>,
 ///     com.apple.mdm payload {
 ///       ServerURL: https://host.local:port/mdm/server
 ///       CheckInURL: https://host.local:port/mdm/checkin
@@ -77,10 +71,9 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
         /// identity. The embedded MDM server's per-request mTLS
         /// is also bypassed (it's HTTP-only in this mode).
         ///
-        /// We use this exclusively for protocol round-trip
-        /// validation against a real `mdmclient` running in a
-        /// VM on the same host, before Phase 2's CA work
-        /// lands.
+        /// Useful for protocol round-trip validation against a
+        /// real `mdmclient` running in a VM on the same host
+        /// without an issued identity certificate.
         case unsigned
 
         /// Production. Embeds a `com.apple.security.pkcs12`
@@ -93,10 +86,9 @@ public struct MDMEnrollmentProfile: Sendable, Equatable {
         case signed(identity: IdentityCertificate)
     }
 
-    /// Per-VM identity certificate + key bundle. Phase 2's CA
-    /// work produces these; the renderer here just embeds
-    /// them as a PKCS#12 payload so the file format stays
-    /// pinned even before Phase 2 lands.
+    /// Per-VM identity certificate + key bundle.
+    /// ``MDMIdentityIssuer`` produces these; the renderer
+    /// embeds them as a `com.apple.security.pkcs12` payload.
     public struct IdentityCertificate: Sendable, Equatable {
         /// `PayloadUUID` for the `com.apple.security.pkcs12`
         /// payload — referenced by the MDM payload's
