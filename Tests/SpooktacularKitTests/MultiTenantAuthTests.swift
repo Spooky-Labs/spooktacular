@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookApplication
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
 
 @Suite("Multi-Tenant Auth", .tags(.security, .rbac))
 struct MultiTenantAuthTests {

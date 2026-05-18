@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 @Suite("RestoreImageManager", .tags(.infrastructure))
 struct RestoreImageManagerTests {

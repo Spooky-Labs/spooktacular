@@ -29,8 +29,8 @@
 #     .xcodeproj is only used by `fastlane ui_tests` (local and
 #     CI) to produce App Store screenshots.
 #   - Package.swift is still the source of truth for every
-#     library target (SpookCore, SpookApplication,
-#     SpookInfrastructureApple, SpooktacularKit, spook CLI, etc.).
+#     library target (SpooktacularCore, SpooktacularApplication,
+#     SpooktacularInfrastructureApple, SpooktacularKit, spook CLI, etc.).
 #
 # Regenerating after edits to this file:
 #   brew install xcodegen     # one-time
@@ -57,7 +57,7 @@ name: Spooktacular
 options:
   createIntermediateGroups: true
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "26.0"
   developmentLanguage: en
   groupSortPosition: top
   generateEmptyDirectories: true
@@ -67,7 +67,7 @@ settings:
     SWIFT_VERSION: "6.0"
     DEVELOPMENT_TEAM: 4AM5US9G8B
     ENABLE_HARDENED_RUNTIME: YES
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
     # Manual signing so `fastlane match`-installed profiles are
     # usable on CI. Automatic signing requires an Apple ID
     # signed into Xcode.app Accounts pane — CI headless runners
@@ -125,6 +125,25 @@ targets:
     dependencies:
       - package: SpooktacularPackage
         product: SpooktacularKit
+      # Embed the network-filter system extension inside the
+      # .app bundle.  Per Apple's
+      # [System Extensions — Configure the system extension
+      # and the host app](https://developer.apple.com/documentation/systemextensions#Configure-the-system-extension-and-the-host-app):
+      # the extension filename must equal its CFBundleIdentifier
+      # plus `.systemextension`, and both app + extension must
+      # share a Team ID.  Xcodegen's `embed: true` routes the
+      # `.systemextension` product into the app's "Copy System
+      # Extensions" build phase at
+      # `Contents/Library/SystemExtensions/`, which is where
+      # `OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier:)`
+      # looks for it at runtime.
+      #
+      # `codeSign: true` tells Xcode to re-sign the embedded
+      # extension at copy time with the app's signing identity,
+      # matching Apple's same-Team-ID rule.
+      - target: SpooktacularNetworkFilter
+        embed: true
+        codeSign: true
     # NOTE: intentionally no `info:` or `entitlements:` keys.
     # Those directives tell xcodegen to GENERATE (and overwrite!)
     # the file — wiping our hand-authored `Resources/Info.plist`
@@ -143,32 +162,77 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
-      # Per-config signing strategy.
+      # Per-config signing strategy — single entitlements file,
+      # real signing in every config.
       #
-      # Debug:   No signing at all. The separate
-      #          `Spooktacular.debug.entitlements` file omits
-      #          `com.apple.security.app-sandbox`, so the app can
-      #          launch without a valid code signature. This lets
-      #          the XCUITest runner on ephemeral CI VMs (whose
-      #          UDID isn't registered with Apple Developer) build
-      #          and run the host app without a Mac Development
-      #          profile. Registering the UDID per run would burn
-      #          through Apple's 100-device/year cap fast.
+      # Debug:   Apple Development cert (match-managed). CI
+      #          runners import the cert into an ephemeral
+      #          keychain via `fastlane setup_ci` before the
+      #          `ui_tests` lane runs. No "unsigned fallback" —
+      #          the reference architecture requires every
+      #          launch path to carry a real signature because
+      #          `app-sandbox` + taskgated reject ad-hoc.
       #
-      # Release: Manual signing with the match-managed AppStore
-      #          profile, for anyone who opens the .xcodeproj in
-      #          Xcode and archives. Not the shipping path —
-      #          `build-app.sh` drives release via `swift build -c
-      #          release` + manual `codesign --entitlements
-      #          Spooktacular.entitlements` (the sandboxed real one).
+      # Release: Apple Distribution cert with the App Store
+      #          provisioning profile, for anyone who opens
+      #          the .xcodeproj in Xcode and archives. Not the
+      #          shipping path — `build-app.sh` drives release
+      #          via `swift build -c release` + manual `codesign`
+      #          with the same `Spooktacular.entitlements`.
       configs:
         Debug:
-          CODE_SIGN_ENTITLEMENTS: Spooktacular.debug.entitlements
-          CODE_SIGNING_ALLOWED: NO
-          CODE_SIGNING_REQUIRED: NO
-          CODE_SIGN_IDENTITY: ""
+          PROVISIONING_PROFILE_SPECIFIER: match Development com.spooktacular.app macos
+          CODE_SIGN_IDENTITY: Apple Development
         Release:
           PROVISIONING_PROFILE_SPECIFIER: match AppStore com.spooktacular.app macos
+          CODE_SIGN_IDENTITY: Apple Distribution
+
+  # Network content filter system extension (Track F'').
+  #
+  # Apple's TN3134 specifies that macOS content filters ship as
+  # a `.systemextension` bundle (NOT `.appex`), minimum OS 10.15.
+  # The host app requests activation at runtime via
+  # `OSSystemExtensionRequest`; the system validates the
+  # extension is code-signed with the same Team ID as the host.
+  #
+  # Reference:
+  # - https://developer.apple.com/documentation/Technotes/tn3134-network-extension-provider-deployment
+  # - https://developer.apple.com/documentation/NetworkExtension/NEFilterDataProvider
+  # - https://developer.apple.com/documentation/SystemExtensions#Configure-the-system-extension-and-the-host-app
+  SpooktacularNetworkFilter:
+    type: system-extension
+    platform: macOS
+    sources:
+      - path: Sources/SpooktacularNetworkFilter
+    dependencies:
+      # The `NEFilterDataProvider` subclass lives in the Apple
+      # infrastructure layer; the extension's `main.swift` only
+      # calls `NEProvider.startSystemExtensionMode()` and links
+      # against this product so the Obj-C runtime can resolve the
+      # Swift-mangled principal class name from `Info.plist`.
+      - package: SpooktacularPackage
+        product: SpooktacularInfrastructureApple
+    settings:
+      base:
+        PRODUCT_NAME: com.spooktacular.app.NetworkFilter
+        # Per Apple's System Extensions rules:
+        # "The extension must match your bundle identifier,
+        # excluding file extension."  So the .systemextension
+        # filename is `<CFBundleIdentifier>.systemextension`,
+        # which means `PRODUCT_NAME` must equal the bundle ID.
+        PRODUCT_BUNDLE_IDENTIFIER: com.spooktacular.app.NetworkFilter
+        INFOPLIST_FILE: Resources/SpooktacularNetworkFilter-Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: SpooktacularNetworkFilter.entitlements
+        # Apple rule: same Team ID as the host app.
+        DEVELOPMENT_TEAM: 4AM5US9G8B
+        SKIP_INSTALL: YES
+      configs:
+        Debug:
+          PROVISIONING_PROFILE_SPECIFIER: match Development com.spooktacular.app.NetworkFilter macos
+          CODE_SIGN_IDENTITY: Apple Development
+        Release:
+          PROVISIONING_PROFILE_SPECIFIER: match AppStore com.spooktacular.app.NetworkFilter macos
           CODE_SIGN_IDENTITY: Apple Distribution
 
   SpooktacularUITests:
@@ -183,15 +247,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.spooktacular.uitests
         TEST_TARGET_NAME: SpooktacularApp
         GENERATE_INFOPLIST_FILE: YES
-        # Match SpooktacularApp's Debug config: no signing for
-        # the runner + plugin either. Since the host app launches
-        # unsigned, the test bundle must too — otherwise Team ID
-        # mismatch on plugin load.
       configs:
         Debug:
-          CODE_SIGNING_ALLOWED: NO
-          CODE_SIGNING_REQUIRED: NO
-          CODE_SIGN_IDENTITY: ""
+          CODE_SIGN_IDENTITY: Apple Development
 
 schemes:
   # Named `SpooktacularApp` (not `Spooktacular`) to avoid a

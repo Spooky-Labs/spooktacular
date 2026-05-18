@@ -47,6 +47,14 @@ Package the .app into a .pkg for App Store submission
 
 Sync code-signing certificates and profiles via match
 
+### mac signing_dev
+
+```sh
+[bundle exec] fastlane mac signing_dev
+```
+
+Sync development cert + profile for local builds (NEFilter included)
+
 ### mac notarize_app
 
 ```sh

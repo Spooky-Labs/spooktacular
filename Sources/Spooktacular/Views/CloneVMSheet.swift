@@ -95,14 +95,21 @@ struct CloneVMSheet: View {
     }
 
     private var buttonBar: some View {
-        HStack {
-            Spacer()
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Button("Clone") { performClone() }
-                .glassButton()
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canClone || isCloning)
+        // Group the cancel + confirm pair in a single glass
+        // container so they morph together on hover / press and
+        // share one rendered material pane rather than stacking
+        // two independent glass layers.
+        GlassEffectContainer(spacing: 8) {
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .glassButton()
+                    .keyboardShortcut(.cancelAction)
+                Button("Clone") { performClone() }
+                    .glassProminentButton()
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canClone || isCloning)
+            }
         }
         .padding(16)
     }

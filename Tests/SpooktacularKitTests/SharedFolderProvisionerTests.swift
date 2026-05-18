@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 @Suite("SharedFolderProvisioner", .tags(.infrastructure))
 struct SharedFolderProvisionerTests {
@@ -15,7 +15,8 @@ struct SharedFolderProvisionerTests {
         let tmp = TempDirectory()
         let bundle = try VirtualMachineBundle.create(
             at: tmp.file("inner.vm"),
-            spec: VirtualMachineSpecification()
+            spec: VirtualMachineSpecification(),
+            displayName: "inner"
         )
 
         let staging = SharedFolderProvisioner.stagingDirectory(for: bundle)
@@ -36,7 +37,8 @@ struct SharedFolderProvisionerTests {
             try scriptContent.write(to: scriptURL, atomically: true, encoding: .utf8)
             let bundle = try VirtualMachineBundle.create(
                 at: tmp.file("my-vm.vm"),
-                spec: VirtualMachineSpecification()
+                spec: VirtualMachineSpecification(),
+                displayName: "my-vm"
             )
             return (bundle, scriptURL, tmp)
         }
@@ -83,7 +85,8 @@ struct SharedFolderProvisionerTests {
             let tmp = TempDirectory()
             let bundle = try VirtualMachineBundle.create(
                 at: tmp.file("missing-vm.vm"),
-                spec: VirtualMachineSpecification()
+                spec: VirtualMachineSpecification(),
+                displayName: "missing-vm"
             )
 
             let bogusScript = tmp.file("does-not-exist.sh")
@@ -97,7 +100,8 @@ struct SharedFolderProvisionerTests {
             let tmp = TempDirectory()
             let bundle = try VirtualMachineBundle.create(
                 at: tmp.file("replace-vm.vm"),
-                spec: VirtualMachineSpecification()
+                spec: VirtualMachineSpecification(),
+                displayName: "replace-vm"
             )
 
             let script1 = tmp.file("first.sh")

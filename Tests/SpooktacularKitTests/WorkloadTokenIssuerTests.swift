@@ -1,8 +1,8 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 /// Tests for ``WorkloadTokenIssuer`` — the ES256 JWT issuer
 /// that makes Spooktacular a federated OIDC identity provider

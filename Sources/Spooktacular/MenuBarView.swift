@@ -82,7 +82,10 @@ struct MenuBarView: View {
             // Show an hourglass while the VM is mid-start/stop —
             // gives immediate feedback that the click registered.
             Label {
-                Text(name) + Text("  ") + Text("…").foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Text(name)
+                    Text("…").foregroundStyle(.secondary)
+                }
             } icon: {
                 Image(systemName: "hourglass")
                     .foregroundStyle(.orange)
@@ -99,7 +102,10 @@ struct MenuBarView: View {
                 }
             } label: {
                 Label {
-                    Text(name) + Text("  ") + Text("Running").foregroundColor(.green)
+                    HStack(spacing: 4) {
+                        Text(name)
+                        Text("Running").foregroundStyle(.green)
+                    }
                 } icon: {
                     Image(systemName: "play.circle.fill")
                         .foregroundStyle(.green)

@@ -16,10 +16,10 @@
 		55968FEF1DE5DB4AB058565F /* WorkspaceWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A520609D2216DEFDED4073B /* WorkspaceWindow.swift */; };
 		63C4BB5E8603A1107BEBF708 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E560C6641F0973B725E0355 /* MenuBarView.swift */; };
 		7441C53478A107C63C8B9EBE /* SnapshotInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1760CF6EBFD6F04B1D4BBAEE /* SnapshotInspector.swift */; };
+		7698844223998ACF3A1DCAAB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9C9CE7A8D18F478FDE59AA /* main.swift */; };
 		77F048ED33AD2C3C4DEEFC24 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84FCD987FE554279F129289 /* ContentView.swift */; };
 		7C8468A3D58CC4D08B9A5A4F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207F9CC0084057F2421187AA /* SettingsView.swift */; };
 		913EA2367CDA34280E14610B /* VMNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7911BC1B28464A4C00C6D83D /* VMNotifications.swift */; };
-		915D47D9C5ADDF7C6297CD5C /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCDDBBBA53B0BC9EFB7E1EC8 /* SidebarView.swift */; };
 		9EE6D1D0F9970F81C9BFAD08 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17FA3F07523B486DFEB8683C /* EmptyStateView.swift */; };
 		A26798B6A62F0BA27EBC0A2E /* SpooktacularKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */; };
 		AB0C53B28CC0E7CECDF884C7 /* VMDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */; };
@@ -28,6 +28,9 @@
 		CDF60EAB9D46349ADA598E18 /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96BFBC66E8E9CDB1DD1A16EE /* ScreenshotTests.swift */; };
 		D42F083B9D5C4A4D68363B4A /* CommandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26D27700B1B6DAD63A434D2 /* CommandPalette.swift */; };
 		D65289EB73FEE4A1D643212F /* GlassModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */; };
+		D872974CDE16D2A672353A63 /* CloneVMSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE12342A082CE1CBC7DAA5CA /* CloneVMSheet.swift */; };
+		E450C7093809576A94E5E36C /* SpooktacularInfrastructureApple in Frameworks */ = {isa = PBXBuildFile; productRef = E194D53A74BD161278EED761 /* SpooktacularInfrastructureApple */; };
+		E65946586327F78A71BC9860 /* SpooktacularNetworkFilter.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = A14A4659F730AA01650262A7 /* SpooktacularNetworkFilter.systemextension */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E98BFDBBE2935C71B43D09EB /* SpooktacularApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A885B9AEFD358C772209C45B /* SpooktacularApp.swift */; };
 		EBC9ADE343EA2BA7049963C1 /* VMIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E47F4B98E46DCA9ABE7BE4 /* VMIntents.swift */; };
 		ECC2BE2D93914AB4E31B77D6 /* CreateVMSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C426447ED063F011A1BBBD /* CreateVMSheet.swift */; };
@@ -42,7 +45,28 @@
 			remoteGlobalIDString = 0F0EE855B5DEDE88D2D88AA3;
 			remoteInfo = SpooktacularApp;
 		};
+		E0F92C79384CD84D671EF3D0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A6661F845228218192D7CF8F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2FEBE432349457D27FBCBDDF;
+			remoteInfo = SpooktacularNetworkFilter;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A86C26C892E276B87CEC07AA /* Embed System Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(SYSTEM_EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+				E65946586327F78A71BC9860 /* SpooktacularNetworkFilter.systemextension in Embed System Extensions */,
+			);
+			name = "Embed System Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		095E11A872D7774730AB6E33 /* WorkspaceStatsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceStatsSidebar.swift; sourceTree = "<group>"; };
@@ -61,6 +85,7 @@
 		96BFBC66E8E9CDB1DD1A16EE /* ScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTests.swift; sourceTree = "<group>"; };
 		9C016368570D79D59A2504F3 /* Spooktacular */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Spooktacular; path = .; sourceTree = SOURCE_ROOT; };
 		9E560C6641F0973B725E0355 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		A14A4659F730AA01650262A7 /* SpooktacularNetworkFilter.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = SpooktacularNetworkFilter.systemextension; sourceTree = BUILT_PRODUCTS_DIR; };
 		A465F9A8249ED35AE053499A /* HardwareEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareEditor.swift; sourceTree = "<group>"; };
 		A885B9AEFD358C772209C45B /* SpooktacularApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpooktacularApp.swift; sourceTree = "<group>"; };
 		B4C426447ED063F011A1BBBD /* CreateVMSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateVMSheet.swift; sourceTree = "<group>"; };
@@ -68,13 +93,22 @@
 		C321AF7CD838B80C6322E24C /* PortForwarding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortForwarding.swift; sourceTree = "<group>"; };
 		D26D27700B1B6DAD63A434D2 /* CommandPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandPalette.swift; sourceTree = "<group>"; };
 		D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassModifiers.swift; sourceTree = "<group>"; };
+		DF9C9CE7A8D18F478FDE59AA /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		E635EF0A233ABB56EC5DAFA0 /* ErrorExplainerIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorExplainerIntent.swift; sourceTree = "<group>"; };
+		EE12342A082CE1CBC7DAA5CA /* CloneVMSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneVMSheet.swift; sourceTree = "<group>"; };
 		F84FCD987FE554279F129289 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		FCDDBBBA53B0BC9EFB7E1EC8 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		FEDD149336F7760966655F9F /* ClipboardBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		7E73CA281A38C8129B90ED78 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E450C7093809576A94E5E36C /* SpooktacularInfrastructureApple in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C5E5BD73DB9D60C6140D2248 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -86,10 +120,19 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		27D2B10D0B30C53D94C1E69B /* SpooktacularNetworkFilter */ = {
+			isa = PBXGroup;
+			children = (
+				DF9C9CE7A8D18F478FDE59AA /* main.swift */,
+			);
+			path = SpooktacularNetworkFilter;
+			sourceTree = "<group>";
+		};
 		3592A37B079988982DA72A27 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
 				934661FE9DC61D55AA2E8949 /* Spooktacular */,
+				27D2B10D0B30C53D94C1E69B /* SpooktacularNetworkFilter */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -143,7 +186,6 @@
 				D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */,
 				9E560C6641F0973B725E0355 /* MenuBarView.swift */,
 				207F9CC0084057F2421187AA /* SettingsView.swift */,
-				FCDDBBBA53B0BC9EFB7E1EC8 /* SidebarView.swift */,
 				A885B9AEFD358C772209C45B /* SpooktacularApp.swift */,
 				4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */,
 				689A9670C9498270B7933BDC /* WorkspaceIcon.swift */,
@@ -155,6 +197,7 @@
 			isa = PBXGroup;
 			children = (
 				5627882CC8850EFC4D63A51D /* SpooktacularApp.app */,
+				A14A4659F730AA01650262A7 /* SpooktacularNetworkFilter.systemextension */,
 				3739A7E977269073B8D943AC /* SpooktacularUITests.xctest */,
 			);
 			name = Products;
@@ -190,6 +233,7 @@
 		E361A7B1B81302EF16B46B1E /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				EE12342A082CE1CBC7DAA5CA /* CloneVMSheet.swift */,
 				D26D27700B1B6DAD63A434D2 /* CommandPalette.swift */,
 				17FA3F07523B486DFEB8683C /* EmptyStateView.swift */,
 				A465F9A8249ED35AE053499A /* HardwareEditor.swift */,
@@ -216,10 +260,12 @@
 			buildPhases = (
 				C69319587EFBAF8ECE3AB4D0 /* Sources */,
 				C5E5BD73DB9D60C6140D2248 /* Frameworks */,
+				A86C26C892E276B87CEC07AA /* Embed System Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				E3FA3A36EE2A6B6C90F87E1F /* PBXTargetDependency */,
 			);
 			name = SpooktacularApp;
 			packageProductDependencies = (
@@ -228,6 +274,25 @@
 			productName = SpooktacularApp;
 			productReference = 5627882CC8850EFC4D63A51D /* SpooktacularApp.app */;
 			productType = "com.apple.product-type.application";
+		};
+		2FEBE432349457D27FBCBDDF /* SpooktacularNetworkFilter */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 04773EDCC18F8B1A698B7410 /* Build configuration list for PBXNativeTarget "SpooktacularNetworkFilter" */;
+			buildPhases = (
+				CAF21FAC9AC23D7A34101333 /* Sources */,
+				7E73CA281A38C8129B90ED78 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpooktacularNetworkFilter;
+			packageProductDependencies = (
+				E194D53A74BD161278EED761 /* SpooktacularInfrastructureApple */,
+			);
+			productName = SpooktacularNetworkFilter;
+			productReference = A14A4659F730AA01650262A7 /* SpooktacularNetworkFilter.systemextension */;
+			productType = "com.apple.product-type.system-extension";
 		};
 		531A09E6D441AF69D7E14330 /* SpooktacularUITests */ = {
 			isa = PBXNativeTarget;
@@ -260,6 +325,10 @@
 						DevelopmentTeam = 4AM5US9G8B;
 						ProvisioningStyle = Manual;
 					};
+					2FEBE432349457D27FBCBDDF = {
+						DevelopmentTeam = 4AM5US9G8B;
+						ProvisioningStyle = Manual;
+					};
 					531A09E6D441AF69D7E14330 = {
 						DevelopmentTeam = 4AM5US9G8B;
 						ProvisioningStyle = Manual;
@@ -285,6 +354,7 @@
 			projectRoot = "";
 			targets = (
 				0F0EE855B5DEDE88D2D88AA3 /* SpooktacularApp */,
+				2FEBE432349457D27FBCBDDF /* SpooktacularNetworkFilter */,
 				531A09E6D441AF69D7E14330 /* SpooktacularUITests */,
 			);
 		};
@@ -306,6 +376,7 @@
 				3909AD26FD26ABE1214D452E /* AddImageSheet.swift in Sources */,
 				FB9D1A5D8F71D85C45856E39 /* AppState.swift in Sources */,
 				0ED8C50D1C6148C85CCA358E /* ClipboardBridge.swift in Sources */,
+				D872974CDE16D2A672353A63 /* CloneVMSheet.swift in Sources */,
 				D42F083B9D5C4A4D68363B4A /* CommandPalette.swift in Sources */,
 				77F048ED33AD2C3C4DEEFC24 /* ContentView.swift in Sources */,
 				ECC2BE2D93914AB4E31B77D6 /* CreateVMSheet.swift in Sources */,
@@ -317,7 +388,6 @@
 				63C4BB5E8603A1107BEBF708 /* MenuBarView.swift in Sources */,
 				C5DA69E658E0954277939C4D /* PortForwarding.swift in Sources */,
 				7C8468A3D58CC4D08B9A5A4F /* SettingsView.swift in Sources */,
-				915D47D9C5ADDF7C6297CD5C /* SidebarView.swift in Sources */,
 				7441C53478A107C63C8B9EBE /* SnapshotInspector.swift in Sources */,
 				E98BFDBBE2935C71B43D09EB /* SpooktacularApp.swift in Sources */,
 				AB0C53B28CC0E7CECDF884C7 /* VMDetailView.swift in Sources */,
@@ -329,6 +399,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CAF21FAC9AC23D7A34101333 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7698844223998ACF3A1DCAAB /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -336,6 +414,11 @@
 			isa = PBXTargetDependency;
 			target = 0F0EE855B5DEDE88D2D88AA3 /* SpooktacularApp */;
 			targetProxy = 0F5141222A1B987BF194F30C /* PBXContainerItemProxy */;
+		};
+		E3FA3A36EE2A6B6C90F87E1F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2FEBE432349457D27FBCBDDF /* SpooktacularNetworkFilter */;
+			targetProxy = E0F92C79384CD84D671EF3D0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -388,7 +471,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -421,14 +504,33 @@
 			};
 			name = Release;
 		};
+		35A8E37F7F369FEEC1D636C7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SpooktacularNetworkFilter.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 4AM5US9G8B;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Resources/SpooktacularNetworkFilter-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app.NetworkFilter;
+				PRODUCT_NAME = com.spooktacular.app.NetworkFilter;
+				PROVISIONING_PROFILE_SPECIFIER = "match Development com.spooktacular.app.NetworkFilter macos";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
 		41381C62F168AF5485FB9AE0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_ENTITLEMENTS = Spooktacular.debug.entitlements;
-				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_ENTITLEMENTS = Spooktacular.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -440,6 +542,7 @@
 				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app;
 				PRODUCT_NAME = Spooktacular;
+				PROVISIONING_PROFILE_SPECIFIER = "match Development com.spooktacular.app macos";
 				SDKROOT = macosx;
 			};
 			name = Debug;
@@ -458,6 +561,27 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.uitests;
 				SDKROOT = macosx;
 				TEST_TARGET_NAME = SpooktacularApp;
+			};
+			name = Release;
+		};
+		DE9339D873E76B92B576FB80 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SpooktacularNetworkFilter.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = 4AM5US9G8B;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Resources/SpooktacularNetworkFilter-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spooktacular.app.NetworkFilter;
+				PRODUCT_NAME = com.spooktacular.app.NetworkFilter;
+				PROVISIONING_PROFILE_SPECIFIER = "match AppStore com.spooktacular.app.NetworkFilter macos";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
 			};
 			name = Release;
 		};
@@ -515,7 +639,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -531,9 +655,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_IDENTITY = "";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -550,6 +672,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		04773EDCC18F8B1A698B7410 /* Build configuration list for PBXNativeTarget "SpooktacularNetworkFilter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				35A8E37F7F369FEEC1D636C7 /* Debug */,
+				DE9339D873E76B92B576FB80 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		0E6BE50B9CA36D8AB979BBCB /* Build configuration list for PBXNativeTarget "SpooktacularUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -590,6 +721,10 @@
 		7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SpooktacularKit;
+		};
+		E194D53A74BD161278EED761 /* SpooktacularInfrastructureApple */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SpooktacularInfrastructureApple;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

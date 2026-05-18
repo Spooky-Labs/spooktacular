@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist for the Spooktacular Network Filter
+  system extension (Track F'').
+
+  Bundle layout assembled by build-app.sh:
+
+    Spooktacular.app/
+      Contents/
+        Library/
+          SystemExtensions/
+            com.spooktacular.app.NetworkFilter.systemextension/
+              Contents/
+                Info.plist      ← THIS FILE
+                MacOS/
+                  com.spooktacular.app.NetworkFilter
+                                 ← SpooktacularNetworkFilter executable
+
+  Why CFBundleIdentifier must equal
+  `com.spooktacular.app.NetworkFilter`:
+    1. It must match `NEFilterConfigurator.extensionBundleIdentifier`.
+    2. `OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier:)`
+       is keyed by this string.
+    3. The App ID / provisioning profile for the extension is
+       registered against this identifier with Apple.
+
+  Why `NSExtension.NSExtensionPrincipalClass` is the Apple-
+  framework class, not ours:
+    NEFilterDataProvider's Swift subclass in
+    `SpooktacularInfrastructureApple` is written as
+    `open class SpooktacularNetworkFilterProvider:
+    NEFilterDataProvider`. The Obj-C runtime registers it
+    under its mangled Swift name
+    (`SpooktacularInfrastructureApple.SpooktacularNetworkFilterProvider`),
+    which is what we reference below.
+
+  Why CFBundlePackageType = "SYSX":
+    Apple's system-extension loader recognizes this magic
+    four-char code as "this is a system extension" (in
+    contrast to "APPL" for applications, "FMWK" for
+    frameworks, "XPC!" for XPC services, "BNDL" for generic
+    bundles). Getting this wrong causes `OSSystemExtensionErrorCode.invalid`
+    at activation time with zero further detail — an
+    annoyingly quiet failure mode.
+
+  References:
+  - [NetworkExtension & System Extensions](https://developer.apple.com/documentation/networkextension)
+  - [OSSystemExtensionRequest](https://developer.apple.com/documentation/systemextensions/ossystemextensionrequest)
+  - [Filter Provider configuration](https://developer.apple.com/documentation/networkextension/filtering-network-traffic)
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.spooktacular.app.NetworkFilter</string>
+
+    <key>CFBundleName</key>
+    <string>Spooktacular Network Filter</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Spooktacular Network Filter</string>
+
+    <key>CFBundleExecutable</key>
+    <string>com.spooktacular.app.NetworkFilter</string>
+
+    <key>CFBundlePackageType</key>
+    <string>SYSX</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.1</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Spooky Labs. All rights reserved.</string>
+
+    <!-- NSExtension dict — the NE runtime reads
+         NSExtensionPrincipalClass to locate the
+         NEFilterDataProvider subclass it will instantiate. -->
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.networkextension.filter-data</string>
+        <key>NSExtensionPrincipalClass</key>
+        <string>SpooktacularInfrastructureApple.SpooktacularNetworkFilterProvider</string>
+    </dict>
+</dict>
+</plist>

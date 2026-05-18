@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 /// OIDC claim-enforcement safety tests.
 ///

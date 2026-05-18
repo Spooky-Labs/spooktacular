@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookCore
+@testable import SpooktacularCore
 
 /// Covers the `ScriptFile.cleanup(scriptURL:)` contract that lets
 /// callers shrink the host-side window a provisioning script

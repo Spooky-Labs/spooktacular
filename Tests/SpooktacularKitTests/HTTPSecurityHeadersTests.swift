@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 /// Pins the OWASP ASVS V14.4 HTTP security-header contract on
 /// `HTTPResponse.serialize()`. Every response — success, error,

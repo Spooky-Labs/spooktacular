@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 /// Tests for ``P256KeyStore`` — the unified SEP / software
 /// key-provisioning primitive used by every SEP-bound signing

@@ -50,6 +50,20 @@ final class ScreenshotTests: XCTestCase {
     private var app: XCUIApplication!
 
     override func setUp() async throws {
+        // SwiftPM can't host an XCUITest bundle properly —
+        // `XCUIApplication().launch()` aborts with
+        // "freed pointer was not the last allocation" during
+        // the malloc consistency check in the XCTest harness.
+        // The test target stays declared so `swift build
+        // --target SpooktacularUITests` catches compile
+        // regressions, but the test bodies only run when the
+        // operator explicitly opts in via the env var (Xcode
+        // sets it automatically through the scheme).
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["SPOOK_RUN_UI_TESTS"] == "1",
+            "UI tests must be invoked from Xcode (or with SPOOK_RUN_UI_TESTS=1); SwiftPM-hosted XCUITest aborts during app launch."
+        )
+
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
@@ -63,7 +77,10 @@ final class ScreenshotTests: XCTestCase {
     }
 
     override func tearDown() async throws {
-        app.terminate()
+        // `app` is nil when setUp threw a skip before it ran
+        // `XCUIApplication()`. Guard rather than force-unwrap so
+        // the skipped test doesn't surface as a crash.
+        app?.terminate()
         app = nil
     }
 

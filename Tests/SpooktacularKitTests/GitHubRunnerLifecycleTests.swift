@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 // MARK: - Scope validation
 

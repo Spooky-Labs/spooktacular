@@ -5,7 +5,7 @@ import Foundation
 ///
 /// ``WorkloadTokenRefresher`` is the companion actor that
 /// populates the cache on a timer and mirrors it to the on-disk
-/// path declared by `SPOOK_WORKLOAD_TOKEN_FILE` so unmodified
+/// path declared by `SPOOKTACULAR_WORKLOAD_TOKEN_FILE` so unmodified
 /// AWS / GCP / Azure SDKs pick it up transparently. This cache
 /// itself is the in-memory coordination point; reads are
 /// lock-protected and cheap.

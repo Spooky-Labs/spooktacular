@@ -4,20 +4,27 @@ import SpooktacularKit
 
 /// Compact Swift Charts panel shown in the workspace inspector.
 ///
-/// Plots two metrics over a rolling 60-second window:
+/// Plots four metrics over a rolling 60-second window:
 ///
+/// - **CPU usage** — guest-side fraction, pushed by the agent
+/// - **Memory usage** — guest-side fraction, pushed by the agent
+/// - **Agent latency** — host-observed round-trip in milliseconds
 /// - **Listening ports** — count reported by the guest agent
-/// - **Agent latency** — round-trip health probe in milliseconds
 ///
-/// Both come from the existing ``GuestAgentClient`` so there's no
-/// guest-side change required. Metrics are sampled on the host at
-/// 5 s (matches the port monitor) and decay off the chart after
-/// 60 s of history.
+/// CPU / memory / load / process count arrive as server-pushed
+/// NDJSON frames on a single vsock connection to
+/// `/api/v1/stats/stream`. The host never polls them — the guest
+/// owns the cadence and pushes one frame per second as long as
+/// the workspace view stays on screen. This keeps the UI
+/// responsive under contention and matches how production
+/// observability agents (Prometheus `stream` exporters, eBPF
+/// tracers) expose time-series to their consumers.
 ///
-/// This is deliberately not a VM-internal CPU/disk graph: those
-/// need guest-agent extensions, which are better shipped as a
-/// separate release. The host-observable metrics here give an
-/// immediately useful "is the workspace healthy" pulse.
+/// Latency and listening ports remain host-polled because they're
+/// host-measurable (round-trip clock, Bonjour-style port probe)
+/// and don't benefit from pushing. The two loops are merged by
+/// the stream frame arrival event — a fresh stats frame triggers
+/// a combined sample with the latest measured latency/ports.
 @MainActor
 @Observable
 final class WorkspaceStatsModel {
@@ -27,6 +34,11 @@ final class WorkspaceStatsModel {
         let at: Date
         let portCount: Int
         let latencyMs: Double?
+        /// CPU usage fraction (0…1). `nil` on the first frame
+        /// after the agent boots (delta needs two observations).
+        let cpuUsage: Double?
+        /// Memory usage fraction (0…1).
+        let memoryUsage: Double?
     }
 
     /// Rolling-window samples, oldest first.
@@ -35,50 +47,92 @@ final class WorkspaceStatsModel {
     /// Seconds of history kept on-screen.
     static let window: TimeInterval = 60
 
-    /// Poll interval. Matches ``PortForwardingMonitor`` so the two
-    /// surfaces stay in sync.
-    static let pollInterval: Duration = .seconds(5)
+    /// How often the host-side probes (latency + ports) refresh
+    /// between stream frames.
+    static let hostProbeInterval: Duration = .seconds(5)
 
-    private var pollTask: Task<Void, Never>?
+    private var streamTask: Task<Void, Never>?
+    private var hostProbeTask: Task<Void, Never>?
 
-    /// Begins polling. Safe to call multiple times.
-    func start(client: GuestAgentClient) {
-        pollTask?.cancel()
-        pollTask = Task { [weak self] in
+    /// Latest host-side probes, refreshed independently of the
+    /// stream. Each new stats frame combines them into the
+    /// rolling sample buffer.
+    private var lastLatencyMs: Double?
+    private var lastPortCount: Int = 0
+
+    /// Subscribes to the guest's push stream. Safe to call
+    /// multiple times — previous tasks are cancelled first.
+    ///
+    /// - Parameters:
+    ///   - listener: The Apple-native ``AgentEventListener`` for
+    ///     this VM. The guest agent dials into it on boot and
+    ///     pushes length-prefixed ``GuestEvent`` frames — this
+    ///     is the sole source of `.stats` samples.
+    ///   - client: Host-side RPC client used for latency and
+    ///     port-count probes. These measurements are host-
+    ///     observable so they don't belong on the push stream.
+    func start(listener: AgentEventListener, client: GuestAgentClient) {
+        streamTask?.cancel()
+        hostProbeTask?.cancel()
+
+        hostProbeTask = Task { [weak self] in
             while !Task.isCancelled {
-                await self?.tick(client: client)
-                try? await Task.sleep(for: Self.pollInterval)
+                await self?.probeHostMetrics(client: client)
+                try? await Task.sleep(for: Self.hostProbeInterval)
+            }
+        }
+
+        streamTask = Task { [weak self] in
+            do {
+                for try await event in listener.events() {
+                    guard !Task.isCancelled else { return }
+                    guard case .stats(let stats) = event else { continue }
+                    self?.appendFrame(stats: stats)
+                }
+            } catch {
+                // Stream ended (VM stopped, connection dropped,
+                // agent not running). Existing samples stay
+                // on-screen so the graph doesn't flash empty.
             }
         }
     }
 
-    /// Stops polling. Samples are retained so returning to the
-    /// view while the VM is stopped still shows the last graph.
+    /// Stops the stream and host probe. Samples are retained so
+    /// the chart still renders the last window while the VM is
+    /// stopped.
     func stop() {
-        pollTask?.cancel()
-        pollTask = nil
+        streamTask?.cancel()
+        streamTask = nil
+        hostProbeTask?.cancel()
+        hostProbeTask = nil
     }
 
-    private func tick(client: GuestAgentClient) async {
-        let started = Date()
-        var latency: Double?
-        var portCount: Int = 0
-        do {
-            _ = try await client.health()
-            latency = Date().timeIntervalSince(started) * 1000
-        } catch {
-            latency = nil
-        }
-        do {
-            let ports = try await client.listeningPorts()
-            portCount = ports.count
-        } catch {
-            portCount = 0
-        }
-        let sample = Sample(at: Date(), portCount: portCount, latencyMs: latency)
+    private func appendFrame(stats: GuestStatsResponse) {
+        let sample = Sample(
+            at: Date(),
+            portCount: lastPortCount,
+            latencyMs: lastLatencyMs,
+            cpuUsage: stats.cpuUsage,
+            memoryUsage: stats.memoryUsageFraction
+        )
         samples.append(sample)
         let cutoff = Date().addingTimeInterval(-Self.window)
         samples.removeAll { $0.at < cutoff }
+    }
+
+    private func probeHostMetrics(client: GuestAgentClient) async {
+        let started = Date()
+        do {
+            _ = try await client.health()
+            lastLatencyMs = Date().timeIntervalSince(started) * 1000
+        } catch {
+            lastLatencyMs = nil
+        }
+        do {
+            lastPortCount = try await client.listeningPorts().count
+        } catch {
+            lastPortCount = 0
+        }
     }
 }
 
@@ -89,15 +143,87 @@ struct WorkspaceStatsSidebar: View {
     let model: WorkspaceStatsModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("Health", systemImage: "waveform.path.ecg")
-                .font(.headline)
+        // `GlassEffectContainer` batches the outer card + the
+        // four per-chart surfaces into one render pass and lets
+        // them morph smoothly as samples stream in. Apple's
+        // guidance: use a container whenever multiple glass
+        // surfaces cluster within a common ancestor — avoids
+        // the "every-chart-has-its-own-pane" stacked-glass look
+        // and keeps the GPU from rebuilding overlapping blurs.
+        GlassEffectContainer(spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Live metrics", systemImage: "waveform.path.ecg")
+                    .font(.headline)
 
-            latencyChart
-            portChart
+                cpuChart
+                memoryChart
+                latencyChart
+                portChart
+            }
+            .padding(16)
+            .glassCard(cornerRadius: 16)
         }
-        .padding(16)
-        .glassCard(cornerRadius: 16)
+    }
+
+    // CPU usage (0-100%) — sourced from `/api/v1/stats` on the
+    // guest agent, which computes it as a `host_processor_info`
+    // tick delta (same source `top` uses).
+    private var cpuChart: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("CPU")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Chart(model.samples) { sample in
+                if let cpu = sample.cpuUsage {
+                    AreaMark(
+                        x: .value("time", sample.at),
+                        y: .value("percent", cpu * 100)
+                    )
+                    .foregroundStyle(.orange.opacity(0.3))
+
+                    LineMark(
+                        x: .value("time", sample.at),
+                        y: .value("percent", cpu * 100)
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
+            .chartYScale(domain: 0...100)
+            .frame(height: 90)
+            .chartYAxisLabel("%", position: .leading)
+            .chartXAxis(.hidden)
+        }
+    }
+
+    // Memory usage (active + wired + compressed as a fraction
+    // of total installed memory). Cache pages are excluded.
+    private var memoryChart: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Memory")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Chart(model.samples) { sample in
+                if let mem = sample.memoryUsage {
+                    AreaMark(
+                        x: .value("time", sample.at),
+                        y: .value("percent", mem * 100)
+                    )
+                    .foregroundStyle(.purple.opacity(0.3))
+
+                    LineMark(
+                        x: .value("time", sample.at),
+                        y: .value("percent", mem * 100)
+                    )
+                    .foregroundStyle(.purple)
+                }
+            }
+            .chartYScale(domain: 0...100)
+            .frame(height: 90)
+            .chartYAxisLabel("%", position: .leading)
+            .chartXAxis(.hidden)
+        }
     }
 
     // MARK: - Charts

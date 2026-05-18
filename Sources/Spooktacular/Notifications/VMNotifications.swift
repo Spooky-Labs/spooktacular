@@ -73,7 +73,7 @@ final class VMNotifications {
             do {
                 try await UNUserNotificationCenter.current().add(request)
             } catch {
-                await self?.log(error: error)
+                self?.log(error: error)
             }
         }
     }

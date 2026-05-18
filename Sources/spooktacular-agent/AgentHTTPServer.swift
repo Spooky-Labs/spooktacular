@@ -19,7 +19,9 @@
 import Dispatch
 import Foundation
 import os
-import SpookApplication
+import Synchronization
+import SpooktacularApplication
+import SpooktacularCore
 
 /// The vsock-based HTTP server for the guest agent.
 enum AgentHTTPServer {
@@ -59,12 +61,15 @@ enum AgentHTTPServer {
     /// so a slow-loris connection can't starve a handler thread.
     private static let readTimeoutSeconds: Int = 5
 
-    /// Counter of currently-busy handler queues. Protected by
-    /// `connectionLock`. Unsafe globals are the idiomatic pattern
-    /// in this file (see `ticketVerifier`) and the mutation is
-    /// serialized by the lock.
-    nonisolated(unsafe) private static var activeConnections: Int = 0
-    nonisolated(unsafe) private static var connectionLock = os_unfair_lock()
+    /// Counter of currently-busy handler queues, protected
+    /// by a [`Mutex`](https://developer.apple.com/documentation/synchronization/mutex)
+    /// from Swift's `Synchronization` module — Apple's
+    /// Sendable-by-construction replacement for the
+    /// `nonisolated(unsafe) var` + `os_unfair_lock` pattern
+    /// this static previously used.  `withLock` gives us
+    /// the atomic check-then-increment the back-pressure
+    /// gate needs in a single call.
+    private static let activeConnections = Mutex<Int>(0)
 
     /// VirtIO socket address structure matching the kernel's `struct sockaddr_vm`.
     ///
@@ -129,16 +134,22 @@ enum AgentHTTPServer {
     static func listenAll(
         readonlyPort: UInt32 = 9470,
         runnerPort: UInt32 = 9471,
-        breakGlassPort: UInt32 = 9472
+        breakGlassPort: UInt32 = 9472,
+        tunnelPort: UInt32 = 9473
     ) -> Never {
-        log.notice("Starting multi-channel vsock listeners: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort)")
+        log.notice("Starting multi-channel vsock listeners: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort), tunnel=\(tunnelPort)")
 
-        // Start read-only and runner listeners on background queues.
+        // Start read-only, runner, and tunnel listeners on
+        // background queues. Break-glass blocks the main
+        // thread below so the process never exits.
         DispatchQueue.global(qos: .default).async {
             acceptLoop(port: readonlyPort, channelScope: .readonly)
         }
         DispatchQueue.global(qos: .default).async {
             acceptLoop(port: runnerPort, channelScope: .runner)
+        }
+        DispatchQueue.global(qos: .default).async {
+            acceptLoop(port: tunnelPort, channelScope: .tunnel)
         }
 
         // Block the main thread on the break-glass listener.
@@ -245,28 +256,33 @@ enum AgentHTTPServer {
 
             // Connection-limit back-pressure. Respond with 503 and
             // close; don't spawn a handler queue (which is the
-            // resource we're trying to protect).
-            os_unfair_lock_lock(&connectionLock)
-            guard activeConnections < maxConcurrentConnections else {
-                os_unfair_lock_unlock(&connectionLock)
+            // resource we're trying to protect).  `withLock`
+            // returns a tuple of the decision + the observed
+            // count so we can log the count after releasing
+            // the lock without a second acquisition.
+            let (accepted, observedCount) = activeConnections.withLock { count -> (Bool, Int) in
+                if count < maxConcurrentConnections {
+                    count += 1
+                    return (true, count)
+                } else {
+                    return (false, count)
+                }
+            }
+            guard accepted else {
                 let body = Data("{\"error\":\"Service unavailable: agent at capacity.\"}".utf8)
                 let response = buildRawResponse(statusCode: 503, body: body)
                 writeAll(fd: clientFD, data: response)
                 close(clientFD)
-                log.warning("Rejected connection: active=\(activeConnections) cap=\(maxConcurrentConnections)")
+                log.warning("Rejected connection: active=\(observedCount) cap=\(maxConcurrentConnections)")
                 continue
             }
-            activeConnections += 1
-            os_unfair_lock_unlock(&connectionLock)
 
             log.info("Accepted connection from CID \(clientAddr.svm_cid) on port \(port)")
 
             let scope = channelScope
             DispatchQueue.global().async {
                 defer {
-                    os_unfair_lock_lock(&connectionLock)
-                    activeConnections -= 1
-                    os_unfair_lock_unlock(&connectionLock)
+                    activeConnections.withLock { $0 -= 1 }
                 }
                 handleConnection(clientFD, channelScope: scope)
             }
@@ -328,6 +344,72 @@ enum AgentHTTPServer {
 
         log.info("\(request.method, privacy: .public) \(request.path, privacy: .public)")
 
+        // Streaming endpoints: bypass the request → response ping-pong
+        // and keep the connection open, writing newline-delimited
+        // JSON frames until the client disconnects. The only one
+        // today is `/api/v1/stats/stream` — real-time VM metrics
+        // pushed from the guest so the host-side UI never polls.
+        //
+        // Run the full auth gate first — ``authorizeRequest`` is
+        // the same helper ``routeRequest`` uses, so channel-scope
+        // isolation, signature verification, and tier enforcement
+        // all apply before we upgrade the socket to a stream. On
+        // denial the helper returns a fully serialized error
+        // response; we write it and close like any other 4xx.
+        // Events stream: one vsock connection, many topics,
+        // NDJSON framing. Replaces the legacy single-purpose
+        // `/api/v1/stats/stream`. Client subscribes once via
+        // `?topics=stats,ports,apps.frontmost` (absent query
+        // means all topics). Matches GhostVM's `/api/v1/events`
+        // shape — one persistent connection, tagged frames,
+        // graceful forward-compatibility when the server
+        // supports topics the client doesn't yet know.
+        if request.method == "GET", request.path.hasPrefix("/api/v1/events/stream") {
+            switch authorizeRequest(
+                request,
+                channelScope: channelScope,
+                signatureVerifier: signatureVerifier,
+                ticketVerifier: ticketVerifier
+            ) {
+            case .allowed:
+                let filter = GuestEventFilter.parse(request.query["topics"])
+                streamEventsForever(fd: fd, filter: filter)
+            case .denied(let errorBytes):
+                writeAll(fd: fd, data: errorBytes)
+            }
+            return
+        }
+
+        // Tunnel endpoint: `POST /api/v1/tunnel/<port>`. Like
+        // the stats-stream upgrade above, this bypasses the
+        // normal request→response router after auth succeeds
+        // and hands the raw fd to `TunnelHandler.handle` for
+        // bidirectional TCP splicing. The auth gate reuses the
+        // identical `authorizeRequest` helper so a leaked
+        // tunnel credential can't reach any other endpoint and
+        // vice versa — the same channel-scope and tier-scope
+        // checks that guard REST endpoints also guard tunnels.
+        if request.method == "POST", request.path.hasPrefix("/api/v1/tunnel/") {
+            switch authorizeRequest(
+                request,
+                channelScope: channelScope,
+                signatureVerifier: signatureVerifier,
+                ticketVerifier: ticketVerifier
+            ) {
+            case .allowed:
+                let allowPrivileged = ProcessInfo.processInfo
+                    .environment["SPOOKTACULAR_TUNNEL_ALLOW_PRIVILEGED"] == "1"
+                TunnelHandler.handle(
+                    vsockFD: fd,
+                    path: request.path,
+                    allowPrivileged: allowPrivileged
+                )
+            case .denied(let errorBytes):
+                writeAll(fd: fd, data: errorBytes)
+            }
+            return
+        }
+
         let response = routeRequest(
             request,
             channelScope: channelScope,
@@ -335,6 +417,121 @@ enum AgentHTTPServer {
             ticketVerifier: ticketVerifier
         )
         writeAll(fd: fd, data: response)
+    }
+
+    /// Writes tagged NDJSON (`application/x-ndjson`) frames
+    /// for every ``GuestEvent`` topic the subscriber's
+    /// `filter` permits. Replaces the legacy
+    /// `streamStatsForever` — unified producer, tagged
+    /// frames, one loop.
+    ///
+    /// Each iteration produces at most one frame per topic.
+    /// We gate the outer sleep on the shortest per-topic
+    /// cadence (1 s today — stats). Topics that change less
+    /// frequently (ports, apps.frontmost) emit only on change,
+    /// so a quiet VM sees just heartbeat-free stats frames
+    /// while a busy one sees the full fan-out.
+    ///
+    /// Returns when a write fails (client disconnected) — the
+    /// enclosing `handleConnection` closes the fd in its
+    /// `defer`.
+    ///
+    /// Wire docs:
+    /// - HTTP/1.1 semantics: https://datatracker.ietf.org/doc/html/rfc7230
+    /// - NDJSON spec: https://github.com/ndjson/ndjson-spec
+    /// - `GuestEvent` Codable envelope: ``SpooktacularCore/GuestEvent``
+    private static func streamEventsForever(fd: Int32, filter: GuestEventFilter) {
+        let headers = [
+            "HTTP/1.1 200 OK",
+            "Content-Type: application/x-ndjson",
+            "Cache-Control: no-cache",
+            "Connection: close",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+
+        guard writeAll(fd: fd, data: Data(headers.utf8)) else { return }
+
+        let encoder = JSONEncoder()
+
+        // Topic-cadence state: we want `.stats` every tick
+        // (1 Hz) but `.ports` / `.appsFrontmost` only on
+        // change. Hold the last-seen values so we can diff.
+        var lastPorts: [GuestPortInfo]?
+        var lastFrontmost: GuestAppInfo?
+
+        while true {
+            if filter.allows(topic: GuestEventFilter.statsTopic) {
+                let event = GuestEvent.stats(currentStatsSnapshot())
+                if !writeFrame(fd: fd, event: event, encoder: encoder) { return }
+            }
+
+            if filter.allows(topic: GuestEventFilter.portsTopic) {
+                let sample = currentPortsSnapshot()
+                if sample != lastPorts {
+                    lastPorts = sample
+                    let event = GuestEvent.ports(sample)
+                    if !writeFrame(fd: fd, event: event, encoder: encoder) { return }
+                }
+            }
+
+            if filter.allows(topic: GuestEventFilter.appsFrontmostTopic) {
+                let sample = currentFrontmostApp()
+                if sample != lastFrontmost {
+                    lastFrontmost = sample
+                    let event = GuestEvent.appsFrontmost(sample)
+                    if !writeFrame(fd: fd, event: event, encoder: encoder) { return }
+                }
+            }
+
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+    }
+
+    /// Encodes + writes a single NDJSON frame, returning
+    /// `false` when the write fails (client gone, EPIPE,
+    /// etc.) so the caller can abort the stream loop.
+    private static func writeFrame(
+        fd: Int32,
+        event: GuestEvent,
+        encoder: JSONEncoder
+    ) -> Bool {
+        guard let json = try? encoder.encode(event) else { return true }
+        var frame = json
+        frame.append(0x0A)  // '\n'
+        return writeAll(fd: fd, data: frame)
+    }
+
+    /// Builds a `GuestStatsResponse` from the current
+    /// host_processor_info + host_statistics64 samples. Same
+    /// source `AgentStatsHandler.handleStats` uses — keep
+    /// these two call sites in sync.
+    private static func currentStatsSnapshot() -> GuestStatsResponse {
+        GuestStatsResponse(
+            cpuUsage: sampleCPUUsage(),
+            memoryUsedBytes: sampleMemoryUsed(),
+            memoryTotalBytes: sampleMemoryTotal(),
+            loadAverage1m: sampleLoadAverage(),
+            processCount: sampleProcessCount(),
+            uptime: sampleUptime()
+        )
+    }
+
+    /// Snapshots listening TCP ports via the same `lsof` path
+    /// ``handleListPorts`` uses. Kept in this file for
+    /// proximity to the event loop; the logic itself is
+    /// shared lsof parsing. An empty result means "nothing
+    /// listens right now" — a legitimate state that we DO
+    /// want to publish so clients can wipe their port UI.
+    private static func currentPortsSnapshot() -> [GuestPortInfo] {
+        handleListPortsSnapshot()
+    }
+
+    /// Snapshots the current frontmost `NSRunningApplication`.
+    /// Returns `nil` on Recovery mode or other edge states
+    /// where the WindowServer has no foreground app.
+    private static func currentFrontmostApp() -> GuestAppInfo? {
+        handleFrontmostAppSnapshot()
     }
 
     /// Reads up to ``maxRequestSize`` bytes from a file descriptor,

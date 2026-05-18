@@ -2,8 +2,8 @@ import Testing
 import Foundation
 import Security
 import CryptoKit
-@testable import SpookCore
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularInfrastructureApple
 
 /// End-to-end SAML signature verification.
 ///

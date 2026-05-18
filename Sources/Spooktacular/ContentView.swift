@@ -1,394 +1,203 @@
 import SwiftUI
 import SpooktacularKit
 
-/// The main application content view.
-///
-/// Uses a `NavigationSplitView` with a searchable sidebar listing
-/// VMs and a detail area showing the VM display or configuration.
-/// An inspector panel slides out for VM details.
+/// Library window — pure `NavigationSplitView`. Sidebar on the
+/// left, detail on the right. No custom chrome, no overrides.
 struct ContentView: View {
 
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.openWindow) private var openWindow
 
+    @State private var selection: SidebarSelection?
     @State private var searchText = ""
-    @State private var showInspector = false
-    @State private var didRestoreWorkspaces = false
+    @State private var didLoad = false
+
+    /// Typed selection so a single `List(selection:)` can route
+    /// clicks from two heterogeneous sections (VMs + Images) into
+    /// one binding. Without this, images wouldn't participate in
+    /// the selection system and clicks on them would be inert.
+    enum SidebarSelection: Hashable {
+        case vm(String)
+        case image(UUID)
+    }
 
     var body: some View {
         @Bindable var state = appState
 
         NavigationSplitView {
-            SidebarView(searchText: $searchText)
-                .accessibilitySortPriority(3)
+            sidebar
         } detail: {
-            detailContent
-                .accessibilitySortPriority(2)
+            detail
         }
-        .navigationSplitViewStyle(.balanced)
-        .searchable(
-            text: $searchText,
-            placement: .sidebar,
-            prompt: "Filter VMs"
-        )
-        .sheet(isPresented: $state.showCreateSheet) {
-            CreateVMSheet()
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    appState.showCreateSheet = true
+                } label: {
+                    Label("New Virtual Machine", systemImage: "plus")
+                }
+                .help("New Virtual Machine (⌘N)")
+            }
         }
-        .alert(
-            "Error",
-            isPresented: $state.errorPresented
-        ) {
+        .sheet(isPresented: $state.showCreateSheet) { CreateVMSheet() }
+        .sheet(isPresented: $state.showAddImage) {
+            AddImageSheet().environment(appState)
+        }
+        .alert("Error", isPresented: $state.errorPresented) {
             Button("OK", role: .cancel) {
                 appState.errorMessage = nil
                 appState.errorSuggestedAction = nil
             }
         } message: {
-            VStack(alignment: .leading, spacing: 4) {
-                if let message = appState.errorMessage {
+            if let message = appState.errorMessage {
+                if let suggestion = appState.errorSuggestedAction {
+                    Text("\(message)\n\n\(suggestion)")
+                } else {
                     Text(message)
                 }
-                if let hint = appState.errorSuggestedAction {
-                    Text(hint).font(.caption)
-                }
             }
         }
-        .onAppear {
+        .alert("Done", isPresented: $state.infoPresented) {
+            Button("OK", role: .cancel) {
+                appState.infoMessage = nil
+            }
+        } message: {
+            if let message = appState.infoMessage { Text(message) }
+        }
+        .task {
+            guard !didLoad else { return }
+            didLoad = true
             appState.loadVMs()
-            restorePreviouslyOpenWorkspaces()
         }
-        .toolbarApplyingGlassContainer()
     }
 
-    /// Re-opens workspace windows that were open at last quit.
-    ///
-    /// Guarded by a `@State` flag so re-appearing the library
-    /// window does not re-open duplicates. ``AppState`` handles
-    /// the case where a VM was deleted while closed — its
-    /// ``AppState/restorableWorkspaceNames()`` silently skips
-    /// missing entries.
-    private func restorePreviouslyOpenWorkspaces() {
-        guard !didRestoreWorkspaces else { return }
-        didRestoreWorkspaces = true
-        for name in appState.restorableWorkspaceNames() {
-            openWindow(id: "workspace", value: name)
-        }
-    }
+    // MARK: - Sidebar
 
     @ViewBuilder
-    private var detailContent: some View {
-        if let selected = appState.selectedVM,
-           let bundle = appState.vms[selected] {
-            WorkspacePreviewCard(name: selected, bundle: bundle)
-                .inspector(isPresented: $showInspector) {
-                    VMInspectorView(name: selected, bundle: bundle)
-                        .inspectorColumnWidth(min: 280, ideal: 320, max: 400)
-                        .accessibilitySortPriority(1)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .automatic) {
-                        Button {
-                            withAnimation(reduceMotion ? .none : .default) {
-                                showInspector.toggle()
+    private var sidebar: some View {
+        let images = appState.imageLibrary.images
+        List(selection: $selection) {
+            Section("Virtual Machines") {
+                ForEach(filteredVMs, id: \.self) { name in
+                    VMRow(name: name)
+                        .tag(SidebarSelection.vm(name))
+                        // `swipeActions` on macOS 13+ surfaces the
+                        // same trailing-swipe affordance iOS users
+                        // expect. The `allowsFullSwipe: true` lets
+                        // a full trailing swipe trigger delete
+                        // without a secondary tap.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                appState.deleteVM(name)
+                                if selection == .vm(name) { selection = nil }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
-                        } label: {
-                            Label("Inspector", systemImage: "sidebar.trailing")
                         }
-                        .glassButton()
-                        .help("Toggle inspector panel")
-                        .accessibilityIdentifier(AccessibilityID.inspectorToggle)
-                        .accessibilityHint("Shows or hides VM details")
-                    }
                 }
-        } else {
-            emptyState
+            }
+            Section("Images") {
+                ForEach(images) { image in
+                    Label(image.name, systemImage: "photo.stack")
+                        .tag(SidebarSelection.image(image.id))
+                        .contextMenu {
+                            Button("Create VM from this image…") {
+                                appState.showCreateSheet = true
+                            }
+                            Divider()
+                            Button("Delete", role: .destructive) {
+                                try? appState.imageLibrary.remove(id: image.id)
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                try? appState.imageLibrary.remove(id: image.id)
+                                if selection == .image(image.id) { selection = nil }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                }
+                Button {
+                    appState.showAddImage = true
+                } label: {
+                    Label("Add Image…", systemImage: "plus")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("Workspaces")
+        // Placing the search field explicitly in the sidebar
+        // (`.sidebar`) renders it inside the sidebar's title
+        // region instead of the toolbar. On macOS 26 this slot
+        // auto-adopts the Liquid Glass styling Apple uses in
+        // Finder's sidebar — rounded, translucent, tinted by
+        // the window chrome — rather than the flat
+        // `NSSearchToolbarItem` that `.automatic` placement
+        // produces.
+        .searchable(
+            text: $searchText,
+            placement: .sidebar,
+            prompt: Text("Filter workspaces")
+        )
+    }
+
+    // MARK: - Detail
+
+    @ViewBuilder
+    private var detail: some View {
+        switch selection {
+        case .vm(let name):
+            if let bundle = appState.vms[name] {
+                VMDetailView(name: name, bundle: bundle)
+            } else {
+                emptySelection
+            }
+        case .image(let id):
+            if let image = appState.imageLibrary.images.first(where: { $0.id == id }) {
+                ImageDetailView(image: image)
+            } else {
+                emptySelection
+            }
+        case .none:
+            emptySelection
         }
     }
 
     @ViewBuilder
-    private var emptyState: some View {
+    private var emptySelection: some View {
+        detailEmptyState
+    }
+
+    @ViewBuilder
+    private var detailEmptyState: some View {
         if appState.vms.isEmpty {
-            EmptyStateView(onCreate: { appState.showCreateSheet = true })
-                .accessibilityIdentifier(AccessibilityID.createVMButton)
+            ContentUnavailableView {
+                Label("No workspaces yet", systemImage: "sparkles")
+            } description: {
+                Text("Create your first macOS workspace to get started.")
+            } actions: {
+                Button("Create Workspace") {
+                    appState.showCreateSheet = true
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
         } else {
             ContentUnavailableView(
-                "Select a VM",
+                "Select a workspace",
                 systemImage: "sidebar.left",
-                description: Text("Choose a workspace from the sidebar.")
-            )
-        }
-    }
-}
-
-// MARK: - Workspace Preview Card
-
-/// The library's detail pane: a glass-chromed summary of the
-/// selected VM with a prominent "Open Workspace" button.
-///
-/// Running VMs now live in their own windows (see
-/// ``WorkspaceWindow``) — the library's job is discovery and
-/// lifecycle orchestration, not hosting the framebuffer.
-struct WorkspacePreviewCard: View {
-
-    let name: String
-    let bundle: VirtualMachineBundle
-
-    @Environment(AppState.self) private var appState
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        VStack(spacing: 28) {
-            Spacer()
-
-            WorkspaceIconView(
-                spec: bundle.metadata.iconSpec ?? .defaultSpec,
-                size: 160
-            )
-
-            VStack(spacing: 6) {
-                Text(name)
-                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-
-                HStack(spacing: 12) {
-                    Label("\(bundle.spec.cpuCount) CPU", systemImage: "cpu")
-                    Label("\(bundle.spec.memorySizeInGigabytes) GB", systemImage: "memorychip")
-                    Label("\(bundle.spec.diskSizeInGigabytes) GB", systemImage: "internaldrive")
-                }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-
-                if appState.isRunning(name) {
-                    Label("Running", systemImage: "circle.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .glassStatusBadge()
-                }
-            }
-
-            HStack(spacing: 12) {
-                Button {
-                    openWindow(id: "workspace", value: name)
-                } label: {
-                    Label("Open Workspace", systemImage: "macwindow")
-                        .font(.headline)
-                        .padding(.horizontal, 8)
-                }
-                .glassButton()
-                .controlSize(.large)
-                .keyboardShortcut(.return, modifiers: [])
-                .help("Open this workspace in its own window")
-
-                if appState.isRunning(name) {
-                    Button {
-                        Task { await appState.stopVM(name) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                            .padding(.horizontal, 4)
-                    }
-                    .glassButton()
-                    .controlSize(.large)
-                } else {
-                    Button {
-                        Task { await appState.startVM(name) }
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
-                            .padding(.horizontal, 4)
-                    }
-                    .glassButton()
-                    .controlSize(.large)
-                    .tint(.green)
-                }
-            }
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(32)
-    }
-}
-
-/// Inspector panel showing VM configuration details.
-///
-/// Mirrors the detail config view in a compact Form layout using
-/// `LabeledContent` and `.formStyle(.grouped)`. Shows all configured
-/// options: identity, hardware, display, network, audio, shared
-/// folders, provisioning, and storage.
-struct VMInspectorView: View {
-
-    let name: String
-    let bundle: VirtualMachineBundle
-
-    var body: some View {
-        Form {
-            identitySection
-            hardwareSection
-            displaySection
-            networkSection
-            audioSection
-            sharedFoldersSection
-            storageSection
-        }
-        .formStyle(.grouped)
-    }
-
-    // MARK: - Identity
-
-    @ViewBuilder
-    private var identitySection: some View {
-        Section("Identity") {
-            LabeledContent("Name", value: name)
-                .accessibilityElement(children: .combine)
-
-            LabeledContent("ID") {
-                Text(bundle.metadata.id.uuidString)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-            }
-            .accessibilityLabel("VM identifier")
-            .accessibilityValue(bundle.metadata.id.uuidString)
-
-            LabeledContent("Created") {
-                Text(
-                    bundle.metadata.createdAt,
-                    format: .dateTime.month().day().year().hour().minute()
-                )
-            }
-            .accessibilityElement(children: .combine)
-
-            LabeledContent("Setup") {
-                Image(systemName: bundle.metadata.setupCompleted
-                      ? "checkmark.circle.fill" : "circle.dashed")
-                .foregroundStyle(
-                    bundle.metadata.setupCompleted ? .green : .secondary
-                )
-            }
-            .accessibilityLabel("Setup status")
-            .accessibilityValue(
-                bundle.metadata.setupCompleted ? "Complete" : "Pending"
+                description: Text("Choose one from the sidebar.")
             )
         }
     }
 
-    // MARK: - Hardware
+    // MARK: - Filtering
 
-    @ViewBuilder
-    private var hardwareSection: some View {
-        Section("Hardware") {
-            LabeledContent("CPU", value: "\(bundle.spec.cpuCount) cores")
-                .accessibilityElement(children: .combine)
-            LabeledContent("Memory", value: "\(bundle.spec.memorySizeInGigabytes) GB")
-                .accessibilityElement(children: .combine)
-            LabeledContent("Disk", value: "\(bundle.spec.diskSizeInGigabytes) GB")
-                .accessibilityElement(children: .combine)
-        }
+    private var filteredVMs: [String] {
+        let all = appState.vms.keys.sorted()
+        return searchText.isEmpty
+            ? all
+            : all.filter { $0.localizedCaseInsensitiveContains(searchText) }
     }
-
-    // MARK: - Display
-
-    @ViewBuilder
-    private var displaySection: some View {
-        Section("Display") {
-            LabeledContent("Monitors", value: "\(bundle.spec.displayCount)")
-                .accessibilityElement(children: .combine)
-            booleanRow(
-                "Auto-resize",
-                enabled: bundle.spec.autoResizeDisplay,
-                accessibilityLabel: "Auto-resize display"
-            )
-        }
-    }
-
-    // MARK: - Network
-
-    @ViewBuilder
-    private var networkSection: some View {
-        Section("Network") {
-            LabeledContent("Mode", value: bundle.spec.networkMode.serialized)
-                .accessibilityElement(children: .combine)
-        }
-    }
-
-    // MARK: - Audio
-
-    @ViewBuilder
-    private var audioSection: some View {
-        Section("Audio") {
-            booleanRow(
-                "Speaker",
-                enabled: bundle.spec.audioEnabled,
-                accessibilityLabel: "Speaker output"
-            )
-            booleanRow(
-                "Microphone",
-                enabled: bundle.spec.microphoneEnabled,
-                accessibilityLabel: "Microphone input"
-            )
-            booleanRow(
-                "Clipboard",
-                enabled: bundle.spec.clipboardSharingEnabled,
-                accessibilityLabel: "Clipboard sharing"
-            )
-        }
-    }
-
-    // MARK: - Shared Folders
-
-    @ViewBuilder
-    private var sharedFoldersSection: some View {
-        Section("Shared Folders") {
-            if bundle.spec.sharedFolders.isEmpty {
-                Text("None configured")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-                    .accessibilityLabel("No shared folders configured")
-            } else {
-                ForEach(bundle.spec.sharedFolders, id: \.tag) { folder in
-                    LabeledContent(folder.tag) {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(folder.hostPath)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                            Text(folder.readOnly ? "read-only" : "read-write")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
-        }
-    }
-
-    // MARK: - Storage
-
-    @ViewBuilder
-    private var storageSection: some View {
-        Section("Storage") {
-            LabeledContent("Bundle") {
-                Text(bundle.url.path)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-            }
-            .accessibilityLabel("Bundle path")
-            .accessibilityValue(bundle.url.path)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func booleanRow(
-        _ label: String,
-        enabled: Bool,
-        accessibilityLabel: String
-    ) -> some View {
-        LabeledContent(label) {
-            Image(systemName: enabled
-                  ? "checkmark.circle.fill" : "minus.circle")
-            .foregroundStyle(enabled ? .green : .secondary)
-        }
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(enabled ? "Enabled" : "Disabled")
-    }
-
 }

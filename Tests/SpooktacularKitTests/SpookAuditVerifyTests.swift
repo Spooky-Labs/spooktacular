@@ -1,11 +1,11 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookCore
-@testable import SpookApplication
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
 
 @Suite("spook audit verify (SignedTreeHeadVerifier)")
-struct SpookAuditVerifyTests {
+struct SpooktacularAuditVerifyTests {
 
     // MARK: - Golden-path helpers
 

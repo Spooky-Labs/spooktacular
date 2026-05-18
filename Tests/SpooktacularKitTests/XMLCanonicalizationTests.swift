@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 @Suite("XML Canonicalization", .tags(.security, .cryptography))
 struct XMLCanonicalizationTests {

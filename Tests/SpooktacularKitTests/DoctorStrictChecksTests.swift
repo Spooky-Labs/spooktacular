@@ -32,8 +32,8 @@ struct DoctorStrictChecksTests {
 
     /// Item 01 — TLS cert+key must be set + readable.
     static func check01(env: [String: String], fm: FileManager = .default) -> StrictResult {
-        let cert = env["SPOOK_TLS_CERT_PATH"]
-        let key = env["SPOOK_TLS_KEY_PATH"]
+        let cert = env["SPOOKTACULAR_TLS_CERT_PATH"]
+        let key = env["SPOOKTACULAR_TLS_KEY_PATH"]
         guard let cert, let key, !cert.isEmpty, !key.isEmpty else {
             return StrictResult(item: 1, status: .fail, message: "unset")
         }
@@ -45,7 +45,7 @@ struct DoctorStrictChecksTests {
 
     /// Item 02 — mTLS CA must be set + readable.
     static func check02(env: [String: String], fm: FileManager = .default) -> StrictResult {
-        guard let ca = env["SPOOK_TLS_CA_PATH"] ?? env["TLS_CA_PATH"], !ca.isEmpty else {
+        guard let ca = env["SPOOKTACULAR_TLS_CA_PATH"] ?? env["TLS_CA_PATH"], !ca.isEmpty else {
             return StrictResult(item: 2, status: .fail, message: "unset")
         }
         guard fm.isReadableFile(atPath: ca) else {
@@ -56,12 +56,12 @@ struct DoctorStrictChecksTests {
 
     /// Item 06 — RBAC active.
     static func check06(env: [String: String], fm: FileManager = .default) -> StrictResult {
-        if let path = env["SPOOK_RBAC_CONFIG"], !path.isEmpty {
+        if let path = env["SPOOKTACULAR_RBAC_CONFIG"], !path.isEmpty {
             return fm.isReadableFile(atPath: path)
                 ? StrictResult(item: 6, status: .pass, message: "file")
                 : StrictResult(item: 6, status: .fail, message: "unreadable")
         }
-        if let gm = env["SPOOK_MACOS_GROUP_MAPPING"], !gm.isEmpty {
+        if let gm = env["SPOOKTACULAR_MACOS_GROUP_MAPPING"], !gm.isEmpty {
             return StrictResult(item: 6, status: .pass, message: "group")
         }
         return StrictResult(item: 6, status: .fail, message: "unset")
@@ -69,7 +69,7 @@ struct DoctorStrictChecksTests {
 
     /// Item 09 — Audit JSONL.
     static func check09(env: [String: String], fm: FileManager = .default) -> StrictResult {
-        guard let p = env["SPOOK_AUDIT_FILE"], !p.isEmpty else {
+        guard let p = env["SPOOKTACULAR_AUDIT_FILE"], !p.isEmpty else {
             return StrictResult(item: 9, status: .fail, message: "unset")
         }
         let dir = URL(filePath: p).deletingLastPathComponent().path
@@ -80,10 +80,10 @@ struct DoctorStrictChecksTests {
 
     /// Item 11 — Merkle key mode 0600.
     static func check11(env: [String: String], fm: FileManager = .default) -> StrictResult {
-        guard env["SPOOK_AUDIT_MERKLE"] == "1" else {
+        guard env["SPOOKTACULAR_AUDIT_MERKLE"] == "1" else {
             return StrictResult(item: 11, status: .warn, message: "disabled")
         }
-        guard let p = env["SPOOK_AUDIT_SIGNING_KEY"], !p.isEmpty else {
+        guard let p = env["SPOOKTACULAR_AUDIT_SIGNING_KEY"], !p.isEmpty else {
             return StrictResult(item: 11, status: .fail, message: "unset")
         }
         guard fm.fileExists(atPath: p) else {
@@ -100,7 +100,7 @@ struct DoctorStrictChecksTests {
 
     /// Item 13 — Distributed lock backend.
     static func check13(env: [String: String]) -> StrictResult {
-        if env["SPOOK_DYNAMO_TABLE"]?.isEmpty == false {
+        if env["SPOOKTACULAR_DYNAMO_TABLE"]?.isEmpty == false {
             return StrictResult(item: 13, status: .pass, message: "dynamo")
         }
         if env["SPOOK_K8S_API"]?.isEmpty == false {
@@ -111,13 +111,13 @@ struct DoctorStrictChecksTests {
 
     /// Item 14 — Tenancy mode.
     static func check14(env: [String: String]) -> StrictResult {
-        let mode = env["SPOOK_TENANCY_MODE"] ?? "single-tenant"
+        let mode = env["SPOOKTACULAR_TENANCY_MODE"] ?? "single-tenant"
         return StrictResult(item: 14, status: .pass, message: mode)
     }
 
     /// Item 15 — Insecure mode OFF.
     static func check15(env: [String: String]) -> StrictResult {
-        env["SPOOK_INSECURE_CONTROLLER"] == "1"
+        env["SPOOKTACULAR_INSECURE_CONTROLLER"] == "1"
             ? StrictResult(item: 15, status: .fail, message: "on")
             : StrictResult(item: 15, status: .pass, message: "off")
     }
@@ -136,7 +136,7 @@ struct DoctorStrictChecksTests {
 
     // MARK: - Tests — item 01
 
-    @Test("01 fails when SPOOK_TLS_CERT_PATH unset")
+    @Test("01 fails when SPOOKTACULAR_TLS_CERT_PATH unset")
     func item01UnsetFails() {
         let result = Self.check01(env: [:])
         #expect(result.status == .fail)
@@ -146,8 +146,8 @@ struct DoctorStrictChecksTests {
     @Test("01 fails when cert file is missing")
     func item01MissingCertFails() {
         let result = Self.check01(env: [
-            "SPOOK_TLS_CERT_PATH": "/nonexistent/cert.pem",
-            "SPOOK_TLS_KEY_PATH": "/nonexistent/key.pem"
+            "SPOOKTACULAR_TLS_CERT_PATH": "/nonexistent/cert.pem",
+            "SPOOKTACULAR_TLS_KEY_PATH": "/nonexistent/key.pem"
         ])
         #expect(result.status == .fail)
     }
@@ -159,8 +159,8 @@ struct DoctorStrictChecksTests {
         defer { try? FileManager.default.removeItem(at: cert) }
         defer { try? FileManager.default.removeItem(at: key) }
         let result = Self.check01(env: [
-            "SPOOK_TLS_CERT_PATH": cert.path,
-            "SPOOK_TLS_KEY_PATH": key.path
+            "SPOOKTACULAR_TLS_CERT_PATH": cert.path,
+            "SPOOKTACULAR_TLS_KEY_PATH": key.path
         ])
         #expect(result.status == .pass)
     }
@@ -177,7 +177,7 @@ struct DoctorStrictChecksTests {
     func item02Passes() throws {
         let ca = try Self.scratchFile()
         defer { try? FileManager.default.removeItem(at: ca) }
-        let result = Self.check02(env: ["SPOOK_TLS_CA_PATH": ca.path])
+        let result = Self.check02(env: ["SPOOKTACULAR_TLS_CA_PATH": ca.path])
         #expect(result.status == .pass)
     }
 
@@ -185,7 +185,7 @@ struct DoctorStrictChecksTests {
 
     @Test("06 passes with group mapping when config unset")
     func item06GroupMappingPasses() {
-        let result = Self.check06(env: ["SPOOK_MACOS_GROUP_MAPPING": "sre=admin"])
+        let result = Self.check06(env: ["SPOOKTACULAR_MACOS_GROUP_MAPPING": "sre=admin"])
         #expect(result.status == .pass)
     }
 
@@ -197,7 +197,7 @@ struct DoctorStrictChecksTests {
 
     // MARK: - Tests — item 09
 
-    @Test("09 fails when SPOOK_AUDIT_FILE unset")
+    @Test("09 fails when SPOOKTACULAR_AUDIT_FILE unset")
     func item09UnsetFails() {
         let result = Self.check09(env: [:])
         #expect(result.status == .fail)
@@ -207,7 +207,7 @@ struct DoctorStrictChecksTests {
     func item09Passes() {
         // /tmp is universally writable in CI runners.
         let target = NSTemporaryDirectory() + "audit-\(UUID().uuidString).jsonl"
-        let result = Self.check09(env: ["SPOOK_AUDIT_FILE": target])
+        let result = Self.check09(env: ["SPOOKTACULAR_AUDIT_FILE": target])
         #expect(result.status == .pass)
     }
 
@@ -221,7 +221,7 @@ struct DoctorStrictChecksTests {
 
     @Test("11 fails when signing key path unset")
     func item11MissingKeyFails() {
-        let result = Self.check11(env: ["SPOOK_AUDIT_MERKLE": "1"])
+        let result = Self.check11(env: ["SPOOKTACULAR_AUDIT_MERKLE": "1"])
         #expect(result.status == .fail)
     }
 
@@ -234,8 +234,8 @@ struct DoctorStrictChecksTests {
             ofItemAtPath: url.path
         )
         let result = Self.check11(env: [
-            "SPOOK_AUDIT_MERKLE": "1",
-            "SPOOK_AUDIT_SIGNING_KEY": url.path
+            "SPOOKTACULAR_AUDIT_MERKLE": "1",
+            "SPOOKTACULAR_AUDIT_SIGNING_KEY": url.path
         ])
         #expect(result.status == .pass)
     }
@@ -249,8 +249,8 @@ struct DoctorStrictChecksTests {
             ofItemAtPath: url.path
         )
         let result = Self.check11(env: [
-            "SPOOK_AUDIT_MERKLE": "1",
-            "SPOOK_AUDIT_SIGNING_KEY": url.path
+            "SPOOKTACULAR_AUDIT_MERKLE": "1",
+            "SPOOKTACULAR_AUDIT_SIGNING_KEY": url.path
         ])
         #expect(result.status == .fail)
     }
@@ -259,7 +259,7 @@ struct DoctorStrictChecksTests {
 
     @Test("13 passes with DynamoDB")
     func item13Dynamo() {
-        let result = Self.check13(env: ["SPOOK_DYNAMO_TABLE": "spook-locks"])
+        let result = Self.check13(env: ["SPOOKTACULAR_DYNAMO_TABLE": "spook-locks"])
         #expect(result.status == .pass)
         #expect(result.message == "dynamo")
     }
@@ -288,7 +288,7 @@ struct DoctorStrictChecksTests {
 
     @Test("14 echoes multi-tenant")
     func item14MultiTenant() {
-        let result = Self.check14(env: ["SPOOK_TENANCY_MODE": "multi-tenant"])
+        let result = Self.check14(env: ["SPOOKTACULAR_TENANCY_MODE": "multi-tenant"])
         #expect(result.status == .pass)
         #expect(result.message == "multi-tenant")
     }
@@ -297,7 +297,7 @@ struct DoctorStrictChecksTests {
 
     @Test("15 fails with insecure on")
     func item15On() {
-        let result = Self.check15(env: ["SPOOK_INSECURE_CONTROLLER": "1"])
+        let result = Self.check15(env: ["SPOOKTACULAR_INSECURE_CONTROLLER": "1"])
         #expect(result.status == .fail)
     }
 

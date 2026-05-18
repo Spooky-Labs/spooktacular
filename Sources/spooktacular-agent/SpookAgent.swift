@@ -44,8 +44,8 @@ import CryptoKit
 import Foundation
 import os
 import Security
-import SpookApplication
-import SpookCore
+import SpooktacularApplication
+import SpooktacularCore
 
 // MARK: - Constants
 
@@ -73,7 +73,7 @@ private let log = Logger(subsystem: "com.spooktacular.agent", category: "agent")
 // MARK: - Host trust loading
 
 /// Loads the operator-provisioned allowlist of host public keys
-/// from `SPOOK_HOST_PUBLIC_KEYS_DIR`.
+/// from `SPOOKTACULAR_HOST_PUBLIC_KEYS_DIR`.
 ///
 /// Every `.pem` / `.pub` file in the directory is treated as a
 /// PEM-SPKI P-256 public key that authorizes one host identity.
@@ -90,14 +90,14 @@ private let log = Logger(subsystem: "com.spooktacular.agent", category: "agent")
 /// loud warning).
 private func loadSignatureVerifier() -> SignedRequestVerifier? {
     let env = ProcessInfo.processInfo.environment
-    guard let dir = env["SPOOK_HOST_PUBLIC_KEYS_DIR"] else {
+    guard let dir = env["SPOOKTACULAR_HOST_PUBLIC_KEYS_DIR"] else {
         return nil
     }
 
     let fm = FileManager.default
     var isDir: ObjCBool = false
     guard fm.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue else {
-        log.fault("SPOOK_HOST_PUBLIC_KEYS_DIR at '\(dir, privacy: .public)' is not a directory — signature path disabled")
+        log.fault("SPOOKTACULAR_HOST_PUBLIC_KEYS_DIR at '\(dir, privacy: .public)' is not a directory — signature path disabled")
         return nil
     }
 
@@ -126,7 +126,7 @@ private func loadSignatureVerifier() -> SignedRequestVerifier? {
     }
 
     guard !keys.isEmpty else {
-        log.fault("SPOOK_HOST_PUBLIC_KEYS_DIR at '\(dir, privacy: .public)' has no valid PEM files — signature path disabled")
+        log.fault("SPOOKTACULAR_HOST_PUBLIC_KEYS_DIR at '\(dir, privacy: .public)' has no valid PEM files — signature path disabled")
         return nil
     }
 
@@ -139,7 +139,7 @@ private func loadSignatureVerifier() -> SignedRequestVerifier? {
 /// Parses command-line arguments and either installs a LaunchDaemon/Agent
 /// or starts the HTTP API server.
 @main
-enum SpookAgent {
+enum SpooktacularAgent {
     static func main() {
         let arguments = CommandLine.arguments
 
@@ -156,19 +156,19 @@ enum SpookAgent {
         // Load the host-identity signature verifier + the
         // OWASP-aligned break-glass ticket verifier. Either can
         // be absent; the agent refuses to start if BOTH are
-        // absent unless `SPOOK_AGENT_ALLOW_NO_AUTH=1` is set
+        // absent unless `SPOOKTACULAR_AGENT_ALLOW_NO_AUTH=1` is set
         // (legacy local-dev escape hatch).
         AgentHTTPServer.signatureVerifier = loadSignatureVerifier()
         AgentHTTPServer.ticketVerifier = loadTicketVerifier()
 
         let env = ProcessInfo.processInfo.environment
-        let noAuthEscape = env["SPOOK_AGENT_ALLOW_NO_AUTH"] == "1"
+        let noAuthEscape = env["SPOOKTACULAR_AGENT_ALLOW_NO_AUTH"] == "1"
 
         if AgentHTTPServer.signatureVerifier == nil && AgentHTTPServer.ticketVerifier == nil {
             if noAuthEscape {
-                log.fault("Agent starting in NO-AUTH legacy mode (SPOOK_AGENT_ALLOW_NO_AUTH=1). All non-break-glass requests are unauthenticated. DO NOT USE IN PRODUCTION.")
+                log.fault("Agent starting in NO-AUTH legacy mode (SPOOKTACULAR_AGENT_ALLOW_NO_AUTH=1). All non-break-glass requests are unauthenticated. DO NOT USE IN PRODUCTION.")
             } else {
-                log.fault("Agent refuses to start: neither SPOOK_HOST_PUBLIC_KEYS_DIR (host signature trust) nor SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR (break-glass tickets) is configured. Set at least one, or explicitly opt in to the legacy no-auth mode with SPOOK_AGENT_ALLOW_NO_AUTH=1.")
+                log.fault("Agent refuses to start: neither SPOOKTACULAR_HOST_PUBLIC_KEYS_DIR (host signature trust) nor SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR (break-glass tickets) is configured. Set at least one, or explicitly opt in to the legacy no-auth mode with SPOOKTACULAR_AGENT_ALLOW_NO_AUTH=1.")
                 exit(1)
             }
         }
@@ -176,6 +176,13 @@ enum SpookAgent {
         log.notice(
             "spooktacular-agent starting: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort), signatures=\(AgentHTTPServer.signatureVerifier != nil ? "enabled" : "disabled"), tickets=\(AgentHTTPServer.ticketVerifier != nil ? "enabled" : "disabled")"
         )
+        // Apple-native event push. Dials the host's
+        // `VZVirtioSocketListener` on port 9469 and streams
+        // length-prefixed `GuestEvent` frames. Runs on a
+        // detached thread alongside the HTTP listeners so
+        // request/response RPCs (exec, clipboard, apps, …)
+        // keep their HTTP path.
+        HostEventDialer.start()
         AgentHTTPServer.listenAll(
             readonlyPort: readonlyPort,
             runnerPort: runnerPort,
@@ -187,16 +194,16 @@ enum SpookAgent {
     /// or returns `nil` if the operator hasn't configured one.
     ///
     /// Required env vars:
-    ///   - `SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` — directory
+    ///   - `SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR` — directory
     ///     containing one or more PEM-encoded P-256 public keys
     ///     (files ending in `.pem` or `.pub`). Each file names
     ///     one trusted operator. The verifier accepts a ticket
     ///     if its signature matches any one of these keys.
-    ///   - `SPOOK_BREAKGLASS_ISSUERS` — comma-separated list of
+    ///   - `SPOOKTACULAR_BREAKGLASS_ISSUERS` — comma-separated list of
     ///     operator identities that may mint tickets. Checked
     ///     as a secondary allowlist alongside the cryptographic
     ///     key match.
-    ///   - `SPOOK_BREAKGLASS_TENANT` — the tenant this agent
+    ///   - `SPOOKTACULAR_BREAKGLASS_TENANT` — the tenant this agent
     ///     belongs to; tickets issued for another tenant are
     ///     rejected even if otherwise valid.
     ///
@@ -208,15 +215,15 @@ enum SpookAgent {
     /// accepting nothing).
     private static func loadTicketVerifier() -> BreakGlassTicketVerifier? {
         let env = ProcessInfo.processInfo.environment
-        guard let keysDir = env["SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR"],
-              let issuersRaw = env["SPOOK_BREAKGLASS_ISSUERS"],
-              let tenantRaw = env["SPOOK_BREAKGLASS_TENANT"]
+        guard let keysDir = env["SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR"],
+              let issuersRaw = env["SPOOKTACULAR_BREAKGLASS_ISSUERS"],
+              let tenantRaw = env["SPOOKTACULAR_BREAKGLASS_TENANT"]
         else { return nil }
 
         let fm = FileManager.default
         var isDir: ObjCBool = false
         guard fm.fileExists(atPath: keysDir, isDirectory: &isDir), isDir.boolValue else {
-            log.fault("SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR at '\(keysDir, privacy: .public)' is not a directory — ticket path disabled")
+            log.fault("SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR at '\(keysDir, privacy: .public)' is not a directory — ticket path disabled")
             return nil
         }
 
@@ -245,7 +252,7 @@ enum SpookAgent {
         }
 
         guard !publicKeys.isEmpty else {
-            log.fault("SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR at '\(keysDir, privacy: .public)' has no valid PEM files — ticket path disabled")
+            log.fault("SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR at '\(keysDir, privacy: .public)' has no valid PEM files — ticket path disabled")
             return nil
         }
 
@@ -253,7 +260,7 @@ enum SpookAgent {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty })
         guard !issuers.isEmpty else {
-            log.fault("SPOOK_BREAKGLASS_ISSUERS is empty — ticket path disabled")
+            log.fault("SPOOKTACULAR_BREAKGLASS_ISSUERS is empty — ticket path disabled")
             return nil
         }
 

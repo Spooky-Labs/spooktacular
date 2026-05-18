@@ -52,7 +52,7 @@ struct DestructiveCommandPresenceGateTests {
     func deleteCommandGates() throws {
         let hasGate = try sourceContains(
             "AdminPresenceGate.requirePresence",
-            in: "Sources/spook/Commands/Delete.swift"
+            in: "Sources/spooktacular-cli/Commands/Delete.swift"
         )
         #expect(
             hasGate,
@@ -64,7 +64,7 @@ struct DestructiveCommandPresenceGateTests {
     func snapshotCommandsGate() throws {
         // Delete + Restore = 2 expected call sites. Save + List
         // do not gate — save is non-destructive, list is read-only.
-        let url = repoRoot().appendingPathComponent("Sources/spook/Commands/Snapshot.swift")
+        let url = repoRoot().appendingPathComponent("Sources/spooktacular-cli/Commands/Snapshot.swift")
         let contents = try String(contentsOf: url, encoding: .utf8)
         let count = contents
             .components(separatedBy: "AdminPresenceGate.requirePresence")

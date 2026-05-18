@@ -1,8 +1,8 @@
 import Testing
 import Foundation
 import LocalAuthentication
-@testable import SpookCore
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularInfrastructureApple
 
 /// Tests for ``AdminPresenceGate``.
 ///
@@ -29,7 +29,7 @@ struct AdminPresenceGateTests {
 
     @Test("Bypass with no token throws bypassTokenMissing")
     func bypassWithoutTokenRejects() async {
-        let env = ["SPOOK_ADMIN_PRESENCE_BYPASS": "1"]
+        let env = ["SPOOKTACULAR_ADMIN_PRESENCE_BYPASS": "1"]
         await #expect(throws: AdminPresenceError.self) {
             _ = try await AdminPresenceGate.requirePresence(
                 reason: "Admin action",
@@ -45,8 +45,8 @@ struct AdminPresenceGateTests {
 
     @Test("Bypass with token but no verifier throws bypassVerifierNotConfigured")
     func bypassWithoutVerifierRejects() async {
-        let env = ["SPOOK_ADMIN_PRESENCE_BYPASS": "1",
-                   "SPOOK_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-XYZ"]
+        let env = ["SPOOKTACULAR_ADMIN_PRESENCE_BYPASS": "1",
+                   "SPOOKTACULAR_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-XYZ"]
         await #expect(throws: AdminPresenceError.self) {
             _ = try await AdminPresenceGate.requirePresence(
                 reason: "Admin action",
@@ -62,8 +62,8 @@ struct AdminPresenceGateTests {
 
     @Test("Bypass with invalid token throws bypassTokenInvalid")
     func bypassWithInvalidTokenRejects() async {
-        let env = ["SPOOK_ADMIN_PRESENCE_BYPASS": "1",
-                   "SPOOK_ADMIN_PRESENCE_BYPASS_TOKEN": "forged-token"]
+        let env = ["SPOOKTACULAR_ADMIN_PRESENCE_BYPASS": "1",
+                   "SPOOKTACULAR_ADMIN_PRESENCE_BYPASS_TOKEN": "forged-token"]
         let verifier = FixedVerifier(accept: nil)
         await #expect(throws: AdminPresenceError.self) {
             _ = try await AdminPresenceGate.requirePresence(
@@ -80,8 +80,8 @@ struct AdminPresenceGateTests {
 
     @Test("Bypass with token + verifier but no audit sink throws bypassAuditSinkNotConfigured")
     func bypassWithoutAuditSinkRejects() async {
-        let env = ["SPOOK_ADMIN_PRESENCE_BYPASS": "1",
-                   "SPOOK_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-OK"]
+        let env = ["SPOOKTACULAR_ADMIN_PRESENCE_BYPASS": "1",
+                   "SPOOKTACULAR_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-OK"]
         let verifier = FixedVerifier(accept: "alice@acme, expires 2026-05-17")
         await #expect(throws: AdminPresenceError.self) {
             _ = try await AdminPresenceGate.requirePresence(
@@ -98,8 +98,8 @@ struct AdminPresenceGateTests {
 
     @Test("Valid bypass emits one audit record + one metric")
     func bypassValidPathAuditsAndMetrics() async throws {
-        let env = ["SPOOK_ADMIN_PRESENCE_BYPASS": "1",
-                   "SPOOK_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-OK"]
+        let env = ["SPOOKTACULAR_ADMIN_PRESENCE_BYPASS": "1",
+                   "SPOOKTACULAR_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-OK"]
         let verifier = FixedVerifier(accept: "alice@acme")
         let sink = RecordingAuditSink()
         let counter = RecordingCounter()
@@ -129,9 +129,9 @@ struct AdminPresenceGateTests {
 
     @Test("Bypass with strict mode throws bypassRefusedInStrictMode even with valid token")
     func strictModeRefusesBypass() async {
-        let env = ["SPOOK_ADMIN_PRESENCE_BYPASS": "1",
-                   "SPOOK_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-OK",
-                   "SPOOK_ADMIN_PRESENCE_STRICT": "1"]
+        let env = ["SPOOKTACULAR_ADMIN_PRESENCE_BYPASS": "1",
+                   "SPOOKTACULAR_ADMIN_PRESENCE_BYPASS_TOKEN": "tok-OK",
+                   "SPOOKTACULAR_ADMIN_PRESENCE_STRICT": "1"]
         let verifier = FixedVerifier(accept: "alice@acme")
         await #expect(throws: AdminPresenceError.self) {
             _ = try await AdminPresenceGate.requirePresence(

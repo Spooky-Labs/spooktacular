@@ -25,8 +25,9 @@
 import AppKit
 import Foundation
 import os
-import SpookApplication
-import SpookCore
+import Synchronization
+import SpooktacularApplication
+import SpooktacularCore
 
 /// Constant-time string equality.
 ///
@@ -48,9 +49,21 @@ private func constantTimeEqual(_ lhs: String, _ rhs: String) -> Bool {
 }
 
 /// Optional file-based audit sink for SIEM export.
-/// Set SPOOK_AGENT_AUDIT_FILE to enable.
-nonisolated(unsafe) private var agentAuditFile: FileHandle? = {
-    guard let path = ProcessInfo.processInfo.environment["SPOOK_AGENT_AUDIT_FILE"],
+/// Set SPOOKTACULAR_AGENT_AUDIT_FILE to enable.
+///
+/// `FileHandle` isn't `Sendable`, so the handle lives
+/// inside a [`Mutex`](https://developer.apple.com/documentation/synchronization/mutex)
+/// from Swift's `Synchronization` module — Sendable by
+/// construction, and `withLock` serializes every write
+/// against the shared file position so concurrent
+/// dispatch-queue handlers can't interleave bytes mid-line.
+///
+/// The audit path is not hot (break-glass exec writes
+/// only, on the order of requests-per-minute not
+/// requests-per-second), so the per-write lock
+/// acquisition is in the noise.
+private let agentAuditFile = Mutex<FileHandle?>({
+    guard let path = ProcessInfo.processInfo.environment["SPOOKTACULAR_AGENT_AUDIT_FILE"],
           !path.isEmpty else {
         return nil
     }
@@ -63,7 +76,7 @@ nonisolated(unsafe) private var agentAuditFile: FileHandle? = {
     guard let handle = FileHandle(forWritingAtPath: path) else { return nil }
     handle.seekToEndOfFile()
     return handle
-}()
+}())
 
 /// Shared JSON encoder for agent audit JSONL lines.
 private let agentAuditEncoder: JSONEncoder = {
@@ -85,33 +98,31 @@ private let maxExecOutputBytes = 1_048_576 // 1 MB
 /// Maximum concurrent exec commands allowed.
 private let maxConcurrentExecs = 3
 
-/// Serializes access to ``activeExecCount`` across the agent's
-/// concurrent dispatch queues. `nonisolated(unsafe) var` alone was
-/// not safe: two simultaneous requests could read the same count,
-/// both pass the guard, both increment, and the limit degraded to
-/// `maxConcurrentExecs + N` rather than `maxConcurrentExecs`. An
-/// `os_unfair_lock` protects the increment-and-check as a single
-/// atomic operation with no kernel-context-switch cost.
-nonisolated(unsafe) private var _activeExecLock = os_unfair_lock()
-nonisolated(unsafe) private var _activeExecCount: Int = 0
+/// Exec-slot counter protected by a [`Mutex`](https://developer.apple.com/documentation/synchronization/mutex)
+/// from Swift's `Synchronization` module.  Apple's
+/// Sendable-by-construction replacement for the
+/// `nonisolated(unsafe) var` + `os_unfair_lock` pattern
+/// this file previously used.  `withLock` gives us atomic
+/// check-then-increment (and atomic decrement) in a single
+/// call — the original bug-note in the old comment about
+/// read-pass-increment races is resolved by construction.
+private let _activeExecCount = Mutex<Int>(0)
 
 /// Attempts to reserve one of the ``maxConcurrentExecs`` slots.
 /// Returns `true` on success; `false` when the limit is reached.
 /// Callers MUST call ``releaseExecSlot()`` on success.
 private func acquireExecSlot() -> Bool {
-    os_unfair_lock_lock(&_activeExecLock)
-    defer { os_unfair_lock_unlock(&_activeExecLock) }
-    guard _activeExecCount < maxConcurrentExecs else { return false }
-    _activeExecCount += 1
-    return true
+    _activeExecCount.withLock { count in
+        guard count < maxConcurrentExecs else { return false }
+        count += 1
+        return true
+    }
 }
 
 /// Releases an exec slot previously acquired with
 /// ``acquireExecSlot()``. Safe to call in a `defer` block.
 private func releaseExecSlot() {
-    os_unfair_lock_lock(&_activeExecLock)
-    defer { os_unfair_lock_unlock(&_activeExecLock) }
-    _activeExecCount = max(0, _activeExecCount - 1)
+    _activeExecCount.withLock { $0 = max(0, $0 - 1) }
 }
 
 /// The agent version, reported in health checks.
@@ -134,14 +145,25 @@ private let jsonDecoder = JSONDecoder()
 
 /// The authorization scope required by an endpoint.
 ///
-/// Three-tier model:
+/// Four-tier model:
 /// - ``readonly``: GET endpoints that inspect state without mutating it.
 /// - ``runner``: Mutation endpoints except exec (launch/quit apps, set clipboard, upload files).
 /// - ``breakGlass``: Shell execution only — requires explicit break-glass authorization.
+/// - ``tunnel``: TCP-over-vsock tunnels (`POST /api/v1/tunnel/<port>`).
+///   Isolated from the other scopes because arbitrary TCP access
+///   to guest localhost ports is a **different** capability than
+///   file upload or app launch — a leaked runner token shouldn't
+///   also grant "can reach the guest's internal HTTP admin API".
+///   Each scope gets its own vsock port so a compromised channel
+///   credential never cross-contaminates.
 ///
 /// Conforms to `Comparable` so vsock channel scopes can be compared
 /// against endpoint scopes: if the endpoint's scope exceeds the
 /// channel's scope, the request is rejected at the transport layer.
+/// The tier-vs-scope check at the end of ``authorizeRequest``
+/// tightens this further — `tunnel`-tier tokens can ONLY reach
+/// tunnel-scope endpoints; they can't downgrade to `readonly`
+/// even though `readonly < tunnel` by rawValue.
 enum EndpointScope: Int, Comparable {
     /// Read-only endpoints that inspect state without mutating it.
     case readonly = 0
@@ -149,6 +171,8 @@ enum EndpointScope: Int, Comparable {
     case runner = 1
     /// Break-glass endpoints — raw shell execution only.
     case breakGlass = 2
+    /// TCP-over-vsock tunnels — isolated to its own port + credential.
+    case tunnel = 3
 
     static func < (lhs: EndpointScope, rhs: EndpointScope) -> Bool {
         lhs.rawValue < rhs.rawValue
@@ -160,13 +184,22 @@ enum EndpointScope: Int, Comparable {
         case .readonly: "readonly"
         case .runner: "runner"
         case .breakGlass: "break-glass"
+        case .tunnel: "tunnel"
         }
     }
 }
 
 /// Returns the ``EndpointScope`` for the given method/path pair,
 /// or `nil` if the route is unknown.
+///
+/// Tunnel endpoints are path-prefixed (`/api/v1/tunnel/<port>`)
+/// so we special-case them before the exact-match switch.
 private func endpointScope(method: String, path: String) -> EndpointScope? {
+    // Tunnel — arbitrary TCP relay to guest localhost. Matched
+    // by prefix since the port is part of the path.
+    if method == "POST", path.hasPrefix("/api/v1/tunnel/") {
+        return .tunnel
+    }
     switch (method, path) {
     // Break-glass — raw shell execution
     case ("POST", "/api/v1/exec"):
@@ -185,6 +218,8 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
          ("GET", "/api/v1/fs"),
          ("GET", "/api/v1/files"),
          ("GET", "/api/v1/ports"),
+         ("GET", "/api/v1/stats"),
+         ("GET", "/api/v1/stats/stream"),
          ("GET", "/api/v1/identity-token"):
         return .readonly
     default:
@@ -201,11 +236,13 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
 /// | `.readonly` | 9470 |
 /// | `.runner` | 9471 |
 /// | `.breakGlass` | 9472 |
+/// | `.tunnel` | 9473 |
 private func portForScope(_ scope: EndpointScope) -> UInt32 {
     switch scope {
     case .readonly: 9470
     case .runner: 9471
     case .breakGlass: 9472
+    case .tunnel: 9473
     }
 }
 
@@ -214,13 +251,207 @@ private func portForScope(_ scope: EndpointScope) -> UInt32 {
 /// The authorization tier determined from the presented Bearer token.
 ///
 /// Used to enforce scope-based access control and to annotate audit log entries.
-private enum AuthTier: String {
+enum AuthTier: String {
     /// Break-glass — all endpoints including exec.
     case breakGlass = "break-glass"
     /// Runner — mutation endpoints except exec.
     case runner
     /// Read-only — GET endpoints only.
     case readonly
+    /// Tunnel — isolated to TCP-over-vsock relay endpoints only.
+    /// Deliberately does not include readonly / runner even
+    /// though tunnel's rawValue is higher — capability is
+    /// orthogonal, not hierarchical.
+    case tunnel
+}
+
+/// Outcome of the combined channel-scope + credential + tier-scope gate.
+///
+/// ``allowed`` carries the resolved tier (or `nil` for the
+/// liveness-exempt `GET /health`) so the dispatcher can pass it
+/// through to the handler. ``denied`` carries the fully serialized
+/// HTTP error response; the caller writes it to the socket and
+/// closes the connection without further processing.
+///
+/// Extracted from ``routeRequest(_:channelScope:signatureVerifier:ticketVerifier:)``
+/// so streaming endpoints (which bypass the request→response
+/// ping-pong and instead hold the socket open writing NDJSON frames)
+/// run through the identical gate before upgrading to a stream.
+enum AuthorizationOutcome {
+    case allowed(AuthTier?)
+    case denied(Data)
+}
+
+/// Applies the full auth gate to a parsed request.
+///
+/// Enforces, in order:
+///
+/// 1. **Channel scope** — the endpoint's required scope must fit
+///    within the vsock channel's scope.
+/// 2. **Liveness exemption** — `GET /health` skips credentials.
+/// 3. **Credential verification** — `bgt:` ticket, signature
+///    headers, or legacy no-auth mode (only when no verifier was
+///    provisioned).
+/// 4. **Tier vs. scope** — readonly tokens can't reach runner
+///    endpoints; runner tokens can't reach break-glass.
+///
+/// Emits the audit log entry on denial so callers don't have to
+/// re-implement it.
+func authorizeRequest(
+    _ request: AgentHTTPRequest,
+    channelScope: EndpointScope,
+    signatureVerifier: SignedRequestVerifier?,
+    ticketVerifier: BreakGlassTicketVerifier?
+) -> AuthorizationOutcome {
+
+    // 1. Channel scope gate.
+    let requiredScope = endpointScope(method: request.method, path: request.path)
+    if let required = requiredScope, required > channelScope {
+        let response = errorResponse(
+            message: "This channel does not support \(request.method) \(request.path). Use port \(portForScope(required)).",
+            statusCode: 403
+        )
+        emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: nil)
+        return .denied(response)
+    }
+
+    // 2. Liveness probe exemption.
+    if request.method == "GET" && request.path == "/health" {
+        return .allowed(nil)
+    }
+
+    // 3. Credential gate.
+    var authTier: AuthTier?
+
+    let rawAuth = request.headers["authorization"] ?? ""
+    let rawBearer = rawAuth.hasPrefix("Bearer ")
+        ? String(rawAuth.dropFirst("Bearer ".count))
+        : ""
+
+    let hasSignatureHeaders = request.headers["x-spooktacular-signature"] != nil
+
+    if rawBearer.hasPrefix(BreakGlassTicket.wirePrefix) {
+        guard let verifier = ticketVerifier else {
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return .denied(errorResponse(message: "Unauthorized.", statusCode: 401))
+        }
+        switch verifier.verify(ticket: rawBearer) {
+        case .success(let ticket):
+            log.notice(
+                "Break-glass ticket consumed: jti=\(ticket.jti, privacy: .public) issuer=\(ticket.issuer, privacy: .public) reason=\(ticket.reason ?? "(none)", privacy: .public)"
+            )
+            authTier = .breakGlass
+        case .failure(let err):
+            log.warning("Break-glass ticket rejected: \(err.localizedDescription, privacy: .public)")
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return .denied(errorResponse(message: "Unauthorized.", statusCode: 401))
+        }
+    } else if hasSignatureHeaders {
+        if channelScope == .breakGlass {
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return .denied(errorResponse(
+                message: "Break-glass channel requires an operator-minted ticket, not a signed request.",
+                statusCode: 401
+            ))
+        }
+        guard let verifier = signatureVerifier, verifier.hasTrustedKeys else {
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return .denied(errorResponse(message: "Unauthorized.", statusCode: 401))
+        }
+        do {
+            _ = try verifier.verify(
+                method: request.method,
+                path: request.path,
+                headers: request.headers,
+                body: request.body ?? Data()
+            )
+        } catch {
+            log.warning("Signed request rejected: \(error.localizedDescription, privacy: .public)")
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return .denied(errorResponse(message: "Unauthorized.", statusCode: 401))
+        }
+        switch channelScope {
+        case .readonly:   authTier = .readonly
+        case .runner:     authTier = .runner
+        case .tunnel:     authTier = .tunnel
+        case .breakGlass: authTier = .runner   // unreachable
+        }
+    } else if signatureVerifier == nil && ticketVerifier == nil {
+        if channelScope == .breakGlass {
+            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+            return .denied(errorResponse(message: "Unauthorized.", statusCode: 401))
+        }
+        switch channelScope {
+        case .runner:   authTier = .runner
+        case .tunnel:   authTier = .tunnel
+        default:        authTier = .readonly
+        }
+    } else {
+        emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+        return .denied(errorResponse(message: "Unauthorized.", statusCode: 401))
+    }
+
+    guard let resolvedTier = authTier else {
+        emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
+        return .denied(errorResponse(message: "Unauthorized.", statusCode: 401))
+    }
+
+    // 4. Tier vs. endpoint scope. Tunnel tier is deliberately
+    // ORTHOGONAL to the readonly/runner/break-glass hierarchy
+    // — a tunnel token can reach tunnel endpoints and nothing
+    // else. This matches the "channel isolation" threat model:
+    // a leaked tunnel credential must not escalate to file I/O
+    // or app launch.
+    let scope = endpointScope(method: request.method, path: request.path)
+    switch resolvedTier {
+    case .readonly:
+        if scope == .runner || scope == .breakGlass || scope == .tunnel {
+            let message: String
+            switch scope {
+            case .breakGlass:
+                message = "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details."
+            case .tunnel:
+                message = "Forbidden. TCP tunnels require a tunnel-scope token on port 9473."
+            default:
+                message = "Forbidden. Read-only token cannot access mutation endpoints."
+            }
+            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
+            return .denied(errorResponse(message: message, statusCode: 403))
+        }
+    case .runner:
+        if scope == .breakGlass || scope == .tunnel {
+            let message = scope == .breakGlass
+                ? "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details."
+                : "Forbidden. TCP tunnels require a tunnel-scope token on port 9473."
+            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
+            return .denied(errorResponse(message: message, statusCode: 403))
+        }
+    case .tunnel:
+        // Tunnel tier is locked to tunnel endpoints only —
+        // never a silent escalation to readonly / runner /
+        // break-glass even though the underlying rawValue
+        // ordering would permit it.
+        if scope != .tunnel {
+            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
+            return .denied(errorResponse(
+                message: "Forbidden. Tunnel-scope token can only reach TCP-tunnel endpoints.",
+                statusCode: 403
+            ))
+        }
+    case .breakGlass:
+        // Break-glass can do anything EXCEPT tunnel. Tunnel
+        // ticket usage would leak shell-capability into the
+        // tunnel channel and vice versa — keep them split.
+        if scope == .tunnel {
+            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
+            return .denied(errorResponse(
+                message: "Forbidden. Tunnel endpoints require a tunnel-scope token, not a break-glass ticket.",
+                statusCode: 403
+            ))
+        }
+    }
+
+    return .allowed(resolvedTier)
 }
 
 /// Routes an ``AgentHTTPRequest`` to the appropriate handler.
@@ -234,7 +465,7 @@ private enum AuthTier: String {
 /// 2. **Credential check** — one of three paths:
 ///    - `bgt:`-prefixed break-glass ticket → ticket verifier;
 ///      on success, tier = `.breakGlass`.
-///    - `X-Spook-Signature` headers → signature verifier against
+///    - `X-Spooktacular-Signature` headers → signature verifier against
 ///      the trusted host-key allowlist; on success, tier is
 ///      derived from the channel (readonly channel → readonly
 ///      tier, runner channel → runner tier). The break-glass
@@ -264,143 +495,31 @@ func routeRequest(
     ticketVerifier: BreakGlassTicketVerifier? = nil
 ) -> Data {
 
-    // --- Channel scope gate (transport-layer isolation) ---
-    let requiredScope = endpointScope(method: request.method, path: request.path)
-    if let required = requiredScope, required > channelScope {
-        let response = errorResponse(
-            message: "This channel does not support \(request.method) \(request.path). Use port \(portForScope(required)).",
-            statusCode: 403
-        )
-        emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: nil)
-        return response
+    // Run the full auth gate (channel scope + liveness exemption
+    // + credentials + tier-scope enforcement). Streaming endpoints
+    // invoke the same gate separately via ``authorizeRequest`` and
+    // upgrade the connection on success.
+    let resolvedTier: AuthTier?
+    switch authorizeRequest(
+        request,
+        channelScope: channelScope,
+        signatureVerifier: signatureVerifier,
+        ticketVerifier: ticketVerifier
+    ) {
+    case .allowed(let tier):
+        resolvedTier = tier
+    case .denied(let data):
+        return data
     }
 
-    // --- Liveness-probe exemption ---
-    //
-    // /health is the only unauthenticated endpoint so K8s / ALB
-    // health checkers don't need signing credentials. It returns
-    // fixed JSON with no capability beyond "agent is alive."
+    // /health is the only unauthenticated endpoint: the auth gate
+    // short-circuits with `.allowed(nil)` for it, and we emit the
+    // 200 audit line here to keep auditability co-located with the
+    // response path.
     if request.method == "GET" && request.path == "/health" {
         let response = handleHealth()
         emitAuditLog(method: request.method, path: request.path, statusCode: 200, tier: nil)
         return response
-    }
-
-    // --- Auth gate ---
-    var authTier: AuthTier?
-
-    let rawAuth = request.headers["authorization"] ?? ""
-    let rawBearer = rawAuth.hasPrefix("Bearer ")
-        ? String(rawAuth.dropFirst("Bearer ".count))
-        : ""
-
-    let hasSignatureHeaders = request.headers["x-spook-signature"] != nil
-
-    if rawBearer.hasPrefix(BreakGlassTicket.wirePrefix) {
-        guard let verifier = ticketVerifier else {
-            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-            return response
-        }
-        switch verifier.verify(ticket: rawBearer) {
-        case .success(let ticket):
-            log.notice(
-                "Break-glass ticket consumed: jti=\(ticket.jti, privacy: .public) issuer=\(ticket.issuer, privacy: .public) reason=\(ticket.reason ?? "(none)", privacy: .public)"
-            )
-            authTier = .breakGlass
-        case .failure(let err):
-            log.warning("Break-glass ticket rejected: \(err.localizedDescription, privacy: .public)")
-            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-            return response
-        }
-    } else if hasSignatureHeaders {
-        // Break-glass channel refuses signature-auth — its only
-        // credential is the operator-minted ticket. This keeps
-        // automated systems (which hold long-lived host keys)
-        // out of the exec path structurally.
-        if channelScope == .breakGlass {
-            let response = errorResponse(
-                message: "Break-glass channel requires an operator-minted ticket, not a signed request.",
-                statusCode: 401
-            )
-            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-            return response
-        }
-        guard let verifier = signatureVerifier, verifier.hasTrustedKeys else {
-            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-            return response
-        }
-        do {
-            _ = try verifier.verify(
-                method: request.method,
-                path: request.path,
-                headers: request.headers,
-                body: request.body ?? Data()
-            )
-        } catch {
-            log.warning("Signed request rejected: \(error.localizedDescription, privacy: .public)")
-            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-            return response
-        }
-        // Tier follows channel scope.
-        switch channelScope {
-        case .readonly:   authTier = .readonly
-        case .runner:     authTier = .runner
-        case .breakGlass: authTier = .runner   // unreachable; break-glass was refused above
-        }
-    } else if signatureVerifier == nil && ticketVerifier == nil {
-        // Legacy no-auth mode — only if neither verifier was
-        // configured. On the break-glass channel, still require
-        // a ticket even in no-auth mode (defence in depth on
-        // the exec path).
-        if channelScope == .breakGlass {
-            let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-            emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-            return response
-        }
-        authTier = channelScope == .runner ? .runner : .readonly
-    } else {
-        let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-        emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-        return response
-    }
-
-    // By the time we reach here `authTier` is set — either via
-    // the ticket path or the static-token path. The alternative
-    // (Unauthorized / misconfigured) returned above.
-    guard let resolvedTier = authTier else {
-        // Defensive fallback — we should never hit this.
-        let response = errorResponse(message: "Unauthorized.", statusCode: 401)
-        emitAuditLog(method: request.method, path: request.path, statusCode: 401, tier: nil)
-        return response
-    }
-
-    // Enforce scope restrictions
-    let scope = endpointScope(method: request.method, path: request.path)
-    switch resolvedTier {
-    case .readonly:
-        if scope == .runner || scope == .breakGlass {
-            let message = scope == .breakGlass
-                ? "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details."
-                : "Forbidden. Read-only token cannot access mutation endpoints."
-            let response = errorResponse(message: message, statusCode: 403)
-            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
-            return response
-        }
-    case .runner:
-        if scope == .breakGlass {
-            let response = errorResponse(
-                message: "Forbidden. Shell execution requires a break-glass token. See SECURITY.md for details.",
-                statusCode: 403
-            )
-            emitAuditLog(method: request.method, path: request.path, statusCode: 403, tier: resolvedTier)
-            return response
-        }
-    case .breakGlass:
-        break // Break-glass allows everything
     }
 
     // --- Dispatch ---
@@ -428,7 +547,11 @@ func routeRequest(
         // the dangerous operation — a custom client that bypasses
         // the port-tier gate still can't escalate to shell access
         // without a matching break-glass token.
-        response = handleExec(request, authTier: resolvedTier)
+        // `resolvedTier` is `nil` only for the /health liveness
+        // exemption, which is already dispatched above. Fall back
+        // to `.readonly` defensively — `handleExec` refuses
+        // anything below `.breakGlass` at its own tier gate.
+        response = handleExec(request, authTier: resolvedTier ?? .readonly)
         statusCode = 200
     case ("GET", "/api/v1/apps"):
         response = handleListApps()
@@ -453,6 +576,9 @@ func routeRequest(
         statusCode = 200
     case ("GET", "/api/v1/ports"):
         response = handleListPorts()
+        statusCode = 200
+    case ("GET", "/api/v1/stats"):
+        response = handleStats()
         statusCode = 200
     case ("GET", "/api/v1/identity-token"):
         response = handleIdentityToken()
@@ -483,8 +609,8 @@ private func emitAuditLog(method: String, path: String, statusCode: Int, tier: A
     auditLog.notice("AUDIT: \(method, privacy: .public) \(path, privacy: .public) → \(statusCode) [\(tierLabel, privacy: .public)] [\(timestamp, privacy: .public)]")
 
     // For break-glass operations, also write a structured JSON line to the
-    // agent audit file when SPOOK_AGENT_AUDIT_FILE is configured.
-    if path == "/api/v1/exec", let handle = agentAuditFile {
+    // agent audit file when SPOOKTACULAR_AGENT_AUDIT_FILE is configured.
+    if path == "/api/v1/exec" {
         struct AgentAuditEntry: Encodable {
             let id: String
             let timestamp: String
@@ -507,7 +633,12 @@ private func emitAuditLog(method: String, path: String, statusCode: Int, tier: A
         )
         if var data = try? agentAuditEncoder.encode(entry) {
             data.append(0x0A) // newline
-            handle.write(data)
+            // `withLock` serializes every write against
+            // the shared file position — concurrent
+            // handlers never interleave bytes mid-line.
+            agentAuditFile.withLock { handle in
+                handle?.write(data)
+            }
         }
     }
 }
@@ -586,12 +717,12 @@ private func handleHealth() -> Data {
 /// populated from the control plane, along with the role ARN
 /// so the AWS / GCP / Azure SDK has both pieces of what it
 /// needs. Workloads inside the VM invoke this endpoint (or
-/// read `SPOOK_WORKLOAD_TOKEN_FILE`, see the reference
+/// read `SPOOKTACULAR_WORKLOAD_TOKEN_FILE`, see the reference
 /// shim script) to get short-lived credentials.
 ///
 /// The refresh loop isn't this handler's responsibility —
 /// `WorkloadTokenRefresher` on the agent side (kicked off at
-/// boot when `SPOOK_CONTROLLER_VSOCK_CID` + binding metadata
+/// boot when `SPOOKTACULAR_CONTROLLER_VSOCK_CID` + binding metadata
 /// are present) polls the controller on a timer and keeps the
 /// file fresh. This handler just returns whatever the
 /// refresher last wrote.
@@ -698,15 +829,15 @@ private func handleExec(_ request: AgentHTTPRequest, authTier: AuthTier) -> Data
     process.executableURL = URL(filePath: "/bin/bash")
     process.arguments = ["-c", execReq.command]
 
-    // Scrub SPOOK_AGENT_* from the child's environment. The agent
+    // Scrub SPOOKTACULAR_AGENT_* from the child's environment. The agent
     // reads its auth tokens out of these variables at startup, so
     // leaking them into an exec'd shell hands a break-glass caller
     // the agent's own credentials — equivalent to giving them the
     // keys to impersonate every tier of the guest API. We also drop
-    // SPOOK_AUDIT_SIGNING_KEY for the same reason.
+    // SPOOKTACULAR_AUDIT_SIGNING_KEY for the same reason.
     let parentEnv = ProcessInfo.processInfo.environment
     var childEnv: [String: String] = [:]
-    for (key, value) in parentEnv where !key.hasPrefix("SPOOK_AGENT_") && !key.hasPrefix("SPOOK_AUDIT_") {
+    for (key, value) in parentEnv where !key.hasPrefix("SPOOKTACULAR_AGENT_") && !key.hasPrefix("SPOOKTACULAR_AUDIT_") {
         childEnv[key] = value
     }
     process.environment = childEnv
@@ -861,19 +992,27 @@ private func handleQuitApp(_ request: AgentHTTPRequest) -> Data {
 ///
 /// Returns information about the currently active (frontmost) application.
 private func handleFrontmostApp() -> Data {
+    guard let info = handleFrontmostAppSnapshot() else {
+        return errorResponse(message: "No frontmost application.", statusCode: 404)
+    }
+    return jsonResponse(info)
+}
+
+/// Frontmost-app snapshot reused by both the REST handler and
+/// the events stream. Returns `nil` when the WindowServer has
+/// no frontmost app (Recovery mode, a fresh login window, etc).
+func handleFrontmostAppSnapshot() -> GuestAppInfo? {
     guard let app = NSWorkspace.shared.frontmostApplication,
           let name = app.localizedName,
           let bundleID = app.bundleIdentifier else {
-        return errorResponse(message: "No frontmost application.", statusCode: 404)
+        return nil
     }
-
-    let info = AppInfo(
+    return GuestAppInfo(
         name: name,
         bundleID: bundleID,
         isActive: true,
         pid: app.processIdentifier
     )
-    return jsonResponse(info)
 }
 
 // MARK: - File System
@@ -1052,6 +1191,14 @@ private func handleListFiles() -> Data {
 /// Uses `lsof -iTCP -sTCP:LISTEN -nP` to discover listening TCP
 /// ports and the processes that own them.
 private func handleListPorts() -> Data {
+    jsonResponse(handleListPortsSnapshot())
+}
+
+/// Ports-snapshot helper shared by the REST `/api/v1/ports`
+/// handler and the NDJSON events stream. Returns the current
+/// `lsof` result as a `[GuestPortInfo]` — the same Codable
+/// DTO the host-side `GuestAgentClient` already expects.
+func handleListPortsSnapshot() -> [GuestPortInfo] {
     let process = Process()
     process.executableURL = URL(filePath: "/usr/sbin/lsof")
     process.arguments = ["-iTCP", "-sTCP:LISTEN", "-nP", "-F", "pcn"]
@@ -1064,13 +1211,13 @@ private func handleListPorts() -> Data {
         try process.run()
         process.waitUntilExit()
     } catch {
-        return errorResponse(message: "Failed to run lsof: \(error.localizedDescription)", statusCode: 500)
+        return []
     }
 
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     let output = String(data: data, encoding: .utf8) ?? ""
 
-    var ports: [PortInfo] = []
+    var ports: [GuestPortInfo] = []
     var currentPID: Int32 = 0
     var currentName = ""
 
@@ -1089,7 +1236,7 @@ private func handleListPorts() -> Data {
             if let colonIndex = value.lastIndex(of: ":") {
                 let portString = String(value[value.index(after: colonIndex)...])
                 if let port = UInt16(portString) {
-                    ports.append(PortInfo(port: port, pid: currentPID, processName: currentName))
+                    ports.append(GuestPortInfo(port: port, pid: currentPID, processName: currentName))
                 }
             }
         default:
@@ -1097,5 +1244,5 @@ private func handleListPorts() -> Data {
         }
     }
 
-    return jsonResponse(ports)
+    return ports
 }

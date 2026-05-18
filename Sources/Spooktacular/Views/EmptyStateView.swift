@@ -51,7 +51,7 @@ struct EmptyStateView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
             }
-            .glassButton()
+            .glassProminentButton()
             .controlSize(.large)
             .tint(.accentColor)
 

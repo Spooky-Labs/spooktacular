@@ -132,14 +132,17 @@ struct AddImageSheet: View {
 
             Divider()
 
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Spacer()
-                Button("Add") { addImage() }
-                    .glassButton()
-                    .disabled(!isValid)
-                    .keyboardShortcut(.defaultAction)
+            GlassEffectContainer(spacing: 8) {
+                HStack {
+                    Button("Cancel") { dismiss() }
+                        .glassButton()
+                        .keyboardShortcut(.cancelAction)
+                    Spacer()
+                    Button("Add") { addImage() }
+                        .glassProminentButton()
+                        .disabled(!isValid)
+                        .keyboardShortcut(.defaultAction)
+                }
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)

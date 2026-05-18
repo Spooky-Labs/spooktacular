@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularInfrastructureApple
 
 @Suite("SAMLVerifier")
 struct SAMLVerifierTests {
