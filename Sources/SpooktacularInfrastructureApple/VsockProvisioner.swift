@@ -195,7 +195,7 @@ public enum VsockProvisionerError: Error, LocalizedError, Sendable, Equatable {
 
     /// The guest agent is not responding on the VirtIO socket.
     ///
-    /// This typically means the `spooktacular-agent` binary is not
+    /// This typically means Spooktacular Guest Tools is not
     /// installed in the guest, or the VM has not finished booting.
     case agentNotResponding
 

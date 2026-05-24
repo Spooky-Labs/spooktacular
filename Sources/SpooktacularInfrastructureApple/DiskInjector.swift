@@ -36,14 +36,11 @@ public enum DiskInjector {
     /// Installs `Spooktacular Guest Tools.app` into a stopped
     /// VM's `/Applications/` directory.
     ///
-    /// The Apple-native equivalent of what the legacy
-    /// script-based ``inject(script:into:)`` path does for the
-    /// `spooktacular-agent` Mach-O: mount the guest's APFS
-    /// data volume, `/usr/bin/ditto` the bundle onto it
-    /// (ditto preserves `.app` metadata — resource forks,
-    /// xattrs, symlinks, Frameworks/ directory structure —
-    /// natively, where a `tar` or shell-level `cp -R` would
-    /// require flag juggling), unmount.
+    /// Mounts the guest's APFS data volume, `/usr/bin/ditto`s
+    /// the bundle onto it (ditto preserves `.app` metadata —
+    /// resource forks, xattrs, symlinks, Frameworks/ directory
+    /// structure — natively, where a `tar` or shell-level `cp
+    /// -R` would require flag juggling), unmounts.
     ///
     /// No bash script runs on the guest; no base64 encoding
     /// step; no tarball round-trip. By the time the VM boots

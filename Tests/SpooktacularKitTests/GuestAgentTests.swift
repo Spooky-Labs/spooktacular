@@ -98,10 +98,15 @@ struct GuestAgentErrorTests {
         #expect(description.contains("Not found"))
     }
 
-    @Test("notConnected suggests installing the agent")
+    @Test("notConnected suggests installing Guest Tools")
     func notConnectedSuggestion() {
         let error = GuestAgentError.notConnected
-        #expect(error.recoverySuggestion?.contains("spooktacular-agent") == true)
+        let suggestion = error.recoverySuggestion ?? ""
+        #expect(suggestion.contains("Guest Tools"))
+        // Guard against re-introducing the legacy CLI suggestion —
+        // `sudo spooktacular-agent --install-daemon` points at a
+        // binary that no longer exists in any current build.
+        #expect(!suggestion.contains("sudo spooktacular-agent"))
     }
 
     @Test("invalidResponse suggests updating the agent")

@@ -189,9 +189,9 @@ struct HTTPHardeningTests {
     }
 
     // Note: AgentHTTPParser strictness (duplicate CL, LF-only, non-ASCII,
-    // missing colon) is implemented in Sources/spooktacular-agent/AgentHTTPParser.swift.
-    // Those tests live in the agent's own test lane because executable targets
-    // cannot be @testable-imported from a library test target.
+    // missing colon) is implemented in
+    // Sources/SpooktacularGuestAgentCore/AgentHTTPParser.swift; its tests
+    // live alongside that module.
 
     // MARK: - X-Forwarded-For trust
 
