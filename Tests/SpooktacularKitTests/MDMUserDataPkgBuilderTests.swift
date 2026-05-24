@@ -3,10 +3,10 @@ import Testing
 @testable import SpooktacularInfrastructureApple
 @testable import SpooktacularApplication
 
-/// Phase 7d — exercises the real `pkgbuild` + `productbuild`
-/// pipeline on the test host. Verifies the produced pkg is a
-/// well-formed Distribution-style installer pkg by inspecting
-/// the output with `pkgutil`.
+/// Exercises the real `pkgbuild` + `productbuild` pipeline on
+/// the test host. Verifies the produced pkg is a well-formed
+/// Distribution-style installer pkg by inspecting the output
+/// with `pkgutil`.
 ///
 /// Skips silently if `pkgbuild` or `productbuild` aren't on
 /// the host (CI sandbox, non-macOS).

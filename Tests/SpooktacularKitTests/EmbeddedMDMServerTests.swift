@@ -310,7 +310,7 @@ struct EmbeddedMDMServerTests {
         #expect(response.statusCode == 400)
     }
 
-    // MARK: - Manifest + pkg endpoints (Phase 7 GETs)
+    // MARK: - Manifest + pkg endpoints
 
     /// Same test rig as `makeRig()` but threads through a
     /// content store the server can read for /mdm/manifest
