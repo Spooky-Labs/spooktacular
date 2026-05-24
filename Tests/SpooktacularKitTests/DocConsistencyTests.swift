@@ -307,7 +307,7 @@ struct DocConsistencyTests {
         let nodeManager: String
         do {
             values = try readProjectFile("deploy/kubernetes/helm/spooktacular/values.yaml")
-            nodeManager = try readProjectFile("Sources/spook-controller/NodeManager.swift")
+            nodeManager = try readProjectFile("Sources/spooktacular-controller/NodeManager.swift")
         } catch {
             // Helm chart or controller may not exist in all checkouts; skip gracefully.
             return

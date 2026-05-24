@@ -12,7 +12,7 @@ import Foundation
 // the drift. For now they guard against regressions in the specification
 // itself.
 
-// Mirror of `Sources/spook-controller/Conditions.swift` shape.
+// Mirror of `Sources/spooktacular-controller/Conditions.swift` shape.
 private struct LocalCondition: Equatable {
     let type: String
     let status: String
