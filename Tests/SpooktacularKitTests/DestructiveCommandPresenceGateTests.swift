@@ -1,11 +1,10 @@
 import Testing
 import Foundation
 
-/// Regression guard for Phase 2 of the Secure-Enclave migration:
-/// destructive CLI commands must route through
-/// `AdminPresenceGate.requirePresence` so that malware running
-/// as the logged-in user cannot delete or roll back VMs / snapshots
-/// without a fresh Touch ID / passcode gesture.
+/// Regression guard: destructive CLI commands must route
+/// through `AdminPresenceGate.requirePresence` so malware
+/// running as the logged-in user cannot delete or roll back
+/// VMs / snapshots without a fresh Touch ID / passcode gesture.
 ///
 /// The test greps each destructive command's source file for
 /// `AdminPresenceGate.requirePresence`. A regression that drops
@@ -56,7 +55,7 @@ struct DestructiveCommandPresenceGateTests {
         )
         #expect(
             hasGate,
-            "Delete.swift must call AdminPresenceGate.requirePresence — dropping the presence gate re-opens the malware-as-logged-in-user VM-wipe path (Phase 2)."
+            "Delete.swift must call AdminPresenceGate.requirePresence — dropping the presence gate re-opens the malware-as-logged-in-user VM-wipe path."
         )
     }
 

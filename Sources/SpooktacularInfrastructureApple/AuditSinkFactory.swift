@@ -47,10 +47,10 @@ extension Data {
 ///
 /// Requiring a label is intentional: silent fall-through to an
 /// ephemeral key would produce STHs that don't verify after
-/// restart. The legacy `config.merkleSigningKeyPath` software-key
-/// path was removed in Phase 3 of the SEP migration — PEM-on-disk
-/// keys are reachable by malware running as the logged-in user
-/// (see docs/THREAT_MODEL.md), while SEP-bound keys are
+/// restart. The previous `config.merkleSigningKeyPath`
+/// software-key path is gone — PEM-on-disk keys are reachable
+/// by malware running as the logged-in user (see
+/// docs/THREAT_MODEL.md), while SEP-bound keys are
 /// hardware-isolated and non-extractable.
 public enum AuditSinkFactory {
 

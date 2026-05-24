@@ -238,12 +238,12 @@ extension Spooktacular {
             }
             let auditSink: (any AuditSink)?
             if env["SPOOKTACULAR_AUDIT_MERKLE"] == "1", let base = auditBase {
-                // SEP-bound only. `SPOOKTACULAR_AUDIT_SIGNING_KEY_PATH`
-                // (the PEM-on-disk fallback) was removed in Phase 3
-                // of the SEP migration: software keys on disk are
-                // reachable by malware running as the logged-in
-                // user, while SEP-bound keys are hardware-isolated
-                // and non-extractable. See `docs/THREAT_MODEL.md`.
+                // SEP-bound only. The previous `SPOOKTACULAR_AUDIT_SIGNING_KEY_PATH`
+                // (PEM-on-disk fallback) is gone: software keys on
+                // disk are reachable by malware running as the
+                // logged-in user, while SEP-bound keys are
+                // hardware-isolated and non-extractable. See
+                // `docs/THREAT_MODEL.md`.
                 let auditConfig = AuditConfig(
                     merkleEnabled: true,
                     merkleSigningKeyLabel: env["SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL"]
@@ -340,11 +340,10 @@ extension Spooktacular {
             // via standard OIDC federation (sts:AssumeRoleWithWebIdentity).
             var oidcIssuer: WorkloadTokenIssuer?
             if let issuerURL = env["SPOOKTACULAR_OIDC_ISSUER_URL"] {
-                // SEP-bound only. `SPOOKTACULAR_OIDC_ISSUER_KEY_PATH`
-                // (PEM-on-disk) was removed in the Phase 3 SEP
-                // migration — malware running as the logged-in
-                // user can read 0600 files but can't extract keys
-                // from the Secure Enclave.
+                // SEP-bound only. The previous `SPOOKTACULAR_OIDC_ISSUER_KEY_PATH`
+                // (PEM-on-disk) is gone — malware running as the
+                // logged-in user can read 0600 files but can't
+                // extract keys from the Secure Enclave.
                 guard let label = env["SPOOKTACULAR_OIDC_ISSUER_KEY_LABEL"] else {
                     print(Style.warning("SPOOKTACULAR_OIDC_ISSUER_URL is set but SPOOKTACULAR_OIDC_ISSUER_KEY_LABEL is missing — workload federation disabled. Set the label and the SEP-backed key will be generated on first use."))
                     return

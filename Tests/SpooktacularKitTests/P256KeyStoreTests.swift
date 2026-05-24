@@ -117,10 +117,10 @@ struct P256KeyStoreTests {
 
         let noSEPHost = KeyStoreError.secureEnclaveUnavailableOnHost
         #expect(noSEPHost.errorDescription?.contains("Secure Enclave") == true)
-        // Per Phase 3, the recovery hint must NOT point the
-        // operator at a software-fallback API — that path was
-        // removed. Mentioning "software" in the context of why
-        // it's forbidden is fine; suggesting `loadOrCreateSoftware`
+        // The recovery hint must NOT point the operator at a
+        // software-fallback API — that path was removed.
+        // Mentioning "software" in the context of why it's
+        // forbidden is fine; suggesting `loadOrCreateSoftware`
         // or a file path is not.
         let hint = noSEPHost.recoverySuggestion ?? ""
         #expect(!hint.contains("loadOrCreateSoftware"))
