@@ -186,35 +186,40 @@ sudo -u spooktacular /usr/local/bin/spook doctor --strict
     <key>EnvironmentVariables</key>
     <dict>
         <!-- TLS + mTLS -->
-        <key>SPOOK_TLS_CERT_PATH</key><string>/etc/spooktacular/tls/server.crt</string>
-        <key>SPOOK_TLS_KEY_PATH</key> <string>/etc/spooktacular/tls/server.key</string>
-        <key>SPOOK_TLS_CA_PATH</key>  <string>/etc/spooktacular/tls/ca.crt</string>
+        <key>SPOOKTACULAR_TLS_CERT_PATH</key><string>/etc/spooktacular/tls/server.crt</string>
+        <key>SPOOKTACULAR_TLS_KEY_PATH</key> <string>/etc/spooktacular/tls/server.key</string>
+        <key>SPOOKTACULAR_TLS_CA_PATH</key>  <string>/etc/spooktacular/tls/ca.crt</string>
 
         <!-- Tenancy + federated identity -->
-        <key>SPOOK_TENANCY_MODE</key> <string>multi-tenant</string>
-        <key>SPOOK_IDP_CONFIG</key>    <string>/etc/spooktacular/idps.json</string>
+        <key>SPOOKTACULAR_TENANCY_MODE</key> <string>multi-tenant</string>
+        <key>SPOOKTACULAR_IDP_CONFIG</key>    <string>/etc/spooktacular/idps.json</string>
 
         <!-- RBAC defaults to ~/.spooktacular/rbac.json with
              atomic persistence across restarts. Override with
-             SPOOK_RBAC_CONFIG=<path> to centralize. -->
+             SPOOKTACULAR_RBAC_CONFIG=<path> to centralize. -->
 
-        <!-- Audit chain: local → append-only → Merkle → S3 Object Lock -->
-        <key>SPOOK_AUDIT_FILE</key>             <string>/var/log/spooktacular/audit.jsonl</string>
-        <key>SPOOK_AUDIT_IMMUTABLE_PATH</key>   <string>/var/log/spooktacular/audit.immutable.jsonl</string>
-        <key>SPOOK_AUDIT_MERKLE</key>           <string>1</string>
-        <key>SPOOK_AUDIT_SIGNING_KEY</key>      <string>/etc/spooktacular/secrets/merkle.key</string>
-        <key>SPOOK_AUDIT_S3_BUCKET</key>        <string>acme-spooktacular-audit-prod</string>
-        <key>SPOOK_AUDIT_S3_REGION</key>        <string>us-east-1</string>
-        <key>SPOOK_AUDIT_S3_RETENTION_DAYS</key><string>2555</string>
+        <!-- Audit chain: local → append-only → Merkle → S3 Object Lock.
+             SPOOK_AUDIT_S3_* keep their short prefix because the S3
+             ObjectLock sink predates the rename pass; SPOOK_AUDIT_*
+             without S3 are now SPOOKTACULAR_AUDIT_*. -->
+        <key>SPOOKTACULAR_AUDIT_FILE</key>            <string>/var/log/spooktacular/audit.jsonl</string>
+        <key>SPOOKTACULAR_AUDIT_IMMUTABLE_PATH</key>  <string>/var/log/spooktacular/audit.immutable.jsonl</string>
+        <key>SPOOKTACULAR_AUDIT_MERKLE</key>          <string>1</string>
+        <!-- SEP-bound key resolved by Keychain label (no PEM-on-disk path).
+             The key is created on first start under the supplied label. -->
+        <key>SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL</key><string>com.spookylabs.audit.merkle</string>
+        <key>SPOOK_AUDIT_S3_BUCKET</key>              <string>acme-spooktacular-audit-prod</string>
+        <key>SPOOK_AUDIT_S3_REGION</key>              <string>us-east-1</string>
+        <key>SPOOK_AUDIT_S3_RETENTION_DAYS</key>      <string>2555</string>
 
         <!-- Cross-region lock — DynamoDB Global Table -->
-        <key>SPOOK_DYNAMO_TABLE</key>  <string>spooktacular-locks-prod</string>
-        <key>SPOOK_DYNAMO_REGION</key> <string>us-east-1</string>
+        <key>SPOOKTACULAR_DYNAMO_TABLE</key>  <string>spooktacular-locks-prod</string>
+        <key>SPOOKTACULAR_DYNAMO_REGION</key> <string>us-east-1</string>
 
         <!-- Data-at-rest: EC2 Mac hosts are NOT laptops, so CUFUA
              would break pre-login LaunchDaemon reads. Explicit "none"
              documents the intent for auditors. -->
-        <key>SPOOK_BUNDLE_PROTECTION</key><string>none</string>
+        <key>SPOOKTACULAR_BUNDLE_PROTECTION</key><string>none</string>
     </dict>
 
     <key>UserName</key>  <string>spooktacular</string>
@@ -243,7 +248,7 @@ Spooktacular Doctor
 ✓ Base VM found: macos-15-base
 ✓ spook serve running (port 8484)
 ✓ TLS configured on port 8484
-✓ SPOOK_API_TOKEN set
+✓ SPOOKTACULAR_API_TOKEN set
 ✓ Capacity: 0/2 VMs running
 
 Production controls (--strict)
@@ -371,10 +376,10 @@ Report times + remediation to the `docs/THREAT_MODEL.md` §9 external-validation
 
 On fleets where multiple business units share the same Spooktacular deployment, the default reconciler scales each runner pool independently — the first pool to ask for a VM wins. Under heavy load that produces "one tenant took everything" starvation.
 
-`spook-controller` activates weighted max-min fair-share scheduling when **both** environment variables are set:
+`spooktacular-controller` activates weighted max-min fair-share scheduling when **both** environment variables are set:
 
-- `SPOOK_SCHEDULER_POLICY` — path to a JSON policy file
-- `SPOOK_FLEET_CAPACITY` — integer total of VM slots across the fleet (typically `hostCount * 2` for Apple Silicon's 2-VM kernel limit)
+- `SPOOKTACULAR_SCHEDULER_POLICY` — path to a JSON policy file
+- `SPOOKTACULAR_FLEET_CAPACITY` — integer total of VM slots across the fleet (typically `hostCount * 2` for Apple Silicon's 2-VM kernel limit)
 
 Either unset → the reconciler falls through to independent per-pool scaling (the documented single-team posture).
 
@@ -399,13 +404,13 @@ Each entry:
 
 ### Controller env vars
 
-Add to `spook-controller`'s Deployment spec:
+Add to `spooktacular-controller`'s Deployment spec:
 
 ```yaml
 env:
-  - name: SPOOK_SCHEDULER_POLICY
+  - name: SPOOKTACULAR_SCHEDULER_POLICY
     value: /etc/spooktacular/scheduler.json
-  - name: SPOOK_FLEET_CAPACITY
+  - name: SPOOKTACULAR_FLEET_CAPACITY
     value: "40"   # 20 EC2 Mac hosts × 2 VMs each
 ```
 
@@ -437,8 +442,8 @@ The pool's own `minRunners` floor is always honored — the scheduler ensures th
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `Refusing to start: production deployments require an audit sink.` | Operator set `SPOOK_TENANCY_MODE=multi-tenant` without any `SPOOK_AUDIT_*` | Add at minimum `SPOOK_AUDIT_FILE`; for SOC 2 add the full chain |
-| `Distributed lock backend: File(dir=...)` in startup log | `SPOOK_DYNAMO_TABLE` unset on a multi-host fleet | Set it, restart; verify the startup log now says `DynamoDB(...)` |
+| `Refusing to start: production deployments require an audit sink.` | Operator set `SPOOKTACULAR_TENANCY_MODE=multi-tenant` without any `SPOOKTACULAR_AUDIT_*` | Add at minimum `SPOOKTACULAR_AUDIT_FILE`; for SOC 2 add the full chain |
+| `Distributed lock backend: File(dir=...)` in startup log | `SPOOKTACULAR_DYNAMO_TABLE` unset on a multi-host fleet | Set it, restart; verify the startup log now says `DynamoDB(...)` |
 | HTTP 500s with `"Internal error. Correlation ID: abc-123"` | Normal operation — the real error is in server logs | `log show --predicate 'subsystem == "com.spooktacular" AND category == "http-api"' --last 10m | grep abc-123` |
 | S3 PutObject returns 403 | Instance role lacks `s3:PutObjectRetention` | Add to IAM policy (§1), wait 60s for IAM propagation |
-| DynamoDB acquire hangs | Global Table replication lag | Verify replica regions match `SPOOK_DYNAMO_REGION`; prefer writing to the local-region endpoint |
+| DynamoDB acquire hangs | Global Table replication lag | Verify replica regions match `SPOOKTACULAR_DYNAMO_REGION`; prefer writing to the local-region endpoint |

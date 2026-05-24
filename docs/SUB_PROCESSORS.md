@@ -26,7 +26,7 @@ Each entry records: purpose, data categories handled, typical region, and a link
 - **Purpose:**
   - **Actions runners** — self-hosted runner registration and job dispatch (Spooktacular's primary first-class use case per project strategy).
   - **Releases** — binary distribution channel for notarized builds.
-  - **Container Registry (`ghcr.io`)** — distribution of the `spook-controller` container image.
+  - **Container Registry (`ghcr.io`)** — distribution of the `spooktacular-controller` container image.
   - **Security Advisories** — coordinated disclosure venue (see [`SECURITY.md`](../SECURITY.md)).
 - **Data categories:**
   - Runner registration tokens (short-lived; handled via Keychain per [`SECURITY.md`](../SECURITY.md) §"GitHub runner tokens via Keychain").

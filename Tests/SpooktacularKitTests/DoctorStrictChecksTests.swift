@@ -78,24 +78,16 @@ struct DoctorStrictChecksTests {
             : StrictResult(item: 9, status: .fail, message: "unwritable")
     }
 
-    /// Item 11 — Merkle key mode 0600.
-    static func check11(env: [String: String], fm: FileManager = .default) -> StrictResult {
+    /// Item 11 — Merkle signing key configured (SEP-bound).
+    static func check11(env: [String: String]) -> StrictResult {
         guard env["SPOOKTACULAR_AUDIT_MERKLE"] == "1" else {
             return StrictResult(item: 11, status: .warn, message: "disabled")
         }
-        guard let p = env["SPOOKTACULAR_AUDIT_SIGNING_KEY"], !p.isEmpty else {
+        guard let label = env["SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL"],
+              !label.isEmpty else {
             return StrictResult(item: 11, status: .fail, message: "unset")
         }
-        guard fm.fileExists(atPath: p) else {
-            return StrictResult(item: 11, status: .warn, message: "not created")
-        }
-        guard let attrs = try? fm.attributesOfItem(atPath: p),
-              let mode = (attrs[.posixPermissions] as? NSNumber)?.uint16Value else {
-            return StrictResult(item: 11, status: .fail, message: "unreadable perms")
-        }
-        return mode & 0o077 == 0
-            ? StrictResult(item: 11, status: .pass, message: "ok")
-            : StrictResult(item: 11, status: .fail, message: "wide")
+        return StrictResult(item: 11, status: .pass, message: "label-set")
     }
 
     /// Item 13 — Distributed lock backend.
@@ -219,40 +211,19 @@ struct DoctorStrictChecksTests {
         #expect(result.status == .warn)
     }
 
-    @Test("11 fails when signing key path unset")
-    func item11MissingKeyFails() {
+    @Test("11 fails when SEP key label unset")
+    func item11MissingLabelFails() {
         let result = Self.check11(env: ["SPOOKTACULAR_AUDIT_MERKLE": "1"])
         #expect(result.status == .fail)
     }
 
-    @Test("11 passes when key exists at mode 0600")
-    func item11ModeOk() throws {
-        let url = try Self.scratchFile()
-        defer { try? FileManager.default.removeItem(at: url) }
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o600)],
-            ofItemAtPath: url.path
-        )
+    @Test("11 passes when SEP key label is set")
+    func item11LabelSetPasses() {
         let result = Self.check11(env: [
             "SPOOKTACULAR_AUDIT_MERKLE": "1",
-            "SPOOKTACULAR_AUDIT_SIGNING_KEY": url.path
+            "SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL": "com.spookylabs.audit.merkle"
         ])
         #expect(result.status == .pass)
-    }
-
-    @Test("11 fails when key mode is wide open")
-    func item11ModeWideFails() throws {
-        let url = try Self.scratchFile()
-        defer { try? FileManager.default.removeItem(at: url) }
-        try FileManager.default.setAttributes(
-            [.posixPermissions: NSNumber(value: 0o644)],
-            ofItemAtPath: url.path
-        )
-        let result = Self.check11(env: [
-            "SPOOKTACULAR_AUDIT_MERKLE": "1",
-            "SPOOKTACULAR_AUDIT_SIGNING_KEY": url.path
-        ])
-        #expect(result.status == .fail)
     }
 
     // MARK: - Tests — item 13

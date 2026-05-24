@@ -452,21 +452,16 @@ extension Spooktacular {
             guard merkleEnabled else {
                 return warn(11, "Merkle signing — SPOOKTACULAR_AUDIT_MERKLE!=1 (tamper-evidence disabled)")
             }
-            guard let keyPath = env["SPOOKTACULAR_AUDIT_SIGNING_KEY"], !keyPath.isEmpty else {
-                return fail(11, "Merkle signing — SPOOKTACULAR_AUDIT_MERKLE=1 but SPOOKTACULAR_AUDIT_SIGNING_KEY is unset")
+            // The previous PEM-on-disk path (SPOOKTACULAR_AUDIT_SIGNING_KEY)
+            // is gone. Production resolves the Merkle signer via
+            // SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL → SEP-bound P-256
+            // key. Doctor verifies the label is configured; it can't
+            // verify the SEP key exists without triggering a
+            // presence prompt the operator didn't ask for.
+            guard let label = env["SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL"], !label.isEmpty else {
+                return fail(11, "Merkle signing — SPOOKTACULAR_AUDIT_MERKLE=1 but SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL is unset. Set a Keychain label; the SEP-bound key is created on first start.")
             }
-            let fm = FileManager.default
-            guard fm.fileExists(atPath: keyPath) else {
-                return warn(11, "Merkle signing — key not yet at \(keyPath); will be created mode 0600 on first start")
-            }
-            guard let attrs = try? fm.attributesOfItem(atPath: keyPath),
-                  let mode = (attrs[.posixPermissions] as? NSNumber)?.uint16Value else {
-                return fail(11, "Merkle signing — cannot read permissions on \(keyPath)")
-            }
-            if mode & 0o077 == 0 {
-                return pass(11, String(format: "Merkle signing key: %@ (mode 0%o)", keyPath, mode))
-            }
-            return fail(11, String(format: "Merkle signing — %@ has mode 0%o, must be 0600", keyPath, mode))
+            return pass(11, "Merkle signing key label: \(label) (SEP-bound on first use)")
         }
 
         // MARK: - Item 12: S3 Object Lock (manual)
