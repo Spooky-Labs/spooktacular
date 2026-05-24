@@ -16,7 +16,7 @@ Spooktacular HTTP API on your Mac nodes.
 │  Kubernetes Cluster (Linux)                │
 │                                            │
 │  ┌──────────────────────────────────────┐  │
-│  │  spook-controller (Deployment)       │  │
+│  │  spooktacular-controller (Deployment)│  │
 │  │  Watches MacOSVM CRDs               │  │
 │  │  Calls HTTPS API on Mac nodes       │  │
 │  └──────────┬──────────────┬────────────┘  │
@@ -185,7 +185,7 @@ This creates 3 runners that auto-destroy after each job completes.
 
 ## Controller Details
 
-The Swift controller (`Sources/spook-controller/`) consists of:
+The Swift controller (`Sources/spooktacular-controller/`) consists of:
 
 - **KubernetesClient** — Reads service account credentials,
   makes authenticated requests to the K8s API

@@ -656,18 +656,19 @@ spook service status
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NO_COLOR` | - | When set (to any value), disables colored output |
-| `SPOOK_API_TOKEN` | - | Bearer token for the control API |
-| `SPOOK_API_URL` | `https://127.0.0.1:8484` | Control API base URL |
-| `SPOOK_HOME` | `~/.spooktacular` | Data directory path |
+| `SPOOKTACULAR_API_TOKEN` | - | Bearer token for the control API |
+
+The data directory is always `~/.spooktacular/`. The CLI targets
+the local Spooktacular instance; remote targeting is per-command
+(e.g. `spook mdm serve --host`) rather than via a global URL
+override.
 
 ```bash
 # Disable colors (respects the NO_COLOR standard)
 NO_COLOR=1 spook list
 
-# Use a remote Spooktacular host
-SPOOK_API_URL=https://10.0.1.50:8484 \
-SPOOK_API_TOKEN=my-secret-token \
-spook list
+# Authenticate against the control API
+SPOOKTACULAR_API_TOKEN=my-secret-token spook list
 ```
 
 ## JSON Output for Automation
