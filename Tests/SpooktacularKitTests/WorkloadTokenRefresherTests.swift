@@ -2,14 +2,14 @@ import Testing
 import Foundation
 @testable import SpooktacularCore
 
-// NB: WorkloadTokenRefresher lives in the `spooktacular-agent`
-// target, not SpooktacularKit. We ship a test-only shim that
-// the executable target also compiles, keeping the refresher
-// test coverage inside the kit tests.
+// NB: WorkloadTokenRefresher lives in
+// `SpooktacularGuestAgentCore`, not SpooktacularKit. We ship a
+// test-only shim that the guest-agent module also compiles,
+// keeping the refresher test coverage inside the kit tests.
 //
 // To avoid cross-target @testable boundaries, this test suite
 // verifies the observable effects of the refresher through the
-// WorkloadTokenCache that is shared with the agent.
+// WorkloadTokenCache that is shared with the guest agent.
 
 // MARK: - Fake cache
 
