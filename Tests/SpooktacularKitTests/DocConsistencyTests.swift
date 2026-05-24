@@ -272,16 +272,14 @@ struct DocConsistencyTests {
             }
         }
 
-        guard !claimedCounts.isEmpty else {
-            // No test count claims found -- nothing to validate.
-            return
-        }
-
         // All claimed counts should be consistent with each other (within 20%).
         // We can't know the exact count at compile time, but the badge count
         // and prose count should not wildly disagree.
-        let minClaimed = claimedCounts.min()!
-        let maxClaimed = claimedCounts.max()!
+        guard let minClaimed = claimedCounts.min(),
+              let maxClaimed = claimedCounts.max() else {
+            // No test count claims found — nothing to validate.
+            return
+        }
 
         // The README badge and prose should not differ by more than a factor of 2.
         #expect(
