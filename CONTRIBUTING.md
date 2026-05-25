@@ -70,7 +70,7 @@ Every PR must:
 ## Architecture
 
 ```
-SpooktacularKit (library) → spook (CLI) / Spooktacular (GUI) / spook-controller (K8s)
+SpooktacularKit (library) → spook (CLI) / Spooktacular (GUI) / spooktacular-controller (K8s)
 ```
 
 All business logic lives in `SpooktacularKit`. The CLI, GUI, and K8s controller are thin clients that parse input and call the library. See the [README](README.md#architecture) for the full diagram.

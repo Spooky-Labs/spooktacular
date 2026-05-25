@@ -194,15 +194,14 @@ struct DocConsistencyTests {
 
     @Test("README CI trigger matches workflow file")
     func ciTriggerConsistency() throws {
-        let readme: String
-        let ci: String
-        do {
-            readme = try readProjectFile("README.md")
-            ci = try readProjectFile(".github/workflows/ci.yml")
-        } catch {
-            // CI file layout may differ in some environments; skip gracefully.
-            return
-        }
+        // README.md and .github/workflows/ci.yml are repo-level
+        // fixtures — both must exist for this test to be
+        // meaningful. Let any read failure propagate as a test
+        // failure rather than silently no-op'ing, which would
+        // mask a real regression (file renamed, CI workflow
+        // deleted, etc.).
+        let readme = try readProjectFile("README.md")
+        let ci = try readProjectFile(".github/workflows/ci.yml")
 
         // README says "Pull request to main" for the CI workflow.
         if readme.contains("Pull request to main") {
@@ -301,15 +300,12 @@ struct DocConsistencyTests {
 
     @Test("Helm TLS default matches NodeManager default scheme")
     func tlsDefaultConsistency() throws {
-        let values: String
-        let nodeManager: String
-        do {
-            values = try readProjectFile("deploy/kubernetes/helm/spooktacular/values.yaml")
-            nodeManager = try readProjectFile("Sources/spooktacular-controller/NodeManager.swift")
-        } catch {
-            // Helm chart or controller may not exist in all checkouts; skip gracefully.
-            return
-        }
+        // Both fixtures are repo-level; let read failures propagate
+        // rather than silently no-op'ing. (Until commit bae8ad08
+        // this catch was hiding a real path-rename bug that left
+        // the test passing without ever running its body.)
+        let values = try readProjectFile("deploy/kubernetes/helm/spooktacular/values.yaml")
+        let nodeManager = try readProjectFile("Sources/spooktacular-controller/NodeManager.swift")
 
         // Determine TLS setting from values.yaml.
         // Look for the tls.enabled field. The YAML structure is:
