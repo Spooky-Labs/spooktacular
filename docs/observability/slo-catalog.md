@@ -33,7 +33,7 @@ These are operator-facing SLOs — their breach is an internal signal that capac
 | Reconcile queue depth (p95) | RunnerPool reconciler backlog | `histogram_quantile(0.95, rate(spooktacular_reconcile_queue_depth_bucket[5m]))` | < 10 items | 24h | `SpooktacularReconcileQueueDeep` |
 | TLS cert expiry | Minimum days until any serving cert expires | `min(spooktacular_tls_cert_days_until_expiry)` | > 14 days | instantaneous | `SpooktacularTLSCertExpiringSoon` |
 | Merkle gap detection | Time to detect a broken audit chain | `max(spooktacular_audit_gap_detection_seconds)` | < 15 min | instantaneous | `SpooktacularAuditMerkleGap` |
-| Watch stream uptime | % of time K8s watch is connected | `avg_over_time(up{job="spook-controller"}[5m])` | > 99.9 % | 7d rolling | `SpooktacularControllerWatchStreamDown` |
+| Watch stream uptime | % of time K8s watch is connected | `avg_over_time(up{job="spooktacular-controller"}[5m])` | > 99.9 % | 7d rolling | `SpooktacularControllerWatchStreamDown` |
 
 ## Error budget accounting
 

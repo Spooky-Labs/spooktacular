@@ -5,7 +5,7 @@
 # This is the complete, production-hardened scrape config for a Spooktacular
 # deployment. Two jobs:
 #
-#   1. `spook-controller` — a single Kubernetes deployment that reconciles
+#   1. `spooktacular-controller` — a single Kubernetes deployment that reconciles
 #      RunnerPool / MacOSVM CRDs. Scraped over HTTPS with mTLS; the scrape
 #      target is discovered via Kubernetes endpoints.
 #
@@ -49,7 +49,7 @@ alerting:
 # Discover it via Kubernetes endpoints and filter down to the controller pod.
 
 scrape_configs:
-  - job_name: spook-controller
+  - job_name: spooktacular-controller
     scheme: https
     metrics_path: /metrics
 
@@ -63,18 +63,18 @@ scrape_configs:
       key_file: /etc/prometheus/certs/client.key
       ca_file: /etc/prometheus/certs/ca.crt
       # Must match the CN of the controller's serving cert
-      server_name: spook-controller.spooktacular-system.svc
+      server_name: spooktacular-controller.spooktacular-system.svc
       insecure_skip_verify: false
 
     authorization:
       type: Bearer
-      credentials_file: /etc/prometheus/secrets/spook-controller-token
+      credentials_file: /etc/prometheus/secrets/spooktacular-controller-token
 
     relabel_configs:
       # Keep only the controller's metrics endpoint
       - source_labels: [__meta_kubernetes_service_name]
         action: keep
-        regex: spook-controller
+        regex: spooktacular-controller
       - source_labels: [__meta_kubernetes_endpoint_port_name]
         action: keep
         regex: metrics

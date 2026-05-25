@@ -14,7 +14,7 @@
         "type": "query",
         "label": "Controller pod",
         "datasource": { "type": "prometheus", "uid": "prometheus" },
-        "query": "label_values(up{job=\"spook-controller\"}, pod)",
+        "query": "label_values(up{job=\"spooktacular-controller\"}, pod)",
         "refresh": 1,
         "multi": true,
         "includeAll": true,
@@ -36,7 +36,7 @@
       "gridPos": { "x": 0, "y": 1, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "sum(up{job=\"spook-controller\",pod=~\"$pod\"})", "refId": "A" }
+        { "expr": "sum(up{job=\"spooktacular-controller\",pod=~\"$pod\"})", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {
@@ -58,7 +58,7 @@
       "gridPos": { "x": 6, "y": 1, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
-        { "expr": "avg(avg_over_time(up{job=\"spook-controller\",pod=~\"$pod\"}[7d]))", "refId": "A" }
+        { "expr": "avg(avg_over_time(up{job=\"spooktacular-controller\",pod=~\"$pod\"}[7d]))", "refId": "A" }
       ],
       "fieldConfig": {
         "defaults": {

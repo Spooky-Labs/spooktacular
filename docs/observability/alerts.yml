@@ -277,7 +277,7 @@ groups:
           runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#merkle-gap
 
       - alert: SpooktacularControllerWatchStreamDown
-        expr: avg_over_time(up{job="spook-controller"}[5m]) < 0.999
+        expr: avg_over_time(up{job="spooktacular-controller"}[5m]) < 0.999
         for: 10m
         labels:
           severity: page
