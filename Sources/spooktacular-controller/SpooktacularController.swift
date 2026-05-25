@@ -32,7 +32,7 @@ struct SpooktacularController {
     private static let logger = Logger(subsystem: "com.spooktacular.controller", category: "main")
 
     static func main() async {
-        logger.notice("spook-controller starting")
+        logger.notice("spooktacular-controller starting")
 
         let env = ProcessInfo.processInfo.environment
         let labelSelector = env["NODE_LABEL_SELECTOR"] ?? "spooktacular.app/role=mac-host"
@@ -271,7 +271,7 @@ struct SpooktacularController {
             group.cancelAll()
         }
 
-        logger.notice("spook-controller stopped")
+        logger.notice("spooktacular-controller stopped")
     }
 
     // MARK: - Fair-share configuration

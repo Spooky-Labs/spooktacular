@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - K8s ConditionMerger Contract Tests
 //
-// The spook-controller target is an executable and therefore cannot be
+// The spooktacular-controller target is an executable and therefore cannot be
 // `@testable` imported from this target without touching Package.swift.
 // These tests encode the *contract* the controller's `ConditionMerger`
 // must satisfy, against a local mirror of the type. If the controller
