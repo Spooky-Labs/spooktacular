@@ -86,6 +86,57 @@ the phase reference is just noise. Rewrite the docstring to
 describe **what the test guards against**, not **when it was
 written**.
 
+## The "silent test skip" anti-pattern
+
+Tests that wrap their setup in `do { ... } catch { return }` to
+handle missing fixtures often disguise real bugs. A path rename,
+a deleted file, a CI environment change — anything that *should*
+fail the test gets silently skipped. The test reports green, but
+the assertion body never ran.
+
+We hit this concretely: a `DocConsistencyTests` test was reading
+`Sources/spook-controller/NodeManager.swift` after the controller
+target had been renamed. The catch block swallowed
+`fileReadNoSuchFile` and returned early. Green CI was lying.
+
+**Fix:** make the test FAIL when its premise breaks. Either let
+the throw propagate (the function already declares `throws`), or
+use `try XCTSkipUnless` with an explicit reason that lands in the
+test report. A skip-gracefully catch only earns its keep when the
+fixture genuinely is optional across environments — and even
+then, the reason should be logged via `Issue.record`, not
+swallowed.
+
+## Two-name-prefix drift in docs
+
+User-facing docs that document env vars, binary names, or
+deployment paths are part of the product contract. When code
+renames a symbol, every doc that mentions it needs the same
+edit in the same PR. Otherwise the doc starts lying.
+
+We hit this concretely: env vars renamed from `SPOOK_*` to
+`SPOOKTACULAR_*` years ago, but ~10 docs still listed the old
+short prefix. Operators following the docs would set variables
+the daemon didn't read, then get misleading "X is missing"
+errors naming yet a third variable. Similarly, binary renames
+from `spook-controller` to `spooktacular-controller` were
+incomplete — log lines, Prometheus job labels, K8s deployment
+docs all carried the old name.
+
+**Verify** before recommending env vars in a doc:
+
+```sh
+# Are there env vars in docs that don't exist in code?
+grep -rhoE 'SPOOK[A-Z_]+|SPOOKTACULAR_[A-Z_]+' docs | sort -u \
+  > /tmp/doc-envs.txt
+grep -rhoE 'env\["[A-Z_]+"\]|environment\["[A-Z_]+"\]' Sources \
+  | sed 's/env\["//; s/environment\["//; s/"\]//' | sort -u \
+  > /tmp/code-envs.txt
+comm -23 /tmp/doc-envs.txt /tmp/code-envs.txt
+# Names in this output are documented but unused — either typos,
+# stale rename targets, or wholly fictional.
+```
+
 ## Periodic cleanup checklist
 
 Run this every quarter or when a major build phase completes.
@@ -109,6 +160,13 @@ grep -rnE '^/// .* lives in .*\.swift\.$' Sources Tests \
 # Find typealiases inside types — most are indirection.
 grep -rn 'typealias' Sources | grep -v '\.build/'
 
+# Find silent test skips that disguise real failures as passes.
+grep -rB 2 -A 3 'catch {$' Tests | grep -B 4 'return$\|skip gracefully'
+
+# Find docs that reference dead source paths (rename targets).
+grep -rn 'Sources/spook-controller\|Sources/spooktacular-agent' \
+  Sources Tests docs
+
 # For each protocol with a small number of conforming types,
 # ask: does it earn its keep? Single-conformer protocols are
 # almost always premature flexibility.
@@ -116,17 +174,23 @@ grep -rn 'typealias' Sources | grep -v '\.build/'
 
 ## Worked examples
 
-The cleanup pass that produced this doc removed **~170 lines**
-of dead code and stale documentation across four commits:
+The cleanup pass that produced this doc removed **~200 lines**
+of dead code and surfaced **three user-impact bugs** across 18
+commits. Highlights:
 
-| Commit | What |
-|---|---|
-| [`de07cbd5`](https://github.com/Spooky-Labs/spooktacular/commit/de07cbd5) | MDM cleanup — drops dead `MDMContentStore.register()`, the `BuiltPackage` typealias, and Phase-N pointers in all 14 files of the EmbeddedMDM module. |
-| [`ee11dda5`](https://github.com/Spooky-Labs/spooktacular/commit/ee11dda5) | DiskInjector cleanup (closes #85) — rips the vestigial LaunchDaemon plist generator, its supporting constants + xmlEscape helper, and the unreachable `chownFailed` error case. |
-| [`64b74d1f`](https://github.com/Spooky-Labs/spooktacular/commit/64b74d1f) | docs/MDM.md rewrite — adds an architecture map, on-disk state layout, and a per-removal simplification log. |
-| [`a4d6c958`](https://github.com/Spooky-Labs/spooktacular/commit/a4d6c958) | Phase-N sweep across the rest of the codebase — AuditSinkFactory, Serve.swift, two test files. |
+| Category | Commit | What |
+|---|---|---|
+| **Dead code** | [`de07cbd5`](https://github.com/Spooky-Labs/spooktacular/commit/de07cbd5) | MDM cleanup — drops dead `MDMContentStore.register()`, the `BuiltPackage` typealias, Phase-N pointers across 14 EmbeddedMDM files. |
+| **Dead code** | [`ee11dda5`](https://github.com/Spooky-Labs/spooktacular/commit/ee11dda5) | DiskInjector cleanup (closes #85) — rips vestigial LaunchDaemon plist generator + `chownFailed` error case. |
+| **Doc rewrite** | [`64b74d1f`](https://github.com/Spooky-Labs/spooktacular/commit/64b74d1f) | docs/MDM.md — adds architecture map, on-disk state layout, per-removal simplification log. |
+| **Doc rot** | [`a4d6c958`](https://github.com/Spooky-Labs/spooktacular/commit/a4d6c958) | Phase-N sweep across the rest of the codebase. |
+| **User-impact bug** | [`639f7d86`](https://github.com/Spooky-Labs/spooktacular/commit/639f7d86) | `GuestAgentError.notConnected` suggested `sudo spooktacular-agent --install-daemon` — a binary that no longer exists. |
+| **User-impact bug** | [`e9211449`](https://github.com/Spooky-Labs/spooktacular/commit/e9211449) | `spook doctor --strict` item 11 validated the deleted `SPOOKTACULAR_AUDIT_SIGNING_KEY` file-path env var — inverting the pass/fail signal vs. production reality. |
+| **User-impact bug** | [`bae8ad08`](https://github.com/Spooky-Labs/spooktacular/commit/bae8ad08) | `DocConsistencyTests.tlsDefaultConsistency` silently no-op'd for months due to a stale source path. |
+| **Doc bulk rename** | [`51c54ca92`](https://github.com/Spooky-Labs/spooktacular/commit/51c54ca92) | 31 distinct env-var prefix renames across 7 deployment / runbook / observability docs. |
 
-See the commit messages for per-change rationale.
+See `git log --grep=cleanup` for the full list with per-change
+rationale.
 
 ## Out of scope
 
