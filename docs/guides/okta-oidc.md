@@ -4,7 +4,7 @@
 
 - Okta admin account
 - Spooktacular controller running with mTLS
-- `SPOOK_IDP_CONFIG` pointing to `identity-providers.json`
+- `SPOOKTACULAR_IDP_CONFIG` pointing to `identity-providers.json`
 
 ## Step 1: Create an Okta Application
 
