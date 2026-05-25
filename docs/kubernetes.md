@@ -338,18 +338,18 @@ chart's `extraEnv` or mount into the Deployment manually):
 
 | Variable                     | Purpose                                            |
 |------------------------------|----------------------------------------------------|
-| `SPOOK_TLS_CERT_PATH`        | Client cert for mTLS to Mac nodes                  |
-| `SPOOK_TLS_KEY_PATH`         | Private key for mTLS                               |
-| `SPOOK_TLS_CA_PATH`          | CA bundle pinning Mac node server certs            |
-| `SPOOK_TENANCY_MODE`         | `single-tenant` (default) or `multi-tenant`        |
-| `SPOOK_TENANT_CONFIG`        | Path to JSON tenant-pool mapping                   |
-| `SPOOK_AUDIT_FILE`           | JSONL audit sink path (for SIEM forwarder)         |
-| `SPOOK_AUDIT_IMMUTABLE_PATH` | Append-only audit store path                       |
-| `SPOOK_AUDIT_MERKLE`         | Set `1` to enable tamper-evident Merkle audit tree |
-| `SPOOK_IDP_CONFIG`           | OIDC / SAML provider registry JSON                 |
-| `SPOOK_RBAC_CONFIG`          | RBAC role store (resource-level authorization)     |
-| `SPOOK_SCHEDULER_POLICY`     | Fair-share scheduler policy JSON                   |
-| `SPOOK_FLEET_CAPACITY`       | Total fleet VM slots (hostCount × 2 on Mac)        |
+| `SPOOKTACULAR_TLS_CERT_PATH`        | Client cert for mTLS to Mac nodes                  |
+| `SPOOKTACULAR_TLS_KEY_PATH`         | Private key for mTLS                               |
+| `SPOOKTACULAR_TLS_CA_PATH`          | CA bundle pinning Mac node server certs            |
+| `SPOOKTACULAR_TENANCY_MODE`         | `single-tenant` (default) or `multi-tenant`        |
+| `SPOOKTACULAR_TENANT_CONFIG`        | Path to JSON tenant-pool mapping                   |
+| `SPOOKTACULAR_AUDIT_FILE`           | JSONL audit sink path (for SIEM forwarder)         |
+| `SPOOKTACULAR_AUDIT_IMMUTABLE_PATH` | Append-only audit store path                       |
+| `SPOOKTACULAR_AUDIT_MERKLE`         | Set `1` to enable tamper-evident Merkle audit tree |
+| `SPOOKTACULAR_IDP_CONFIG`           | OIDC / SAML provider registry JSON                 |
+| `SPOOKTACULAR_RBAC_CONFIG`          | RBAC role store (resource-level authorization)     |
+| `SPOOKTACULAR_SCHEDULER_POLICY`     | Fair-share scheduler policy JSON                   |
+| `SPOOKTACULAR_FLEET_CAPACITY`       | Total fleet VM slots (hostCount × 2 on Mac)        |
 
 ### DynamoDB distributed locking
 

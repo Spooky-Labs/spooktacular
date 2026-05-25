@@ -22,10 +22,10 @@ storage.
 Configure both local and remote audit:
 
 ```
-SPOOK_AUDIT_FILE=/var/log/spooktacular/audit.jsonl
-SPOOK_AUDIT_IMMUTABLE_PATH=/var/log/spooktacular/audit-immutable.jsonl
-SPOOK_AUDIT_MERKLE=1
-SPOOK_AUDIT_SIGNING_KEY=/var/lib/spooktacular/merkle-signing.key
+SPOOKTACULAR_AUDIT_FILE=/var/log/spooktacular/audit.jsonl
+SPOOKTACULAR_AUDIT_IMMUTABLE_PATH=/var/log/spooktacular/audit-immutable.jsonl
+SPOOKTACULAR_AUDIT_MERKLE=1
+SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL=/var/lib/spooktacular/merkle-signing.key
 SPOOK_AUDIT_S3_BUCKET=acme-spooktacular-audit
 SPOOK_AUDIT_S3_REGION=us-east-1
 SPOOK_AUDIT_S3_RETENTION_DAYS=2555
@@ -85,7 +85,7 @@ from base on boot. For bases:
 
 - **GitHub runner PATs**: stored in Kubernetes Secrets referenced
   by `RunnerPool.ci.github.secretRef`. Backed up with etcd.
-- **OIDC/SAML config**: stored in `SPOOK_IDP_CONFIG` JSON file.
+- **OIDC/SAML config**: stored in `SPOOKTACULAR_IDP_CONFIG` JSON file.
   Back up alongside Helm values.
 
 ## Recovery procedures

@@ -36,7 +36,7 @@ scrape_configs:
     scheme: https
     metrics_path: /metrics
     authorization:
-      # spook serve reads SPOOK_API_TOKEN from the Keychain; put the
+      # spook serve reads SPOOKTACULAR_API_TOKEN from the Keychain; put the
       # bearer here or use a credentials_file pointing at /etc/secrets/.
       credentials_file: /etc/prometheus/secrets/spook-api-token
     tls_config:

@@ -15,7 +15,7 @@ Every runbook follows the same template: **Trigger → Severity & escalation →
 
 One or more of:
 
-- `AuditRecord` with `action == "bgt.consume"` from an unexpected source IP (check `emitAgentAudit` output at `SPOOK_AGENT_AUDIT_FILE`).
+- `AuditRecord` with `action == "bgt.consume"` from an unexpected source IP (check `emitAgentAudit` output at `SPOOKTACULAR_AGENT_AUDIT_FILE`).
 - Operator reports that a `bgt:` blob was pasted into a shared channel (Slack, Jira, screenshot OCR'd by DLP).
 - SIEM alert on `authTier == "breakGlass"` outside a change-management window.
 - `jti` appearing twice in `UsedTicketCache` telemetry (second attempt would be denied; the first may have succeeded).
@@ -33,7 +33,7 @@ Invalidate the ticket on every agent in the affected tenant before any forensics
 ```bash
 # 1. Identify the ticket's jti + issuer from the audit record.
 jq 'select(.action == "bgt.consume") | {jti: .metadata.jti, issuer: .metadata.issuer, tenant: .tenant, ts: .timestamp}' \
-  "$SPOOK_AGENT_AUDIT_FILE" | tail -20
+  "$SPOOKTACULAR_AGENT_AUDIT_FILE" | tail -20
 
 # 2. Revoke the offending operator's issuer key fleet-wide
 # (single-file delete; no fleet rotation required — see
@@ -85,7 +85,7 @@ If the leak exposed any data the ticket could reach, assume the guest is comprom
 
 ### Audit trail
 
-- Preserve the `bgt.consume` audit records, the Merkle STH covering them, and the raw `SPOOK_AGENT_AUDIT_FILE` segment for the incident window.
+- Preserve the `bgt.consume` audit records, the Merkle STH covering them, and the raw `SPOOKTACULAR_AGENT_AUDIT_FILE` segment for the incident window.
 - Capture the file-system state of `/etc/spooktacular/break-glass-keys/` (pre- and post-rotation) via `sudo find /etc/spooktacular/break-glass-keys -type f -exec sha256sum {} +`.
 - File the advisory close-out against the GitHub Security Advisory created during escalation.
 
@@ -143,7 +143,7 @@ sudo launchctl unload \
 
   The Merkle STH chain (`MerkleAuditSink.signedTreeHead`) is signed by the Secure-Enclave-bound key; a host compromise cannot forge past STHs. Divergence between the on-host audit tree and the S3 Object Lock copy (`S3ObjectLockAuditStore`) proves tampering.
 
-- Inspect the append-only file's `UF_APPEND` flag is still set: `ls -lO "$SPOOK_AUDIT_FILE"` — if `uappnd` is missing, the kernel-enforced append-only guarantee was defeated (root-level escalation).
+- Inspect the append-only file's `UF_APPEND` flag is still set: `ls -lO "$SPOOKTACULAR_AUDIT_FILE"` — if `uappnd` is missing, the kernel-enforced append-only guarantee was defeated (root-level escalation).
 - Pull `log collect --last 24h` into an offline bundle for later analysis.
 - Check `launchctl print system/com.spooktacular.*` for daemons added since the last known-good plist inventory.
 
@@ -187,7 +187,7 @@ spook tenant reconcile --drop-orphans
 ### Audit trail
 
 - Archive the offline `log collect` bundle and the pre-incident Merkle STH to the same bucket used for S3 Object Lock exports.
-- Snapshot the DynamoDB lock table (`SPOOK_DYNAMO_TABLE`) to preserve evidence of any lock-holder identity spoofing.
+- Snapshot the DynamoDB lock table (`SPOOKTACULAR_DYNAMO_TABLE`) to preserve evidence of any lock-holder identity spoofing.
 - File the advisory with CVSS scoring per [`PATCH_POLICY.md`](PATCH_POLICY.md).
 
 ---
@@ -198,7 +198,7 @@ spook tenant reconcile --drop-orphans
 
 - Secure Enclave attestation failure on `SecureEnclave.P256.Signing.PrivateKey` load (only possible if the SEP is mis-provisioned or the key was replaced with a software key).
 - Alert: STH signed by a public key not on the operator-published allowlist.
-- Software-key path (`SPOOK_AUDIT_SIGNING_KEY_PATH`) file permissions drift from `0600` (`AuditSinkFactory.loadOrCreateSigningKey` refuses to boot, so this surfaces as a startup failure).
+- Software-key path (`SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL`) file permissions drift from `0600` (`AuditSinkFactory.loadOrCreateSigningKey` refuses to boot, so this surfaces as a startup failure).
 
 ### Severity & escalation
 

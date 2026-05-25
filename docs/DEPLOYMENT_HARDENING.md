@@ -23,21 +23,21 @@ The **Doctor** column indicates how `spook doctor --strict` surfaces each row �
 
 | # | Control | How to verify | Doctor (`spook doctor --strict`) |
 |---|---------|---------------|----------------------------------|
-| 1 | TLS certificate + key configured | `SPOOK_TLS_CERT_PATH`, `SPOOK_TLS_KEY_PATH`, `SPOOK_TLS_CA_PATH` all set and readable by the daemon user | Y — env set + file readable |
-| 2 | mTLS (client cert required) | CA path set, server presents cert, client cert is required on every request | Y — `SPOOK_TLS_CA_PATH` readable |
+| 1 | TLS certificate + key configured | `SPOOKTACULAR_TLS_CERT_PATH`, `SPOOKTACULAR_TLS_KEY_PATH`, `SPOOKTACULAR_TLS_CA_PATH` all set and readable by the daemon user | Y — env set + file readable |
+| 2 | mTLS (client cert required) | CA path set, server presents cert, client cert is required on every request | Y — `SPOOKTACULAR_TLS_CA_PATH` readable |
 | 3 | TLS 1.3 floor | No explicit config needed — enforced in code, hot-reload preserves it | Y — TLS-1.3 handshake probed on port 8484 (warn when serve is offline) |
 | 4 | API bearer token in Keychain | `security find-generic-password -a spook-api -s com.spooktacular.api` returns a value | Y — Keychain probe via `SecItemCopyMatching`; env-var fallback is flagged as warning |
-| 5 | Guest-agent tokens in Keychain | `SPOOK_AGENT_TOKEN` / `SPOOK_AGENT_RUNNER_TOKEN` / `SPOOK_AGENT_READONLY_TOKEN` — **not** on disk in plaintext | Y — env presence OR Keychain entry `com.spooktacular.agent` |
-| 6 | RBAC active | `SPOOK_RBAC_CONFIG` points at a readable JSON file, or `SPOOK_MACOS_GROUP_MAPPING` is set | Y — file readable OR group mapping set |
-| 7 | Federated IdP configured | `SPOOK_IDP_CONFIG` JSON exists with at least one OIDC/SAML provider | Y — `SPOOK_IDP_CONFIG` readable |
+| 5 | Guest-agent tokens in Keychain | `SPOOKTACULAR_AGENT_TOKEN` / `SPOOKTACULAR_AGENT_RUNNER_TOKEN` / `SPOOKTACULAR_AGENT_READONLY_TOKEN` — **not** on disk in plaintext | Y — env presence OR Keychain entry `com.spooktacular.agent` |
+| 6 | RBAC active | `SPOOKTACULAR_RBAC_CONFIG` points at a readable JSON file, or `SPOOKTACULAR_MACOS_GROUP_MAPPING` is set | Y — file readable OR group mapping set |
+| 7 | Federated IdP configured | `SPOOKTACULAR_IDP_CONFIG` JSON exists with at least one OIDC/SAML provider | Y — `SPOOKTACULAR_IDP_CONFIG` readable |
 | 8 | JWKS pinned (strongest) OR trusted mirror | Either `staticJWKSPath` or `jwksURLOverride` on every OIDC provider | Y — every OIDC provider parsed out of the config must carry one of the two fields |
-| 9 | Audit JSONL enabled | `SPOOK_AUDIT_FILE` set, path is writable, tail the file to confirm records flow | Y — env set + parent directory writable |
-| 10 | Append-only audit backing | `SPOOK_AUDIT_IMMUTABLE_PATH` set; after first write, `ls -lO` shows `uappnd` on the file | Y — `stat(2)` on the path checks `UF_APPEND` |
-| 11 | Merkle signing key persisted | `SPOOK_AUDIT_SIGNING_KEY` points at a path with mode 0600; verify with `stat -f '%Op' /path` — must be `100600` | Y — POSIX mode 0600 assertion via `FileManager.attributesOfItem` |
+| 9 | Audit JSONL enabled | `SPOOKTACULAR_AUDIT_FILE` set, path is writable, tail the file to confirm records flow | Y — env set + parent directory writable |
+| 10 | Append-only audit backing | `SPOOKTACULAR_AUDIT_IMMUTABLE_PATH` set; after first write, `ls -lO` shows `uappnd` on the file | Y — `stat(2)` on the path checks `UF_APPEND` |
+| 11 | Merkle signing key persisted | `SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL` points at a path with mode 0600; verify with `stat -f '%Op' /path` — must be `100600` | Y — POSIX mode 0600 assertion via `FileManager.attributesOfItem` |
 | 12 | S3 Object Lock audit copy | `SPOOK_AUDIT_S3_BUCKET` set, bucket is in Object-Lock **Compliance mode** with a retention period | manual — CLI prints `?` with the bucket name + `aws s3api get-object-lock-configuration` one-liner (AWS call not issued from doctor) |
-| 13 | Distributed lock backend | `SPOOK_DYNAMO_TABLE` (cross-region) or `SPOOK_K8S_API` (cluster) — **not** the file fallback, in fleets of ≥ 2 hosts | Y — DynamoDB / K8s / file fallback all classified |
-| 14 | Tenancy mode set | `SPOOK_TENANCY_MODE=multi-tenant` for any fleet with more than one team's workloads | Y — echoes the configured mode |
-| 15 | Insecure mode is OFF | `SPOOK_INSECURE_CONTROLLER` is unset and `spook serve --insecure` is never in a unit file | Y — env var guard |
+| 13 | Distributed lock backend | `SPOOKTACULAR_DYNAMO_TABLE` (cross-region) or `SPOOK_K8S_API` (cluster) — **not** the file fallback, in fleets of ≥ 2 hosts | Y — DynamoDB / K8s / file fallback all classified |
+| 14 | Tenancy mode set | `SPOOKTACULAR_TENANCY_MODE=multi-tenant` for any fleet with more than one team's workloads | Y — echoes the configured mode |
+| 15 | Insecure mode is OFF | `SPOOKTACULAR_INSECURE_CONTROLLER` is unset and `spook serve --insecure` is never in a unit file | Y — env var guard |
 | 16 | Hardened Runtime + notarization | `codesign -d --verbose=4 /usr/local/bin/spook` shows `flags=0x10000(runtime)` and `TeamIdentifier` | Y — invokes `codesign -d --verbose=4` on `$ARGV[0]` |
 | 17 | Code-signing timestamp | Same output shows `Signed Time=…` (from `--timestamp` in `build-app.sh`) | Y — same codesign output parsed for `Signed Time=` / `Timestamp=` |
 | 18 | Only Apple SDKs in dependency tree | `swift package show-dependencies --format json` returns an empty `dependencies` array | manual — build-time; doctor prints `?` with the one-liner to run locally |
@@ -48,10 +48,10 @@ The **Doctor** column indicates how `spook doctor --strict` surfaces each row �
 
 | Doctor # | What it probes |
 |----------|----------------|
-| 19 | **SAML assertion verifier readiness** — every `saml`-typed provider in `SPOOK_IDP_CONFIG` must point at a readable `metadataPath` or `signingCertPath`, else signature verification silently fails open at first request |
-| 20 | **IAM binding store writability** — `SPOOK_IAM_BINDINGS_CONFIG` path / parent directory can be opened for read+write; if not, `/v1/vms/:name/identity-token` returns empty bindings instead of minting |
-| 21 | **Audit sink can-write probe** — opens `SPOOK_AUDIT_FILE` for append (creating it if absent + permitted) so permissions mismatches surface at doctor time instead of on the first authentic request |
-| 22 | **Signed-request verifier key material** — `SPOOK_API_PUBLIC_KEYS_DIR` contains ≥ 1 `.pem` / `.pub` file; an empty directory silently degrades every signed request to `authenticationRequired` |
+| 19 | **SAML assertion verifier readiness** — every `saml`-typed provider in `SPOOKTACULAR_IDP_CONFIG` must point at a readable `metadataPath` or `signingCertPath`, else signature verification silently fails open at first request |
+| 20 | **IAM binding store writability** — `SPOOKTACULAR_IAM_BINDINGS_CONFIG` path / parent directory can be opened for read+write; if not, `/v1/vms/:name/identity-token` returns empty bindings instead of minting |
+| 21 | **Audit sink can-write probe** — opens `SPOOKTACULAR_AUDIT_FILE` for append (creating it if absent + permitted) so permissions mismatches surface at doctor time instead of on the first authentic request |
+| 22 | **Signed-request verifier key material** — `SPOOKTACULAR_API_PUBLIC_KEYS_DIR` contains ≥ 1 `.pem` / `.pub` file; an empty directory silently degrades every signed request to `authenticationRequired` |
 | 23 | **Guest-agent reachability** — counts running VMs via the PID-file layer; the authoritative vsock probe stays in `spook remote health <vm>` to keep doctor hermetic |
 
 Run `spook doctor --strict` to verify every automatable row. The strict lane exits non-zero if any required item reports a `✗`; manual (`?`) and doctor-only (`⚠`) rows are informational. A non-zero exit means the deployment is **not hardened** — fail the change.
@@ -64,22 +64,22 @@ Drop this into `/etc/launchd/spooktacular.env` and `launchctl setenv` it:
 
 ```bash
 # ─── TLS ─────────────────────────────────────────────────────────
-export SPOOK_TLS_CERT_PATH=/etc/spooktacular/tls/server.crt
-export SPOOK_TLS_KEY_PATH=/etc/spooktacular/tls/server.key
-export SPOOK_TLS_CA_PATH=/etc/spooktacular/tls/ca.crt          # enables mTLS
+export SPOOKTACULAR_TLS_CERT_PATH=/etc/spooktacular/tls/server.crt
+export SPOOKTACULAR_TLS_KEY_PATH=/etc/spooktacular/tls/server.key
+export SPOOKTACULAR_TLS_CA_PATH=/etc/spooktacular/tls/ca.crt          # enables mTLS
 
 # ─── API auth ────────────────────────────────────────────────────
-# SPOOK_API_TOKEN is read from the Keychain when available;
+# SPOOKTACULAR_API_TOKEN is read from the Keychain when available;
 # the env var is the fallback. Prefer the Keychain.
 #
 # security add-generic-password -s com.spooktacular.api \
 #     -a spook-api -w "$(openssl rand -hex 48)" -U
 
 # ─── Audit pipeline ──────────────────────────────────────────────
-export SPOOK_AUDIT_FILE=/var/log/spooktacular/audit.jsonl
-export SPOOK_AUDIT_IMMUTABLE_PATH=/var/log/spooktacular/audit.immutable.jsonl
-export SPOOK_AUDIT_MERKLE=1
-export SPOOK_AUDIT_SIGNING_KEY=/etc/spooktacular/secrets/merkle.key   # mode 0600
+export SPOOKTACULAR_AUDIT_FILE=/var/log/spooktacular/audit.jsonl
+export SPOOKTACULAR_AUDIT_IMMUTABLE_PATH=/var/log/spooktacular/audit.immutable.jsonl
+export SPOOKTACULAR_AUDIT_MERKLE=1
+export SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL=/etc/spooktacular/secrets/merkle.key   # mode 0600
 
 # S3 Object Lock WORM copy
 export SPOOK_AUDIT_S3_BUCKET=acme-spooktacular-audit-prod-us-east-1
@@ -87,15 +87,15 @@ export SPOOK_AUDIT_S3_REGION=us-east-1
 export SPOOK_AUDIT_S3_RETENTION_DAYS=2555  # 7-year retention (SOC 2 Type II)
 
 # ─── RBAC & federated identity ───────────────────────────────────
-export SPOOK_RBAC_CONFIG=/etc/spooktacular/rbac.json
-export SPOOK_IDP_CONFIG=/etc/spooktacular/idps.json
+export SPOOKTACULAR_RBAC_CONFIG=/etc/spooktacular/rbac.json
+export SPOOKTACULAR_IDP_CONFIG=/etc/spooktacular/idps.json
 
 # ─── Cross-region distributed lock ───────────────────────────────
-export SPOOK_DYNAMO_TABLE=spooktacular-locks-prod
-export SPOOK_DYNAMO_REGION=us-east-1
+export SPOOKTACULAR_DYNAMO_TABLE=spooktacular-locks-prod
+export SPOOKTACULAR_DYNAMO_REGION=us-east-1
 
 # ─── Tenancy ─────────────────────────────────────────────────────
-export SPOOK_TENANCY_MODE=multi-tenant
+export SPOOKTACULAR_TENANCY_MODE=multi-tenant
 
 # ─── Guest-agent tokens ──────────────────────────────────────────
 # Injected into the VM at provision time, NEVER stored plaintext on
@@ -112,8 +112,8 @@ export SPOOK_TENANCY_MODE=multi-tenant
 
 Do **not** set:
 
-- `SPOOK_INSECURE_CONTROLLER=1` — disables mTLS check in the controller
-- `SPOOK_TLS_MIN_VERSION=1.2` — env was removed in the security hardening batch; if you see this documented anywhere, it is out of date
+- `SPOOKTACULAR_INSECURE_CONTROLLER=1` — disables mTLS check in the controller
+- `SPOOKTACULAR_TLS_MIN_VERSION=1.2` — env was removed in the security hardening batch; if you see this documented anywhere, it is out of date
 
 ---
 
@@ -123,11 +123,11 @@ Do **not** set:
 
 | Shortcut | Why it's dangerous | The correct path |
 |----------|-------------------|------------------|
-| `spook serve --insecure` | Disables the TLS-required gate in production | Use `spook serve` with `SPOOK_TLS_*` set |
-| `SPOOK_INSECURE_CONTROLLER=1` in a unit file | Controller accepts non-mTLS callers — token becomes the only auth | Only use on an engineer's laptop |
-| Running without `SPOOK_AUDIT_FILE` | Audit goes to OSLog only; log rotation can evict evidence | Always set the JSONL path |
-| Running without `SPOOK_AUDIT_IMMUTABLE_PATH` | The JSONL file is editable by anyone with `write` | Set the immutable-path, the kernel will enforce append-only |
-| Running `SPOOK_AUDIT_MERKLE=1` without `SPOOK_AUDIT_SIGNING_KEY` | **Hard error** at startup — factory refuses to build with an ephemeral key. Good — leave the guard in place |
+| `spook serve --insecure` | Disables the TLS-required gate in production | Use `spook serve` with `SPOOKTACULAR_TLS_*` set |
+| `SPOOKTACULAR_INSECURE_CONTROLLER=1` in a unit file | Controller accepts non-mTLS callers — token becomes the only auth | Only use on an engineer's laptop |
+| Running without `SPOOKTACULAR_AUDIT_FILE` | Audit goes to OSLog only; log rotation can evict evidence | Always set the JSONL path |
+| Running without `SPOOKTACULAR_AUDIT_IMMUTABLE_PATH` | The JSONL file is editable by anyone with `write` | Set the immutable-path, the kernel will enforce append-only |
+| Running `SPOOKTACULAR_AUDIT_MERKLE=1` without `SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL` | **Hard error** at startup — factory refuses to build with an ephemeral key. Good — leave the guard in place |
 | Storing `AWS_SECRET_ACCESS_KEY` in a plaintext unit file | Credentials leak in `ps` output, backup archives, crash dumps | Keychain or instance profile |
 | `chmod 644 merkle.key` | The loader refuses to start — it checks permissions before reading | `chmod 600`; if you need a second operator to read, add them as a Keychain ACL, don't loosen posix bits |
 | Copy-pasting an OIDC IdP config without `staticJWKSPath` or `jwksURLOverride` in a regulated environment | Verifier fetches JWKS over the internet, vulnerable to on-path attack | Always pin — see § 3.2 |
@@ -220,20 +220,20 @@ If the line reads `File(dir=…)` in a multi-host fleet, stop the host and fix t
 
     <key>EnvironmentVariables</key>
     <dict>
-        <key>SPOOK_TLS_CERT_PATH</key>
+        <key>SPOOKTACULAR_TLS_CERT_PATH</key>
         <string>/etc/spooktacular/tls/server.crt</string>
-        <key>SPOOK_TLS_KEY_PATH</key>
+        <key>SPOOKTACULAR_TLS_KEY_PATH</key>
         <string>/etc/spooktacular/tls/server.key</string>
-        <key>SPOOK_TLS_CA_PATH</key>
+        <key>SPOOKTACULAR_TLS_CA_PATH</key>
         <string>/etc/spooktacular/tls/ca.crt</string>
 
-        <key>SPOOK_AUDIT_FILE</key>
+        <key>SPOOKTACULAR_AUDIT_FILE</key>
         <string>/var/log/spooktacular/audit.jsonl</string>
-        <key>SPOOK_AUDIT_IMMUTABLE_PATH</key>
+        <key>SPOOKTACULAR_AUDIT_IMMUTABLE_PATH</key>
         <string>/var/log/spooktacular/audit.immutable.jsonl</string>
-        <key>SPOOK_AUDIT_MERKLE</key>
+        <key>SPOOKTACULAR_AUDIT_MERKLE</key>
         <string>1</string>
-        <key>SPOOK_AUDIT_SIGNING_KEY</key>
+        <key>SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL</key>
         <string>/etc/spooktacular/secrets/merkle.key</string>
 
         <key>SPOOK_AUDIT_S3_BUCKET</key>
@@ -243,17 +243,17 @@ If the line reads `File(dir=…)` in a multi-host fleet, stop the host and fix t
         <key>SPOOK_AUDIT_S3_RETENTION_DAYS</key>
         <string>2555</string>
 
-        <key>SPOOK_RBAC_CONFIG</key>
+        <key>SPOOKTACULAR_RBAC_CONFIG</key>
         <string>/etc/spooktacular/rbac.json</string>
-        <key>SPOOK_IDP_CONFIG</key>
+        <key>SPOOKTACULAR_IDP_CONFIG</key>
         <string>/etc/spooktacular/idps.json</string>
 
-        <key>SPOOK_DYNAMO_TABLE</key>
+        <key>SPOOKTACULAR_DYNAMO_TABLE</key>
         <string>spooktacular-locks-prod</string>
-        <key>SPOOK_DYNAMO_REGION</key>
+        <key>SPOOKTACULAR_DYNAMO_REGION</key>
         <string>us-east-1</string>
 
-        <key>SPOOK_TENANCY_MODE</key>
+        <key>SPOOKTACULAR_TENANCY_MODE</key>
         <string>multi-tenant</string>
     </dict>
 
@@ -340,7 +340,7 @@ If any of these fails, the deployment is **not** hardened — stop traffic.
 | TLS client certs (controller/CI) | 180 days | Rotate via CA; old cert expires automatically |
 | API bearer token | 180 days | `security delete-generic-password -s com.spooktacular.api -a spook-api`; re-add new |
 | Guest-agent tokens | 90 days | Re-provision affected VMs with new token |
-| Merkle signing key | 365 days or on suspected compromise | Write new file at `SPOOK_AUDIT_SIGNING_KEY`, restart; publish new public key to long-lived verifiers |
+| Merkle signing key | 365 days or on suspected compromise | Write new file at `SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL`, restart; publish new public key to long-lived verifiers |
 | OIDC JWKS (pinned) | On IdP rotation | Replace `staticJWKSPath` file, verifier picks up on next TTL |
 | S3 Object Lock retention | Never shortens in Compliance mode | Write once; audit retention is contractual |
 

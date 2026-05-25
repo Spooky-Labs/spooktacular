@@ -59,9 +59,9 @@ Applies transitively: bundles *contain* unprotected sensitive data at rest witho
 
 2. **`VirtualMachineBundle.create(at:spec:)`** applies the recommended protection class to the bundle directory after writing `config.json` and `metadata.json`. Files added to the bundle later (by `VZMacOSInstaller`, clone operations, snapshot writes) inherit the directory's protection class.
 
-3. **Explicit opt-out**: `SPOOK_BUNDLE_PROTECTION=none` environment variable disables CUFUA on laptops — used for `spook serve --insecure` development loops where the operator doesn't want to re-authenticate after every reboot.
+3. **Explicit opt-out**: `SPOOKTACULAR_BUNDLE_PROTECTION=none` environment variable disables CUFUA on laptops — used for `spook serve --insecure` development loops where the operator doesn't want to re-authenticate after every reboot.
 
-4. **Explicit opt-in on desktops**: `SPOOK_BUNDLE_PROTECTION=cufua` forces CUFUA even on non-portable Macs — useful when a regulated deployment wants the posture regardless of form factor, and operators accept they must log in before any VM starts.
+4. **Explicit opt-in on desktops**: `SPOOKTACULAR_BUNDLE_PROTECTION=cufua` forces CUFUA even on non-portable Macs — useful when a regulated deployment wants the posture regardless of form factor, and operators accept they must log in before any VM starts.
 
 5. **Per-user GUI override**: the Spooktacular app's Settings → Security tab offers the same three-way choice (Automatic / Protected / Off), persisted via `UserDefaults` under `com.spooktacular.bundleProtection`. Precedence is **env var > UserDefaults > auto-detect** — an operator who configures the policy via MDM / launchd plist (env var) is never silently overridden by a per-user GUI toggle. The GUI's "Effective right now" section shows which tier produced the current class so users can confirm their selection took effect.
 

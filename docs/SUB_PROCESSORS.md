@@ -12,7 +12,7 @@ Each entry records: purpose, data categories handled, typical region, and a link
 
 - **Purpose:**
   - **S3 Object Lock** — WORM storage for exported audit records (`S3ObjectLockAuditStore`).
-  - **DynamoDB (optional, for multi-region fleets)** — cross-region distributed locks (`DynamoDBDistributedLock`), configured via `SPOOK_DYNAMO_TABLE`.
+  - **DynamoDB (optional, for multi-region fleets)** — cross-region distributed locks (`DynamoDBDistributedLock`), configured via `SPOOKTACULAR_DYNAMO_TABLE`.
   - **CloudWatch Logs (optional)** — receives JSONL audit stream when the Controller configures that sink.
 - **Data categories:**
   - Audit records (`AuditRecord` JSON lines — actor identity, tenant, action, outcome, ISO-8601 timestamp).
