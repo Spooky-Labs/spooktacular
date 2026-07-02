@@ -185,4 +185,4 @@ custom_rules:
     # actually fetch). Apple's plist DTD must be served at
     # `http://www.apple.com/DTDs/PropertyList-1.0.dtd` per the
     # Core Foundation plist spec.
-    excluded: "Tests/.*|Sources/SpooktacularApplication/ServicePlist\\.swift|Sources/SpooktacularInfrastructureApple/DiskInjector\\.swift|Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner\\.swift"
+    excluded: "Tests/.*|Sources/SpooktacularApplication/ServicePlist\\.swift|Sources/SpooktacularApplication/GitHubRunnerTemplate\\.swift|Sources/SpooktacularInfrastructureApple/DiskInjector\\.swift|Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner\\.swift"

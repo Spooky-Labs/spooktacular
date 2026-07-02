@@ -104,4 +104,71 @@ struct GitHubRunnerTemplateTests {
         )
         #expect(!script.contains("--labels"))
     }
+
+    // MARK: - Root provisioner compatibility (v2)
+    //
+    // The provisioner LaunchDaemon runs this script as root on
+    // first boot and waits for it to exit before archiving the
+    // trigger file. These tests pin the v2 contract: config.sh
+    // runs as the admin user (GitHub's runner refuses
+    // `--unattended` as root), and `run.sh` is handed to a
+    // launchd LaunchDaemon rather than run in the foreground —
+    // otherwise the script would block forever and the
+    // provisioner would never archive the trigger.
+
+    @Test("config.sh runs as the admin user via sudo -u, never as root")
+    func scriptRunsConfigAsAdminNotRoot() throws {
+        let url = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let s = try String(contentsOf: url, encoding: .utf8)
+        #expect(s.contains(#"sudo -u "$RUNNER_USER""#))
+        #expect(!s.contains("RUNNER_ALLOW_RUNASROOT"))
+    }
+
+    @Test("script installs a LaunchDaemon for run.sh and exits without blocking")
+    func scriptInstallsLaunchDaemonAndDoesNotBlock() throws {
+        let url = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let s = try String(contentsOf: url, encoding: .utf8)
+        #expect(s.contains("/Library/LaunchDaemons/com.spooktacular.github-runner.plist"))
+        #expect(s.contains("launchctl bootstrap system"))
+        #expect(s.contains("<key>UserName</key>"))
+        // run.sh must only appear inside the plist's ProgramArguments,
+        // never invoked directly in the foreground.
+        #expect(!s.contains("./run.sh\n"))
+    }
+
+    @Test("ephemeral runners get a non-persistent LaunchDaemon")
+    func ephemeralDisablesKeepAlive() throws {
+        let ephURL = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok", ephemeral: true)
+        defer { try? FileManager.default.removeItem(at: ephURL.deletingLastPathComponent()) }
+        let eph = try String(contentsOf: ephURL, encoding: .utf8)
+        #expect(eph.contains("--ephemeral"))
+        #expect(eph.contains("<key>KeepAlive</key>\n    <false/>"))
+
+        let persistentURL = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok")
+        defer { try? FileManager.default.removeItem(at: persistentURL.deletingLastPathComponent()) }
+        let persistent = try String(contentsOf: persistentURL, encoding: .utf8)
+        #expect(persistent.contains("<key>KeepAlive</key>\n    <true/>"))
+    }
+
+    @Test("runner name flows into the config.sh --name argument")
+    func runnerNameFlowsToConfig() throws {
+        let url = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok", runnerName: "runner-01")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let s = try String(contentsOf: url, encoding: .utf8)
+        #expect(s.contains("--name 'runner-01'"))
+    }
+
+    @Test("script waits for the network before hitting the GitHub API")
+    func waitsForNetworkBeforeCurl() throws {
+        let url = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let s = try String(contentsOf: url, encoding: .utf8)
+        let apiIndex = s.range(of: "api.github.com")
+            .map { s.distance(from: s.startIndex, to: $0.lowerBound) } ?? 0
+        let waitIndex = s.range(of: "network wait")
+            .map { s.distance(from: s.startIndex, to: $0.lowerBound) } ?? Int.max
+        #expect(apiIndex > waitIndex)
+    }
 }
