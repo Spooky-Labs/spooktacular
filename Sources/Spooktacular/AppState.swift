@@ -149,9 +149,6 @@ final class AppState {
     /// Running VM instances, keyed by name.
     var runningVMs: [String: VirtualMachine] = [:]
 
-    /// Guest agent clients for running VMs.
-    var agentClients: [String: GuestAgentClient] = [:]
-
     /// Latest SPICE clipboard-bridge snapshot per running VM,
     /// pushed by the guest-tools app via the
     /// `GuestEvent.spiceStatus(_:)` topic on the event
@@ -182,11 +179,6 @@ final class AppState {
 
     /// Swaps the Dock tile to reflect the focused workspace.
     let workspaceIconCoordinator = WorkspaceIconCoordinator()
-
-    /// Per-workspace port monitors. Lazily instantiated on first
-    /// access so VMs that never open a port panel don't incur the
-    /// polling cost.
-    private var portMonitors: [String: PortForwardingMonitor] = [:]
 
     /// Per-VM streaming host-API servers. Each running VM
     /// publishes live events (metrics, lifecycle, ports) onto a
@@ -219,32 +211,11 @@ final class AppState {
     /// app, per-process tree, guest load average).
     private var hostSamplers: [String: HostMetricsSampler] = [:]
 
-    /// The shared clipboard bridge — handles sync between the host
-    /// pasteboard and the focused workspace.
-    let clipboardBridge = ClipboardBridge()
-
     /// Macos notification poster for VM lifecycle transitions.
     let notifications = VMNotifications()
 
     /// Whether the ⌘K command palette is currently presented.
     var showCommandPalette: Bool = false
-
-    /// Returns (or creates) the port monitor for a workspace.
-    ///
-    /// Wires the monitor to the guest agent once per workspace.
-    /// Callers should treat the returned value as a stable,
-    /// observable model for SwiftUI bindings.
-    func portMonitor(for name: String) -> PortForwardingMonitor {
-        if let existing = portMonitors[name] {
-            return existing
-        }
-        let monitor = PortForwardingMonitor()
-        portMonitors[name] = monitor
-        if let client = agentClients[name], let bundle = vms[name] {
-            monitor.start(client: client, macAddress: bundle.spec.macAddress)
-        }
-        return monitor
-    }
 
     // MARK: - Lifecycle Transitions
 
@@ -577,10 +548,6 @@ final class AppState {
                 pidsBeforeStart: preStartPIDs
             )
 
-            if let socketDevice = vm.vzVM?.socketDevices.first as? VZVirtioSocketDevice {
-                agentClients[name] = GuestAgentClient(socketDevice: socketDevice)
-            }
-
             // Instantiate the Apple-native event listener
             // (`VZVirtioSocketListener` on port 9469) **eagerly**
             // at VM start — not lazily on first detail-view open.
@@ -619,9 +586,8 @@ final class AppState {
     ///   is mapped 1:1 to ``VMMetricsSnapshot``.
     /// - **`.lifecycle`** — one frame per VM state transition
     ///   published on `VirtualMachine.stateStream`.
-    /// - **`.ports`** — fed later from the existing
-    ///   ``PortForwardingMonitor``; placeholder until the
-    ///   monitor exposes an async stream (follow-up polish).
+    /// - **`.ports`** — fed from the same ``AgentEventListener``
+    ///   stream as `.metrics`, demuxed by `GuestEvent` case below.
     ///
     /// Each publisher runs in its own `Task` so failure of one
     /// (e.g., an older guest agent that doesn't speak
@@ -831,7 +797,6 @@ final class AppState {
         do {
             try await vm.suspend()
             runningVMs.removeValue(forKey: name)
-            agentClients.removeValue(forKey: name)
             clipboardStatuses.removeValue(forKey: name)
             // Drop the pre-created VZVirtualMachineView so the
             // next start cycle allocates a fresh one (and a
@@ -900,7 +865,6 @@ final class AppState {
         do {
             try await vm.stop(graceful: false)
             runningVMs.removeValue(forKey: name)
-            agentClients.removeValue(forKey: name)
             clipboardStatuses.removeValue(forKey: name)
             // Drop the pre-created VZVirtualMachineView so the
             // next start cycle allocates a fresh one (and a
@@ -1266,7 +1230,7 @@ final class AppState {
 
     /// Deletes a VM by name, stopping it first if running.
     ///
-    /// The published `vms` / `runningVMs` / `agentClients` state
+    /// The published `vms` / `runningVMs` state
     /// is updated **only after** the corresponding side effect
     /// succeeds (stop → remove from runningVMs; FS delete →
     /// remove from vms). Earlier revisions removed from the
@@ -1289,16 +1253,15 @@ final class AppState {
         Task {
             defer { transitioningVMs.remove(name) }
             do {
-                // Stop first — but keep runningVMs/agentClients
-                // populated until stop succeeds. A stop failure
-                // should leave the row AND the running-state
-                // indicator consistent with disk reality.
+                // Stop first — but keep runningVMs populated
+                // until stop succeeds. A stop failure should
+                // leave the row AND the running-state indicator
+                // consistent with disk reality.
                 if let vm = runningVMs[name] {
                     Log.vm.info("Stopping running VM '\(name, privacy: .public)' before deletion")
                     await stopStreamingServices(for: name)
                     try await vm.stop(graceful: false)
                     runningVMs.removeValue(forKey: name)
-                    agentClients.removeValue(forKey: name)
                     clipboardStatuses.removeValue(forKey: name)
                     // Drop the pre-created VZVirtualMachineView so the
                     // next start cycle allocates a fresh one (and a
@@ -1595,7 +1558,6 @@ final class AppState {
             }
         }
         runningVMs.removeAll()
-        agentClients.removeAll()
         clipboardStatuses.removeAll()
     }
 

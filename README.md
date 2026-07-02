@@ -128,8 +128,6 @@ SpookApplication depends on SpookCore only. Infrastructure wraps Apple framework
 | Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularInfrastructureApple/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
 | SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularInfrastructureApple/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
 | Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularInfrastructureApple/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
-| Guest Agent | [`SpooktacularGuestAgentCore/`](Sources/SpooktacularGuestAgentCore/) | 12 HTTP endpoints: clipboard, exec, apps, files, ports, health — library target consumed by `SpooktacularGuestTools.app` |
-| Agent Client | [`GuestAgentClient.swift`](Sources/SpooktacularInfrastructureApple/GuestAgentClient.swift) | Host-side actor for all guest agent operations |
 | Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularApplication/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
 | Ephemeral Runners | [`Start.swift`](Sources/spooktacular-cli/Commands/Start.swift) | `--ephemeral` auto-destroys VM on stop |
 | Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularInfrastructureApple/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
@@ -176,29 +174,6 @@ spook serve --port 8484 --host 127.0.0.1
 | `POST` | `/v1/vms/:name/stop` | Stop a VM |
 | `DELETE` | `/v1/vms/:name` | Delete a VM |
 | `GET` | `/v1/vms/:name/ip` | Resolve VM IP |
-
-## Guest Agent
-
-The [guest agent](Sources/SpooktacularGuestAgentCore/) runs inside `Spooktacular Guest Tools.app` (a sandboxed menu-bar app installed into `/Applications/` on every macOS VM) and provides HTTP endpoints over three separate VirtIO socket channels — no SSH needed.
-
-| Port | Channel | Operations |
-|------|---------|-----------|
-| 9470 | Read-only | health, list apps, list ports, inspect |
-| 9471 | Runner | read-only + clipboard, app launch/quit, file upload |
-| 9472 | Break-glass | all above + shell exec (admin only, audit-logged) |
-
-```bash
-# Check agent connectivity (port 9470 — read-only)
-spook remote health my-vm
-
-# List running apps
-spook remote apps my-vm
-
-# List listening ports
-spook remote ports my-vm
-```
-
-The host-side [`GuestAgentClient`](Sources/SpooktacularInfrastructureApple/GuestAgentClient.swift) provides a typed Swift API for all endpoints. The agent ships inside `Spooktacular Guest Tools.app`, which is installed into each macOS guest's `/Applications/` automatically at VM create time (driven by the `--guest-tools` flag on `spook create` or the GUI Create sheet's Guest Tools picker).
 
 ## EC2 Mac Quickstart
 

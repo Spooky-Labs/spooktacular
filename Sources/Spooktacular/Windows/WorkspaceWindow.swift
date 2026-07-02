@@ -30,7 +30,6 @@ struct WorkspaceWindow: View {
 
     @State private var showSnapshots: Bool = false
     @State private var showHardware: Bool = false
-    @State private var showPorts: Bool = false
 
     /// Holds the most-recently-resolved IP for two seconds so the
     /// toolbar "Copy IP" button can briefly flip to a checkmark
@@ -155,25 +154,13 @@ struct WorkspaceWindow: View {
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
 
-            Button {
-                showPorts.toggle()
-            } label: {
-                Label("Ports", systemImage: "network")
-            }
-            .glassButton()
-            .help("See listening ports inside the workspace (⇧⌘P)")
-            .keyboardShortcut("p", modifiers: [.command, .shift])
-            .popover(isPresented: $showPorts, arrowEdge: .bottom) {
-                PortPanel(monitor: appState.portMonitor(for: vmName))
-            }
-
             // Network actions grouped under a Menu: primary tap
             // copies the IP (the most frequent action); the
             // chevron exposes `SSH in Terminal…` (mirrors
             // `spook ssh <vm>`). Packaging both behind a single
             // toolbar slot keeps the chrome tight — the toolbar
-            // already has Stop / Snapshots / Ports alongside —
-            // and matches Apple's own "split-button" pattern.
+            // already has Stop / Snapshots alongside — and
+            // matches Apple's own "split-button" pattern.
             // Docs: https://developer.apple.com/documentation/swiftui/menu
             Menu {
                 Button {

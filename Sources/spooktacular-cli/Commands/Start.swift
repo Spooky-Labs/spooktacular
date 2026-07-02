@@ -50,7 +50,7 @@ extension Spooktacular {
         @Option(
             help: """
                 How to execute the user-data script: \
-                disk-inject, ssh, agent, or shared-folder.
+                disk-inject, ssh, or shared-folder.
                 """
         )
         var provision: ProvisioningMode = .ssh
@@ -147,7 +147,7 @@ extension Spooktacular {
                     }
                     print(Style.success("✓ Script placed in shared folder. Watcher daemon injected."))
 
-                case .ssh, .agent:
+                case .ssh:
                     break
                 }
             }
@@ -287,38 +287,6 @@ extension Spooktacular {
                     } else {
                         print(Style.warning("No MAC address configured. Cannot resolve IP for SSH provisioning."))
                         print(Style.dim("Set a MAC address with 'spook set \(name) --mac-address <addr>' for automatic IP resolution."))
-                    }
-
-                case .agent:
-                    let scriptURL = URL(filePath: scriptPath.expandingTilde)
-                    guard FileManager.default.fileExists(atPath: scriptURL.path) else {
-                        print(Style.error("✗ User-data script not found at '\(scriptPath)'."))
-                        print(Style.dim("  Verify the file path exists and is readable."))
-                        throw ExitCode.failure
-                    }
-
-                    var fallbackIP: String?
-                    if let macAddress = bundle.spec.macAddress {
-                        fallbackIP = try? await IPResolver.resolveIP(macAddress: macAddress)
-                    }
-
-                    print(Style.info("Provisioning via guest agent (vsock)..."))
-                    do {
-                        try await VsockProvisioner.provision(
-                            virtualMachine: vm,
-                            script: scriptURL,
-                            fallbackIP: fallbackIP,
-                            sshUser: sshUser,
-                            sshKey: sshKey
-                        )
-                        print(Style.success("✓ User-data script completed."))
-                    } catch {
-                        print(Style.error("✗ Agent provisioning failed: \(error.localizedDescription)"))
-                        if let localizedError = error as? LocalizedError,
-                           let recovery = localizedError.recoverySuggestion {
-                            print(Style.dim("  \(recovery)"))
-                        }
-                        throw ExitCode.failure
                     }
 
                 }

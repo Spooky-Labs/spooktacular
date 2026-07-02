@@ -114,24 +114,6 @@ final class IntentAppState {
         )
     }
 
-    /// Runs a command inside a running VM and returns stdout.
-    ///
-    /// Routes through the guest agent's vsock interface so the
-    /// intent works even when the app isn't in the foreground.
-    /// Requires a responsive guest agent.
-    func runCommand(_ command: String, in name: String) async throws -> String {
-        refresh()
-        guard let bundle = cache[name] else {
-            throw IntentError.vmNotFound(name)
-        }
-        let vm = try VirtualMachine(bundle: bundle)
-        guard let client = vm.makeGuestAgentClient() else {
-            throw IntentError.noGuestAgent
-        }
-        let result = try await client.run(command)
-        return result.stdout
-    }
-
     // MARK: - Helpers
 
     private func refresh() {
@@ -160,7 +142,6 @@ final class IntentAppState {
 /// UI without extra wiring.
 enum IntentError: LocalizedError {
     case vmNotFound(String)
-    case noGuestAgent
     case startFailed(name: String, reason: String)
     case stopFailed(name: String, reason: String)
     case notRunning(String)
@@ -169,8 +150,6 @@ enum IntentError: LocalizedError {
         switch self {
         case .vmNotFound(let name):
             "No virtual machine named '\(name)'."
-        case .noGuestAgent:
-            "The workspace has no guest agent reachable over vsock. Ensure the VM is running and Spooktacular Guest Tools is installed."
         case .startFailed(let name, let reason):
             "Could not start '\(name)': \(reason)"
         case .stopFailed(let name, let reason):

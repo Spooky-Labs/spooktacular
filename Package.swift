@@ -126,24 +126,6 @@ let package = Package(
             path: "Sources/SpooktacularVMHelper"
         ),
         // ──────────────────────────────────────────────
-        // Guest-agent HTTP/vsock server core. Library target —
-        // both `spooktacular-agent` (legacy CLI) and
-        // `SpooktacularGuestTools` (the new `.app`) consume
-        // this. The library exposes `GuestAgentServer` as its
-        // entry point; the multi-channel vsock accept loops
-        // and the full HTTP router + handler table live here.
-        //
-        // Will absorb more of the app's guest-side behavior
-        // over subsequent phases (Phase 3 adds an
-        // `/api/v1/spice/status` route; Phase 4 consolidates
-        // host-event streaming).
-        // ──────────────────────────────────────────────
-        .target(
-            name: "SpooktacularGuestAgentCore",
-            dependencies: ["SpooktacularCore", "SpooktacularApplication"],
-            path: "Sources/SpooktacularGuestAgentCore"
-        ),
-        // ──────────────────────────────────────────────
         // Spooktacular Guest Tools — the `.app` that lives
         // inside every macOS guest VM under /Applications.
         //
@@ -189,11 +171,6 @@ let package = Package(
             dependencies: ["SpooktacularCore", "SpooktacularApplication", "SpooktacularInfrastructureApple"],
             path: "Examples/VMLifecycle"
         ),
-        .executableTarget(
-            name: "GuestAgentRPC",
-            dependencies: ["SpooktacularCore", "SpooktacularInfrastructureApple"],
-            path: "Examples/GuestAgentRPC"
-        ),
 
         // ──────────────────────────────────────────────
         // Tests
@@ -202,13 +179,6 @@ let package = Package(
             name: "SpooktacularKitTests",
             dependencies: [
                 "SpooktacularKit",
-                // Direct dep for tests exercising the
-                // guest-agent library (auth policy,
-                // event dialer coalesce buffer, etc.) — these
-                // need `@testable import` access to internal
-                // types that aren't re-exported through the
-                // SpooktacularKit umbrella.
-                "SpooktacularGuestAgentCore",
             ],
             path: "Tests/SpooktacularKitTests"
         ),

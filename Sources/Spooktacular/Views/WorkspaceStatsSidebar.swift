@@ -4,12 +4,9 @@ import SpooktacularKit
 
 /// Compact Swift Charts panel shown in the workspace inspector.
 ///
-/// Plots four metrics over a rolling 60-second window:
-///
-/// - **CPU usage** — guest-side fraction, pushed by the agent
-/// - **Memory usage** — guest-side fraction, pushed by the agent
-/// - **Agent latency** — host-observed round-trip in milliseconds
-/// - **Listening ports** — count reported by the guest agent
+/// Plots metrics over a rolling 60-second window: CPU usage,
+/// memory usage, disk I/O, energy, and paging — all guest- or
+/// host-sampled fractions/rates.
 ///
 /// CPU / memory / load / process count arrive as server-pushed
 /// NDJSON frames on a single vsock connection to
@@ -19,12 +16,6 @@ import SpooktacularKit
 /// responsive under contention and matches how production
 /// observability agents (Prometheus `stream` exporters, eBPF
 /// tracers) expose time-series to their consumers.
-///
-/// Latency and listening ports remain host-polled because they're
-/// host-measurable (round-trip clock, Bonjour-style port probe)
-/// and don't benefit from pushing. The two loops are merged by
-/// the stream frame arrival event — a fresh stats frame triggers
-/// a combined sample with the latest measured latency/ports.
 @MainActor
 @Observable
 final class WorkspaceStatsModel {
@@ -32,8 +23,6 @@ final class WorkspaceStatsModel {
     struct Sample: Identifiable {
         let id = UUID()
         let at: Date
-        let portCount: Int
-        let latencyMs: Double?
         /// CPU usage fraction (0…1). `nil` on the first frame
         /// after the agent boots (delta needs two observations).
         let cpuUsage: Double?
@@ -73,40 +62,17 @@ final class WorkspaceStatsModel {
     /// Seconds of history kept on-screen.
     static let window: TimeInterval = 60
 
-    /// How often the host-side probes (latency + ports) refresh
-    /// between stream frames.
-    static let hostProbeInterval: Duration = .seconds(5)
-
     private var streamTask: Task<Void, Never>?
-    private var hostProbeTask: Task<Void, Never>?
-
-    /// Latest host-side probes, refreshed independently of the
-    /// stream. Each new stats frame combines them into the
-    /// rolling sample buffer.
-    private var lastLatencyMs: Double?
-    private var lastPortCount: Int = 0
 
     /// Subscribes to the guest's push stream. Safe to call
     /// multiple times — previous tasks are cancelled first.
     ///
-    /// - Parameters:
-    ///   - listener: The Apple-native ``AgentEventListener`` for
-    ///     this VM. The guest agent dials into it on boot and
-    ///     pushes length-prefixed ``GuestEvent`` frames — this
-    ///     is the sole source of `.stats` samples.
-    ///   - client: Host-side RPC client used for latency and
-    ///     port-count probes. These measurements are host-
-    ///     observable so they don't belong on the push stream.
-    func start(listener: AgentEventListener, client: GuestAgentClient) {
+    /// - Parameter listener: The Apple-native ``AgentEventListener``
+    ///   for this VM. The guest agent dials into it on boot and
+    ///   pushes length-prefixed ``GuestEvent`` frames — this is
+    ///   the sole source of `.stats` samples.
+    func start(listener: AgentEventListener) {
         streamTask?.cancel()
-        hostProbeTask?.cancel()
-
-        hostProbeTask = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.probeHostMetrics(client: client)
-                try? await Task.sleep(for: Self.hostProbeInterval)
-            }
-        }
 
         streamTask = Task { [weak self] in
             do {
@@ -123,14 +89,11 @@ final class WorkspaceStatsModel {
         }
     }
 
-    /// Stops the stream and host probe. Samples are retained so
-    /// the chart still renders the last window while the VM is
-    /// stopped.
+    /// Stops the stream. Samples are retained so the chart still
+    /// renders the last window while the VM is stopped.
     func stop() {
         streamTask?.cancel()
         streamTask = nil
-        hostProbeTask?.cancel()
-        hostProbeTask = nil
     }
 
     private func appendFrame(stats: GuestStatsResponse) {
@@ -165,8 +128,6 @@ final class WorkspaceStatsModel {
 
         let sample = Sample(
             at: now,
-            portCount: lastPortCount,
-            latencyMs: lastLatencyMs,
             cpuUsage: stats.cpuUsage,
             memoryUsage: stats.memoryUsageFraction,
             diskReadRateMiBPerSec: diskReadRate,
@@ -197,21 +158,6 @@ final class WorkspaceStatsModel {
         // "no data this sample" rather than a negative rate.
         guard current >= previous else { return nil }
         return Double(current - previous) / seconds
-    }
-
-    private func probeHostMetrics(client: GuestAgentClient) async {
-        let started = Date()
-        do {
-            _ = try await client.health()
-            lastLatencyMs = Date().timeIntervalSince(started) * 1000
-        } catch {
-            lastLatencyMs = nil
-        }
-        do {
-            lastPortCount = try await client.listeningPorts().count
-        } catch {
-            lastPortCount = 0
-        }
     }
 }
 
@@ -247,8 +193,6 @@ struct WorkspaceStatsSidebar: View {
                 diskChart
                 powerChart
                 pageInChart
-                latencyChart
-                portChart
             }
         }
     }
@@ -486,53 +430,4 @@ struct WorkspaceStatsSidebar: View {
         }
     }
 
-    private var latencyChart: some View {
-        metricCard(
-            title: "Agent Response",
-            systemImage: "antenna.radiowaves.left.and.right",
-            tint: .cyan,
-            value: readout(model.samples.last?.latencyMs, unit: "ms"),
-            description: "How quickly the virtual machine answers a health-check ping. The horizontal axis is the last 60 seconds; the vertical axis is the round-trip time in milliseconds. Single-digit values mean the guest is responsive; sustained spikes mean the guest is under load and slow to reply. Only available after you install the guest agent — click Install Guest Agent on the VM detail view. The measurement comes from timing a tiny RPC to the guest agent over Apple's vsock transport."
-        ) {
-            Chart(model.samples) { sample in
-                if let ms = sample.latencyMs {
-                    AreaMark(
-                        x: .value("time", sample.at),
-                        y: .value("ms", ms)
-                    )
-                    .foregroundStyle(.cyan.opacity(0.3))
-
-                    LineMark(
-                        x: .value("time", sample.at),
-                        y: .value("ms", ms)
-                    )
-                    .foregroundStyle(.cyan)
-                }
-            }
-            .frame(height: 90)
-            .chartYAxisLabel("ms", position: .leading)
-            .chartXAxis(.hidden)
-        }
-    }
-
-    private var portChart: some View {
-        metricCard(
-            title: "Network Services",
-            systemImage: "network",
-            tint: .orange,
-            value: model.samples.last.map { "\($0.portCount)" },
-            description: "How many services inside the virtual machine are listening for incoming network connections — web servers, SSH, databases, and so on. The horizontal axis is the last 60 seconds; the vertical axis is the number of open TCP ports. A rising line means the guest just started a new service; falling means a service was stopped. Useful for catching unexpected ports suddenly appearing, or for confirming your dev server is actually up. Only available after you install the guest agent. Sourced from the guest kernel's live socket table (the same data the netstat command lists)."
-        ) {
-            Chart(model.samples) { sample in
-                BarMark(
-                    x: .value("time", sample.at),
-                    y: .value("count", sample.portCount)
-                )
-                .foregroundStyle(.orange.opacity(0.8))
-            }
-            .frame(height: 70)
-            .chartYAxisLabel("#", position: .leading)
-            .chartXAxis(.hidden)
-        }
-    }
 }

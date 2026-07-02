@@ -38,17 +38,12 @@ extension Spooktacular {
 
                   disk-inject   Script runs on first boot via a macOS LaunchDaemon \
                                 injected into the VM's disk before booting. Works \
-                                with any vanilla macOS — no SSH, no agent, no network \
+                                with any vanilla macOS — no SSH, no network \
                                 required. Best for fresh IPSW installs.
 
                   ssh           Script runs over SSH after the VM boots. Requires \
                                 Remote Login enabled in the guest. Best for clones \
                                 where the base has SSH configured.
-
-                  agent         Script runs via the Spooktacular guest agent over \
-                                a VirtIO socket. Requires the agent pre-installed \
-                                (included in Spooktacular OCI images). Fastest, \
-                                works without networking.
 
                   shared-folder Script is delivered via a VirtIO shared folder. \
                                 Requires a watcher daemon in the base image. \
@@ -92,7 +87,7 @@ extension Spooktacular {
         @Option(
             help: """
                 How to execute the user-data script: \
-                disk-inject (default), ssh, agent, or shared-folder. \
+                disk-inject (default), ssh, or shared-folder. \
                 Run 'spook create --help' for details on each method.
                 """
         )
@@ -556,7 +551,7 @@ extension Spooktacular {
                             consumedScript = true
                         }
 
-                    case .agent, .sharedFolder:
+                    case .sharedFolder:
                         print(Style.error("✗ \(provision.label) provisioning is not yet available (planned for a future release)."))
                         print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
                         throw ExitCode(CLIExit.validation)

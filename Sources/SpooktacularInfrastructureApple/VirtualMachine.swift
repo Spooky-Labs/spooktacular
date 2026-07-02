@@ -109,10 +109,6 @@ public final class VirtualMachine: NSObject {
     /// Virtualization APIs directly at your own risk — the lifecycle,
     /// state, and thread-safety contracts live on ``VirtualMachine``
     /// itself, and bypassing them produces subtle concurrency bugs.
-    ///
-    /// For vsock host-to-guest communication, call
-    /// ``makeGuestAgentClient(hostSigner:breakGlassToken:)``
-    /// instead of reaching into `vzVM.socketDevices`.
     public private(set) var vzVM: VZVirtualMachine?
 
     /// The current state of the virtual machine.
@@ -262,36 +258,6 @@ public final class VirtualMachine: NSObject {
 
     // MARK: - Guest Agent Factory
 
-    /// Creates a ``GuestAgentClient`` targeting the first vsock device
-    /// attached to this VM.
-    ///
-    /// This is the supported entry point for host-to-guest vsock calls —
-    /// callers should not read `vzVM.socketDevices` directly. Returns
-    /// `nil` if the VM is not yet created (i.e. `vzVM == nil`) or has
-    /// no vsock device in its configuration.
-    ///
-    /// - Parameters:
-    ///   - hostSigner: SEP-bound (or software) P-256 signer that
-    ///     attests this host's identity on readonly / runner
-    ///     channels. `nil` → no-auth mode (works only when the
-    ///     agent is also running without a trust allowlist).
-    ///   - breakGlassToken: Bearer credential for port 9472,
-    ///     typically a `bgt:`-prefixed ticket.
-    public func makeGuestAgentClient(
-        hostSigner: (any P256Signer)? = nil,
-        breakGlassToken: String? = nil
-    ) -> GuestAgentClient? {
-        guard let vzVM,
-              let socketDevice = vzVM.socketDevices.first as? VZVirtioSocketDevice else {
-            return nil
-        }
-        return GuestAgentClient(
-            socketDevice: socketDevice,
-            hostSigner: hostSigner,
-            breakGlassToken: breakGlassToken
-        )
-    }
-
     /// Returns the Apple-native event listener for this VM,
     /// creating it on first access.
     ///
@@ -304,8 +270,7 @@ public final class VirtualMachine: NSObject {
     /// `AsyncThrowingStream<GuestEvent, Error>`.
     ///
     /// Returns `nil` if the VM has no vsock device in its
-    /// configuration — the same shape as
-    /// ``makeGuestAgentClient(hostSigner:breakGlassToken:)``.
+    /// configuration.
     public func agentEventListener() -> AgentEventListener? {
         guard let vzVM,
               let socketDevice = vzVM.socketDevices.first as? VZVirtioSocketDevice else {
@@ -434,9 +399,8 @@ public final class VirtualMachine: NSObject {
     ///
     /// - Note: macOS guests generally honor `requestStop` via the
     ///   Virtualization framework's synthetic power-button event.
-    ///   Older guests (pre-14) may require a prior SSH / vsock
-    ///   `shutdown -h now` — see ``GuestAgentClient`` for the vsock
-    ///   path.
+    ///   Older guests (pre-14) may require a prior SSH
+    ///   `shutdown -h now`.
     ///
     /// - SeeAlso: <https://developer.apple.com/documentation/virtualization/vzvirtualmachine/requeststop()>
     public func stopGracefully(timeout: Int? = nil) async throws {

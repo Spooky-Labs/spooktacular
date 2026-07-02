@@ -98,14 +98,6 @@ public enum SecurityControlInventory {
             notes: "Keys generated inside the SEP; private bytes never leave the Secure Enclave. Each signing operation gated by Touch ID / Watch / passcode. Full kernel compromise still cannot exfiltrate the key."
         ),
         SecurityControl(
-            name: "Per-operator break-glass trust allowlist (cryptographic attribution)",
-            category: "Authentication & Identity",
-            standard: "OWASP ASVS V2.7.5 (non-repudiation); OWASP Top 10 A09:2021",
-            implementation: "Sources/SpooktacularGuestAgentCore/BreakGlassVerification.swift (multi-key verifier) + Sources/SpooktacularInfrastructureApple/BreakGlassTicketCodec.swift (decode with [P256.Signing.PublicKey]) + Sources/SpooktacularGuestAgentCore/GuestAgentServer.swift loadTicketVerifier (loads SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR)",
-            test: "Tests/SpooktacularKitTests/BreakGlassTicketTests.swift",
-            notes: "Each operator's signature cryptographically attributes a ticket to their hardware key, not just the self-asserted issuer string. Offboarding = delete one .pem; no fleet-wide rotation."
-        ),
-        SecurityControl(
             name: "Per-action MFA: LocalAuthentication gate on admin CLI commands",
             category: "Authentication & Identity",
             standard: "OWASP ASVS V4.3.1 (Administrative Interface MFA)",
@@ -129,15 +121,6 @@ public enum SecurityControlInventory {
             test: "Tests/SpooktacularKitTests/WorkloadTokenIssuerTests.swift",
             notes: "Spooktacular can federate directly with AWS STS. Signing key is SEP-bound; VMs get short-lived IAM credentials via AssumeRoleWithWebIdentity with no long-lived secrets. The most common ES256 JWT bug (DER vs raw signature) is pinned by test."
         ),
-        SecurityControl(
-            name: "Per-request signed host-to-agent auth (retires shared static tokens)",
-            category: "Authentication & Identity",
-            standard: "OWASP ASVS V2.10 (no unchanging service credentials); OWASP API Top 10 2023 A02 (broken authentication)",
-            implementation: "Sources/SpooktacularApplication/SignedRequestVerifier.swift (P-256 ECDSA, nonce replay cache, ±60s skew, canonical-string body-hash binding) + Sources/SpooktacularInfrastructureApple/GuestAgentClient.swift (host-side signing via any P256Signer) + Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift (operator-to-control-plane auth)",
-            test: "Tests/SpooktacularKitTests/SignedRequestVerifierTests.swift",
-            notes: "Shared verifier covers both host-to-agent and operator-to-API paths. Trust allowlist via SPOOKTACULAR_HOST_PUBLIC_KEYS_DIR (agent) and SPOOKTACULAR_API_PUBLIC_KEYS_DIR (API). No shared static tokens anywhere."
-        ),
-
         // MARK: Authorization
 
         SecurityControl(
@@ -163,25 +146,6 @@ public enum SecurityControlInventory {
             implementation: "Sources/SpooktacularCore/FairScheduler.swift",
             test: "Tests/SpooktacularKitTests/FairSchedulerTests.swift",
             notes: "Activated via SPOOKTACULAR_SCHEDULER_POLICY + SPOOKTACULAR_FLEET_CAPACITY. Deterministic, work-conserving, monotone."
-        ),
-
-        // MARK: Break-Glass
-
-        SecurityControl(
-            name: "Time-limited, single-use break-glass tickets",
-            category: "Break-Glass",
-            standard: "NIST SP 800-53 AC-14; OWASP ASVS V2.10; SOC 2 CC6.6; OWASP JWT Cheat Sheet",
-            implementation: "Sources/SpooktacularCore/BreakGlassTicket.swift + Sources/SpooktacularInfrastructureApple/BreakGlassTicketCodec.swift + Sources/SpooktacularGuestAgentCore/BreakGlassVerification.swift",
-            test: "Tests/SpooktacularKitTests/BreakGlassTicketTests.swift",
-            notes: "Ed25519-signed, 1h TTL cap, JTI denylist. Four-gate server-side enforcement at the guest agent."
-        ),
-        SecurityControl(
-            name: "Three-tier vsock channel isolation",
-            category: "Break-Glass",
-            standard: "Transport-layer capability segregation",
-            implementation: "Sources/SpooktacularGuestAgentCore/AgentHTTPServer.swift listenAll + AgentRouter.endpointScope",
-            test: "Tests/SpooktacularKitTests/GuestAgentContractTests.swift",
-            notes: "Ports 9470 (read-only), 9471 (runner), 9472 (break-glass). Requests exceeding channel scope rejected at accept time."
         ),
 
         // MARK: Audit & Non-Repudiation
@@ -236,14 +200,6 @@ public enum SecurityControlInventory {
             implementation: "Sources/SpooktacularInfrastructureApple/KeychainTLSProvider.swift + Sources/SpooktacularKit/GitHubTokenResolution.swift",
             test: "Tests/SpooktacularKitTests/GitHubTokenResolutionTests.swift",
             notes: "API tokens, TLS private keys, GitHub PATs. kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly enforced."
-        ),
-        SecurityControl(
-            name: "VM → IAM role binding (workload identity federation)",
-            category: "Authentication & Identity",
-            standard: "OpenID Connect Core 1.0; AWS STS AssumeRoleWithWebIdentity; OWASP ASVS V2.10 (no unchanging credentials)",
-            implementation: "Sources/SpooktacularCore/VMIAMBinding.swift + Sources/SpooktacularInfrastructureApple/JSONVMIAMBindingStore.swift + Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift (/v1/iam, /v1/vms/:name/identity-token) + Sources/spooktacular-cli/Commands/IAM.swift + Sources/SpooktacularGuestAgentCore/WorkloadTokenCache.swift",
-            test: "Tests/SpooktacularKitTests/VMIAMBindingTests.swift",
-            notes: "Operators bind a VM to a cloud IAM role; the host mints short-lived ES256 JWTs via the SEP-bound WorkloadTokenIssuer; VMs get temporary cloud credentials via standard OIDC federation. No long-lived access keys in VM images."
         ),
         SecurityControl(
             name: "Tenant quota enforcement on VM create / clone",
@@ -306,14 +262,6 @@ public enum SecurityControlInventory {
             implementation: "Sources/spooktacular-cli/Commands/Exec.swift (posixShellEscape)",
             test: nil,
             notes: "Every command token POSIX-escaped before joining for SSH transmission."
-        ),
-        SecurityControl(
-            name: "Path-traversal hardening on guest-agent /fs",
-            category: "Injection & Path Safety",
-            standard: "CWE-22 mitigation",
-            implementation: "Sources/SpooktacularGuestAgentCore/AgentRouter.swift handleListFS (component-aware containment + symmetric symlink resolution)",
-            test: "Tests/SpooktacularKitTests/GuestAgentContractTests.swift",
-            notes: "Sibling directory prefix bypass closed (e.g. /Users/administrator no longer escapes /Users/admin allow-list)."
         ),
         SecurityControl(
             name: "VM name regex validation everywhere",
