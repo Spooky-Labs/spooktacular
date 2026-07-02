@@ -21,11 +21,11 @@ extension Spooktacular {
     /// ## `--strict` mode — 1:1 DEPLOYMENT_HARDENING mapping
     ///
     /// Passing `--strict` replaces the host readiness preflight
-    /// with the 18-item production-hardening checklist from
+    /// with the production-hardening checklist from
     /// `docs/DEPLOYMENT_HARDENING.md`. Every line printed is
-    /// prefixed with its item number, and items the table calls
-    /// out as non-automatable (12, 18) are surfaced as manual
-    /// `?` lines so the output is a complete, auditable record.
+    /// prefixed with its item number, and the one item the table
+    /// calls out as non-automatable (18) is surfaced as a manual
+    /// `?` line so the output is a complete, auditable record.
     ///
     /// ## Examples
     ///
@@ -57,8 +57,8 @@ extension Spooktacular {
                 Default output covers local-host readiness. Pass \
                 --strict to additionally verify every production \
                 control documented in docs/DEPLOYMENT_HARDENING.md — \
-                mTLS, RBAC, audit chain, signing key permissions, \
-                lock backend, tenancy. A non-zero exit in --strict \
+                mTLS, RBAC, audit chain, hardened runtime, \
+                tenancy. A non-zero exit in --strict \
                 mode means the deployment is not hardened.
 
                 EXAMPLES:
@@ -154,14 +154,14 @@ extension Spooktacular {
             }
         }
 
-        // MARK: - Strict mode: 18-item 1:1 mapping
+        // MARK: - Strict mode: DEPLOYMENT_HARDENING 1:1 mapping
 
-        /// Runs every automatable control from the 18-item
+        /// Runs every automatable control from the
         /// DEPLOYMENT_HARDENING.md pre-flight, in order, so the
         /// output is a literal row-by-row projection of the doc's
-        /// table. Items 12 and 18 are reported as `manual` because
-        /// they require AWS API calls and build-tooling output
-        /// the CLI cannot inspect from a running host.
+        /// table. Item 18 is reported as `manual` because it
+        /// requires build-tooling output the CLI cannot inspect
+        /// from a running host.
         ///
         /// Exposed `static` so tests can call it directly without
         /// piping through `ArgumentParser`.

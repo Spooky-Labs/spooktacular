@@ -131,7 +131,6 @@ Spooktacular
 <a href="#desktop">Remote Desktop</a>
 <a href="#ml">ML Workloads</a>
 <a href="#devops">DevOps Automation</a>
-<a href="#agent">Guest Agent</a>
 <a href="#api">HTTP API</a>
 </div>
 </div>
@@ -226,41 +225,7 @@ Spooktacular
 <div class="feature-card"><span class="icon" aria-hidden="true">&#127760;</span><div class="tag tag-shipped">Shipped</div><h3>IP Resolution</h3><p>Resolve VM IP addresses via DHCP leases with ARP fallback. Enables dynamic SSH connections without hardcoded addresses.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/IPResolver.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128230;</span><div class="tag tag-shipped">Shipped</div><h3>IPSW Restore Image Manager</h3><p>Auto-download the latest compatible macOS restore image. No manual IPSW hunting. Manages a local image library.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/RestoreImageManager.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128640;</span><div class="tag tag-shipped">Shipped</div><h3>Unattended Setup Assistant</h3><p>Keyboard driver automates macOS Setup Assistant on 15+. Create a VM, install the OS, complete setup, and provision in one command.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SetupAutomationExecutor.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128268;</span><div class="tag tag-shipped">Shipped</div><h3>VirtIO Socket Provisioning</h3><p>Host-side VirtIO socket provisioner. Communicates with the guest agent over vsock for zero-network provisioning.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VsockProvisioner.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#129302;</span><div class="tag tag-shipped">Shipped</div><h3>Guest Agent</h3><p>VirtIO socket daemon that runs inside the guest VM. Receives provisioning commands from the host over vsock.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/SpooktacularGuestAgentCore" class="source-link" target="_blank">View source &rarr;</a></div>
-</div>
-</div>
-
-<!-- Guest Agent -->
-<div class="use-case" id="agent">
-<div class="section-label">&#128225; Use Case</div>
-<h2>Guest Agent</h2>
-<p class="sub">A lightweight daemon running inside the guest VM, exposing 12 HTTP endpoints over VirtIO socket. Clipboard sync, remote command execution, app control, file transfer, port discovery, and health monitoring -- all without SSH or network access.</p>
-<div class="terminal" role="figure" aria-label="Guest agent CLI example">
-<div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">remote-control.sh</span></div>
-<div class="terminal-body">
-<div><span class="cmt"># Execute a command inside the VM</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook remote exec my-vm -- "pbcopy &lt;&lt;&lt; 'hello world'"</span></div>
-<div><span class="ok">&#10003; Exit code: 0</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># Check VM health</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook remote health runner-01</span></div>
-<div><span class="ok">&#10003; Agent v1.0.0 &mdash; uptime 4h32m</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># List running applications</span></div>
-<div><span class="dim">$</span> <span class="cmd">spook remote apps runner-01</span></div>
-<div><span class="file">Xcode (16.3)  Finder  Terminal  Safari</span></div>
-</div>
-</div>
-<div class="feat-grid">
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128203;</span><div class="tag tag-shipped">Shipped</div><h3>12 HTTP Endpoints over vsock</h3><p>Full REST API running inside the guest over VirtIO socket. Clipboard, exec, apps, files, ports, and health endpoints. No SSH or network required.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularGuestAgentCore/AgentRouter.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128196;</span><div class="tag tag-shipped">Shipped</div><h3>Clipboard Sync</h3><p>Read and write the guest clipboard from the host. Copy text into or out of the VM without screen sharing or VNC.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularGuestAgentCore/AgentRouter.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128187;</span><div class="tag tag-shipped">Shipped</div><h3>Remote Exec</h3><p>Execute arbitrary commands inside the guest VM and stream output back to the host. Works over vsock -- no SSH keys or network configuration needed.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularGuestAgentCore/AgentRouter.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128230;</span><div class="tag tag-shipped">Shipped</div><h3>App Control</h3><p>List running applications inside the guest, launch new apps, and query app state. Enables automation without a display connection.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularGuestAgentCore/AgentRouter.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128193;</span><div class="tag tag-shipped">Shipped</div><h3>File Transfer</h3><p>Transfer files between host and guest over the vsock channel. Upload build artifacts, download logs, or inject configuration files.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularGuestAgentCore/AgentRouter.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#127760;</span><div class="tag tag-shipped">Shipped</div><h3>Port Discovery &amp; Health</h3><p>Discover listening ports inside the guest and monitor agent health. Enables service discovery without network scanning.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularGuestAgentCore/AgentRouter.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128268;</span><div class="tag tag-shipped">Shipped</div><h3>GuestAgentClient Actor</h3><p>Swift actor in SpooktacularKit for type-safe communication with the guest agent. Async/await API for all 12 endpoints.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128187;</span><div class="tag tag-shipped">Shipped</div><h3>spook remote CLI</h3><p>Dedicated CLI command group for guest agent interaction: exec, clipboard, apps, health, and ports subcommands.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#128268;</span><div class="tag tag-shipped">Shipped</div><h3>SPICE Clipboard Bridge</h3><p>Guest Tools companion app syncs the pasteboard between host and guest over a SPICE serial channel — no SSH, no network required.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/SpooktacularGuestTools" class="source-link" target="_blank">View source &rarr;</a></div>
 </div>
 </div>
 
@@ -284,7 +249,7 @@ Spooktacular
 </div>
 <div class="feat-grid">
 <div class="feature-card"><span class="icon" aria-hidden="true">&#127760;</span><div class="tag tag-shipped">Shipped</div><h3>HTTP REST API</h3><p>9 REST endpoints built on Network.framework with Codable request/response types. Control VM lifecycle from any language or CI system.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/HTTPAPIServer.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128187;</span><div class="tag tag-shipped">Shipped</div><h3>15+ CLI Commands</h3><p>Create, clone, start, stop, pause, resume, delete, list, get, ip, ssh, exec, snapshot, service, set, share, serve, and remote. 25+ including subcommands.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#128187;</span><div class="tag tag-shipped">Shipped</div><h3>15+ CLI Commands</h3><p>Create, clone, start, stop, delete, list, get, set, ip, ssh, exec, snapshot, service, share, and serve. 25+ including subcommands.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-cli/Commands" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128421;</span><div class="tag tag-shipped">Shipped</div><h3>SwiftUI GUI</h3><p>Native macOS app with NavigationSplitView, inspector panel, and VM creation sheet. Liquid Glass support on macOS 26+.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#9776;</span><div class="tag tag-shipped">Shipped</div><h3>Menu Bar Extra</h3><p>Persistent menu bar icon for quick VM status checks and actions without opening the full app.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128218;</span><div class="tag tag-shipped">Shipped</div><h3>Full DocC API Reference</h3><p>Complete API documentation generated from source. Browse types, methods, and articles in the hosted DocC archive.</p><a href="api/documentation/spooktacularkit/" class="source-link">View API Docs &rarr;</a></div>

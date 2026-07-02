@@ -1,124 +1,19 @@
 # EC2 Mac Deployment Profile
 
-**Audience:** Fortune-20 operators running Spooktacular on AWS EC2 Mac dedicated hosts for CI/CD, MDM, VDI, or agentic workloads.
+**Audience:** Operators running Spooktacular on AWS EC2 Mac dedicated hosts for CI/CD, VDI, or agentic workloads.
 **Precondition:** a dedicated host / Host Resource Group allocation with Apple Silicon `mac2.*.metal` instances. This doc assumes you already have the AWS side provisioned; it covers the Spooktacular configuration.
 
 The rest of this doc is:
 
-1. IAM policy for the EC2 instance role
-2. Infrastructure provisioning (DynamoDB + S3 Object Lock)
-3. Bootstrap script run by SSM at first boot
-4. LaunchDaemon plist with the full audit chain + DynamoDB lock
-5. `spook doctor --strict` verification
-6. Drill cadence for the 24-hour minimum allocation compliance
+1. Bootstrap script run by SSM at first boot
+2. LaunchDaemon plist
+3. `spook doctor --strict` verification
+4. Drill cadence for the 24-hour minimum allocation compliance
+5. Tenant-aware fair scheduling (standalone algorithm, not yet wired to an orchestrator)
 
 Every env var referenced here is documented in [`DEPLOYMENT_HARDENING.md`](DEPLOYMENT_HARDENING.md). This doc is the EC2-specific concrete instance of that generic plan.
 
-## 1. IAM policy
-
-The EC2 Mac instance needs three AWS capabilities: DynamoDB (distributed locks), S3 Object Lock (WORM audit), and — if you use Secrets Manager instead of `security add-generic-password` — secret retrieval.
-
-Minimal policy:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "DynamoDBLockTable",
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:PutItem",
-        "dynamodb:GetItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:UpdateItem"
-      ],
-      "Resource": "arn:aws:dynamodb:*:*:table/spooktacular-locks-prod"
-    },
-    {
-      "Sid": "S3ObjectLockAuditBucket",
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:PutObjectRetention"
-      ],
-      "Resource": "arn:aws:s3:::acme-spooktacular-audit-prod/*"
-    },
-    {
-      "Sid": "CloudWatchMetrics",
-      "Effect": "Allow",
-      "Action": ["cloudwatch:PutMetricData"],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": { "cloudwatch:namespace": "Spooktacular" }
-      }
-    }
-  ]
-}
-```
-
-Attach to an instance profile and assign to the EC2 Mac's `IamInstanceProfile`. Spooktacular's hand-rolled SigV4 picks up the credentials automatically via IMDSv2 — no `aws configure` needed.
-
-### Operator-side IAM
-
-Beyond the instance-level policy above, running the Terraform module in `deploy/ec2-mac/terraform` with `enable_license_manager = true` and `enable_asg = true` requires these additional permissions on the operator's deploy principal:
-
-| Service | Actions | Why |
-|---------|---------|-----|
-| `autoscaling` | `Create*`, `Update*`, `Delete*`, `PutLifecycleHook`, `CompleteLifecycleAction` | Manage the ASG + drain hook |
-| `license-manager` | `CreateLicenseConfiguration`, `UpdateLicenseConfiguration`, `DeleteLicenseConfiguration` | Enforce Apple EULA host cap |
-| `resource-groups` | `CreateGroup`, `UpdateGroup`, `DeleteGroup` | Host Resource Group for auto-allocation |
-| `ssm` | `CreateDocument`, `UpdateDocument`, `CreateAssociation`, `StartAutomationExecution` | Install + drain runbooks |
-| `events` | `PutRule`, `PutTargets`, `DeleteRule` | EventBridge → SSM Automation on terminate |
-| `cloudwatch` | `PutMetricAlarm`, `DeleteAlarms` | Fleet health alarms |
-| `sns` | `CreateTopic`, `Subscribe`, `DeleteTopic` | Alert + lifecycle notification topics |
-| `iam` | `CreateRole`, `PutRolePolicy`, `AttachRolePolicy`, `PassRole` | Roles for the ASG, EventBridge, and SSM Automation |
-
-## 2. AWS infrastructure
-
-### DynamoDB Global Table
-
-```bash
-aws dynamodb create-table \
-  --table-name spooktacular-locks-prod \
-  --attribute-definitions AttributeName=name,AttributeType=S \
-  --key-schema AttributeName=name,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
-
-# Promote to Global Table across the regions your fleet spans.
-aws dynamodb update-table --table-name spooktacular-locks-prod \
-  --replica-updates 'Create={RegionName=eu-west-1}' \
-                    'Create={RegionName=ap-northeast-1}' \
-  --region us-east-1
-```
-
-The table has a single partition key (`name`) and a TTL attribute (`expiresAt`) — `DynamoDBDistributedLock` manages both.
-
-### S3 Object Lock bucket (WORM audit)
-
-```bash
-aws s3api create-bucket \
-  --bucket acme-spooktacular-audit-prod \
-  --region us-east-1 \
-  --object-lock-enabled-for-bucket
-
-aws s3api put-object-lock-configuration \
-  --bucket acme-spooktacular-audit-prod \
-  --object-lock-configuration '{
-    "ObjectLockEnabled": "Enabled",
-    "Rule": {
-      "DefaultRetention": {
-        "Mode": "COMPLIANCE",
-        "Days": 2555
-      }
-    }
-  }'
-```
-
-**Compliance** mode means even the root AWS account can't shorten retention — the right posture for SOC 2 Type II audit. 2555 days = 7 years.
-
-## 3. SSM bootstrap document
+## 1. SSM bootstrap document
 
 Run this at first-boot via Systems Manager State Manager so every EC2 Mac instance lands in a known-good configuration.
 
@@ -162,7 +57,7 @@ launchctl bootstrap system /Library/LaunchDaemons/com.spooktacular.serve.plist
 sudo -u spooktacular /usr/local/bin/spook doctor --strict
 ```
 
-## 4. LaunchDaemon plist (EC2 Mac profile)
+## 2. LaunchDaemon plist (EC2 Mac profile)
 
 `/Library/LaunchDaemons/com.spooktacular.serve.plist`:
 
@@ -190,31 +85,21 @@ sudo -u spooktacular /usr/local/bin/spook doctor --strict
         <key>SPOOKTACULAR_TLS_KEY_PATH</key> <string>/etc/spooktacular/tls/server.key</string>
         <key>SPOOKTACULAR_TLS_CA_PATH</key>  <string>/etc/spooktacular/tls/ca.crt</string>
 
-        <!-- Tenancy + federated identity -->
+        <!-- Tenancy -->
         <key>SPOOKTACULAR_TENANCY_MODE</key> <string>multi-tenant</string>
-        <key>SPOOKTACULAR_IDP_CONFIG</key>    <string>/etc/spooktacular/idps.json</string>
 
         <!-- RBAC defaults to ~/.spooktacular/rbac.json with
              atomic persistence across restarts. Override with
              SPOOKTACULAR_RBAC_CONFIG=<path> to centralize. -->
 
-        <!-- Audit chain: local → append-only → Merkle → S3 Object Lock.
-             SPOOK_AUDIT_S3_* keep their short prefix because the S3
-             ObjectLock sink predates the rename pass; SPOOK_AUDIT_*
-             without S3 are now SPOOKTACULAR_AUDIT_*. -->
+        <!-- Audit chain: local file → append-only kernel flag. -->
         <key>SPOOKTACULAR_AUDIT_FILE</key>            <string>/var/log/spooktacular/audit.jsonl</string>
         <key>SPOOKTACULAR_AUDIT_IMMUTABLE_PATH</key>  <string>/var/log/spooktacular/audit.immutable.jsonl</string>
-        <key>SPOOKTACULAR_AUDIT_MERKLE</key>          <string>1</string>
-        <!-- SEP-bound key resolved by Keychain label (no PEM-on-disk path).
-             The key is created on first start under the supplied label. -->
-        <key>SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL</key><string>com.spookylabs.audit.merkle</string>
-        <key>SPOOK_AUDIT_S3_BUCKET</key>              <string>acme-spooktacular-audit-prod</string>
-        <key>SPOOK_AUDIT_S3_REGION</key>              <string>us-east-1</string>
-        <key>SPOOK_AUDIT_S3_RETENTION_DAYS</key>      <string>2555</string>
 
-        <!-- Cross-region lock — DynamoDB Global Table -->
-        <key>SPOOKTACULAR_DYNAMO_TABLE</key>  <string>spooktacular-locks-prod</string>
-        <key>SPOOKTACULAR_DYNAMO_REGION</key> <string>us-east-1</string>
+        <!-- Distributed lock: file-backed over a shared mount.
+             SPOOKTACULAR_LOCK_DIR defaults to
+             ~/.spooktacular/locks; override to point at NFS for
+             multi-host coordination. -->
 
         <!-- Data-at-rest: EC2 Mac hosts are NOT laptops, so CUFUA
              would break pre-login LaunchDaemon reads. Explicit "none"
@@ -231,9 +116,9 @@ sudo -u spooktacular /usr/local/bin/spook doctor --strict
 </plist>
 ```
 
-Note the absence of `--insecure` anywhere — the production preflight will refuse to start if any of TLS, RBAC, audit-sink, or mTLS are missing.
+Note the absence of `--insecure` anywhere — the production preflight will refuse to start if any of TLS, RBAC, or the audit sink are missing.
 
-## 5. Verification
+## 3. Verification
 
 After the SSM bootstrap completes, SSH to the instance and confirm:
 
@@ -253,22 +138,22 @@ Spooktacular Doctor
 
 Production controls (--strict)
 ------------------------------
-✓ mTLS CA: /etc/spooktacular/tls/ca.crt
-✓ RBAC config: /Users/spooktacular/.spooktacular/rbac.json
-✓ Federated IdP config: /etc/spooktacular/idps.json
-✓ Audit JSONL: /var/log/spooktacular/audit.jsonl (writable)
-✓ Append-only audit file: /var/log/spooktacular/audit.immutable.jsonl (UF_APPEND set)
-✓ Merkle signing key: /etc/spooktacular/secrets/merkle.key (mode 0600)
-✓ Distributed lock: DynamoDB (cross-region)
-✓ Tenancy mode: multi-tenant
-✓ Insecure-controller bypass is OFF
-✓ Hardened Runtime + Team ID present on spook binary
-✓ Bundle protection: 1 bundle(s) at None [overrideSettingsNone], inheritance verified
+✓ [01] TLS cert+key readable
+✓ [02] mTLS CA: /etc/spooktacular/tls/ca.crt
+✓ [03] TLS 1.3 floor enforced on port 8484
+✓ [04] API bearer token present in Keychain
+✓ [06] RBAC config readable: /Users/spooktacular/.spooktacular/rbac.json
+✓ [09] Audit JSONL: /var/log/spooktacular/audit.jsonl (dir writable)
+✓ [10] Append-only audit: /var/log/spooktacular/audit.immutable.jsonl (UF_APPEND set)
+✓ [14] Tenancy mode: multi-tenant
+✓ [15] Insecure — SPOOKTACULAR_INSECURE_CONTROLLER is not set
+✓ [16] Hardened Runtime + Team ID present on spook binary
+✓ [17] Code-signing timestamp present
 ```
 
 Every `✓` is a control an auditor can walk straight to. Any `✗` on a production host is a ship-blocker.
 
-## 6. 24-hour minimum allocation + drill cadence
+## 4. 24-hour minimum allocation + drill cadence
 
 EC2 Mac dedicated hosts enforce a 24-hour minimum allocation — the single biggest operational constraint of the platform. Spooktacular's `spook serve` doesn't fight this — but it DOES need a graceful drain path so hosts can be released when their 24h window is up.
 
@@ -284,11 +169,11 @@ You cannot scale **down** a Mac fleet faster than 24 hours after the last host a
 
 ### Implications for auto-scaling
 
-The ASG's `termination_policies = ["OldestInstance"]` and the `drain-on-terminate` lifecycle hook in `lifecycle.tf` are both 24-hour-aware in a specific way: the ASG can scale up at any time, but the drain hook is the **only** way to get a clean host release. Scaling down before the 24h minimum just destroys an instance — you still pay for the host.
+If you drive fleet size from an Auto Scaling Group, terminate on the *oldest* instance first and gate scale-down behind a drain hook — scaling down before the 24h minimum just destroys an instance, you still pay for the host.
 
-The controller should therefore:
+The scaling policy should therefore:
 
-1. Never scale **below** `license_count × 0.5` to avoid a 24h trough in which you lack capacity to re-scale.
+1. Never scale below the number of hosts needed to cover your license count's floor, to avoid a 24h trough in which you lack capacity to re-scale.
 2. Prefer reuse of in-service hosts (VM scrub-and-reset) over host replacement.
 3. Batch scale-down events to host-release cadence — daily at a known low-traffic window, not reactively to every queue drop.
 
@@ -331,16 +216,12 @@ Every quarter, rehearse each of these against a non-prod fleet and log the time-
 
 - **Break-glass token rotation**: revoke, rotate, verify every affected VM.
 - **Compromised host**: cordon → drain → release → provision replacement from clean AMI.
-- **Merkle key rotation**: replace `/etc/spooktacular/secrets/merkle.key`, verify signed-tree-head chain.
-- **S3 Object Lock misconfiguration**: prove `SpooktacularAPIErrorRateHigh` alert fires within 10 minutes when S3 writes start 403'ing.
 
-Report times + remediation to the `docs/THREAT_MODEL.md` §9 external-validation checklist.
-
-## 7. Tenant-aware fair scheduling
+## 5. Tenant-aware fair scheduling
 
 On fleets where multiple business units share the same Spooktacular deployment and demand exceeds capacity, naive independent scaling per pool produces "one tenant took everything" starvation. `SpooktacularCore` ships `FairScheduler`, a weighted max-min allocator built for exactly this problem.
 
-`FairScheduler` is not currently wired into a runtime orchestrator — the reconciler that previously called it ran inside the (now removed) Kubernetes controller. It ships as a tested, standalone algorithm ready for the next runner-pool orchestrator to adopt.
+`FairScheduler` is not currently wired into a runtime orchestrator. It ships as a tested, standalone algorithm ready for the next runner-pool orchestrator to adopt.
 
 ### Policy shape
 
@@ -374,8 +255,6 @@ Each entry:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `Refusing to start: production deployments require an audit sink.` | Operator set `SPOOKTACULAR_TENANCY_MODE=multi-tenant` without any `SPOOKTACULAR_AUDIT_*` | Add at minimum `SPOOKTACULAR_AUDIT_FILE`; for SOC 2 add the full chain |
-| `Distributed lock backend: File(dir=...)` in startup log | `SPOOKTACULAR_DYNAMO_TABLE` unset on a multi-host fleet | Set it, restart; verify the startup log now says `DynamoDB(...)` |
-| HTTP 500s with `"Internal error. Correlation ID: abc-123"` | Normal operation — the real error is in server logs | `log show --predicate 'subsystem == "com.spooktacular" AND category == "http-api"' --last 10m | grep abc-123` |
-| S3 PutObject returns 403 | Instance role lacks `s3:PutObjectRetention` | Add to IAM policy (§1), wait 60s for IAM propagation |
-| DynamoDB acquire hangs | Global Table replication lag | Verify replica regions match `SPOOKTACULAR_DYNAMO_REGION`; prefer writing to the local-region endpoint |
+| `Refusing to start: production deployments require an audit sink.` | Operator set `SPOOKTACULAR_TENANCY_MODE=multi-tenant` without any `SPOOKTACULAR_AUDIT_*` | Add at minimum `SPOOKTACULAR_AUDIT_FILE` |
+| `Distributed lock backend: File(dir=...)` in startup log, but locks aren't visible across hosts | `SPOOKTACULAR_LOCK_DIR` points at a local (non-shared) directory on a multi-host fleet | Point it at a shared NFS mount, or coordinate lock-holder release manually until a cross-host backend ships |
+| HTTP 500s with `"Internal error. Correlation ID: abc-123"` | Normal operation — the real error is in server logs | `log show --predicate 'subsystem == "com.spooktacular" AND category == "http-api"' --last 10m \| grep abc-123` |

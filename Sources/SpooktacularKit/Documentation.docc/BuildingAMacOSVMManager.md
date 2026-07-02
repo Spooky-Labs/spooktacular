@@ -107,14 +107,14 @@ copy-error-to-clipboard.
 
 ### Host integration
 
-Four channels turn a running VM into a proper desktop citizen:
+Three channels turn a running VM into a proper desktop citizen:
 
 - **Clipboard** — `ClipboardBridge` observes
   `NSPasteboard.changeCount` at 500 ms and prompts per-copy
   for sync permission (glass sheet, 15-minute approval cache).
-- **Ports** — `PortForwardingMonitor` polls
-  `GuestAgentClient.listeningPorts()` every 5 s. Surface them
-  in a toolbar popover with "open in browser" / "copy URL".
+  The guest side is a SPICE clipboard bridge; status pushes to
+  the host as a ``GuestEvent/spiceStatus(_:)`` frame over the
+  vsock event channel.
 - **Snapshots** — `SnapshotInspector` is pure UI over
   `SnapshotManager.save/restore/list/delete`.
 - **Hardware** — `HardwareEditor` retunes CPU/RAM/disk via
@@ -137,16 +137,17 @@ title + subtitle. Enter runs the top match; Esc dismisses.
 ### Charts
 
 `WorkspaceStatsSidebar` uses Swift Charts (system framework,
-no dependency) to plot a 60-second rolling window of agent
-round-trip latency and listening-port count. Pollers bind to
-the guest agent via the existing `GuestAgentClient`.
+no dependency) to plot a 60-second rolling window of CPU,
+memory, disk I/O, energy, and paging. Samples arrive as
+server-pushed NDJSON frames on a single vsock connection to
+`/api/v1/stats/stream` — the guest owns the cadence and pushes
+one frame per second, so the host never polls.
 
 ## See Also
 
 - ``IconSpec``
 - ``VirtualMachineBundle``
 - ``VirtualMachine``
-- ``GuestAgentClient``
 - ``SnapshotManager``
 - <doc:Provisioning>
 - <doc:GettingStarted>

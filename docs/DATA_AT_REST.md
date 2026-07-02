@@ -2,7 +2,7 @@
 
 **Status:** In effect from commit `fecb4d1b2+`.
 **Audience:** Spooktacular GUI / CLI users on developer laptops.
-**Review cadence:** Every release, alongside [`THREAT_MODEL.md`](THREAT_MODEL.md).
+**Review cadence:** Every release.
 
 ## Problem statement
 

@@ -1,16 +1,16 @@
 import Foundation
 
 /// Current state of the guest's SPICE clipboard bridge —
-/// returned by `GET /api/v1/spice/status`, decoded by the
-/// host's workspace toolbar to pick a tri-state pill color.
+/// pushed from guest to host as a ``GuestEvent/spiceStatus(_:)``
+/// frame over the vsock event channel (see
+/// `AgentEventListener`), decoded by the host's workspace
+/// toolbar to pick a tri-state pill color.
 ///
-/// Lives in ``SpooktacularCore`` (not
-/// ``SpooktacularGuestAgentCore``) because BOTH sides of the
-/// wire need to encode/decode it: the guest-tools app
-/// produces the payload, the host's `GuestAgentClient`
-/// consumes it. Keeping the DTO in Core avoids forcing the
-/// host to import the guest-side library just to name the
-/// type.
+/// Lives in ``SpooktacularCore`` because BOTH sides of the
+/// wire need to encode/decode it: the Guest Tools app produces
+/// the payload, the host's `AgentEventListener` consumes it.
+/// Keeping the DTO in Core avoids forcing the host to import a
+/// guest-side library just to name the type.
 ///
 /// Wire format — a single JSON object:
 /// ```

@@ -13,8 +13,6 @@ extension Spooktacular {
     /// Spooktacular signs tickets with P-256 ECDSA using keys
     /// bound to the macOS Secure Enclave (per-operator, AAL3) and
     /// enforces single-use at the guest agent via a JTI denylist.
-    /// See `SECURITY.md §Break-glass` for the threat model and
-    /// `docs/OWASP_ASVS_AUDIT.md §V2.7` for control mapping.
     struct BreakGlass: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "break-glass",

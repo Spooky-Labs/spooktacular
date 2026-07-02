@@ -5,8 +5,10 @@ import Foundation
 /// Covers the Keychain-only resolution path for the GitHub runner
 /// registration token. Earlier revisions accepted env-var, CLI
 /// flag, and file-path sources; those were removed to close the
-/// "malware running as the logged-in user" threat (see
-/// `docs/THREAT_MODEL.md` for rationale).
+/// "malware running as the logged-in user" threat — a sibling
+/// process reading an env var, CLI arg, or world-readable file
+/// can't reach a Keychain item without also passing the OS's own
+/// ACL check.
 ///
 /// The Keychain-miss path is exercised against the real system
 /// Keychain using a throwaway UUID account name — no actual

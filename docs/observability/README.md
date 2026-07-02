@@ -1,8 +1,8 @@
 # Spooktacular Observability Kit
 
-Ready-to-deploy Prometheus + Grafana configuration for Fortune-20 operators scraping the `/metrics` endpoint exposed by `spook serve`.
+Ready-to-deploy Prometheus + Grafana configuration for operators scraping the `/metrics` endpoint exposed by `spook serve`.
 
-Everything in this directory is production-hardened: the scrape config uses mTLS (which `spook serve` requires in production), the dashboard is accessibility-audited for high-contrast mode, and the alert rules map one-to-one against the SLO targets documented in the Enterprise Readiness Evaluation.
+This kit covers **host-level** metrics only: capacity, API latency, and VM lifecycle timing. The scrape config uses mTLS (which `spook serve` requires in production), and the dashboard is accessibility-audited for high-contrast mode.
 
 ## What you get
 
@@ -10,8 +10,8 @@ Everything in this directory is production-hardened: the scrape config uses mTLS
 |------|--------------|
 | [`metrics.md`](metrics.md) | The full metric catalog — every series `/metrics` exposes, with type, unit, and an operational meaning |
 | [`prometheus.yml`](prometheus.yml) | Minimal scrape config for a single Spooktacular deployment |
-| [`alerts.yml`](alerts.yml) | Prometheus alerting rules — capacity, API health, audit-pipeline, VM lifecycle, and SLO burn-rate alerts |
-| [`grafana-dashboard.json`](grafana-dashboard.json) | Single-dashboard layout — VMs per host, API latency, audit volume, lock contention |
+| [`alerts.yml`](alerts.yml) | Prometheus alerting rules — capacity, API health, and VM lifecycle alerts |
+| [`grafana-dashboard.json`](grafana-dashboard.json) | Single-dashboard layout — VMs per host, API latency, VM lifecycle latencies, runner SLOs |
 
 ## Fifteen-minute setup
 
@@ -37,4 +37,4 @@ For local-dev deployments started with `--insecure`, strip the `tls_config` bloc
 
 ## Scope
 
-This kit covers **platform health** — capacity, API latency, audit pipeline, lock contention, VM lifecycle. It intentionally does **not** try to re-expose application-layer metrics from workloads running **inside** the VMs. Guest-side observability is the tenant's responsibility; Spooktacular's job is to make sure their runners boot, pass scrub, and register on time.
+This kit covers **host-level platform health** — capacity, API latency, VM lifecycle timing (clone/boot/scrub), and runner registration SLOs. It intentionally does **not** try to re-expose application-layer metrics from workloads running **inside** the VMs. Guest-side observability is the tenant's responsibility; Spooktacular's job is to make sure their runners boot, pass scrub, and register on time.
