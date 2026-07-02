@@ -276,37 +276,6 @@ struct RBACTests {
         }
     }
 
-    // MARK: - IdP Config
-
-    @Suite("IdP Configuration")
-    struct IdPConfiguration {
-
-        @Test("OIDC config round-trips through JSON")
-        func oidcRoundTrip() throws {
-            let config = IdPConfig.oidc(OIDCProviderConfig(
-                issuerURL: "https://login.example.com",
-                clientID: "app-1",
-                audience: "app-1"
-            ))
-            #expect(config.issuer == "https://login.example.com")
-            let data = try JSONEncoder().encode(config)
-            let decoded = try JSONDecoder().decode(IdPConfig.self, from: data)
-            #expect(decoded.issuer == "https://login.example.com")
-        }
-
-        @Test("SAML config round-trips through JSON")
-        func samlRoundTrip() throws {
-            let config = IdPConfig.saml(SAMLProviderConfig(
-                entityID: "https://idp.example.com",
-                ssoURL: "https://idp.example.com/sso",
-                certificate: "base64cert"
-            ))
-            #expect(config.issuer == "https://idp.example.com")
-            let data = try JSONEncoder().encode(config)
-            let decoded = try JSONDecoder().decode(IdPConfig.self, from: data)
-            #expect(decoded.issuer == "https://idp.example.com")
-        }
-    }
 }
 
 // MARK: - Test support: throwing RoleStore

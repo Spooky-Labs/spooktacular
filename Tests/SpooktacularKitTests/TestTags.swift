@@ -18,7 +18,7 @@ extension Tag {
     /// Tests for audit logging, Merkle trees, and compliance.
     @Tag static var audit: Self
 
-    /// Tests for OIDC, SAML, and federated identity.
+    /// Tests for workload-identity OIDC issuance and VM → IAM role binding.
     @Tag static var identity: Self
 
     /// Tests for VM lifecycle, state machines, and runner pools.

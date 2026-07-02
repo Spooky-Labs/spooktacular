@@ -180,11 +180,9 @@ custom_rules:
       - string
     message: "Plain HTTP URL detected. Use HTTPS."
     severity: error
-    # Every excluded file is a known plist DOCTYPE or a W3C
-    # XML-signature identifier URL that the specification
-    # requires verbatim (not a resource we actually fetch).
-    # Apple's plist DTD must be served at
+    # Every excluded file references a fixed-format URL that a
+    # specification requires verbatim (not a resource we
+    # actually fetch). Apple's plist DTD must be served at
     # `http://www.apple.com/DTDs/PropertyList-1.0.dtd` per the
-    # Core Foundation plist spec; W3C XML-dsig identifiers are
-    # fixed strings in the XMLDSig standard.
-    excluded: "Tests/.*|Sources/SpooktacularApplication/ServicePlist\\.swift|Sources/SpooktacularInfrastructureApple/SAMLAssertionVerifier\\.swift|Sources/SpooktacularInfrastructureApple/XMLCanonicalization\\.swift|Sources/SpooktacularInfrastructureApple/DiskInjector\\.swift|Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner\\.swift"
+    # Core Foundation plist spec.
+    excluded: "Tests/.*|Sources/SpooktacularApplication/ServicePlist\\.swift|Sources/SpooktacularInfrastructureApple/DiskInjector\\.swift|Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner\\.swift"

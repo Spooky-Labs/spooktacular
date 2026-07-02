@@ -179,45 +179,6 @@ public struct RBACAuthorization: AuthorizationService {
     }
 }
 
-// MARK: - IdP Registry
-
-/// Unified IdP configuration (OIDC or SAML).
-public enum IdPConfig: Sendable, Codable {
-    case oidc(OIDCProviderConfig)
-    case saml(SAMLProviderConfig)
-
-    public var issuer: String {
-        switch self {
-        case .oidc(let c): return c.issuerURL
-        case .saml(let c): return c.entityID
-        }
-    }
-
-    enum CodingKeys: String, CodingKey { case type, config }
-    enum ConfigType: String, Codable { case oidc, saml }
-
-    public func encode(to encoder: any Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        switch self {
-        case .oidc(let c):
-            try container.encode(ConfigType.oidc, forKey: .type)
-            try container.encode(c, forKey: .config)
-        case .saml(let c):
-            try container.encode(ConfigType.saml, forKey: .type)
-            try container.encode(c, forKey: .config)
-        }
-    }
-
-    public init(from decoder: any Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let type = try container.decode(ConfigType.self, forKey: .type)
-        switch type {
-        case .oidc: self = .oidc(try container.decode(OIDCProviderConfig.self, forKey: .config))
-        case .saml: self = .saml(try container.decode(SAMLProviderConfig.self, forKey: .config))
-        }
-    }
-}
-
 // MARK: - Immutable Audit Store
 
 /// Append-only storage backend for audit records.

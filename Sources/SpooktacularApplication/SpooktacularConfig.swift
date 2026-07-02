@@ -31,9 +31,6 @@ public struct SpooktacularConfig: Sendable, Codable {
     /// RBAC configuration.
     public let rbac: RBACConfig
 
-    /// Identity provider configurations.
-    public let identityProviders: [IdentityProviderConfig]
-
     /// TLS configuration.
     public let tls: TLSConfig?
 
@@ -53,7 +50,6 @@ public struct SpooktacularConfig: Sendable, Codable {
         tenancyMode: TenancyMode = .singleTenant,
         tenants: [TenantDefinition] = [],
         rbac: RBACConfig = .init(),
-        identityProviders: [IdentityProviderConfig] = [],
         tls: TLSConfig? = nil,
         audit: AuditConfig = .init(),
         server: ServerConfig = .init()
@@ -61,7 +57,6 @@ public struct SpooktacularConfig: Sendable, Codable {
         self.tenancyMode = tenancyMode
         self.tenants = tenants
         self.rbac = rbac
-        self.identityProviders = identityProviders
         self.tls = tls
         self.audit = audit
         self.server = server
@@ -255,27 +250,6 @@ public struct TenantDefinition: Sendable, Codable {
         self.hostPools = hostPools
         self.breakGlassAllowed = breakGlassAllowed
         self.quota = quota
-    }
-}
-
-/// Identity provider configuration (OIDC or SAML).
-public struct IdentityProviderConfig: Sendable, Codable {
-    public let type: String // "oidc" or "saml"
-    public let issuer: String
-    public let clientID: String?
-    public let certificate: String?
-    public let ssoURL: String?
-    public let groupRoleMapping: [String: [String]]
-
-    public init(type: String, issuer: String, clientID: String? = nil,
-                certificate: String? = nil, ssoURL: String? = nil,
-                groupRoleMapping: [String: [String]] = [:]) {
-        self.type = type
-        self.issuer = issuer
-        self.clientID = clientID
-        self.certificate = certificate
-        self.ssoURL = ssoURL
-        self.groupRoleMapping = groupRoleMapping
     }
 }
 

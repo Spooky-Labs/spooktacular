@@ -57,7 +57,7 @@ extension Spooktacular {
                 Default output covers local-host readiness. Pass \
                 --strict to additionally verify every production \
                 control documented in docs/DEPLOYMENT_HARDENING.md — \
-                mTLS, RBAC, IdP, audit chain, signing key permissions, \
+                mTLS, RBAC, audit chain, signing key permissions, \
                 lock backend, tenancy. A non-zero exit in --strict \
                 mode means the deployment is not hardened.
 
@@ -187,12 +187,6 @@ extension Spooktacular {
             // 06. RBAC active (config path OR macOS group mapping)
             results.append(check06RBACActive(env: env))
 
-            // 07. Federated IdP configured
-            results.append(check07FederatedIdP(env: env))
-
-            // 08. JWKS pinned OR trusted mirror on every OIDC provider
-            results.append(check08JWKSPinned(env: env))
-
             // 09. Audit JSONL enabled + writable
             results.append(check09AuditJSONL(env: env))
 
@@ -225,7 +219,6 @@ extension Spooktacular {
 
             // ─── Extra reviewer-flagged probes (report after 18 so
             //     the 1:1 mapping stays clean) ────────────────────
-            results.append(check19SAMLVerifierReady(env: env))
             results.append(check20IAMBindingStoreWritable(env: env))
             results.append(check21AuditSinkCanWrite(env: env))
             results.append(check22SignedRequestKeys(env: env))
@@ -343,69 +336,6 @@ extension Spooktacular {
                 return pass(6, "RBAC — SPOOKTACULAR_MACOS_GROUP_MAPPING set (group-driven)")
             }
             return fail(6, "RBAC — neither SPOOKTACULAR_RBAC_CONFIG nor SPOOKTACULAR_MACOS_GROUP_MAPPING is set (deny-by-default will block all requests)")
-        }
-
-        // MARK: - Item 07: Federated IdP
-
-        static func check07FederatedIdP(env: [String: String]) -> CheckResult {
-            guard let idpPath = env["SPOOKTACULAR_IDP_CONFIG"], !idpPath.isEmpty else {
-                return fail(7, "Federated IdP — SPOOKTACULAR_IDP_CONFIG not set")
-            }
-            guard FileManager.default.isReadableFile(atPath: idpPath) else {
-                return fail(7, "Federated IdP — SPOOKTACULAR_IDP_CONFIG=\(idpPath) is not readable")
-            }
-            return pass(7, "Federated IdP config: \(idpPath)")
-        }
-
-        // MARK: - Item 08: JWKS pinned
-
-        static func check08JWKSPinned(env: [String: String]) -> CheckResult {
-            guard let idpPath = env["SPOOKTACULAR_IDP_CONFIG"], !idpPath.isEmpty,
-                  let data = try? Data(contentsOf: URL(filePath: idpPath)),
-                  let obj = try? JSONSerialization.jsonObject(with: data) else {
-                return fail(8, "JWKS pinning — SPOOKTACULAR_IDP_CONFIG missing / unreadable / not JSON")
-            }
-            // Accept either an array of providers or an object
-            // with a `providers` array — matches the two shapes
-            // shipped in docs/.
-            let providers: [[String: Any]]
-            if let array = obj as? [[String: Any]] {
-                providers = array
-            } else if let dict = obj as? [String: Any],
-                      let array = dict["providers"] as? [[String: Any]] {
-                providers = array
-            } else {
-                return fail(8, "JWKS pinning — SPOOKTACULAR_IDP_CONFIG is not a providers list")
-            }
-
-            let oidcProviders = providers.filter {
-                ($0["type"] as? String)?.lowercased() == "oidc"
-                    || $0["oidc"] != nil
-                    || $0["issuerURL"] != nil
-            }
-            guard !oidcProviders.isEmpty else {
-                return pass(8, "JWKS pinning — no OIDC providers defined, nothing to pin")
-            }
-            var unpinned: [String] = []
-            for provider in oidcProviders {
-                // Unwrap a nested `config` / `oidc` payload — the
-                // config file uses `{"type":"oidc","config":{…}}`.
-                let fields: [String: Any] = (provider["config"] as? [String: Any])
-                    ?? (provider["oidc"] as? [String: Any])
-                    ?? provider
-                let pinned = (fields["staticJWKSPath"] as? String)?.isEmpty == false
-                    || (fields["jwksURLOverride"] as? String)?.isEmpty == false
-                if !pinned {
-                    let name = (fields["issuerURL"] as? String)
-                        ?? (fields["clientID"] as? String)
-                        ?? "<unnamed>"
-                    unpinned.append(name)
-                }
-            }
-            if unpinned.isEmpty {
-                return pass(8, "JWKS pinning — all \(oidcProviders.count) OIDC provider(s) have staticJWKSPath or jwksURLOverride")
-            }
-            return fail(8, "JWKS pinning — \(unpinned.count) OIDC provider(s) NOT pinned: \(unpinned.prefix(3).joined(separator: ", "))")
         }
 
         // MARK: - Item 09: Audit JSONL
@@ -533,49 +463,6 @@ extension Spooktacular {
         }
 
         // MARK: - Reviewer-flagged extras (19+)
-
-        /// Probes whether a SAML assertion verifier is wired for
-        /// each `saml`-typed provider in the IdP config. Looks
-        /// for `metadataPath` or `signingCertPath` (fields the
-        /// SAMLAssertionVerifier requires to validate signatures)
-        /// on every SAML provider. Reports each provider
-        /// individually so operators can identify the bad row.
-        static func check19SAMLVerifierReady(env: [String: String]) -> CheckResult {
-            guard let idpPath = env["SPOOKTACULAR_IDP_CONFIG"], !idpPath.isEmpty,
-                  let data = try? Data(contentsOf: URL(filePath: idpPath)),
-                  let obj = try? JSONSerialization.jsonObject(with: data) else {
-                return warn(19, "SAML verifier — SPOOKTACULAR_IDP_CONFIG missing/unreadable; skipping")
-            }
-            let providers: [[String: Any]]
-            if let array = obj as? [[String: Any]] { providers = array } else if let dict = obj as? [String: Any],
-                    let array = dict["providers"] as? [[String: Any]] { providers = array } else { providers = [] }
-
-            let samlProviders = providers.filter {
-                ($0["type"] as? String)?.lowercased() == "saml" || $0["saml"] != nil
-            }
-            if samlProviders.isEmpty {
-                return pass(19, "SAML verifier — no SAML providers configured (nothing to probe)")
-            }
-            var misconfigured: [String] = []
-            let fm = FileManager.default
-            for provider in samlProviders {
-                let fields: [String: Any] = (provider["config"] as? [String: Any])
-                    ?? (provider["saml"] as? [String: Any])
-                    ?? provider
-                let entity = (fields["entityID"] as? String) ?? "<unnamed>"
-                let meta = fields["metadataPath"] as? String
-                let cert = fields["signingCertPath"] as? String
-                let hasMaterial = (meta.map { fm.isReadableFile(atPath: $0) } ?? false)
-                    || (cert.map { fm.isReadableFile(atPath: $0) } ?? false)
-                if !hasMaterial {
-                    misconfigured.append(entity)
-                }
-            }
-            if misconfigured.isEmpty {
-                return pass(19, "SAML verifier — \(samlProviders.count) SAML provider(s) have readable signing material")
-            }
-            return fail(19, "SAML verifier — \(misconfigured.count) SAML provider(s) missing signing material: \(misconfigured.prefix(3).joined(separator: ", "))")
-        }
 
         /// Ensures `JSONVMIAMBindingStore` can load / write the
         /// bindings file — the endpoint otherwise returns 404 for

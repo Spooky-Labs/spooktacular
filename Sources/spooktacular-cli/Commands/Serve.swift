@@ -188,15 +188,6 @@ extension Spooktacular {
                 authService = nil
             }
 
-            // IdP registry
-            if let idpPath = env["SPOOKTACULAR_IDP_CONFIG"],
-               let idpData = try? Data(contentsOf: URL(filePath: idpPath)) {
-                struct IdPFile: Codable { let providers: [IdPConfig] }
-                if let config = try? JSONDecoder().decode(IdPFile.self, from: idpData) {
-                    print(Style.info("Loaded \(config.providers.count) identity provider(s)"))
-                }
-            }
-
             // Distributed lock (for multi-instance coordination).
             //
             // Selection is driven by `DistributedLockFactory` which

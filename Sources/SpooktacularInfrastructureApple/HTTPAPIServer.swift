@@ -244,17 +244,6 @@ public actor HTTPAPIServer {
     /// through this sink. Defaults to `nil` for backward compatibility.
     private let auditSink: (any AuditSink)?
 
-    /// Optional federated identity verifier for JWT / SAML bearer
-    /// tokens.
-    ///
-    /// When set, the server interprets a Bearer that parses as a
-    /// JWT (three dot-separated base64url segments) as a federated
-    /// token, verifies it, and uses the resulting
-    /// ``FederatedIdentity/actorIdentity`` as the caller identity
-    /// in both authorization and audit records. When `nil`, all
-    /// requests map to the static-token identity.
-    private let identityVerifier: (any FederatedIdentityVerifier)?
-
     /// Optional role store used to serve the runtime admin API
     /// (`/v1/roles`, `/v1/tenants`). When `nil`, those endpoints
     /// return 404. When set, the `security-admin` built-in role
@@ -314,7 +303,6 @@ public actor HTTPAPIServer {
         tenantID: TenantID = .default,
         authService: (any AuthorizationService)? = nil,
         auditSink: (any AuditSink)? = nil,
-        identityVerifier: (any FederatedIdentityVerifier)? = nil,
         roleStore: (any RoleStore)? = nil,
         tenantRegistry: (any TenantRegistry)? = nil,
         signatureVerifier: SignedRequestVerifier? = nil,
@@ -347,7 +335,6 @@ public actor HTTPAPIServer {
         self.tenantID = tenantID
         self.authService = authService
         self.auditSink = auditSink
-        self.identityVerifier = identityVerifier
         self.roleStore = roleStore
         self.tenantRegistry = tenantRegistry
         self.insecureMode = insecureMode
@@ -489,13 +476,17 @@ public actor HTTPAPIServer {
         // Apply the same TLS 1.3 floor the initial listener enforces —
         // without this a hot-reload produces a listener weaker than the
         // one it's replacing, which is the opposite of the intent.
+        guard let secIdentity = sec_identity_create(identity) else {
+            throw HTTPAPIServerError.invalidTLSIdentity
+        }
+
         let newOptions = NWProtocolTLS.Options()
         sec_protocol_options_set_min_tls_protocol_version(
             newOptions.securityProtocolOptions, .TLSv13
         )
         sec_protocol_options_set_local_identity(
             newOptions.securityProtocolOptions,
-            sec_identity_create(identity)!
+            secIdentity
         )
 
         let parameters = NWParameters(tls: newOptions)
@@ -1050,54 +1041,16 @@ public actor HTTPAPIServer {
             }
         }
 
-        // Resolve caller identity.
-        //
-        // Two modes are supported:
-        //
-        //   1. Static bearer token — `Authorization: Bearer <SPOOKTACULAR_API_TOKEN>`.
-        //      The caller identity is "bearer-token@<host>" so audits
-        //      distinguish token-auth from JWT-auth.
-        //   2. Federated JWT / SAML — the Bearer parses as a JWT and
-        //      resolves through the configured `identityVerifier`.
-        //      The caller identity is `FederatedIdentity.actorIdentity`
-        //      (issuer + subject), preserving the real user through
-        //      every downstream authorization and audit record.
-        //
-        // Unlike the previous "api-client" everywhere, downstream
-        // RBAC now sees a distinct principal per Okta/Azure AD/
-        // SAML user, which is the minimum needed for least-privilege
-        // enforcement and defensible audit trails.
+        // Resolve caller identity via per-request signature
+        // verification (see `SignedRequestVerifier`). The caller
+        // identity is derived from the verified caller's public-key
+        // fingerprint, so downstream RBAC and audit records see a
+        // distinct principal per operator key rather than the
+        // legacy hardcoded "api-client" that collapsed every caller
+        // into a single synthetic admin.
         let actorIdentity: String
-        let header = request.headers["authorization"] ?? ""
-        let bearer = header.hasPrefix("Bearer ") ? String(header.dropFirst("Bearer ".count)) : ""
 
-        if !bearer.isEmpty, let verifier = identityVerifier, Self.looksLikeJWT(bearer) {
-            // JWT path — verify, derive actor identity from the claims.
-            do {
-                let identity = try await verifier.verify(token: bearer)
-                actorIdentity = identity.actorIdentity
-            } catch {
-                // Generic 401 — surfacing the verifier's
-                // error string leaks JWKS URLs, audience mismatches,
-                // and kid-lookup failures to unauthenticated callers,
-                // which is exactly the intel an attacker probing
-                // the trust model needs.
-                logger.notice(
-                    "JWT verification failed for caller: \(error.localizedDescription, privacy: .public)"
-                )
-                let response = HTTPResponse.error(
-                    message: "Unauthorized.",
-                    statusCode: 401
-                )
-                await emitAPIAudit(
-                    method: request.method,
-                    path: request.path,
-                    statusCode: response.statusCode,
-                    actorIdentity: "anonymous"
-                )
-                return response
-            }
-        } else if let verifier = signatureVerifier {
+        if let verifier = signatureVerifier {
             // Signed-request path — verify the P-256 signature,
             // derive the actor identity from the verified
             // caller's public-key fingerprint.
@@ -1736,11 +1689,11 @@ public actor HTTPAPIServer {
     /// Emits one audit record per API request.
     ///
     /// The `actorIdentity` is whatever `routeRequest` resolved from
-    /// the Bearer header — for JWTs that's the issuer+subject of
-    /// the verified federated identity; for static tokens it's
-    /// `"bearer-token@<host>"`. Crucially, it is NOT the legacy
-    /// hardcoded "api-client" that collapsed every caller into a
-    /// single synthetic admin.
+    /// the verified caller — the public-key fingerprint for signed
+    /// requests, or `"insecure-mode@<host>"` when no verifier is
+    /// configured. Crucially, it is NOT the legacy hardcoded
+    /// "api-client" that collapsed every caller into a single
+    /// synthetic admin.
     func emitAPIAudit(
         method: String,
         path: String,
@@ -1762,20 +1715,6 @@ public actor HTTPAPIServer {
             Log.audit.error(
                 "API audit record failed: \(error.localizedDescription, privacy: .public) — method=\(method, privacy: .public) path=\(path, privacy: .public)"
             )
-        }
-    }
-
-    /// Returns `true` when a Bearer value looks like a JWT (three
-    /// dot-separated base64url segments). The real verification
-    /// happens in the federated-identity verifier; this is only
-    /// a dispatch hint so a static `SPOOKTACULAR_API_TOKEN` that happens
-    /// to contain dots isn't routed through OIDC.
-    static func looksLikeJWT(_ token: String) -> Bool {
-        let parts = token.split(separator: ".")
-        guard parts.count == 3 else { return false }
-        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
-        return parts.allSatisfy { part in
-            !part.isEmpty && part.allSatisfy { allowed.contains($0) }
         }
     }
 
@@ -2207,6 +2146,11 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError, Equatable {
     /// The TLS certificate file could not be opened for monitoring.
     case certificateFileNotFound(String)
 
+    /// `sec_identity_create` refused the `SecIdentity` supplied to
+    /// ``HTTPAPIServer/reloadTLS(identity:)`` — the identity's
+    /// certificate/private-key pair is not usable for TLS.
+    case invalidTLSIdentity
+
     public var errorDescription: String? {
         switch self {
         case .malformedRequest:
@@ -2225,6 +2169,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError, Equatable {
             "TLS is required in production."
         case .certificateFileNotFound(let path):
             "TLS certificate file not found at '\(path)'."
+        case .invalidTLSIdentity:
+            "The SecIdentity's certificate/private-key pair could not be used for TLS."
         }
     }
 
@@ -2246,6 +2192,8 @@ public enum HTTPAPIServerError: Error, Sendable, LocalizedError, Equatable {
             "Provide TLS certificates with --tls-cert and --tls-key. Production requires both TLS and signature verification — use --insecure to bypass (not recommended)."
         case .certificateFileNotFound:
             "Ensure the certificate file path is correct and the file exists."
+        case .invalidTLSIdentity:
+            "Verify the rotated certificate and private key were imported into the same Keychain identity."
         }
     }
 }

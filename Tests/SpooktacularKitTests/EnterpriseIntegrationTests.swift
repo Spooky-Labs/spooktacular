@@ -111,19 +111,8 @@ struct EnterpriseIntegrationTests {
             )
             try await sink.record(r)
         }
-        let proof = await sink.inclusionProof(forLeafAt: 1)
-        #expect(proof != nil)
-        #expect(!proof!.isEmpty)
-    }
-
-    // MARK: - Federated Identity
-
-    @Test("FederatedIdentity expiry detection")
-    func federatedExpiry() {
-        let expired = FederatedIdentity(issuer: "i", subject: "s", expiresAt: Date.distantPast)
-        let valid = FederatedIdentity(issuer: "i", subject: "s", expiresAt: Date.distantFuture)
-        #expect(expired.isExpired())
-        #expect(!valid.isExpired())
+        let proof = try #require(await sink.inclusionProof(forLeafAt: 1))
+        #expect(!proof.isEmpty)
     }
 
     // MARK: - Distributed Lock

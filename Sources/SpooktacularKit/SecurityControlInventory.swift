@@ -66,30 +66,6 @@ public enum SecurityControlInventory {
             notes: "TLS 1.3 enforced server-side AND client-side; TLS cert hot-reload preserves the floor."
         ),
         SecurityControl(
-            name: "OIDC JWT verification with strict algorithm pinning",
-            category: "Authentication & Identity",
-            standard: "OWASP JWT Cheat Sheet; NIST SP 800-131A (RSA 2048-bit minimum)",
-            implementation: "Sources/SpooktacularInfrastructureApple/OIDCTokenVerifier.swift",
-            test: "Tests/SpooktacularKitTests/OIDCHardeningTests.swift",
-            notes: "Only RS256 accepted; nbf/iat/exp/aud/iss validated with 60s skew; empty-modulus guard."
-        ),
-        SecurityControl(
-            name: "JWKS pinning (static file or URL override)",
-            category: "Authentication & Identity",
-            standard: "OWASP ASVS V9.1.2 (pin endpoint trust)",
-            implementation: "Sources/SpooktacularCore/FederatedIdentity.swift (OIDCProviderConfig.staticJWKSPath / jwksURLOverride) + OIDCTokenVerifier.fetchJWKS three-tier resolver",
-            test: "Tests/SpooktacularKitTests/OIDCHardeningTests.swift",
-            notes: "Resolution: static file > URL override > discovery. Air-gapped deployments pin JWKS to disk."
-        ),
-        SecurityControl(
-            name: "SAML 2.0 assertion verification with replay cache",
-            category: "Authentication & Identity",
-            standard: "OWASP SAML Cheat Sheet",
-            implementation: "Sources/SpooktacularInfrastructureApple/SAMLAssertionVerifier.swift + SAMLReplayCache",
-            test: "Tests/SpooktacularKitTests/SAMLVerifierTests.swift",
-            notes: "XMLParser with external entities disabled (XXE); XSW detection; assertion replay prevention."
-        ),
-        SecurityControl(
             name: "Hardware-bound break-glass signing via Secure Enclave (AAL3)",
             category: "Authentication & Identity",
             standard: "OWASP ASVS V2.7.1; NIST SP 800-63B AAL3; FIPS 140-3 Level 2 (SEP)",
@@ -104,14 +80,6 @@ public enum SecurityControlInventory {
             implementation: "Sources/SpooktacularInfrastructureApple/AdminPresenceGate.swift + Sources/spooktacular-cli/Commands/RBAC.swift (Assign/Revoke) + Sources/spooktacular-cli/Commands/BreakGlass.swift (Issue file-path mode)",
             test: "Tests/SpooktacularKitTests/AdminPresenceGateTests.swift",
             notes: "LAContext.deviceOwnerAuthentication; fails closed on headless hosts unless SPOOKTACULAR_ADMIN_PRESENCE_BYPASS=1 is set (every bypass logged to OSLog at .error)."
-        ),
-        SecurityControl(
-            name: "Stepped-up MFA on federated admin tokens via acr allowlist",
-            category: "Authentication & Identity",
-            standard: "OWASP ASVS V2.7 / V4.3.1 (per-action MFA); OIDC Core §5.5.1.1; RFC 8176",
-            implementation: "Sources/SpooktacularCore/FederatedIdentity.swift (OIDCProviderConfig.requiredACRValues) + Sources/SpooktacularInfrastructureApple/OIDCTokenVerifier.swift (insufficientACR)",
-            test: "Tests/SpooktacularKitTests/OIDCACRTests.swift",
-            notes: "Operator pins acr values (e.g., urn:mace:incommon:iap:silver) per-provider. Tokens missing acr or not in the allowlist are rejected before authorization."
         ),
         SecurityControl(
             name: "Workload-identity OIDC federation (ES256 JWT issuer, SEP-bound)",
