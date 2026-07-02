@@ -4,7 +4,6 @@
 #
 # Usage:
 #   ./scripts/find-provisioning-profile.sh com.spooktacular.app
-#   ./scripts/find-provisioning-profile.sh com.spooktacular.app.NetworkFilter
 #
 # Stdout: absolute path to the matching .mobileprovision /
 # .provisionprofile (newest mtime). Exit non-zero if none match.

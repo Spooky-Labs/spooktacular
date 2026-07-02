@@ -47,18 +47,5 @@
 	-->
 	<key>com.apple.security.virtualization</key>
 	<true/>
-
-	<!--
-	    NEFilter system-extension installation. Required for
-	    Track F'' Phase B (tenant egress policy). The
-	    provisioning-profile-gated restriction remains in place
-	    — dev builds where the profile isn't available strip
-	    this key in build-app.sh.
-	-->
-	<key>com.apple.developer.networking.networkextension</key>
-	<array>
-		<string>content-filter-provider</string>
-		<string>content-filter-provider-systemextension</string>
-	</array>
 </dict>
 </plist>

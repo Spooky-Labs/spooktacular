@@ -26,12 +26,6 @@ let package = Package(
         // Executables
         .executable(name: "spooktacular-cli", targets: ["spooktacular-cli"]),
         .executable(name: "Spooktacular", targets: ["Spooktacular"]),
-        // System-extension executable (Track F''). `build-app.sh`
-        // wraps the produced binary in a `.systemextension`
-        // bundle and embeds it under the main app's
-        // `Contents/Library/SystemExtensions/`. The main app
-        // requests activation via `OSSystemExtensionRequest`.
-        .executable(name: "SpooktacularNetworkFilter", targets: ["SpooktacularNetworkFilter"]),
         // Out-of-process VM lifecycle helper (Track J). A
         // crash in VZVirtualMachine inside the helper shows
         // up to the main app as a dropped XPC connection
@@ -120,20 +114,6 @@ let package = Package(
             dependencies: ["SpooktacularKit"],
             path: "Sources/Spooktacular"
         ),
-        // System-extension host for the NEFilterDataProvider
-        // subclass (Track F''). This executable is packaged
-        // as a `.systemextension` by `build-app.sh` and
-        // activated via `OSSystemExtensionRequest`. The
-        // `SpooktacularInfrastructureApple` dependency is
-        // required so the linker pulls
-        // `SpooktacularNetworkFilterProvider` (the NE principal
-        // class referenced by Info.plist) into the binary.
-        .executableTarget(
-            name: "SpooktacularNetworkFilter",
-            dependencies: ["SpooktacularInfrastructureApple"],
-            path: "Sources/SpooktacularNetworkFilter"
-        ),
-
         // VM lifecycle helper (Track J). Depends on
         // `SpooktacularCore` for `VMHelperProtocol` — the
         // protocol must be visible on both sides of the XPC

@@ -25,19 +25,10 @@ APP_NAME="Spooktacular"
 # renaming on copy below.
 CLI_TARGET="spooktacular-cli"
 CLI_NAME="spook"
-# System-extension identity must match:
-#   - CFBundleIdentifier in Resources/SpooktacularNetworkFilter-Info.plist
-#   - NEFilterConfigurator.extensionBundleIdentifier
-#   - com.apple.application-identifier in SpooktacularNetworkFilter.entitlements
-SYSEX_ID="com.spooktacular.app.NetworkFilter"
-SYSEX_TARGET="SpooktacularNetworkFilter"
 BUNDLE_DIR="$PROJECT_DIR/$APP_NAME.app"
 CONTENTS="$BUNDLE_DIR/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
-SYSEX_DIR="$CONTENTS/Library/SystemExtensions/$SYSEX_ID.systemextension"
-SYSEX_CONTENTS="$SYSEX_DIR/Contents"
-SYSEX_MACOS="$SYSEX_CONTENTS/MacOS"
 ENTITLEMENTS="$PROJECT_DIR/Spooktacular.entitlements"
 # `spook` is a DUAL-USE CLI: the GUI app invokes it via
 # `Process`, AND users run it directly from Terminal. Apple's
@@ -58,8 +49,6 @@ ENTITLEMENTS="$PROJECT_DIR/Spooktacular.entitlements"
 # direct distribution (TestFlight + Homebrew tap), so the
 # standalone-CLI shape is the right choice.
 CLI_ENTITLEMENTS="$PROJECT_DIR/SpooktacularCLI.entitlements"
-SYSEX_ENTITLEMENTS="$PROJECT_DIR/SpooktacularNetworkFilter.entitlements"
-SYSEX_INFO_PLIST="$PROJECT_DIR/Resources/SpooktacularNetworkFilter-Info.plist"
 
 # VM Helper XPC service (Track J). Bundled under
 # Contents/XPCServices/; launchd spawns one process per
@@ -108,45 +97,27 @@ fi
 # 3. Assemble .app bundle
 echo "Assembling app bundle..."
 rm -rf "$BUNDLE_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES" "$SYSEX_MACOS" "$XPC_HELPER_MACOS" "$GUEST_TOOLS_MACOS"
+mkdir -p "$MACOS_DIR" "$RESOURCES" "$XPC_HELPER_MACOS" "$GUEST_TOOLS_MACOS"
 
 # Copy binaries. The legacy `spooktacular-agent` Mach-O is
 # gone — its HTTP/vsock server moved into
 # `SpooktacularGuestAgentCore` (library) and ships inside the
-# Spooktacular Guest Tools nested `.app` (see step 3c below).
+# Spooktacular Guest Tools nested `.app` (see step 3b below).
 # No more base64 binary embedding; `DiskInjector.installGuestTools`
 # ditto's the nested bundle directly onto the guest volume.
 cp "$BINARY_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$BINARY_DIR/$CLI_TARGET" "$MACOS_DIR/$CLI_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME"
 
-# 3a. Assemble system-extension bundle (Track F'').
-#
-# Apple's system-extension loader expects:
-#   Contents/Library/SystemExtensions/<bundle-id>.systemextension/
-#     Contents/
-#       Info.plist
-#       MacOS/
-#         <CFBundleExecutable>   ← we name it <bundle-id> to match Info.plist
-#
-# The executable's CFBundleExecutable must equal the file
-# name on disk; we rename on copy to keep both sides in sync
-# with the Info.plist (which sets CFBundleExecutable to the
-# bundle identifier string).
-echo "Assembling system extension..."
-cp "$BINARY_DIR/$SYSEX_TARGET" "$SYSEX_MACOS/$SYSEX_ID"
-chmod +x "$SYSEX_MACOS/$SYSEX_ID"
-cp "$SYSEX_INFO_PLIST" "$SYSEX_CONTENTS/Info.plist"
-# Inject version/build into the extension Info.plist so
-# OSSystemExtensionManager's version-comparison logic sees
-# the same numbers the main app reports — the replace-vs-skip
-# decision in `actionForReplacingExtension` reads these.
-SYSEX_VERSION="${MARKETING_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo '1.0.0')}"
-SYSEX_BUILD="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo '1')}"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SYSEX_VERSION" "$SYSEX_CONTENTS/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $SYSEX_BUILD" "$SYSEX_CONTENTS/Info.plist"
+# Shared version/build stamps, injected into every embedded
+# bundle's Info.plist below (VM Helper XPC service, Guest
+# Tools) and into the provisioner pkg's version so
+# `spooktacular doctor` and diagnostics across bundles all
+# agree on one build identity.
+BUNDLE_VERSION="${MARKETING_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo '1.0.0')}"
+BUNDLE_BUILD="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo '1')}"
 
-# 3b. Assemble VM Helper XPC service (Track J).
+# 3a. Assemble VM Helper XPC service (Track J).
 #
 # Bundle layout Apple expects:
 #   Contents/XPCServices/<bundle-id>.xpc/
@@ -162,14 +133,13 @@ echo "Assembling VM helper XPC service..."
 cp "$BINARY_DIR/$XPC_HELPER_TARGET" "$XPC_HELPER_MACOS/$XPC_HELPER_ID"
 chmod +x "$XPC_HELPER_MACOS/$XPC_HELPER_ID"
 cp "$XPC_HELPER_INFO_PLIST" "$XPC_HELPER_CONTENTS/Info.plist"
-# Same reasoning as the sysex block: keep the embedded
-# version numbers in sync with the app's so any future
-# diagnostics (`spooktacular doctor`, Settings panel's
-# helper probe) read consistent data across the two bundles.
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SYSEX_VERSION" "$XPC_HELPER_CONTENTS/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $SYSEX_BUILD" "$XPC_HELPER_CONTENTS/Info.plist"
+# Keep the embedded version numbers in sync with the app's
+# so any future diagnostics (`spooktacular doctor`, Settings
+# panel's helper probe) read consistent data across bundles.
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BUNDLE_VERSION" "$XPC_HELPER_CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUNDLE_BUILD" "$XPC_HELPER_CONTENTS/Info.plist"
 
-# 3c. Assemble Spooktacular Guest Tools nested .app bundle.
+# 3b. Assemble Spooktacular Guest Tools nested .app bundle.
 #
 # Layout:
 #   Contents/Applications/Spooktacular Guest Tools.app/
@@ -245,7 +215,7 @@ COMPONENT_PKG=$(mktemp -t provisioner-component.XXXXXX).pkg
 pkgbuild \
     --root "$PKG_ROOT" \
     --identifier com.spookylabs.spooktacular.provisioner \
-    --version "${SYSEX_VERSION:-1.0.0}" \
+    --version "${BUNDLE_VERSION:-1.0.0}" \
     --scripts "$PKG_SCRIPTS" \
     --install-location / \
     "$COMPONENT_PKG" \
@@ -312,9 +282,9 @@ fi
 
 rm -rf "$PKG_ROOT" "$PKG_SCRIPTS"
 # Version-sync with the main app for consistent diagnostics
-# — same rationale as the sysex / XPC helper blocks.
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SYSEX_VERSION" "$GUEST_TOOLS_CONTENTS/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $SYSEX_BUILD" "$GUEST_TOOLS_CONTENTS/Info.plist"
+# — same rationale as the XPC helper block above.
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BUNDLE_VERSION" "$GUEST_TOOLS_CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUNDLE_BUILD" "$GUEST_TOOLS_CONTENTS/Info.plist"
 
 # Copy Info.plist and inject version from git
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS/Info.plist"
@@ -330,7 +300,7 @@ fi
 
 # Resolve the provisioning profile.
 #
-# Restricted entitlements — NetworkExtension, application-identifier,
+# Restricted entitlements — application-identifier,
 # team-identifier — require an embedded.provisionprofile in
 # Contents/ whose allowlist covers each one. Without it, amfid
 # rejects launch with "No matching profile found" (AMFIError -413)
@@ -345,12 +315,8 @@ fi
 #      entitlements stripped. This mirrors Xcode's own behavior when
 #      a developer opens a project with no profile: it signs a
 #      local-run copy so the app launches on the developer's own
-#      Mac. The dev variant drops the NEFilter system extension
-#      (it cannot load without provisioning); NEFilter lights up
-#      automatically on any build where the full profile is present.
-#      This is NOT an alternate architecture — NEFilter stays the
-#      single egress-enforcement path. It's the standard
-#      local-dev signing shape Apple's tooling produces.
+#      Mac. This is the standard local-dev signing shape Apple's
+#      tooling produces.
 if [ -z "${PROVISIONING_PROFILE:-}" ]; then
     PROVISIONING_PROFILE="$("$PROJECT_DIR/scripts/find-provisioning-profile.sh" \
         com.spooktacular.app 2>/dev/null || true)"
@@ -360,109 +326,13 @@ DEV_VARIANT=0
 if [ -n "${PROVISIONING_PROFILE:-}" ] && [ -f "${PROVISIONING_PROFILE}" ]; then
     echo "Embedding provisioning profile: $(basename "$PROVISIONING_PROFILE")"
     cp "$PROVISIONING_PROFILE" "$CONTENTS/embedded.provisionprofile"
-
-    # The `content-filter-provider-systemextension` value on
-    # `com.apple.developer.networking.networkextension` is
-    # Apple-gated beyond the standard `NETWORK_EXTENSIONS`
-    # bundle-ID capability — it needs a separate team-level
-    # grant that ordinary dev teams don't have. If the profile
-    # doesn't include that exact string in its networkextension
-    # array, amfid rejects launch with AMFIError -413
-    # "No matching profile found" because our entitlements file
-    # declares it and the profile doesn't grant it.
-    #
-    # Compute the intersection of declared values ∩ profile-
-    # granted values and rewrite the effective entitlements to
-    # match. If the profile can't cover the systemextension
-    # variant, also drop the sysex bundle (it can't load
-    # anyway without the grant).
-    # PlistBuddy reads from files, not stdin — `- ` is treated
-    # as a nonexistent filename. Decrypt the profile to a temp
-    # plist, query it there, then discard.
-    PROFILE_PLIST_TMP="$(mktemp -t spook-profile).plist"
-    security cms -D -i "$PROVISIONING_PROFILE" > "$PROFILE_PLIST_TMP" 2>/dev/null
-    PROFILE_NE_VALUES=$(
-        /usr/libexec/PlistBuddy -c \
-            "Print :Entitlements:com.apple.developer.networking.networkextension" \
-            "$PROFILE_PLIST_TMP" 2>/dev/null \
-        | awk 'NR > 1 && !/^}/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print }'
-    )
-    rm -f "$PROFILE_PLIST_TMP"
-    PROFILE_HAS_SYSEX=0
-    if echo "$PROFILE_NE_VALUES" | grep -qx 'content-filter-provider-systemextension'; then
-        PROFILE_HAS_SYSEX=1
-    fi
-
-    if [ "$PROFILE_HAS_SYSEX" -eq 0 ]; then
-        echo "Profile doesn't grant content-filter-provider-systemextension."
-        echo "  Filtering entitlements to app-extension variant + dropping sysex."
-        echo "  (Full sysex build requires Apple grant for com.apple.developer.system-extension.install.)"
-
-        # Filter the app entitlements' networkextension array
-        # to values the profile actually grants. Currently that
-        # means dropping any `-systemextension` suffix variant.
-        RESTRICTED_ENTITLEMENTS="$(mktemp -t spook-ent).plist"
-        cp "$ENTITLEMENTS" "$RESTRICTED_ENTITLEMENTS"
-        # Nuke the array then re-add only the intersection.
-        /usr/libexec/PlistBuddy -c \
-            "Delete :com.apple.developer.networking.networkextension" \
-            "$RESTRICTED_ENTITLEMENTS" 2>/dev/null || true
-        /usr/libexec/PlistBuddy -c \
-            "Add :com.apple.developer.networking.networkextension array" \
-            "$RESTRICTED_ENTITLEMENTS"
-        # Source values declared by the app's own file.
-        APP_NE_VALUES=$(
-            /usr/libexec/PlistBuddy -c \
-                "Print :com.apple.developer.networking.networkextension" \
-                "$ENTITLEMENTS" 2>/dev/null \
-            | awk '/^[[:space:]]/ && !/^Array/ && !/^{/ && !/^}/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print}'
-        )
-        idx=0
-        while IFS= read -r val; do
-            [ -z "$val" ] && continue
-            # Drop any systemextension subtype — the profile
-            # can't grant it, so embedding it trips amfid.
-            if echo "$val" | grep -q -- '-systemextension$'; then
-                continue
-            fi
-            /usr/libexec/PlistBuddy -c \
-                "Add :com.apple.developer.networking.networkextension:$idx string $val" \
-                "$RESTRICTED_ENTITLEMENTS"
-            idx=$((idx + 1))
-        done <<< "$APP_NE_VALUES"
-        ENTITLEMENTS="$RESTRICTED_ENTITLEMENTS"
-
-        # Drop the sysex: it can't load without the
-        # systemextension grant.
-        rm -rf "$CONTENTS/Library/SystemExtensions"
-        SYSEX_DROPPED=1
-    fi
-
-    if [ "${SYSEX_DROPPED:-0}" -ne 1 ]; then
-        SYSEX_PROVISIONING_PROFILE="${SYSEX_PROVISIONING_PROFILE:-}"
-        if [ -z "$SYSEX_PROVISIONING_PROFILE" ]; then
-            SYSEX_PROVISIONING_PROFILE="$("$PROJECT_DIR/scripts/find-provisioning-profile.sh" \
-                "$SYSEX_ID" 2>/dev/null || true)"
-        fi
-        if [ -z "$SYSEX_PROVISIONING_PROFILE" ] || [ ! -f "$SYSEX_PROVISIONING_PROFILE" ]; then
-            echo "✗ Main-app profile present but no profile for $SYSEX_ID." >&2
-            echo "  Run: bundle exec fastlane signing_dev" >&2
-            exit 1
-        fi
-        echo "Embedding sysex profile: $(basename "$SYSEX_PROVISIONING_PROFILE")"
-        cp "$SYSEX_PROVISIONING_PROFILE" "$SYSEX_CONTENTS/embedded.provisionprofile"
-    fi
 else
     echo "No provisioning profile — building dev variant."
-    echo "  Full NEFilter build: bundle exec fastlane signing_dev && ./build-app.sh"
     DEV_VARIANT=1
-    # Drop the sysex bundle: it can't load without provisioning.
-    rm -rf "$CONTENTS/Library/SystemExtensions"
     # Strip restricted entitlements from every signed component.
     DEV_ENTITLEMENTS="$(mktemp -t spook-ent).plist"
     cp "$ENTITLEMENTS" "$DEV_ENTITLEMENTS"
     for key in \
-        com.apple.developer.networking.networkextension \
         com.apple.application-identifier \
         com.apple.developer.team-identifier; do
         /usr/libexec/PlistBuddy -c "Delete :$key" "$DEV_ENTITLEMENTS" 2>/dev/null || true
@@ -542,21 +412,10 @@ echo "Code signing with identity: $SIGN_IDENTITY"
 TIMESTAMP_FLAG="--timestamp"
 # Sign innermost-first so the outer signature can cover the
 # now-signed inner subcomponents. Order:
-#   1. System-extension executable + bundle (deepest nested).
-#   2. VM Helper XPC executable + bundle (also nested).
-#   3. CLI binary (sibling of the app binary).
-#   4. App binary.
-#   5. App bundle root (covers everything above).
-# Sign the system extension only if it's still in the bundle.
-# Two cases drop it: `DEV_VARIANT=1` (no profile at all) and
-# `SYSEX_DROPPED=1` (profile present but doesn't grant the
-# systemextension subtype). Guarding on the directory
-# existence is the most honest gate since it matches the
-# filesystem state the codesign commands will encounter.
-if [ -d "$SYSEX_DIR" ]; then
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_MACOS/$SYSEX_ID"
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_DIR"
-fi
+#   1. VM Helper XPC executable + bundle (nested).
+#   2. CLI binary (sibling of the app binary).
+#   3. App binary.
+#   4. App bundle root (covers everything above).
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$XPC_HELPER_ENTITLEMENTS" "$XPC_HELPER_MACOS/$XPC_HELPER_ID"
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$XPC_HELPER_ENTITLEMENTS" "$XPC_HELPER_DIR"
 # Guest-tools nested .app — signed with an identity that
