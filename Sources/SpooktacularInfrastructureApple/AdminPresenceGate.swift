@@ -218,10 +218,10 @@ public enum AdminPresenceGate {
             // `admin-presence-bypass:` to enumerate every bypass.
             //
             // `AuditSink.record(_:)` is `async throws` per Agent 7's
-            // migration: if the audit pipeline is broken (S3 down,
-            // disk full) the bypass is refused, not silently
-            // accepted. An un-audited bypass is worse than no
-            // bypass, so the error propagates.
+            // migration: if the audit pipeline is broken (disk
+            // full, permission denied) the bypass is refused, not
+            // silently accepted. An un-audited bypass is worse
+            // than no bypass, so the error propagates.
             let bypassAction = "admin-presence-bypass:\(ctx.reason)"
             try await sink.record(AuditRecord(
                 actorIdentity: "admin-presence-bypass",
@@ -353,7 +353,7 @@ public enum AdminPresenceError: Error, LocalizedError {
         case .bypassTokenInvalid:
             "Check the token's expiry (tokens rotate monthly) and confirm the current hostname matches one in the token's allowlist. Re-issue with `spook break-glass issue-presence-token --host <hostname>` if rotation is due."
         case .bypassAuditSinkNotConfigured:
-            "Pass an AuditSink to `requirePresence(...)`. Operators who wire the admin surface by hand should use the same sink (OSLog / S3 Object Lock / HashChain) they use for control-plane audit."
+            "Pass an AuditSink to `requirePresence(...)`. Operators who wire the admin surface by hand should use the same sink (OSLog / JSON file / append-only store) they use for control-plane audit."
         case .evaluationFailed:
             "Check the Console app for `subsystem = com.spooktacular.spook, category = admin-presence` entries near the failure time."
         }

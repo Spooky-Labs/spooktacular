@@ -190,17 +190,15 @@ extension Spooktacular {
 
             // Distributed lock (for multi-instance coordination).
             //
-            // Selection is driven by `DistributedLockFactory` which
-            // reads the environment — `SPOOKTACULAR_DYNAMO_TABLE` picks the
-            // cross-region DynamoDB backend, otherwise falls back to
-            // file/NFS flock. We engage the factory whenever the
-            // operator has explicitly opted into a shared backend OR
+            // Selection is driven by `DistributedLockFactory`, which
+            // reads the environment and constructs a file/NFS flock
+            // backend. We engage the factory whenever the operator
+            // has explicitly opted into a shared lock directory OR
             // when running multi-tenant (where coordination is
             // mandatory).
-            let dynamoSelected = env["SPOOKTACULAR_DYNAMO_TABLE"]?.isEmpty == false
             let fileLockSelected = env["SPOOKTACULAR_LOCK_DIR"] != nil
             var distributedLockBuilt: DistributedLockFactory.Built?
-            if dynamoSelected || fileLockSelected || tenancyMode == .multiTenant {
+            if fileLockSelected || tenancyMode == .multiTenant {
                 let built = try DistributedLockFactory.makeFromEnvironment(environment: env)
                 print(Style.info("Distributed lock backend: \(built.backend)"))
                 if let lease = try? await built.lock.acquire(
@@ -229,33 +227,7 @@ extension Spooktacular {
                     auditBase = immutable
                 }
             }
-            let auditSink: (any AuditSink)?
-            if env["SPOOKTACULAR_AUDIT_MERKLE"] == "1", let base = auditBase {
-                // SEP-bound only. The previous `SPOOKTACULAR_AUDIT_SIGNING_KEY_PATH`
-                // (PEM-on-disk fallback) is gone: software keys on
-                // disk are reachable by malware running as the
-                // logged-in user, while SEP-bound keys are
-                // hardware-isolated and non-extractable. See
-                // `docs/THREAT_MODEL.md`.
-                let auditConfig = AuditConfig(
-                    merkleEnabled: true,
-                    merkleSigningKeyLabel: env["SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL"]
-                )
-                let signer: any P256Signer
-                do {
-                    signer = try await AuditSinkFactory.resolveMerkleSigner(config: auditConfig)
-                } catch let err as AuditSinkFactoryError {
-                    print(Style.error("✗ \(err.localizedDescription)"))
-                    throw ExitCode.failure
-                } catch let err as KeyStoreError {
-                    print(Style.error("✗ \(err.localizedDescription)"))
-                    if let hint = err.recoverySuggestion { print(Style.dim("  \(hint)")) }
-                    throw ExitCode.failure
-                }
-                auditSink = MerkleAuditSink(wrapping: base, signer: signer)
-            } else {
-                auditSink = auditBase
-            }
+            let auditSink: (any AuditSink)? = auditBase
 
             // Production preflight — refuse to start when a
             // multi-tenant deployment is missing controls the

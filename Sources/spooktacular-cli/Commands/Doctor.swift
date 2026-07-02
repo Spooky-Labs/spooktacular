@@ -193,15 +193,6 @@ extension Spooktacular {
             // 10. Append-only audit (UF_APPEND)
             results.append(check10AppendOnlyAudit(env: env))
 
-            // 11. Merkle signing key persisted (mode 0600)
-            results.append(check11MerkleSigningKey(env: env))
-
-            // 12. S3 Object Lock audit copy — not automatable (AWS call)
-            results.append(check12S3ObjectLockManual(env: env))
-
-            // 13. Distributed lock backend
-            results.append(check13DistributedLock(env: env))
-
             // 14. Tenancy mode set
             results.append(check14TenancyMode(env: env))
 
@@ -373,43 +364,6 @@ extension Spooktacular {
                 return pass(10, "Append-only audit: \(path) (UF_APPEND set)")
             }
             return fail(10, "Append-only audit — UF_APPEND NOT set on \(path); run `chflags uappnd \(path)`")
-        }
-
-        // MARK: - Item 11: Merkle signing key persisted
-
-        static func check11MerkleSigningKey(env: [String: String]) -> CheckResult {
-            let merkleEnabled = env["SPOOKTACULAR_AUDIT_MERKLE"] == "1"
-            guard merkleEnabled else {
-                return warn(11, "Merkle signing — SPOOKTACULAR_AUDIT_MERKLE!=1 (tamper-evidence disabled)")
-            }
-            // The previous PEM-on-disk path (SPOOKTACULAR_AUDIT_SIGNING_KEY)
-            // is gone. Production resolves the Merkle signer via
-            // SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL → SEP-bound P-256
-            // key. Doctor verifies the label is configured; it can't
-            // verify the SEP key exists without triggering a
-            // presence prompt the operator didn't ask for.
-            guard let label = env["SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL"], !label.isEmpty else {
-                return fail(11, "Merkle signing — SPOOKTACULAR_AUDIT_MERKLE=1 but SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL is unset. Set a Keychain label; the SEP-bound key is created on first start.")
-            }
-            return pass(11, "Merkle signing key label: \(label) (SEP-bound on first use)")
-        }
-
-        // MARK: - Item 12: S3 Object Lock (manual)
-
-        static func check12S3ObjectLockManual(env: [String: String]) -> CheckResult {
-            guard let bucket = env["SPOOK_AUDIT_S3_BUCKET"], !bucket.isEmpty else {
-                return fail(12, "S3 Object Lock — SPOOK_AUDIT_S3_BUCKET not set")
-            }
-            return manual(12, "S3 Object Lock — configured for bucket '\(bucket)'; verify COMPLIANCE mode with `aws s3api get-object-lock-configuration --bucket \(bucket)`")
-        }
-
-        // MARK: - Item 13: Distributed lock backend
-
-        static func check13DistributedLock(env: [String: String]) -> CheckResult {
-            if env["SPOOKTACULAR_DYNAMO_TABLE"]?.isEmpty == false {
-                return pass(13, "Distributed lock: DynamoDB (SPOOKTACULAR_DYNAMO_TABLE=\(env["SPOOKTACULAR_DYNAMO_TABLE"] ?? ""))")
-            }
-            return warn(13, "Distributed lock: file/flock fallback — fleets of ≥ 2 hosts MUST set SPOOKTACULAR_DYNAMO_TABLE")
         }
 
         // MARK: - Item 14: Tenancy mode

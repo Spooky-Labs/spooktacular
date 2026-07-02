@@ -1,6 +1,5 @@
 import Testing
 import Foundation
-import CryptoKit
 @testable import SpooktacularCore
 @testable import SpooktacularApplication
 @testable import SpooktacularInfrastructureApple
@@ -21,113 +20,6 @@ struct AuditPipelineTests {
             outcome: .success,
             correlationID: "corr-\(index)"
         )
-    }
-
-    /// Appends `count` records to a `MerkleAuditSink` and returns the
-    /// inner `CollectingAuditSink` alongside the Merkle sink.
-    private static func populatedMerkleSink(
-        count: Int,
-        key: P256.Signing.PrivateKey = .init()
-    ) async throws -> (merkle: MerkleAuditSink, inner: CollectingAuditSink) {
-        let inner = CollectingAuditSink()
-        let merkle = MerkleAuditSink(wrapping: inner, signer: key)
-        for i in 0..<count {
-            try await merkle.record(sampleRecord(index: i))
-        }
-        return (merkle, inner)
-    }
-
-    // MARK: - Merkle Tree Integrity
-
-    @Suite("Merkle Tree Integrity")
-    struct MerkleIntegrity {
-
-        @Test("tree root changes after each record")
-        func rootChanges() async throws {
-            let key = P256.Signing.PrivateKey()
-            let inner = CollectingAuditSink()
-            let sink = MerkleAuditSink(wrapping: inner, signer: key)
-
-            let rootBefore = await sink.rootHash()
-
-            try await sink.record(AuditPipelineTests.sampleRecord(index: 0))
-            let rootAfterFirst = await sink.rootHash()
-            #expect(rootAfterFirst != rootBefore,
-                    "Root must change after appending the first record")
-
-            try await sink.record(AuditPipelineTests.sampleRecord(index: 1))
-            let rootAfterSecond = await sink.rootHash()
-            #expect(rootAfterSecond != rootAfterFirst,
-                    "Root must change after appending a second record")
-        }
-
-        @Test("inclusion proof verifies for every leaf", arguments: 0..<8)
-        func inclusionProof(leafIndex: Int) async throws {
-            // Use a power-of-2 tree size to avoid odd-leaf promotion
-            // edge cases in the Merkle tree implementation.
-            let key = P256.Signing.PrivateKey()
-            let (sink, _) = try await AuditPipelineTests.populatedMerkleSink(count: 8, key: key)
-
-            // Retrieve the leaf hash from the internal leaves array.
-            let leaves = await sink.leaves
-            let leafHash = leaves[leafIndex]
-
-            // Get the inclusion proof.
-            let proof = await sink.inclusionProof(forLeafAt: leafIndex)
-            #expect(proof != nil, "Inclusion proof must exist for leaf \(leafIndex)")
-
-            // Reconstruct the expected root from the signed tree head.
-            let rootHex = await sink.rootHash()
-            let rootData = Data(hexString: rootHex)
-
-            // Verify inclusion using the static verifier.
-            let verified = MerkleAuditSink.verifyInclusion(
-                leafHash: leafHash,
-                index: leafIndex,
-                proof: proof!,
-                expectedRoot: rootData
-            )
-            #expect(verified, "Inclusion proof must verify for leaf \(leafIndex)")
-        }
-
-        @Test("signed tree head has valid RFC 6962-shaped signature")
-        func signedTreeHead() async throws {
-            let key = P256.Signing.PrivateKey()
-            let publicKey = key.publicKey
-            let (sink, _) = try await AuditPipelineTests.populatedMerkleSink(count: 5, key: key)
-
-            let sth = try await sink.signedTreeHead()
-            #expect(sth.treeSize == 5)
-            #expect(!sth.rootHash.isEmpty)
-
-            // Verify the P-256 ECDSA signature.
-            guard let sigData = Data(base64Encoded: sth.signature) else {
-                Issue.record("Signature is not valid Base64")
-                return
-            }
-            let rootData = Data(hexString: sth.rootHash)
-
-            // Reconstruct the signed message per RFC 6962 §3.5:
-            //   version || signature_type || timestamp_ms || tree_size || sha256_root
-            var message = Data()
-            message.append(0x00)                                              // version = v1
-            message.append(0x01)                                              // signature_type = tree_hash
-            let tsMs = UInt64(sth.timestamp.timeIntervalSince1970 * 1000)
-            withUnsafeBytes(of: tsMs.bigEndian) { message.append(contentsOf: $0) }
-            withUnsafeBytes(of: UInt64(sth.treeSize).bigEndian) { message.append(contentsOf: $0) }
-            message.append(rootData)
-
-            let ecdsa = try P256.Signing.ECDSASignature(rawRepresentation: sigData)
-            let isValid = publicKey.isValidSignature(ecdsa, for: message)
-            #expect(isValid, "STH P-256 signature must verify with the public key")
-        }
-
-        @Test("tree size equals record count after N records", arguments: [1, 5, 10, 50, 100])
-        func treeSize(count: Int) async throws {
-            let (sink, _) = try await AuditPipelineTests.populatedMerkleSink(count: count)
-            let size = await sink.treeSize()
-            #expect(size == count, "Tree size must equal the number of appended records")
-        }
     }
 
     // MARK: - Append-Only Store
@@ -229,25 +121,6 @@ struct AuditPipelineTests {
             for i in 0..<5 {
                 #expect(pRecords[i].actorIdentity == "actor-\(i)")
                 #expect(sRecords[i].actorIdentity == "actor-\(i)")
-            }
-        }
-    }
-}
-
-// MARK: - Hex String Decoding
-
-private extension Data {
-    /// Converts a hex-encoded string to `Data`.
-    ///
-    /// Returns empty `Data` if the input is not valid hex.
-    init(hexString: String) {
-        self.init()
-        var hex = hexString
-        while hex.count >= 2 {
-            let chunk = String(hex.prefix(2))
-            hex = String(hex.dropFirst(2))
-            if let byte = UInt8(chunk, radix: 16) {
-                self.append(byte)
             }
         }
     }

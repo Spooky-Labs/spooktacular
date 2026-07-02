@@ -78,26 +78,6 @@ struct DoctorStrictChecksTests {
             : StrictResult(item: 9, status: .fail, message: "unwritable")
     }
 
-    /// Item 11 — Merkle signing key configured (SEP-bound).
-    static func check11(env: [String: String]) -> StrictResult {
-        guard env["SPOOKTACULAR_AUDIT_MERKLE"] == "1" else {
-            return StrictResult(item: 11, status: .warn, message: "disabled")
-        }
-        guard let label = env["SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL"],
-              !label.isEmpty else {
-            return StrictResult(item: 11, status: .fail, message: "unset")
-        }
-        return StrictResult(item: 11, status: .pass, message: "label-set")
-    }
-
-    /// Item 13 — Distributed lock backend.
-    static func check13(env: [String: String]) -> StrictResult {
-        if env["SPOOKTACULAR_DYNAMO_TABLE"]?.isEmpty == false {
-            return StrictResult(item: 13, status: .pass, message: "dynamo")
-        }
-        return StrictResult(item: 13, status: .warn, message: "file")
-    }
-
     /// Item 14 — Tenancy mode.
     static func check14(env: [String: String]) -> StrictResult {
         let mode = env["SPOOKTACULAR_TENANCY_MODE"] ?? "single-tenant"
@@ -198,44 +178,6 @@ struct DoctorStrictChecksTests {
         let target = NSTemporaryDirectory() + "audit-\(UUID().uuidString).jsonl"
         let result = Self.check09(env: ["SPOOKTACULAR_AUDIT_FILE": target])
         #expect(result.status == .pass)
-    }
-
-    // MARK: - Tests — item 11
-
-    @Test("11 warns when Merkle disabled")
-    func item11DisabledWarns() {
-        let result = Self.check11(env: [:])
-        #expect(result.status == .warn)
-    }
-
-    @Test("11 fails when SEP key label unset")
-    func item11MissingLabelFails() {
-        let result = Self.check11(env: ["SPOOKTACULAR_AUDIT_MERKLE": "1"])
-        #expect(result.status == .fail)
-    }
-
-    @Test("11 passes when SEP key label is set")
-    func item11LabelSetPasses() {
-        let result = Self.check11(env: [
-            "SPOOKTACULAR_AUDIT_MERKLE": "1",
-            "SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL": "com.spookylabs.audit.merkle"
-        ])
-        #expect(result.status == .pass)
-    }
-
-    // MARK: - Tests — item 13
-
-    @Test("13 passes with DynamoDB")
-    func item13Dynamo() {
-        let result = Self.check13(env: ["SPOOKTACULAR_DYNAMO_TABLE": "spook-locks"])
-        #expect(result.status == .pass)
-        #expect(result.message == "dynamo")
-    }
-
-    @Test("13 warns on file fallback")
-    func item13File() {
-        let result = Self.check13(env: [:])
-        #expect(result.status == .warn)
     }
 
     // MARK: - Tests — item 14

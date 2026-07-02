@@ -1,18 +1,30 @@
 import Foundation
 import CryptoKit
 
+/// Strategy for signing an outbound `URLRequest` before it
+/// hits the wire. Implementations mutate headers (and may
+/// mutate the body) to attach an authentication proof.
+///
+/// Runs asynchronously so signers that need to call out
+/// (e.g., fetch a fresh key or mint a token) don't block the
+/// caller's task.
+public protocol RequestSigner: Sendable {
+
+    /// Signs `request` in place. May mutate headers, path
+    /// query parameters, or the body.
+    func sign(_ request: inout URLRequest) async throws
+}
+
 /// Simple symmetric-HMAC request signer that computes an
 /// HMAC-SHA256 of the request body and writes it into a
-/// named header. Matches the pattern
-/// ``WebhookAuditSink`` already uses for
-/// `X-Spooktacular-Audit-Signature`, packaged behind the
-/// ``RequestSigner`` protocol so it's reusable for any
-/// future webhook or HMAC-authenticated integration.
+/// named header, packaged behind the ``RequestSigner``
+/// protocol so it's reusable for any future webhook or
+/// HMAC-authenticated integration.
 ///
 /// This is intentionally **not** a full HTTP-signing
 /// standard (no canonicalization, no header signing). It's
-/// the minimum viable shape that matches our existing
-/// receiver logic; operators who want RFC 9421
+/// the minimum viable shape that matches an HMAC-verifying
+/// receiver; operators who want RFC 9421
 /// HTTP-message-signatures can add a sibling signer later.
 ///
 /// ## Apple APIs

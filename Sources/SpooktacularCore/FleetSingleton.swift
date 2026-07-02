@@ -27,14 +27,9 @@ import Foundation
 ///
 /// ## Typical backends
 ///
-/// - ``DynamoDBFleetSingleton`` — conditional `PutItem` with a TTL
-///   attribute. Multi-region via Global Tables. Preferred for
-///   Fortune-20 fleets that span regions.
-/// - Kubernetes ConfigMap / Secret — single-cluster only, but
-///   available with zero cloud dependencies.
-/// - A local fallback that degenerates to a single in-memory
-///   `NSLock`-guarded dictionary — acceptable ONLY when the
-///   operator has declared the deployment single-host.
+/// - `InProcessFleetSingleton` — an actor-guarded in-memory
+///   dictionary. Correct only within a single process; acceptable
+///   ONLY when the operator has declared the deployment single-host.
 ///
 /// ## Contract
 ///

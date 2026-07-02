@@ -97,13 +97,6 @@ public struct SpooktacularConfig: Sendable, Codable {
         let port = try parseUInt16(env["SPOOKTACULAR_PORT"], name: "SPOOKTACULAR_PORT", default: 8484)
         let maxConns = try parseInt(env["SPOOKTACULAR_MAX_CONNECTIONS"], name: "SPOOKTACULAR_MAX_CONNECTIONS", default: 50)
         let rateLimit = try parseInt(env["SPOOKTACULAR_RATE_LIMIT"], name: "SPOOKTACULAR_RATE_LIMIT", default: 120)
-        let retentionDays = try parseOptionalInt(
-            env["SPOOK_AUDIT_S3_RETENTION_DAYS"] ?? env["SPOOK_AUDIT_S3_LOCK_DAYS"],
-            name: "SPOOK_AUDIT_S3_RETENTION_DAYS"
-        )
-        let batchSize = try parseOptionalInt(
-            env["SPOOK_AUDIT_S3_BATCH_SIZE"], name: "SPOOK_AUDIT_S3_BATCH_SIZE"
-        )
 
         let config = SpooktacularConfig(
             tenancyMode: tenancyMode,
@@ -115,17 +108,7 @@ public struct SpooktacularConfig: Sendable, Codable {
             ),
             audit: AuditConfig(
                 filePath: env["SPOOKTACULAR_AUDIT_FILE"],
-                immutablePath: env["SPOOKTACULAR_AUDIT_IMMUTABLE_PATH"],
-                merkleEnabled: env["SPOOKTACULAR_AUDIT_MERKLE"] == "1",
-                merkleSigningKeyLabel: env["SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL"],
-                s3Bucket: env["SPOOK_AUDIT_S3_BUCKET"],
-                s3Region: env["SPOOK_AUDIT_S3_REGION"],
-                s3Prefix: env["SPOOK_AUDIT_S3_PREFIX"],
-                s3RetentionDays: retentionDays,
-                s3BatchSize: batchSize,
-                webhookURL: env["SPOOKTACULAR_AUDIT_WEBHOOK_URL"],
-                webhookHMACKeyHex: env["SPOOKTACULAR_AUDIT_WEBHOOK_HMAC_KEY_HEX"],
-                webhookExtraHeaders: env["SPOOKTACULAR_AUDIT_WEBHOOK_HEADERS"].flatMap(parseHeaders)
+                immutablePath: env["SPOOKTACULAR_AUDIT_IMMUTABLE_PATH"]
             ),
             server: ServerConfig(
                 host: env["SPOOKTACULAR_HOST"] ?? "127.0.0.1",
@@ -136,7 +119,7 @@ public struct SpooktacularConfig: Sendable, Codable {
             )
         )
         logger.info(
-            "config resolved tenancy=\(config.tenancyMode.rawValue) host=\(config.server.host) port=\(config.server.port) maxConns=\(config.server.maxConnections) rateLimit=\(config.server.rateLimit) insecure=\(config.server.insecure) tls=\(config.tls?.certPath != nil) merkle=\(config.audit.merkleEnabled) s3Bucket=\(config.audit.s3Bucket ?? "-")"
+            "config resolved tenancy=\(config.tenancyMode.rawValue) host=\(config.server.host) port=\(config.server.port) maxConns=\(config.server.maxConnections) rateLimit=\(config.server.rateLimit) insecure=\(config.server.insecure) tls=\(config.tls?.certPath != nil)"
         )
         return config
     }
@@ -171,30 +154,6 @@ public struct SpooktacularConfig: Sendable, Codable {
             throw ConfigParseError.invalidValue(name: name, raw: raw, expected: "Int")
         }
         return parsed
-    }
-
-    private static func parseOptionalInt(_ raw: String?, name: String) throws -> Int? {
-        guard let raw, !raw.isEmpty else { return nil }
-        guard let parsed = Int(raw) else {
-            throw ConfigParseError.invalidValue(name: name, raw: raw, expected: "Int")
-        }
-        return parsed
-    }
-
-    /// Parses `Header1: val1; Header2: val2` — the env-var shape
-    /// for webhook extra headers. Silently ignores malformed
-    /// entries.
-    private static func parseHeaders(_ raw: String) -> [String: String] {
-        var result: [String: String] = [:]
-        for entry in raw.split(separator: ";") {
-            let parts = entry.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
-            guard parts.count == 2 else { continue }
-            let name = parts[0].trimmingCharacters(in: .whitespaces)
-            let value = parts[1].trimmingCharacters(in: .whitespaces)
-            guard !name.isEmpty && !value.isEmpty else { continue }
-            result[name] = value
-        }
-        return result
     }
 
     /// Loads configuration from a JSON file.
@@ -281,80 +240,10 @@ public struct TLSConfig: Sendable, Codable {
 public struct AuditConfig: Sendable, Codable {
     public let filePath: String?
     public let immutablePath: String?
-    public let merkleEnabled: Bool
 
-    /// Keychain label for the SEP-bound P-256 signing key used by
-    /// `MerkleAuditSink` to sign tree heads.
-    ///
-    /// SEP-bound Keychain label for the Merkle signing key.
-    ///
-    /// The key is generated inside the Secure Enclave on first
-    /// use and stored under this label; subsequent runs
-    /// reconstruct the signer from the persisted SEP blob
-    /// without ever seeing the private bytes.
-    ///
-    /// Populated by `SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL`. Required
-    /// when `merkleEnabled` is true — the legacy
-    /// `SPOOKTACULAR_AUDIT_SIGNING_KEY_PATH` software-key path has been
-    /// removed (see docs/THREAT_MODEL.md).
-    public let merkleSigningKeyLabel: String?
-
-    public let s3Bucket: String?
-    public let s3Region: String?
-
-    /// S3 key prefix for audit objects. Defaults to `"audit/"` so
-    /// operators can drop the bucket next to unrelated objects
-    /// without polluting the root.
-    public let s3Prefix: String?
-
-    /// Object Lock retention in days. Defaults to 2555 (7 years) to
-    /// meet the common SOC 2 / HIPAA retention minimum.
-    public let s3RetentionDays: Int?
-
-    /// How many records to buffer before uploading a batch. Larger
-    /// batches cut S3 request cost; smaller batches reduce the tail
-    /// of records lost on crash. Defaults to 100.
-    public let s3BatchSize: Int?
-
-    /// SIEM webhook URL for live audit forwarding (Splunk HEC,
-    /// Datadog Logs, CloudWatch, or any HTTPS ingest). When set,
-    /// records are teed to the webhook alongside the primary
-    /// (local JSONL) sink so SIEM outages never cause audit
-    /// loss — the primary remains authoritative.
-    public let webhookURL: String?
-
-    /// Hex-encoded HMAC-SHA256 key for signing webhook request
-    /// bodies. Shared with the SIEM out-of-band. When nil, no
-    /// signature header is emitted.
-    public let webhookHMACKeyHex: String?
-
-    /// Extra headers to attach to every webhook request. Typical
-    /// values: `Authorization: Splunk <token>`, `DD-API-KEY: ...`.
-    public let webhookExtraHeaders: [String: String]?
-
-    public init(filePath: String? = nil, immutablePath: String? = nil,
-                merkleEnabled: Bool = false,
-                merkleSigningKeyLabel: String? = nil,
-                s3Bucket: String? = nil,
-                s3Region: String? = nil,
-                s3Prefix: String? = nil,
-                s3RetentionDays: Int? = nil,
-                s3BatchSize: Int? = nil,
-                webhookURL: String? = nil,
-                webhookHMACKeyHex: String? = nil,
-                webhookExtraHeaders: [String: String]? = nil) {
+    public init(filePath: String? = nil, immutablePath: String? = nil) {
         self.filePath = filePath
         self.immutablePath = immutablePath
-        self.merkleEnabled = merkleEnabled
-        self.merkleSigningKeyLabel = merkleSigningKeyLabel
-        self.s3Bucket = s3Bucket
-        self.s3Region = s3Region
-        self.s3Prefix = s3Prefix
-        self.s3RetentionDays = s3RetentionDays
-        self.s3BatchSize = s3BatchSize
-        self.webhookURL = webhookURL
-        self.webhookHMACKeyHex = webhookHMACKeyHex
-        self.webhookExtraHeaders = webhookExtraHeaders
     }
 }
 

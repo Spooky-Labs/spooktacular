@@ -165,9 +165,9 @@ public actor FleetUsedTicketCache {
 
     /// Wraps a ``FleetSingleton`` backend so every ticket
     /// consumption query travels through the shared store's
-    /// atomic conditional write. Pass a
-    /// ``DynamoDBFleetSingleton`` in production or an
-    /// ``InProcessFleetSingleton`` in unit tests.
+    /// atomic conditional write. Pass an
+    /// `InProcessFleetSingleton`, the only backend Spooktacular
+    /// ships.
     public init(singleton: any FleetSingleton) {
         self.singleton = singleton
     }

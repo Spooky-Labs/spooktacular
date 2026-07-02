@@ -6,7 +6,7 @@ import SpooktacularKit
 extension Spooktacular {
 
     /// Manages SEP-bound signing identities: operator, host,
-    /// OIDC issuer, Merkle audit.
+    /// OIDC issuer.
     ///
     /// Thin wrapper around ``P256KeyStore``. Each subcommand
     /// operates on a single (service, label) pair so rotation
@@ -14,7 +14,7 @@ extension Spooktacular {
     struct Identity: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "identity",
-            abstract: "Manage SEP-bound signing keys (operator, host, OIDC, audit).",
+            abstract: "Manage SEP-bound signing keys (operator, host, OIDC).",
             discussion: """
                 Every purpose lives under its own Keychain service \
                 so a reviewer can enumerate keys per concern:
@@ -22,7 +22,6 @@ extension Spooktacular {
                   operator   — sign API requests (presence-gated)
                   host       — sign host → guest-agent requests
                   oidc       — sign workload-identity JWTs
-                  audit      — sign Merkle STHs
 
                 `keygen` creates a new SEP-bound key.
                 `show` prints the public key as PEM for distribution.
@@ -37,7 +36,7 @@ extension Spooktacular {
             )
 
             @Option(name: .customLong("type"),
-                    help: "Key purpose: operator | host | oidc | audit.")
+                    help: "Key purpose: operator | host | oidc.")
             var type: String
 
             @Option(name: .customLong("label"),
@@ -92,7 +91,7 @@ extension Spooktacular {
             )
 
             @Option(name: .customLong("type"),
-                    help: "Key purpose: operator | host | oidc | audit.")
+                    help: "Key purpose: operator | host | oidc.")
             var type: String
 
             @Option(name: .customLong("label"),
@@ -118,7 +117,7 @@ extension Spooktacular {
             )
 
             @Option(name: .customLong("type"),
-                    help: "Key purpose: operator | host | oidc | audit.")
+                    help: "Key purpose: operator | host | oidc.")
             var type: String
 
             @Option(name: .customLong("label"),
@@ -145,11 +144,10 @@ private func resolveService(type: String) throws -> String {
     case "operator":  return P256KeyStore.Service.operatorIdentity
     case "host":      return P256KeyStore.Service.hostIdentity
     case "oidc":      return P256KeyStore.Service.oidcIssuer
-    case "audit":     return P256KeyStore.Service.merkleAudit
     case "break-glass":
         return P256KeyStore.Service.breakGlass
     default:
-        print(Style.error("✗ Unknown identity type '\(type)'. Use one of: operator, host, oidc, audit, break-glass."))
+        print(Style.error("✗ Unknown identity type '\(type)'. Use one of: operator, host, oidc, break-glass."))
         throw ExitCode.failure
     }
 }

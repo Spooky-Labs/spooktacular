@@ -183,9 +183,8 @@ public struct RBACAuthorization: AuthorizationService {
 
 /// Append-only storage backend for audit records.
 ///
-/// Records can be written but never modified or deleted. This is
-/// the storage-layer complement to MerkleAuditSink's tamper-evidence:
-/// together they satisfy SOC 2 Type II.
+/// Records can be written but never modified or deleted, satisfying
+/// the immutability leg of SOC 2 Type II.
 ///
 /// ## Standards
 /// - NIST SP 800-53 AU-9: Protection of audit information

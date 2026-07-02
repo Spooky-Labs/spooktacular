@@ -4,9 +4,8 @@ import Foundation
 ///
 /// Every control-plane action — create a VM, delete a runner pool, flip
 /// tenancy mode — produces exactly one ``AuditRecord`` delivered through
-/// this sink. Implementations may write to `os.Logger`, forward to a
-/// SIEM, append to a file, publish to S3 Object Lock, or tee into a
-/// Merkle tree.
+/// this sink. Implementations may write to `os.Logger`, append to a
+/// file, or tee into an append-only store.
 ///
 /// ## Durability contract
 ///
@@ -30,8 +29,7 @@ import Foundation
 /// use cases and entry points can reference it without importing
 /// infrastructure. Concrete adapters
 /// (``OSLogAuditSink``, ``JSONFileAuditSink``, ``AppendOnlyFileAuditStore``,
-/// ``S3ObjectLockAuditStore``, ``HashChainAuditSink``) live in
-/// ``SpooktacularInfrastructureApple``.
+/// ``DualAuditSink``) live in ``SpooktacularInfrastructureApple``.
 public protocol AuditSink: Sendable {
 
     /// Records a single audit event.

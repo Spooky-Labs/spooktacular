@@ -127,28 +127,12 @@ public enum SecurityControlInventory {
         // MARK: Audit & Non-Repudiation
 
         SecurityControl(
-            name: "Merkle-tree tamper-evident audit log (RFC 6962)",
-            category: "Audit & Non-Repudiation",
-            standard: "RFC 6962 / RFC 9162; NIST SP 800-53 AU-9",
-            implementation: "Sources/SpooktacularInfrastructureApple/HashChainAuditSink.swift",
-            test: "Tests/SpooktacularKitTests/AuditPipelineTests.swift",
-            notes: "Ed25519-signed tree heads over the §3.5 TBS structure (version + sig_type + ms timestamp + size + root)."
-        ),
-        SecurityControl(
             name: "Append-only audit file (UF_APPEND kernel-enforced)",
             category: "Audit & Non-Repudiation",
             standard: "NIST SP 800-53 AU-9",
             implementation: "Sources/SpooktacularInfrastructureApple/AppendOnlyFileAuditStore.swift",
             test: "Tests/SpooktacularKitTests/AuditPipelineTests.swift",
             notes: "BSD chflags UF_APPEND verified on init; kernel blocks overwrites even from root."
-        ),
-        SecurityControl(
-            name: "S3 Object Lock WORM audit export",
-            category: "Audit & Non-Repudiation",
-            standard: "SOC 2 Type II",
-            implementation: "Sources/SpooktacularInfrastructureApple/S3ObjectLockAuditStore.swift (hand-rolled SigV4 via SigV4Signer)",
-            test: "Tests/SpooktacularKitTests/AuditSinkTests.swift",
-            notes: "Compliance-mode retention immune to root-account shortening. Auto-included in the sink chain when s3Bucket is configured."
         ),
         SecurityControl(
             name: "Production preflight refuses insecure startup",
@@ -194,14 +178,6 @@ public enum SecurityControlInventory {
             notes: "Counts active VMs per tenant at create / clone time; returns 403 with denial reason when the quota is exceeded. Per-server scoping; distributed counter is a follow-up for multi-instance deployments."
         ),
         SecurityControl(
-            name: "SIEM webhook audit forwarder (live streaming to Splunk / Datadog / CloudWatch)",
-            category: "Audit & Logging",
-            standard: "SOC 2 CC7.2 (detection + monitoring); NIST SP 800-53 AU-6 (audit review)",
-            implementation: "Sources/SpooktacularInfrastructureApple/WebhookAuditSink.swift",
-            test: "Tests/SpooktacularKitTests/WebhookAuditSinkTests.swift",
-            notes: "Generic JSON-over-HTTPS webhook with optional HMAC-SHA256 signing. Tees off the primary audit sink so collector outages never cause audit loss. Retry with exponential backoff; drop + os_log fault after 3 attempts."
-        ),
-        SecurityControl(
             name: "OpenTelemetry trace exporter (OTLP-HTTP-JSON)",
             category: "Observability",
             standard: "OpenTelemetry Protocol (OTLP) — opentelemetry.io/docs/specs/otlp",
@@ -210,31 +186,12 @@ public enum SecurityControlInventory {
             notes: "Spooktacular emits a server-kind span per API request with method / path-template / status / tenant attributes. Works with Tempo, Honeycomb, Datadog APM, AWS X-Ray (via ADOT Collector). Best-effort export — collector stalls never back up the API path."
         ),
         SecurityControl(
-            name: "Hardware-bound Merkle audit signing via Secure Enclave",
-            category: "Data at Rest",
-            standard: "NIST SP 800-53 AU-9 / AU-10; FIPS 140-3 Level 2 (SEP); RFC 6962",
-            implementation: "Sources/SpooktacularInfrastructureApple/P256KeyStore.swift + Sources/SpooktacularInfrastructureApple/AuditSinkFactory.swift (resolveMerkleSigner — Service.merkleAudit, daemon use, no presence gate)",
-            test: "Tests/SpooktacularKitTests/AuditPipelineTests.swift",
-            notes: "STH signing key generated inside and bound to the SEP — non-exportable. Full process / kernel compromise still cannot forge tree heads; SEP only signs what the daemon asks. P-256 ECDSA wire format."
-        ),
-        SecurityControl(
             name: "SEP-only signing keys — no software-key fallback",
             category: "Data at Rest",
             standard: "Threat: malware running as the logged-in user",
             implementation: "Sources/SpooktacularInfrastructureApple/P256KeyStore.swift (loadOrCreateSEP as the sole provisioning path). The previous `loadOrCreateSoftware` helper, along with `SPOOKTACULAR_AUDIT_SIGNING_KEY_PATH` and `SPOOKTACULAR_OIDC_ISSUER_KEY_PATH`, no longer exist.",
             test: "Tests/SpooktacularKitTests/P256KeyStoreTests.swift",
             notes: "PEM-on-disk keys are reachable by any process with the logged-in user's UID; SEP-bound keys are hardware-isolated and non-extractable even under full kernel compromise. The daemon resolves keys by Keychain label and fails at startup if the label is missing — silent ephemeral keys are not possible."
-        ),
-
-        // MARK: Cross-Region Coordination
-
-        SecurityControl(
-            name: "Cross-region distributed lock (DynamoDB Global Tables)",
-            category: "Cross-Region Coordination",
-            standard: "Strong consistency for global fleets",
-            implementation: "Sources/SpooktacularInfrastructureApple/DynamoDBDistributedLock.swift + DistributedLockFactory",
-            test: "Tests/SpooktacularKitTests/EnterpriseReadinessTests.swift",
-            notes: "Selected via SPOOKTACULAR_DYNAMO_TABLE; file-lock fallback via same factory."
         ),
 
         // MARK: Injection & Path Safety

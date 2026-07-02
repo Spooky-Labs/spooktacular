@@ -11,8 +11,9 @@ import SpooktacularApplication
 ///
 /// ## SOC 2 Type II
 ///
-/// Combined with `MerkleAuditSink`, this provides both tamper-evidence
-/// (Merkle tree + signed tree heads) and immutability (append-only file).
+/// Provides immutability (append-only file) as one leg of the audit
+/// trail; pair with ``DualAuditSink`` to also retain a human-readable
+/// JSON Lines copy via ``JSONFileAuditSink``.
 ///
 /// ## Configuration
 ///

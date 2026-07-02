@@ -3,8 +3,8 @@ import Foundation
 /// A time-bounded exclusive claim on a named resource.
 ///
 /// `DistributedLease` is the value type returned by distributed-lock
-/// implementations (``DynamoDBDistributedLock`` for cross-region fleets,
-/// ``FileDistributedLock`` for single-host). It carries the claim
+/// implementations (``FileDistributedLock`` for single-host
+/// deployments). It carries the claim
 /// (`holder`), its lifetime (`acquiredAt` / `expiresAt`), a
 /// `version` for optimistic concurrency, and a `renewalCount`
 /// that bounds how many times a single claim can be extended

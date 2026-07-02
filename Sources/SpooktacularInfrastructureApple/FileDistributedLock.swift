@@ -27,7 +27,8 @@ import SpooktacularApplication
 /// - Hosts sharing an NFS mount or network filesystem
 /// - Single-host deployments (local coordination)
 ///
-/// For cross-region fleets, use ``DynamoDBDistributedLock`` instead.
+/// This is the only ``DistributedLockService`` backend Spooktacular
+/// ships; there is no cross-region fallback.
 ///
 /// ## Configuration
 ///

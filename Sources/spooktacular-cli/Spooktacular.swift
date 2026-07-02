@@ -17,7 +17,6 @@ struct Spooktacular: AsyncParsableCommand {
             DiscardSuspend.self,
             Stream.self,
             Socket.self,
-            EBS.self,
             List.self,
             Clone.self,
             Delete.self,
@@ -36,10 +35,8 @@ struct Spooktacular: AsyncParsableCommand {
             BreakGlass.self,
             IAM.self,
             Identity.self,
-            Incident.self,
             SignRequest.self,
             SecurityControls.self,
-            SpooktacularAudit.self,
             Rosetta.self,
         ],
         defaultSubcommand: List.self

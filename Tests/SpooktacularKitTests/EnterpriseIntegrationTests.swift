@@ -1,6 +1,5 @@
 import Testing
 import Foundation
-import CryptoKit
 @testable import SpooktacularCore
 @testable import SpooktacularApplication
 @testable import SpooktacularInfrastructureApple
@@ -67,52 +66,6 @@ struct EnterpriseIntegrationTests {
         #expect(decoded.actorIdentity == "ctrl")
         #expect(decoded.tenant == TenantID("blue"))
         #expect(decoded.outcome == .denied)
-    }
-
-    // MARK: - Merkle Audit
-
-    @Test("MerkleAuditSink produces signed tree heads")
-    func merkleSTH() async throws {
-        let key = P256.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
-        let record = AuditRecord(
-            actorIdentity: "t", tenant: .default, scope: .read,
-            resource: "h", action: "check", outcome: .success
-        )
-        try await sink.record(record)
-        let sth = try await sink.signedTreeHead()
-        #expect(sth.treeSize == 1)
-        #expect(!sth.rootHash.isEmpty)
-        #expect(!sth.signature.isEmpty)
-    }
-
-    @Test("MerkleAuditSink tree grows monotonically")
-    func merkleGrowth() async throws {
-        let key = P256.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
-        for i in 0..<5 {
-            let r = AuditRecord(
-                actorIdentity: "a\(i)", tenant: .default, scope: .read,
-                resource: "r", action: "a", outcome: .success
-            )
-            try await sink.record(r)
-            #expect(await sink.treeSize() == i + 1)
-        }
-    }
-
-    @Test("MerkleAuditSink inclusion proof is non-empty")
-    func merkleInclusionProof() async throws {
-        let key = P256.Signing.PrivateKey()
-        let sink = MerkleAuditSink(wrapping: CollectingAuditSink(), signer: key)
-        for i in 0..<4 {
-            let r = AuditRecord(
-                actorIdentity: "a", tenant: .default, scope: .read,
-                resource: "r\(i)", action: "a", outcome: .success
-            )
-            try await sink.record(r)
-        }
-        let proof = try #require(await sink.inclusionProof(forLeafAt: 1))
-        #expect(!proof.isEmpty)
     }
 
     // MARK: - Distributed Lock
