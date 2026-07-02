@@ -67,6 +67,19 @@ public struct RunnerRecord: Codable, Sendable {
     }
 }
 
+/// Decodes `GET {scope}/actions/runners` — GitHub's collection
+/// endpoint listing every self-hosted runner registered under a
+/// scope.
+struct RunnerListResponse: Codable, Sendable {
+    let totalCount: Int
+    let runners: [RunnerRecord]
+
+    enum CodingKeys: String, CodingKey {
+        case totalCount = "total_count"
+        case runners
+    }
+}
+
 // MARK: - Scope
 
 /// A strongly typed, validated GitHub self-hosted-runner scope.
@@ -136,6 +149,9 @@ public enum GitHubServiceError: Error, LocalizedError, Sendable, Equatable {
     case invalidScope(String)
     /// A drain operation ran past its deadline with the runner still busy.
     case drainDeadlineExceeded(runnerId: Int)
+    /// A ``GitHubRunnerService/waitForOnline(named:scope:deadline:pollInterval:clock:sleep:)``
+    /// call ran past its deadline without the named runner reporting `online`.
+    case onlineDeadlineExceeded(name: String)
 
     public var errorDescription: String? {
         switch self {
@@ -147,6 +163,8 @@ public enum GitHubServiceError: Error, LocalizedError, Sendable, Equatable {
             return "Invalid GitHub runner scope: '\(raw)'. Expected 'repos/{owner}/{repo}', 'orgs/{org}', or 'enterprises/{ent}'."
         case .drainDeadlineExceeded(let id):
             return "Runner \(id) did not become idle before the drain deadline."
+        case .onlineDeadlineExceeded(let name):
+            return "Runner '\(name)' did not report online before the deadline."
         }
     }
 
@@ -169,6 +187,8 @@ public enum GitHubServiceError: Error, LocalizedError, Sendable, Equatable {
             return "Pass a repo scope such as 'repos/acme/widgets' (narrowest), an org scope 'orgs/acme', or an enterprise scope 'enterprises/acme'."
         case .drainDeadlineExceeded:
             return "The runner is still executing a job. Either extend the drain deadline or cancel the in-flight workflow run in GitHub before removing the runner."
+        case .onlineDeadlineExceeded:
+            return "Check the guest's provisioning logs (/var/log/spooktacular-runner.log and .err.log) and confirm the VM has network egress to api.github.com, then retry."
         }
     }
 }
@@ -393,6 +413,32 @@ public actor GitHubRunnerService {
         return try JSONDecoder().decode(RunnerRecord.self, from: data)
     }
 
+    /// Lists every self-hosted runner currently registered under `scope`.
+    ///
+    /// Wraps `GET {scope}/actions/runners`, GitHub's collection
+    /// endpoint. Callers looking for one specific runner should
+    /// prefer ``findRunner(named:scope:)``.
+    ///
+    /// - Throws: ``GitHubServiceError`` on API failure.
+    public func listRunners(scope: GitHubRunnerScope) async throws -> [RunnerRecord] {
+        let url = try Self.apiURL("\(scope.apiPath)/actions/runners")
+        let (data, _) = try await request(url: url, method: .get)
+        let decoded = try JSONDecoder().decode(RunnerListResponse.self, from: data)
+        return decoded.runners
+    }
+
+    /// Finds the runner named `name` under `scope`, or `nil` if no
+    /// currently-registered runner has that exact name.
+    ///
+    /// Matches on GitHub's `name` field — the same value
+    /// `config.sh --name` sets, i.e. the `runnerName` passed to
+    /// ``GitHubRunnerTemplate/generate(repo:token:labels:ephemeral:runnerName:)``.
+    ///
+    /// - Throws: ``GitHubServiceError`` on API failure.
+    public func findRunner(named name: String, scope: GitHubRunnerScope) async throws -> RunnerRecord? {
+        try await listRunners(scope: scope).first { $0.name == name }
+    }
+
     /// Removes a self-hosted runner by its numeric ID.
     ///
     /// - Parameters:
@@ -456,6 +502,47 @@ public actor GitHubRunnerService {
             try await sleep(pollInterval)
         }
         throw GitHubServiceError.drainDeadlineExceeded(runnerId: runnerId)
+    }
+
+    // MARK: - Wait for online
+
+    /// Waits for a runner named `name` to report GitHub status
+    /// `"online"`, or throws once `deadline` passes.
+    ///
+    /// Polls ``findRunner(named:scope:)`` on `pollInterval`
+    /// cadence — the create flow's post-boot "is the runner
+    /// registered yet" check. Unlike
+    /// ``waitForDrain(runnerId:scope:deadline:pollInterval:clock:sleep:)``,
+    /// every HTTP error propagates immediately instead of being
+    /// treated as "keep polling": an invalid PAT or malformed
+    /// scope will never resolve on its own, so failing loud beats
+    /// silently exhausting a 10-minute deadline.
+    ///
+    /// - Parameters:
+    ///   - name: The runner's exact `config.sh --name` value.
+    ///   - scope: The validated scope the runner registered under.
+    ///   - deadline: The absolute date after which to give up.
+    ///   - pollInterval: Delay between list calls.
+    ///   - clock: Source of `now`; tests inject a deterministic clock.
+    ///   - sleep: Delay primitive; tests inject a no-op.
+    /// - Returns: The matching ``RunnerRecord`` once `status == "online"`.
+    /// - Throws: ``GitHubServiceError/onlineDeadlineExceeded(name:)``
+    ///   at the deadline, or any error the underlying HTTP calls raise.
+    public func waitForOnline(
+        named name: String,
+        scope: GitHubRunnerScope,
+        deadline: Date,
+        pollInterval: TimeInterval = 10,
+        clock: @Sendable () -> Date = { Date() },
+        sleep: @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }
+    ) async throws -> RunnerRecord {
+        while clock() < deadline {
+            if let runner = try await findRunner(named: name, scope: scope), runner.status == "online" {
+                return runner
+            }
+            try await sleep(pollInterval)
+        }
+        throw GitHubServiceError.onlineDeadlineExceeded(name: name)
     }
 
     // MARK: - Private

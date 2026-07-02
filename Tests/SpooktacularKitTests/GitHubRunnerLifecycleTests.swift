@@ -215,6 +215,127 @@ struct GitHubRunnerServiceLifecycleTests {
             )
         }
     }
+
+    // MARK: - List / find by name
+
+    @Test("listRunners decodes the collection endpoint")
+    func listRunnersDecodes() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"""
+            {"total_count":2,"runners":[
+                {"id":1,"name":"other","status":"online","busy":false},
+                {"id":2,"name":"runner-01","status":"offline","busy":false}
+            ]}
+            """#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let runners = try await service.listRunners(scope: scope)
+        #expect(runners.count == 2)
+        #expect(runners.map(\.name) == ["other", "runner-01"])
+    }
+
+    @Test("findRunner returns the exact name match")
+    func findRunnerMatch() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"""
+            {"total_count":2,"runners":[
+                {"id":1,"name":"other","status":"online","busy":false},
+                {"id":2,"name":"runner-01","status":"online","busy":false}
+            ]}
+            """#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let found = try await service.findRunner(named: "runner-01", scope: scope)
+        #expect(found?.id == 2)
+    }
+
+    @Test("findRunner returns nil when no runner has that name")
+    func findRunnerNoMatch() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"{"total_count":0,"runners":[]}"#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let found = try await service.findRunner(named: "runner-01", scope: scope)
+        #expect(found == nil)
+    }
+
+    // MARK: - Wait for online
+
+    @Test("waitForOnline returns once the named runner reports online")
+    func waitForOnlineSucceeds() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"{"total_count":1,"runners":[{"id":1,"name":"runner-01","status":"offline","busy":false}]}"#.utf8)
+        ))
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"{"total_count":1,"runners":[{"id":1,"name":"runner-01","status":"online","busy":false}]}"#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let runner = try await service.waitForOnline(
+            named: "runner-01",
+            scope: scope,
+            deadline: Date().addingTimeInterval(60),
+            pollInterval: 0,
+            clock: { Date() },
+            sleep: { _ in }
+        )
+        #expect(runner.status == "online")
+    }
+
+    @Test("waitForOnline throws at deadline when the runner never appears")
+    func waitForOnlineDeadline() async throws {
+        let http = RecordingHTTPClient()
+        for _ in 0..<5 {
+            await http.queue(DomainHTTPResponse(
+                statusCode: 200,
+                body: Data(#"{"total_count":0,"runners":[]}"#.utf8)
+            ))
+        }
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let state = ManualClock(start: Date(timeIntervalSince1970: 0))
+        let deadline = Date(timeIntervalSince1970: 5)
+        await #expect(throws: GitHubServiceError.self) {
+            try await service.waitForOnline(
+                named: "runner-01",
+                scope: scope,
+                deadline: deadline,
+                pollInterval: 0,
+                clock: { state.now() },
+                sleep: { _ in state.advance(by: 2) }
+            )
+        }
+    }
+
+    @Test("waitForOnline propagates HTTP errors instead of swallowing them")
+    func waitForOnlinePropagatesErrors() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(statusCode: 401, body: Data("{}".utf8)))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        await #expect(throws: GitHubServiceError.self) {
+            try await service.waitForOnline(
+                named: "runner-01",
+                scope: scope,
+                deadline: Date().addingTimeInterval(60),
+                pollInterval: 0,
+                clock: { Date() },
+                sleep: { _ in }
+            )
+        }
+    }
 }
 
 /// Step-able clock for drain tests.

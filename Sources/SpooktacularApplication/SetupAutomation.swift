@@ -237,7 +237,21 @@ public enum SetupAutomation {
     ///     26 for Tahoe).
     ///   - username: The account name and full name for the admin user.
     ///     Defaults to `"admin"`.
-    ///   - password: The password for the admin user. Defaults to `"admin"`.
+    ///   - password: The password for the admin user. Defaults to
+    ///     `"admin"`.
+    ///
+    ///     > Important: This value is typed verbatim into a live
+    ///     > Terminal shell prompt — once during account creation
+    ///     > and again after every `sudo` in
+    ///     > ``enableSSHSteps(password:)`` /
+    ///     > ``installProvisionerSteps(password:)`` (the
+    ///     > retype-after-sudo pattern). None of those call sites
+    ///     > shell-escape it, so it must not contain shell
+    ///     > metacharacters (`'`, `"`, `` ` ``, `$`, `\`, newlines)
+    ///     > — every call site today passes the hardcoded default
+    ///     > `"admin"`, so this is latent, not exploitable, but a
+    ///     > future caller supplying an operator-chosen password
+    ///     > must sanitize it first.
     ///   - installProvisioner: When `true`, appends
     ///     ``installProvisionerSteps(password:)`` to the end of the
     ///     sequence so it runs inside the same Terminal session

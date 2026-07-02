@@ -136,11 +136,18 @@ extension Spooktacular {
         @Option(
             help: """
                 How to install Spooktacular Guest Tools inside \
-                the macOS VM: disabled (pristine image, ideal \
-                for CI runners) or installed (default — app \
-                lands in /Applications/; user flips the menu-bar \
-                Launch-at-Login toggle after first login). \
-                Ignored for Linux guests.
+                the macOS VM: disabled (no Guest Tools app — \
+                ideal for CI runners that don't need the SPICE \
+                clipboard bridge or menu-bar UI) or installed \
+                (default — app lands in /Applications/; user \
+                flips the menu-bar Launch-at-Login toggle after \
+                first login). This only controls the Guest Tools \
+                app; it's independent of first-boot script \
+                provisioning (--user-data, --github-runner, \
+                etc.), which always runs through the separate \
+                Spooktacular Provisioner LaunchDaemon installed \
+                during Setup Assistant automation. Ignored for \
+                Linux guests.
                 """
         )
         var guestTools: GuestToolsInstallMode = .installed
@@ -171,13 +178,19 @@ extension Spooktacular {
             name: .customLong("github-token-keychain"),
             help: """
                 Keychain account name under service \
-                `com.spooktacular.github`. The only accepted way \
-                to supply the runner registration token — env-var, \
-                CLI-flag, and file-path paths were removed to keep \
-                the PAT out of `ps`, `launchctl print`, and \
-                plaintext-on-disk exposures. \
+                `com.spooktacular.github`. The item must hold a \
+                long-lived GitHub personal access token (PAT) with \
+                repo admin scope (fine-grained "Administration" \
+                read/write, or classic `repo`) — NOT a runner \
+                registration token. Registration tokens expire in \
+                one hour, so `spook create` uses the PAT to mint a \
+                fresh one automatically, seconds before the VM \
+                boots. The Keychain is the only accepted way to \
+                supply the PAT — env-var, CLI-flag, and file-path \
+                paths were removed to keep it out of `ps`, \
+                `launchctl print`, and plaintext-on-disk exposures. \
                 Store with: `security add-generic-password -s \
-                com.spooktacular.github -a <account> -w <token> -U`.
+                com.spooktacular.github -a <account> -w <PAT> -U`.
                 """
         )
         var githubTokenKeychain: String?
@@ -225,6 +238,20 @@ extension Spooktacular {
                 """
         )
         var skipSetup: Bool = false
+
+        @Flag(
+            help: """
+                Skip auto-starting the VM after provisioning. \
+                Currently only affects --github-runner (every \
+                other template already leaves the VM stopped for \
+                a later 'spook start'). Combine with --skip-setup \
+                as an advanced escape hatch: the runner script is \
+                still generated and injected, but nothing boots or \
+                polls it automatically — you start the VM and \
+                register the runner by hand.
+                """
+        )
+        var noStart: Bool = false
 
         @Flag(
             help: "Print a machine-readable JSON result to stdout on success."
@@ -327,6 +354,61 @@ extension Spooktacular {
                 throw ExitCode(CLIExit.validation)
             }
 
+            // Validate everything statically knowable about the
+            // --github-runner invocation BEFORE spending 10-20
+            // minutes on an IPSW download and macOS install: flag
+            // presence, scope shape, template exclusivity, and the
+            // --skip-setup/--no-start interaction. Only the Keychain
+            // PAT resolution and token mint stay late (the token's
+            // one-hour TTL must cover the guest's first boot). See
+            // ``RunnerCreateFlowPlan`` for the pure decision logic.
+            var runnerAutoStart = false
+            var runnerRepo = ""
+            var runnerKeychainAccount = ""
+            if githubRunner {
+                guard let repo = githubRepo else {
+                    print(Style.error("✗ --github-runner requires --github-repo."))
+                    print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token-keychain org-acme"))
+                    throw ExitCode(CLIExit.validation)
+                }
+                guard let account = githubTokenKeychain else {
+                    print(Style.error("✗ --github-runner requires --github-token-keychain <account>."))
+                    print(Style.dim("  Store the PAT first: security add-generic-password -s com.spooktacular.github -a <account> -w <PAT with repo admin scope> -U"))
+                    throw ExitCode(CLIExit.validation)
+                }
+                do {
+                    // Rejects malformed --github-repo values (missing
+                    // slash, extra path segments) now instead of after
+                    // the install.
+                    _ = try GitHubRunnerScope("repos/\(repo)")
+                    try RunnerCreateFlowPlan.validateTemplateExclusivity(
+                        remoteDesktop: remoteDesktop,
+                        openclaw: openclaw,
+                        hasUserData: userData != nil
+                    )
+                    runnerAutoStart = try RunnerCreateFlowPlan.autoStartDecision(
+                        skipSetup: skipSetup,
+                        noStart: noStart
+                    )
+                } catch {
+                    if json {
+                        printJSONError(
+                            code: "runner-validation",
+                            message: error.localizedDescription,
+                            hint: (error as? LocalizedError)?.recoverySuggestion
+                        )
+                    } else {
+                        print(Style.error("✗ \(error.localizedDescription)"))
+                        if let recovery = (error as? LocalizedError)?.recoverySuggestion {
+                            print(Style.dim("  \(recovery)"))
+                        }
+                    }
+                    throw ExitCode(CLIExit.validation)
+                }
+                runnerRepo = repo
+                runnerKeychainAccount = account
+            }
+
             let spec = VirtualMachineSpecification(
                 cpuCount: cpu,
                 memorySizeInBytes: .gigabytes(memory),
@@ -341,6 +423,12 @@ extension Spooktacular {
             )
 
             let manager = RestoreImageManager(cacheDirectory: SpooktacularPaths.ipswCache)
+
+            // Set at the end of the do-block below, once the VM is
+            // fully created and announced. Read by the runner
+            // provisioning phase, which intentionally runs OUTSIDE
+            // that do/catch — see the comment at its call site.
+            var createdBundle: VirtualMachineBundle?
 
             do {
                 print(Style.info("Fetching latest compatible macOS restore image..."))
@@ -454,7 +542,7 @@ extension Spooktacular {
                             // leaving it true) keeps the typed
                             // `installer` command from running
                             // against a file that was never copied.
-                            print(Style.dim("  Provisioner pkg not found — run build-app.sh to produce Contents/Applications/Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg. Continuing without zero-touch provisioning."))
+                            print(Style.dim("  Provisioner pkg not found — run build-app.sh to produce Spooktacular.app/Contents/Applications/Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg. Continuing without zero-touch provisioning."))
                             installProvisioner = false
                         }
                     }
@@ -481,34 +569,14 @@ extension Spooktacular {
                 // an operator's file would be surprising.
                 var ownsScript = false
 
-                if githubRunner {
-                    guard let repo = githubRepo else {
-                        print(Style.error("✗ --github-runner requires --github-repo."))
-                        print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token-keychain org-acme"))
-                        throw ExitCode.failure
-                    }
-                    guard let account = githubTokenKeychain else {
-                        print(Style.error("✗ --github-runner requires --github-token-keychain <account>."))
-                        print(Style.dim("  Store the token first: security add-generic-password -s com.spooktacular.github -a <account> -w <token> -U"))
-                        throw ExitCode.failure
-                    }
-                    let token: String
-                    do {
-                        token = try GitHubTokenResolver.resolve(
-                            keychainAccount: account
-                        )
-                    } catch {
-                        print(Style.error("✗ \(error.localizedDescription)"))
-                        if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
-                            print(Style.dim("  \(suggestion)"))
-                        }
-                        throw ExitCode.failure
-                    }
-                    provisionScript = try GitHubRunnerTemplate.generate(
-                        repo: repo, token: token, ephemeral: ephemeral
-                    )
-                    ownsScript = true
-                } else if remoteDesktop {
+                // --github-runner is handled entirely separately,
+                // after this create flow's usual success summary —
+                // see the ``provisionGitHubRunner(bundle:bundleURL:autoStart:)``
+                // call near the end of this method. It mints its
+                // registration token late (seconds before boot) and
+                // always disk-injects, so it never sets
+                // `provisionScript` here.
+                if remoteDesktop {
                     provisionScript = try RemoteDesktopTemplate.generate()
                     ownsScript = true
                 } else if openclaw {
@@ -546,7 +614,7 @@ extension Spooktacular {
                         )
                         print(Style.success("✓ Guest Tools installed (\(guestTools.displayName))."))
                     } else {
-                        print(Style.dim("  Guest Tools bundle not found — run build-app.sh to produce Contents/Applications/Spooktacular Guest Tools.app. Continuing without install."))
+                        print(Style.dim("  Guest Tools bundle not found — run build-app.sh to produce Spooktacular.app/Contents/Applications/Spooktacular Guest Tools.app. Continuing without install."))
                     }
                 }
 
@@ -657,8 +725,14 @@ extension Spooktacular {
                     Style.field("MAC", macAddress.rawValue)
                     Style.field("Elapsed", formatElapsed(elapsed))
                     print()
-                    print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
+                    if githubRunner && runnerAutoStart {
+                        print(Style.info("Provisioning GitHub Actions runner '\(name)'..."))
+                    } else {
+                        print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
+                    }
                 }
+
+                createdBundle = bundle
 
             } catch {
                 if json {
@@ -676,6 +750,44 @@ extension Spooktacular {
                 }
                 try? FileManager.default.removeItem(at: bundleURL)
                 throw ExitCode(classifyExitCode(error))
+            }
+
+            // --github-runner: mint the registration token late
+            // (seconds before boot), inject the runner script, then
+            // — unless --no-start opted out — boot the VM headless
+            // and poll GitHub until the runner reports online. The
+            // VM is left running; see
+            // ``provisionGitHubRunner(bundle:bundleURL:autoStart:)``.
+            //
+            // This deliberately runs OUTSIDE the do/catch above: by
+            // this point VM creation succeeded and its success
+            // summary (including the --json payload) has already
+            // been printed, so a late runner-phase failure — a
+            // GitHub rate limit, the concurrent-VM capacity cap, a
+            // boot error — must NOT fall into a catch that deletes
+            // the bundle and re-announces failure. That would
+            // discard a 10-20 minute install over a retryable error
+            // and emit a second, contradictory --json document. The
+            // bundle is kept; the error is reported; the exit code
+            // is non-zero.
+            if githubRunner, let createdBundle {
+                do {
+                    try await provisionGitHubRunner(
+                        bundle: createdBundle,
+                        bundleURL: bundleURL,
+                        repo: runnerRepo,
+                        keychainAccount: runnerKeychainAccount,
+                        autoStart: runnerAutoStart
+                    )
+                } catch let exit as ExitCode {
+                    // Throwing sites inside provisionGitHubRunner /
+                    // bootRunnerAndAwaitOnline already printed their
+                    // own message before throwing ExitCode.
+                    throw exit
+                } catch {
+                    reportRunnerProvisioningFailure(error)
+                    throw ExitCode.failure
+                }
             }
         }
 
@@ -1024,8 +1136,270 @@ extension Spooktacular {
             print(Style.success("✓ VM stopped."))
         }
 
-        // MARK: - GitHub token resolution
+        // MARK: - GitHub Actions Runner Provisioning
 
+        /// Reports a runner-provisioning failure without touching
+        /// the (already successfully created) VM bundle.
+        ///
+        /// In `--json` mode the success payload has already been
+        /// written to stdout, so the failure text goes to stderr —
+        /// appending a second JSON document (or free text) to
+        /// stdout would corrupt single-document consumers. In
+        /// normal mode it prints styled lines like every other
+        /// error path in this command.
+        private func reportRunnerProvisioningFailure(_ error: Error) {
+            let message = "✗ Runner provisioning failed: \(error.localizedDescription)"
+            let recovery = (error as? LocalizedError)?.recoverySuggestion
+            let keepNote = "The VM '\(name)' was created successfully and has been kept. "
+                + "Fix the issue above, then boot it with 'spook start \(name)' — or "
+                + "delete it with 'spook delete \(name)'."
+            if json {
+                var text = message + "\n"
+                if let recovery { text += "  " + recovery + "\n" }
+                text += "  " + keepNote + "\n"
+                FileHandle.standardError.write(Data(text.utf8))
+            } else {
+                print(Style.error(message))
+                if let recovery {
+                    print(Style.dim("  \(recovery)"))
+                }
+                print(Style.dim("  \(keepNote)"))
+            }
+        }
+
+        /// Mints a fresh registration token, injects the runner
+        /// setup script, and — unless the operator opted out via
+        /// `--no-start` — boots the VM headless and polls GitHub
+        /// until the runner reports online.
+        ///
+        /// Called AFTER Setup Assistant automation (which installs
+        /// the Spooktacular Provisioner LaunchDaemon that will
+        /// actually execute the injected script) and after the
+        /// create flow's usual success summary has already printed.
+        ///
+        /// The registration token is minted here — seconds before
+        /// boot — rather than earlier, because GitHub's registration
+        /// tokens expire after one hour: minting it before the
+        /// 10-20 minute macOS install + Setup Assistant automation
+        /// would routinely hand the guest an already-expired token.
+        ///
+        /// - Parameters:
+        ///   - bundle: The newly created VM bundle.
+        ///   - bundleURL: The bundle's location on disk (for the
+        ///     PID file when `autoStart` is `true`).
+        ///   - repo: The `--github-repo` value, already validated
+        ///     present and shape-checked (via `GitHubRunnerScope`)
+        ///     by the fail-fast block at the top of `run()`.
+        ///   - keychainAccount: The `--github-token-keychain` value,
+        ///     already validated present. Its Keychain item is only
+        ///     read here — after the install — per this method's
+        ///     late-mint design.
+        ///   - autoStart: Whether to boot the VM and poll for the
+        ///     runner coming online. `false` when `--no-start` was
+        ///     passed — the script is still generated and injected,
+        ///     but nothing boots or executes it automatically.
+        @MainActor
+        private func provisionGitHubRunner(
+            bundle: VirtualMachineBundle,
+            bundleURL: URL,
+            repo: String,
+            keychainAccount: String,
+            autoStart: Bool
+        ) async throws {
+            let pat: String
+            do {
+                pat = try GitHubTokenResolver.resolve(keychainAccount: keychainAccount)
+            } catch {
+                print(Style.error("✗ \(error.localizedDescription)"))
+                if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
+                    print(Style.dim("  \(suggestion)"))
+                }
+                print(Style.dim("  The VM '\(name)' was created successfully and has been kept."))
+                throw ExitCode.failure
+            }
+
+            let scope = try GitHubRunnerScope("repos/\(repo)")
+            let service = GitHubRunnerService(
+                auth: GitHubPATAuth(token: pat),
+                http: URLSessionHTTPClient()
+            )
+
+            print(Style.info("Minting GitHub Actions runner registration token..."))
+            let issued = try await service.issueRegistrationToken(scope: scope)
+            print(Style.success("✓ Registration token minted."))
+
+            let scriptURL = try GitHubRunnerTemplate.generate(
+                repo: repo,
+                token: issued.token,
+                ephemeral: ephemeral,
+                runnerName: name
+            )
+            // GitHubRunnerTemplate always writes to the host-side
+            // cache — we always own this script, unlike the shared
+            // provisionScript/ownsScript dance above which also
+            // handles operator-supplied --user-data paths.
+            var scriptConsumed = false
+            defer {
+                if scriptConsumed {
+                    do {
+                        try ScriptFile.cleanup(scriptURL: scriptURL)
+                    } catch {
+                        Log.provision.error("Runner script cleanup failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+            }
+
+            print(Style.info("Injecting runner setup script into guest disk..."))
+            try DiskInjector.inject(script: scriptURL, into: bundle)
+            scriptConsumed = true
+            print(Style.success("✓ Script injected. The provisioner runs it automatically on first boot."))
+
+            guard autoStart else {
+                print(Style.dim("  --no-start: VM not started. Boot manually with 'spook start \(name)' when ready."))
+                return
+            }
+
+            try await bootRunnerAndAwaitOnline(
+                bundle: bundle,
+                bundleURL: bundleURL,
+                service: service,
+                scope: scope,
+                issuedHandle: issued.handle
+            )
+        }
+
+        /// Boots the VM headless (mirroring `Start.swift`'s headless
+        /// path: PID file, SIGTERM/SIGINT handling, state-stream
+        /// loop), polls GitHub every 10 s for up to 10 minutes for
+        /// the runner named ``name`` to report `online`, prints the
+        /// result, then blocks until the VM stops — the VM is left
+        /// running for as long as this process keeps running,
+        /// exactly like `spook start --headless`.
+        ///
+        /// `SIGUSR1` (the `spook suspend` signal) is deliberately
+        /// left at its default-ignored disposition rather than
+        /// wired to `VirtualMachine.suspend()`: suspend-to-disk for
+        /// a runner-created VM isn't implemented yet, and ignoring
+        /// the signal makes `spook suspend` fail loudly (it times
+        /// out waiting for the PID to exit) instead of silently
+        /// hard-killing the guest via SIGUSR1's default disposition.
+        @MainActor
+        private func bootRunnerAndAwaitOnline(
+            bundle: VirtualMachineBundle,
+            bundleURL: URL,
+            service: GitHubRunnerService,
+            scope: GitHubRunnerScope,
+            issuedHandle: UUID
+        ) async throws {
+            var bundle = bundle
+            if ephemeral && !bundle.metadata.isEphemeral {
+                var metadata = bundle.metadata
+                metadata.isEphemeral = true
+                try VirtualMachineBundle.writeMetadata(metadata, to: bundleURL)
+                bundle = try VirtualMachineBundle.load(from: bundleURL)
+            }
+
+            print(Style.info("Starting VM '\(name)' headless for runner registration..."))
+            let vm = try VirtualMachine(bundle: bundle)
+            guard vm.vzVM != nil else {
+                print(Style.error("✗ Failed to create virtual machine instance."))
+                throw ExitCode.failure
+            }
+
+            do {
+                try PIDFile.writeAndEnsureCapacity(
+                    bundleURL: bundleURL,
+                    vmDirectory: SpooktacularPaths.vms
+                )
+            } catch let error as CapacityError {
+                print(Style.error("✗ \(error.localizedDescription)"))
+                if let recovery = error.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
+                print(Style.dim("  The VM '\(name)' was created and provisioned; the runner registers on its first boot: spook start \(name) --headless"))
+                throw ExitCode.failure
+            }
+
+            let nameCapture = name
+            let isEphemeralCapture = ephemeral
+            for sig in [SIGTERM, SIGINT] {
+                signal(sig, SIG_IGN)
+                let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+                source.setEventHandler {
+                    let sigName = sig == SIGTERM ? "SIGTERM" : "SIGINT"
+                    print("\nReceived \(sigName) — stopping VM '\(nameCapture)'...")
+                    Task { @MainActor in
+                        try? await vm.stop(graceful: false)
+                        cleanupRunnerVMAfterStop(
+                            bundleURL: bundleURL,
+                            name: nameCapture,
+                            ephemeral: isEphemeralCapture
+                        )
+                        Foundation.exit(0)
+                    }
+                }
+                source.resume()
+            }
+            // See the DocC caveat above: `spook suspend` isn't
+            // supported for runner-created VMs yet, so SIGUSR1 stays
+            // at SIG_IGN rather than getting a handler wired to
+            // `VirtualMachine.suspend()`.
+            signal(SIGUSR1, SIG_IGN)
+
+            try await vm.startOrResume()
+            print(Style.success("✓ VM '\(name)' is running."))
+
+            print(Style.info("Waiting for runner '\(name)' to come online (up to 10 minutes)..."))
+            do {
+                let runner = try await service.waitForOnline(
+                    named: name,
+                    scope: scope,
+                    deadline: Date().addingTimeInterval(600),
+                    pollInterval: 10
+                )
+                print(Style.success("✓ Runner '\(name)' is online (GitHub runner id \(runner.id))."))
+            } catch {
+                print(Style.warning("Runner '\(name)' did not come online: \(error.localizedDescription)"))
+                if let recovery = (error as? LocalizedError)?.recoverySuggestion {
+                    print(Style.dim("  \(recovery)"))
+                }
+                print(Style.dim("  The VM is still running — 'spook ssh \(name)' to investigate, or 'spook stop \(name)' to give up."))
+            }
+            // The token has either already been consumed by the
+            // guest's `config.sh --token` (online) or is no longer
+            // something this process needs to track (timeout) — see
+            // ``IssuedTokenLedger`` for why dropping it promptly is
+            // good hygiene rather than a correctness requirement.
+            await service.revokeRegistrationToken(handle: issuedHandle)
+
+            print(Style.dim("Running headless. Press Ctrl+C to stop."))
+            for await state in vm.stateStream {
+                if state == .stopped || state == .error {
+                    break
+                }
+            }
+            cleanupRunnerVMAfterStop(bundleURL: bundleURL, name: name, ephemeral: ephemeral)
+        }
+    }
+}
+
+// MARK: - Runner VM Cleanup
+
+/// Removes the PID file and, for ephemeral VMs, deletes the bundle.
+///
+/// Mirrors `Start.swift`'s private `cleanupAfterStop(bundleURL:name:ephemeral:)`
+/// — duplicated rather than shared because that function is
+/// file-scoped to `Start.swift` and this task's brief scopes edits
+/// to `Create.swift` only. Called from both the state-stream
+/// observer and the signal handler in
+/// ``Spooktacular/Create/bootRunnerAndAwaitOnline(bundle:bundleURL:service:scope:)``
+/// to avoid duplicating cleanup logic within this file.
+@MainActor
+private func cleanupRunnerVMAfterStop(bundleURL: URL, name: String, ephemeral: Bool) {
+    PIDFile.remove(from: bundleURL)
+    if ephemeral {
+        try? FileManager.default.removeItem(at: bundleURL)
+        print("Ephemeral VM '\(name)' destroyed.")
     }
 }
 
