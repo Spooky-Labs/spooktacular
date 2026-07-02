@@ -126,8 +126,8 @@ public enum GitHubRunnerTemplate {
         let safeToken = shellEscapeSingleQuotes(token)
 
         var configFlags = [
-            "--url 'https://github.com/$REPO'",
-            "--token '$TOKEN'",
+            "--url \"https://github.com/$REPO\"",
+            "--token \"$TOKEN\"",
             "--unattended",
             "--replace",
         ]
@@ -184,16 +184,28 @@ public enum GitHubRunnerTemplate {
         done
 
         sudo -u "$RUNNER_USER" mkdir -p "$RUNNER_DIR"
+        cd "$RUNNER_DIR"
 
         TARBALL_URL=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest \\
             | /usr/bin/python3 -c 'import json,sys;print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if "osx-arm64" in a["name"] and a["name"].endswith(".tar.gz")))')
 
-        sudo -u "$RUNNER_USER" bash -c "cd '$RUNNER_DIR' && curl -fsSL -o runner.tar.gz '$TARBALL_URL' && tar xzf runner.tar.gz && rm runner.tar.gz"
+        # `cd` runs once, here, in this (root) shell — the working
+        # directory is inherited by every `sudo -u` child below.
+        # Each command is invoked directly (never wrapped in a
+        # nested `bash -c "...$VAR..."`), so REPO/TOKEN/TARBALL_URL
+        # are expanded and quoted exactly once. A nested double-quoted
+        # `bash -c` would expand the variable in this shell and hand
+        # the raw, unescaped result to a second shell for re-parsing —
+        # a single quote in the token would break out of that second
+        # parse (verified empirically), defeating the escaping above.
+        sudo -u "$RUNNER_USER" curl -fsSL -o runner.tar.gz "$TARBALL_URL"
+        sudo -u "$RUNNER_USER" tar xzf runner.tar.gz
+        sudo -u "$RUNNER_USER" rm -f runner.tar.gz
 
         # config.sh refuses to run as root by default, and this
         # script deliberately never overrides that default — run it
         # as the admin user instead.
-        sudo -u "$RUNNER_USER" bash -c "cd '$RUNNER_DIR' && ./config.sh \(configLine)"
+        sudo -u "$RUNNER_USER" ./config.sh \(configLine)
 
         # Hand the long-running runner process to launchd rather than
         # running `run.sh` in the foreground here, which would block
