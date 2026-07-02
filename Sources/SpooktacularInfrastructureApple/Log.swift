@@ -74,6 +74,6 @@ public enum Log {
     /// Spooktacular Guest Tools agent in each VM.
     public static let guestAgent = Logger(subsystem: subsystem, category: "guest-agent")
 
-    /// Audit persistence: file writes, S3 uploads, Merkle tree state.
+    /// Audit persistence: file writes and immutable stores.
     public static let audit = Logger(subsystem: subsystem, category: "audit")
 }

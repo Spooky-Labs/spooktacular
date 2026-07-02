@@ -6,9 +6,8 @@ import Foundation
 ///
 /// This is the unified signing primitive for every piece of
 /// Spooktacular cryptography that writes an authenticating
-/// signature — break-glass tickets and Merkle audit tree heads
-/// today, request-signing tomorrow. Two concrete
-/// implementations exist:
+/// signature — break-glass tickets and request-signing. Two
+/// concrete implementations exist:
 ///
 /// - **SEP-bound** (production default): keys are generated
 ///   inside the macOS Secure Enclave and never leave it; every

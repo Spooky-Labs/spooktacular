@@ -13,19 +13,18 @@ import SpooktacularApplication
 /// | `P256KeyStore.Service.breakGlass`          | Operator-minted break-glass tickets | `.userPresence`        |
 /// | `P256KeyStore.Service.operatorIdentity`    | Operator signs API requests         | `.userPresence`        |
 /// | `P256KeyStore.Service.hostIdentity`        | Host signs to guest agent           | none (daemon use)      |
-/// | `P256KeyStore.Service.merkleAudit`         | STH signing for audit Merkle tree   | none (daemon use)      |
 /// | `P256KeyStore.Service.oidcIssuer`          | Workload-identity JWT minting       | none (daemon use)      |
 ///
 /// ## Why one store
 ///
-/// Before this type, break-glass + Merkle audit + OIDC issuer
-/// each had their own lookalike SEP-provisioning code —
-/// different error taxonomies, slightly different Keychain
-/// attributes, one file with both SEP and software paths
-/// interleaved. The unified store gives every purpose the same
-/// lifecycle (store / loadSigner / publicKey / delete / exists)
-/// with per-purpose namespacing so inventory queries, rotation,
-/// and audit are consistent.
+/// Before this type, break-glass + OIDC issuer each had their
+/// own lookalike SEP-provisioning code — different error
+/// taxonomies, slightly different Keychain attributes, one file
+/// with both SEP and software paths interleaved. The unified
+/// store gives every purpose the same lifecycle (store /
+/// loadSigner / publicKey / delete / exists) with per-purpose
+/// namespacing so inventory queries, rotation, and audit are
+/// consistent.
 ///
 /// ## SEP-only
 ///
@@ -65,9 +64,6 @@ public enum P256KeyStore {
         /// Host identity for signing host → guest-agent
         /// requests (daemon use, no presence gate).
         public static let hostIdentity = "com.spooktacular.host-identity"
-
-        /// Merkle audit STH signing (daemon use).
-        public static let merkleAudit = "com.spooktacular.merkle-audit"
 
         /// Workload-identity OIDC JWT signing (daemon use).
         public static let oidcIssuer = "com.spooktacular.oidc-issuer"

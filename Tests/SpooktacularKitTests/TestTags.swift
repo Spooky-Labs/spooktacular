@@ -15,7 +15,7 @@ extension Tag {
     /// Tests for role-based access control specifically.
     @Tag static var rbac: Self
 
-    /// Tests for audit logging, Merkle trees, and compliance.
+    /// Tests for audit logging and compliance.
     @Tag static var audit: Self
 
     /// Tests for workload-identity OIDC issuance and VM → IAM role binding.

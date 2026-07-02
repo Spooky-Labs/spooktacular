@@ -139,9 +139,9 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
         case .multiTenantRequiresAuthorization:
             "Refusing to start: multi-tenant mode requires a configured AuthorizationService (RBAC)."
         case .productionRequiresAudit:
-            "Refusing to start: production deployments require an audit sink. No SPOOKTACULAR_AUDIT_FILE / SPOOKTACULAR_AUDIT_IMMUTABLE_PATH / SPOOKTACULAR_AUDIT_MERKLE was configured."
+            "Refusing to start: production deployments require an audit sink. No SPOOKTACULAR_AUDIT_FILE / SPOOKTACULAR_AUDIT_IMMUTABLE_PATH was configured."
         case .multiTenantRequiresDistributedLock:
-            "Refusing to start: multi-tenant mode requires a DistributedLockService. None of SPOOKTACULAR_DYNAMO_TABLE / SPOOKTACULAR_LOCK_DIR was configured."
+            "Refusing to start: multi-tenant mode requires a DistributedLockService, but only file-based locking is available (SPOOKTACULAR_LOCK_DIR), which is not suitable for multi-tenant deployments."
         }
     }
 
@@ -152,9 +152,9 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
         case .multiTenantRequiresAuthorization:
             "Provide SPOOKTACULAR_RBAC_CONFIG pointing at a JSONRoleStore file, or drop back to SPOOKTACULAR_TENANCY_MODE=single-tenant."
         case .productionRequiresAudit:
-            "Set at minimum SPOOKTACULAR_AUDIT_FILE. For SOC 2 Type II, combine with SPOOKTACULAR_AUDIT_IMMUTABLE_PATH, SPOOKTACULAR_AUDIT_MERKLE=1 + SPOOKTACULAR_AUDIT_SIGNING_KEY, and SPOOK_AUDIT_S3_BUCKET (Object Lock). Operators who genuinely need to run without audit must pass --insecure explicitly."
+            "Set at minimum SPOOKTACULAR_AUDIT_FILE. For immutable audit logs, add SPOOKTACULAR_AUDIT_IMMUTABLE_PATH. Operators who genuinely need to run without audit must pass --insecure explicitly."
         case .multiTenantRequiresDistributedLock:
-            "Set SPOOKTACULAR_DYNAMO_TABLE (cross-region) to select a distributed backend. SPOOKTACULAR_LOCK_DIR on a shared NFS mount is acceptable only on a single-host deployment and is not valid with SPOOKTACULAR_TENANCY_MODE=multi-tenant."
+            "Use SPOOKTACULAR_TENANCY_MODE=single-tenant instead. File-based locks (SPOOKTACULAR_LOCK_DIR) are only suitable for single-host deployments and cannot support multi-tenant isolation."
         }
     }
 }

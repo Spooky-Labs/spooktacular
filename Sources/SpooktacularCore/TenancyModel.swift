@@ -246,9 +246,8 @@ public struct AuditRecord: Sendable, Codable, Equatable {
     /// Rebuilds an `AuditRecord` with all fields explicitly set,
     /// including `id` and `timestamp`.
     ///
-    /// Callers that chain or re-emit an existing record (e.g. the
-    /// Merkle audit sink enriching a record with tree-head metadata)
-    /// MUST preserve the original identity — otherwise the durable
+    /// Callers that chain or re-emit an existing record MUST
+    /// preserve the original identity — otherwise the durable
     /// store holds a record with a different `id` / `timestamp`
     /// than the one the caller sent, breaking NIST SP 800-53 AU-3's
     /// unique-traceability requirement.

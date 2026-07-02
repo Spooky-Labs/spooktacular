@@ -66,7 +66,6 @@ struct P256KeyStoreTests {
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.breakGlass, label: label) == false)
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.operatorIdentity, label: label) == false)
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.hostIdentity, label: label) == false)
-        #expect(P256KeyStore.exists(service: P256KeyStore.Service.merkleAudit, label: label) == false)
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.oidcIssuer, label: label) == false)
     }
 
@@ -76,7 +75,6 @@ struct P256KeyStoreTests {
             P256KeyStore.Service.breakGlass,
             P256KeyStore.Service.operatorIdentity,
             P256KeyStore.Service.hostIdentity,
-            P256KeyStore.Service.merkleAudit,
             P256KeyStore.Service.oidcIssuer,
         ]
         #expect(Set(all).count == all.count,
@@ -89,7 +87,6 @@ struct P256KeyStoreTests {
             P256KeyStore.Service.breakGlass,
             P256KeyStore.Service.operatorIdentity,
             P256KeyStore.Service.hostIdentity,
-            P256KeyStore.Service.merkleAudit,
             P256KeyStore.Service.oidcIssuer,
         ]
         for service in all {

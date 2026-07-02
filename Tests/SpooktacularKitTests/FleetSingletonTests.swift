@@ -5,9 +5,8 @@ import Foundation
 @testable import SpooktacularInfrastructureApple
 
 /// Tests for the ``FleetSingleton`` port + its in-process
-/// implementation. The DynamoDB adapter is exercised by
-/// `EnterpriseIntegrationTests` when credentials are available;
-/// here we pin the contract at the boundary.
+/// implementation. The contract is pinned at the boundary
+/// via the in-process singleton.
 @Suite("Fleet singleton", .tags(.security, .infrastructure))
 struct FleetSingletonTests {
 
