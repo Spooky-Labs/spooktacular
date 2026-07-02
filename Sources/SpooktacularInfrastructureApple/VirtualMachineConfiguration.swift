@@ -193,6 +193,10 @@ public enum VirtualMachineConfiguration {
         if !spec.sharedFolders.isEmpty {
             directorySharingDevices.append(contentsOf: makeSharing(spec.sharedFolders))
         }
+        // Note: the per-VM provisioning share is applied by
+        // ``applyProvisioning(from:to:)`` later in the bundle-
+        // aware phase, since it needs the bundle's filesystem
+        // URL and `applySpec` is deliberately spec-only.
 
         // Rosetta for Linux (Track H.4).  Exposes the host's
         // Rosetta 2 runtime to a Linux guest through a
@@ -246,22 +250,30 @@ public enum VirtualMachineConfiguration {
         // Apple's supported clipboard-sharing path is
         // `VZSpiceAgentPortAttachment` (macOS 13.0+). It relays
         // the host pasteboard into a named VirtIO console port
-        // (`com.redhat.spice.0`) that the SPICE vdagent inside
-        // the guest reads. On Linux guests this Just Works once
-        // `spice-vdagent` is installed; on macOS guests there's
-        // no `spice-vdagent` implementation so the port stays
-        // attached but idle — that's where our existing vsock
-        // `ClipboardBridge` (in the GUI layer) takes over.
+        // (`com.redhat.spice.0`) that a SPICE vd_agent inside
+        // the guest reads.
+        //
+        // Both guest operating systems we target ship an
+        // agent:
+        //
+        // - **Linux guests**: install the distro's
+        //   `spice-vdagent` package. Works out of the box.
+        // - **macOS guests**: install Spooktacular Guest
+        //   Tools (`SpooktacularGuestTools.app`), our
+        //   clean-room Swift vd_agent built on the
+        //   `SpiceProtocol` + `SpiceSerialTransport` packages.
+        //   See `Packages/SpiceGuestAgent/` for the source.
         //
         // Attaching unconditionally when the spec asks for
         // clipboard sharing is safe: the port costs essentially
-        // nothing on the guest side if no vdagent connects, and
-        // it lets Linux guests sync without any per-guest-OS
-        // branching on the host.
+        // nothing on the guest side if no vd_agent connects,
+        // and letting the guest agent drive the bridge keeps
+        // the host configuration identical across guest OSes.
         //
         // Docs:
         // - https://developer.apple.com/documentation/virtualization/clipboard-sharing
         // - https://developer.apple.com/documentation/virtualization/vzspiceagentportattachment
+        // - https://www.spice-space.org/agent-protocol.html
         if spec.clipboardSharingEnabled {
             configuration.consoleDevices.append(makeSpiceClipboardConsole())
         }
@@ -359,6 +371,53 @@ public enum VirtualMachineConfiguration {
             input.streams = [VZVirtioSoundDeviceInputStreamConfiguration()]
             return [output, input]
         }
+    }
+
+    /// Attaches the per-VM provisioning share to the given
+    /// configuration. macOS guests only — Linux guests use
+    /// `cloud-init` and skip this path entirely.
+    ///
+    /// Exposes `<bundle>/provision/` to the guest under
+    /// virtio-fs tag ``VirtualMachineBundle/provisionShareTag``.
+    /// The Guest Tools LaunchDaemon inside the guest picks the
+    /// tag up via `mount_virtiofs` on boot and executes
+    /// `first-boot.sh` if present. Legacy bundles that predate
+    /// the `provision/` subdirectory get the directory
+    /// materialised here — idempotent.
+    ///
+    /// Call ordering: after ``applySpec(_:to:)`` (which wires
+    /// regular shared folders), before the configuration is
+    /// validated.
+    public static func applyProvisioning(
+        from bundle: VirtualMachineBundle,
+        to configuration: VZVirtualMachineConfiguration
+    ) throws {
+        guard bundle.spec.guestOS == .macOS else { return }
+
+        // Ensure the per-VM provision directory exists. No
+        // subdirectories — the first-boot layout is flat; the
+        // daemon looks for a single `first-boot.sh` file at
+        // this level.
+        try FileManager.default.createDirectory(
+            at: bundle.provisionDirectoryURL,
+            withIntermediateDirectories: true
+        )
+
+        let share = VZSingleDirectoryShare(
+            directory: VZSharedDirectory(
+                url: bundle.provisionDirectoryURL,
+                readOnly: false
+            )
+        )
+        let device = VZVirtioFileSystemDeviceConfiguration(
+            tag: VirtualMachineBundle.provisionShareTag
+        )
+        device.share = share
+        configuration.directorySharingDevices.append(device)
+
+        Log.config.info(
+            "Provisioning share attached: tag=\(VirtualMachineBundle.provisionShareTag, privacy: .public) hostPath=\(bundle.provisionDirectoryURL.path, privacy: .public)"
+        )
     }
 
     /// Builds VirtIO file-system devices for shared folders.

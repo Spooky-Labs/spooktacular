@@ -4,21 +4,30 @@ import SpooktacularKit
 
 // MARK: - CLI Bundle Lookup
 
-/// Returns the bundle URL for the given VM name, printing styled
-/// error messages and throwing `ExitCode.failure` if the bundle
-/// does not exist.
+/// Resolves a VM selector (either a canonical UUID string or a
+/// display name) to a concrete bundle URL on disk, printing
+/// styled error messages and throwing `ExitCode.failure` on
+/// ambiguity or miss.
 ///
-/// This wraps ``SpooktacularPaths/requireBundle(for:)`` with
-/// CLI-friendly styled output.
+/// Wraps ``SpooktacularPaths/resolveBundle(selector:)`` — see
+/// that symbol for the resolution semantics (UUID > unique
+/// displayName; ambiguous names list candidates and exit
+/// non-zero).
 ///
-/// - Parameter name: The VM name.
+/// - Parameter selector: The VM's UUID string or display name.
 /// - Returns: The bundle URL.
-/// - Throws: `ExitCode.failure` if the bundle does not exist.
-func requireBundle(for name: String) throws -> URL {
+/// - Throws: `ExitCode.failure` on not-found or ambiguity.
+func requireBundle(for selector: String) throws -> URL {
     do {
-        return try SpooktacularPaths.requireBundle(for: name)
+        return try SpooktacularPaths.resolveBundle(selector: selector)
+    } catch let err as SpooktacularPathError {
+        print(Style.error("✗ \(err.errorDescription ?? "VM not found.")"))
+        if let hint = err.recoverySuggestion {
+            print(Style.dim("  \(hint)"))
+        }
+        throw ExitCode.failure
     } catch {
-        print(Style.error("✗ VM '\(name)' not found."))
+        print(Style.error("✗ VM '\(selector)' not found."))
         print(Style.dim("  Run 'spook list' to see available virtual machines."))
         throw ExitCode.failure
     }

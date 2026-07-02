@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Spooktacular provisioner LaunchDaemon — the "pkg-installed"
+    variant.
+
+    Installed into `/Library/LaunchDaemons/` by
+    `Spooktacular Provisioner.pkg`, which Installer.app runs
+    as root after the user types their admin password once.
+    `launchctl` picks the plist up on every subsequent boot;
+    the runner looks for `first-boot.sh` on the per-VM virtio-fs
+    share and executes it as root, then removes the trigger so
+    subsequent boots no-op.
+
+    ## Why a traditional absolute-path LaunchDaemon
+
+    Both Spooktacular and its nested Guest Tools app are
+    sandboxed. On macOS 14.4+, Apple forbids a sandboxed app
+    from registering a LaunchDaemon via `SMAppService.daemon(
+    plistName:)` unless the daemon itself is a sandboxed
+    Mach-O — our runner is a bash script (needs to
+    `mount_virtiofs` and exec arbitrary user scripts as root),
+    which cannot meet that requirement. Apple's sanctioned
+    escape hatch for sandboxed apps that need to install a
+    privileged helper is a signed `.pkg` handed to
+    `Installer.app`, which is the route this plist is built for.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.spookylabs.spooktacular.provisioner</string>
+
+    <key>Program</key>
+    <string>/usr/local/libexec/spook-provision-runner.sh</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>

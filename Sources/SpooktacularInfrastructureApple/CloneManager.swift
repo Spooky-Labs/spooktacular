@@ -55,7 +55,8 @@ public enum CloneManager {
     ///   source files cannot be read.
     public static func clone(
         source: VirtualMachineBundle,
-        to destination: URL
+        to destination: URL,
+        displayName: String
     ) throws -> VirtualMachineBundle {
         let fileManager = FileManager.default
 
@@ -130,7 +131,7 @@ public enum CloneManager {
             let spec = source.spec.with(macAddress: .set(MACAddress.generate()))
             try VirtualMachineBundle.writeSpec(spec, to: destination)
 
-            var metadata = VirtualMachineMetadata()
+            var metadata = VirtualMachineMetadata(displayName: displayName)
             metadata.setupCompleted = source.metadata.setupCompleted
             try VirtualMachineBundle.writeMetadata(metadata, to: destination)
 

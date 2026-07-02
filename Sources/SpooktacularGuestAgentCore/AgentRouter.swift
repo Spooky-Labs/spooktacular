@@ -220,7 +220,8 @@ private func endpointScope(method: String, path: String) -> EndpointScope? {
          ("GET", "/api/v1/ports"),
          ("GET", "/api/v1/stats"),
          ("GET", "/api/v1/stats/stream"),
-         ("GET", "/api/v1/identity-token"):
+         ("GET", "/api/v1/identity-token"),
+         ("GET", "/api/v1/spice/status"):
         return .readonly
     default:
         return nil
@@ -533,6 +534,15 @@ func routeRequest(
     case ("GET", "/api/v1/clipboard"):
         response = handleGetClipboard()
         statusCode = 200
+    case ("GET", "/api/v1/spice/status"):
+        // Async hop so we can await the AgentController's
+        // MainActor-isolated SpiceClipboardAgent status. The
+        // router returns `Data` synchronously; wrap the probe
+        // in a blocking semaphore here so the call shape stays
+        // uniform. Budget is tight — `currentSpiceStatus()`
+        // is in-process, so the hop is ~tens of µs.
+        response = handleSpiceStatus()
+        statusCode = 200
     case ("POST", "/api/v1/clipboard"):
         response = handleSetClipboard(request)
         statusCode = 200
@@ -708,6 +718,44 @@ private func handleHealth() -> Data {
     let uptime = Date().timeIntervalSince(agentStartTime)
     let health = HealthResponse(status: "ok", version: agentVersion, uptime: uptime)
     return jsonResponse(health)
+}
+
+// MARK: - SPICE clipboard status
+
+/// Handles `GET /api/v1/spice/status` — returns the
+/// ``SpiceStatusSnapshot`` describing the in-process SPICE
+/// clipboard bridge. Host-side UI polls this to drive a
+/// tri-state clipboard indicator in the workspace toolbar.
+///
+/// The provider is supplied by `SpooktacularGuestTools.app`
+/// at launch; builds without the app (headless CI agent, etc.)
+/// have no provider and always report
+/// ``SpiceClipboardState/notStarted``.
+private func handleSpiceStatus() -> Data {
+    guard let provider = AgentHTTPServer.spiceStatusProvider else {
+        return jsonResponse(
+            SpiceStatusSnapshot(state: .notStarted, message: nil)
+        )
+    }
+
+    // Bridge async → sync. The handler chain above is
+    // synchronous (per-connection dispatch queue), and the
+    // provider is MainActor-isolated when backed by
+    // AgentController. A DispatchSemaphore is the idiomatic
+    // way to block one dispatch queue on a Task's result
+    // for an async one-shot call — the handler thread
+    // parks for micro-seconds waiting on an in-process hop.
+    let semaphore = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var snapshot = SpiceStatusSnapshot(
+        state: .notStarted, message: nil
+    )
+    Task.detached {
+        let result = await provider.currentSpiceStatus()
+        snapshot = result
+        semaphore.signal()
+    }
+    semaphore.wait()
+    return jsonResponse(snapshot)
 }
 
 // MARK: - Identity token (workload OIDC federation)

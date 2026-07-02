@@ -223,6 +223,7 @@ public final class VirtualMachine: NSObject {
         let config = VZVirtualMachineConfiguration()
         try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
         try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
+        try VirtualMachineConfiguration.applyProvisioning(from: bundle, to: config)
         let nbdMonitors = try VirtualMachineConfiguration.applyStorage(
             from: bundle,
             to: config

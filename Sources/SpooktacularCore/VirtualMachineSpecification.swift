@@ -232,6 +232,29 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
     /// Defaults to `true`.
     public let clipboardSharingEnabled: Bool
 
+    /// How (if at all) to install Spooktacular Guest Tools
+    /// inside the VM on first boot.
+    ///
+    /// Two-way user control so operators can distinguish a
+    /// pristine macOS VM (``GuestToolsInstallMode/disabled``)
+    /// from one with the helper app in `/Applications/`
+    /// (``GuestToolsInstallMode/installed``). Defaults to
+    /// ``GuestToolsInstallMode/installed``.
+    ///
+    /// Launch-at-login is deliberately not a host-side
+    /// decision — Guest Tools' own menu-bar UI carries an
+    /// `SMAppService.mainApp`-backed toggle that the user
+    /// flips after first login. Keeping the host install
+    /// path fully unprivileged means no `osascript` admin
+    /// prompt during VM create, and VMs intended as
+    /// GitHub-Actions runners / golden images never have to
+    /// untangle a LaunchAgent they didn't ask for.
+    ///
+    /// Ignored for Linux guests (Guest Tools is macOS-only;
+    /// Linux guests use `spice-vdagent` for clipboard and
+    /// don't need the SwiftUI menu-bar app).
+    public let guestToolsInstall: GuestToolsInstallMode
+
     /// Whether to expose Rosetta 2 translation to the
     /// Linux guest via `VZLinuxRosettaDirectoryShare`.
     ///
@@ -296,7 +319,8 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         additionalDisks: [AdditionalDisk] = [],
         networkBlockDevices: [NBDBackedDisk] = [],
         guestOS: GuestOS = .macOS,
-        rosettaEnabled: Bool = false
+        rosettaEnabled: Bool = false,
+        guestToolsInstall: GuestToolsInstallMode = .installed
     ) {
         // Guest-OS-aware CPU floor. macOS still wants 4
         // (the pre-existing empirical minimum); Linux can
@@ -320,6 +344,17 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         self.networkBlockDevices = networkBlockDevices
         self.guestOS = guestOS
         self.rosettaEnabled = rosettaEnabled
+        // Guest Tools is a macOS-only `.app`. Clamp Linux
+        // specs to `.disabled` at the type boundary so the
+        // saved config.json can never carry an impossible
+        // combination (Linux + auto-launch) and every caller
+        // reading `spec.guestToolsInstall` can trust the
+        // value on Linux is `.disabled` without re-checking
+        // `guestOS`. Mirrors the same invariant Apple's
+        // framework enforces on
+        // `VZLinuxRosettaDirectoryShare` (only valid for
+        // `.linux`).
+        self.guestToolsInstall = guestOS == .macOS ? guestToolsInstall : .disabled
     }
 
     /// Decoder with `decodeIfPresent` on the new fields so
@@ -372,6 +407,20 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         self.rosettaEnabled = try container.decodeIfPresent(
             Bool.self, forKey: .rosettaEnabled
         ) ?? false
+        // Phase-3 addition. Pre-3 bundles default to
+        // `.installed` for macOS — the helper app lands in
+        // `/Applications/`, and first-login launch-at-login
+        // is controlled by the user via Guest Tools' own
+        // menu-bar toggle. Linux guests always clamp to
+        // `.disabled` (Guest Tools is a macOS-only `.app`),
+        // normalising any pre-invariant config.json that
+        // may have carried a non-disabled mode.
+        let rawGuestToolsInstall = try container.decodeIfPresent(
+            GuestToolsInstallMode.self, forKey: .guestToolsInstall
+        ) ?? .installed
+        self.guestToolsInstall = decodedGuestOS == .macOS
+            ? rawGuestToolsInstall
+            : .disabled
     }
 
     /// Returns a copy of this specification with different shared folders.
@@ -435,7 +484,8 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
         additionalDisks: [AdditionalDisk]? = nil,
         networkBlockDevices: [NBDBackedDisk]? = nil,
         guestOS: GuestOS? = nil,
-        rosettaEnabled: Bool? = nil
+        rosettaEnabled: Bool? = nil,
+        guestToolsInstall: GuestToolsInstallMode? = nil
     ) -> VirtualMachineSpecification {
         VirtualMachineSpecification(
             cpuCount: cpuCount ?? self.cpuCount,
@@ -453,7 +503,8 @@ public struct VirtualMachineSpecification: Sendable, Codable, Equatable, Hashabl
             additionalDisks: additionalDisks ?? self.additionalDisks,
             networkBlockDevices: networkBlockDevices ?? self.networkBlockDevices,
             guestOS: guestOS ?? self.guestOS,
-            rosettaEnabled: rosettaEnabled ?? self.rosettaEnabled
+            rosettaEnabled: rosettaEnabled ?? self.rosettaEnabled,
+            guestToolsInstall: guestToolsInstall ?? self.guestToolsInstall
         )
     }
 

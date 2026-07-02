@@ -69,7 +69,7 @@ final class IntentAppState {
     /// Throws when the VM is unknown or no PID file can be read,
     /// so Shortcuts can present a meaningful "couldn't stop" step.
     func stopVM(_ name: String) async throws {
-        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else {
+        guard let bundleURL = try? SpooktacularPaths.resolveBundle(selector: name) else {
             throw IntentError.vmNotFound(name)
         }
         guard let pid = PIDFile.read(from: bundleURL) else {
@@ -105,8 +105,13 @@ final class IntentAppState {
         guard let sourceBundle = cache[source] else {
             throw IntentError.vmNotFound(source)
         }
-        let destinationURL = try SpooktacularPaths.bundleURL(for: destination)
-        _ = try CloneManager.clone(source: sourceBundle, to: destinationURL)
+        let destinationID = UUID()
+        let destinationURL = SpooktacularPaths.bundleURL(for: destinationID)
+        _ = try CloneManager.clone(
+            source: sourceBundle,
+            to: destinationURL,
+            displayName: destination
+        )
     }
 
     /// Runs a command inside a running VM and returns stdout.
@@ -165,7 +170,7 @@ enum IntentError: LocalizedError {
         case .vmNotFound(let name):
             "No virtual machine named '\(name)'."
         case .noGuestAgent:
-            "The workspace has no guest agent reachable over vsock. Ensure the VM is running and spooktacular-agent is installed."
+            "The workspace has no guest agent reachable over vsock. Ensure the VM is running and Spooktacular Guest Tools is installed."
         case .startFailed(let name, let reason):
             "Could not start '\(name)': \(reason)"
         case .stopFailed(let name, let reason):

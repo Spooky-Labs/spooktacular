@@ -13,10 +13,15 @@ import SpooktacularApplication
 ///
 /// ```
 /// ~/.spooktacular/
-/// ├── vms/               # VM bundles (<name>.vm/)
+/// ├── vms/               # VM bundles (<uuid>.vm/)
 /// ├── cache/ipsw/        # Downloaded IPSW restore images
 /// └── images/            # OCI and IPSW image library
 /// ```
+///
+/// Bundle directories are named by the VM's stable UUID,
+/// not its display name. Renaming a VM rewrites only
+/// `metadata.json/displayName`; the on-disk directory never
+/// moves once created.
 public enum SpooktacularPaths {
 
     /// The root data directory: `~/.spooktacular/`.
@@ -43,13 +48,7 @@ public enum SpooktacularPaths {
     /// `~/.spooktacular/`) because it's ephemeral runtime state
     /// — a socket file survives only while the VM runs, and the
     /// directory itself is mode-0700 so only the current user
-    /// can connect. Both follow macOS HIG conventions: user-
-    /// scoped runtime data goes in Application Support, not the
-    /// home root.
-    ///
-    /// The streaming API server (``VMStreamingServer``) creates
-    /// the directory on first bind with `0700` and a per-VM
-    /// `.sock` file on `start()` that's unlinked on `stop()`.
+    /// can connect.
     public static let apiSockets: URL = {
         FileManager.default.urls(
             for: .applicationSupportDirectory,
@@ -59,116 +58,77 @@ public enum SpooktacularPaths {
         .appendingPathComponent("api")
     }()
 
-    /// Returns the socket path for `name`'s host-API listener.
+    /// Returns the socket path for a VM's host-API listener.
     ///
-    /// - Throws: ``VirtualMachineBundleError`` mirroring the
-    ///   same-error shape used by ``bundleURL(for:)`` if the
-    ///   name contains path-traversal characters.
-    public static func apiSocketURL(for name: String) throws -> URL {
-        try validateVMName(name)
-        return apiSockets.appendingPathComponent("\(name).sock")
+    /// - Parameter id: The VM's stable UUID.
+    /// - Returns: `~/Library/Application Support/Spooktacular/api/<uuid>.sock`.
+    public static func apiSocketURL(for id: UUID) -> URL {
+        apiSockets.appendingPathComponent("\(id.uuidString).sock")
     }
 
     /// Default RBAC config path: `~/.spooktacular/rbac.json`.
-    ///
-    /// Used as the fallback when `SPOOKTACULAR_RBAC_CONFIG` is unset so
-    /// runtime role assignments via `/v1/roles/assign` persist
-    /// across restarts without the operator having to configure
-    /// anything. The previous behavior — in-memory-only when the
-    /// env var was absent — silently dropped assignments on every
-    /// restart, which a Fortune-20 auditor correctly flagged as
-    /// unsafe. Operators who genuinely want in-memory-only
-    /// behavior can pass `SPOOKTACULAR_RBAC_CONFIG=/dev/null`.
     public static let rbacConfig: URL = {
         root.appendingPathComponent("rbac.json")
     }()
 
-    /// Validates a VM name.
+    // MARK: - Display-name validation
+
+    /// Validates a user-facing display name.
     ///
-    /// Accepts names matching the grammar
-    /// `[A-Za-z0-9][A-Za-z0-9._-]{0,62}` — an alphanumeric
-    /// first character followed by 0–62 more alphanumeric,
-    /// `.`, `_`, or `-` characters (1–63 total).
+    /// Rules (deliberately looser than the pre-UUID `validateVMName`
+    /// because the name is no longer a filesystem path component):
     ///
-    /// Implemented as a pure character-class check rather
-    /// than via `Regex<Substring>` because:
+    /// - 1–128 Unicode characters after trimming leading/trailing
+    ///   whitespace.
+    /// - No ASCII control characters (category `Cc`).
+    /// - No forward or backward slashes (they'd confuse path
+    ///   rendering in the sidebar + CLI output even though the
+    ///   filesystem never sees them).
     ///
-    /// - `Regex<Substring>` isn't `Sendable` (verified via
-    ///   Swift 6 compiler error: *"may have shared mutable
-    ///   state"*), which would force a `nonisolated(unsafe)`
-    ///   escape hatch on any static instance.
-    /// - The grammar is trivial enough that the Regex
-    ///   engine is strictly more machinery than the
-    ///   problem requires — a single pass over the bytes
-    ///   is faster and exactly as correct.
-    /// - A pure function is `Sendable` by construction.
-    ///
-    /// The HTTP API (`HTTPAPIServer.validateVMName`) uses
-    /// the same grammar; centralizing the check here means
-    /// CLI, API, and controller all accept the same set of
-    /// names — an attacker cannot sneak
-    /// `../../etc/passwd` past the CLI even if the API
-    /// would reject it.
-    ///
-    /// - Throws: ``SpooktacularPathError/invalidVMName`` if
-    ///   the name is empty, over 63 characters, starts with
-    ///   a non-alphanumeric character, or contains any
-    ///   character other than ASCII alphanumerics, `.`,
-    ///   `_`, or `-`.
-    public static func validateVMName(_ name: String) throws {
-        guard isValidVMName(name) else {
-            throw SpooktacularPathError.invalidVMName(name)
+    /// Spaces, unicode letters, digits, and typical punctuation
+    /// (dot, underscore, dash, parentheses, apostrophe) are all
+    /// permitted — two VMs may share the same display name, so
+    /// the name's job is presentation, not uniqueness.
+    public static func validateDisplayName(_ name: String) throws {
+        guard isValidDisplayName(name) else {
+            throw SpooktacularPathError.invalidDisplayName(name)
         }
     }
 
-    /// Pure predicate backing ``validateVMName(_:)`` —
-    /// exposed for callers that need a Bool without the
-    /// throwing branch.
-    public static func isValidVMName(_ name: String) -> Bool {
-        // 1–63 character bound.
-        guard (1...63).contains(name.count) else { return false }
-
-        // `String.utf8` iterates the UTF-8 bytes without
-        // decoding graphemes; fine here because the grammar
-        // is ASCII-only.  Any non-ASCII character fails the
-        // `is*ASCII` tests below.
-        var iterator = name.utf8.makeIterator()
-        guard let first = iterator.next(),
-              Self.isASCIIAlphanumeric(first)
-        else { return false }
-        while let byte = iterator.next() {
-            guard Self.isASCIIAlphanumeric(byte)
-                    || byte == .init(ascii: ".")
-                    || byte == .init(ascii: "_")
-                    || byte == .init(ascii: "-")
-            else { return false }
+    /// Pure predicate backing ``validateDisplayName(_:)``.
+    public static func isValidDisplayName(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (1...128).contains(trimmed.count) else { return false }
+        for scalar in trimmed.unicodeScalars {
+            if CharacterSet.controlCharacters.contains(scalar) { return false }
+            if scalar == "/" || scalar == "\\" { return false }
         }
         return true
     }
 
-    private static func isASCIIAlphanumeric(_ byte: UInt8) -> Bool {
-        (byte >= .init(ascii: "0") && byte <= .init(ascii: "9"))
-            || (byte >= .init(ascii: "A") && byte <= .init(ascii: "Z"))
-            || (byte >= .init(ascii: "a") && byte <= .init(ascii: "z"))
+    // MARK: - UUID-keyed bundle paths
+
+    /// Returns the bundle URL for the given VM identifier.
+    ///
+    /// - Parameter id: The VM's stable UUID.
+    /// - Returns: `~/.spooktacular/vms/<uuid>.vm`.
+    public static func bundleURL(for id: UUID) -> URL {
+        vms.appendingPathComponent("\(id.uuidString).vm")
     }
 
-    /// Resolves a VM name to its bundle URL.
+    /// Returns the bundle URL for the given VM identifier,
+    /// throwing if the bundle does not exist on disk.
     ///
-    /// Validates against ``vmNamePattern`` before constructing the
-    /// URL. Without this check, a caller (typically from the CLI)
-    /// could pass `"../../etc/passwd"` and `appendingPathComponent`
-    /// would resolve outside the `vms` directory. The HTTP API
-    /// validates at the router; centralizing here means CLI and
-    /// SDK consumers get the same protection.
-    ///
-    /// - Parameter name: The VM name (without `.vm` extension).
-    /// - Returns: The URL to `~/.spooktacular/vms/<name>.vm`.
-    /// - Throws: ``SpooktacularPathError/invalidVMName`` when the
-    ///   name contains path-traversal or shell-metacharacter
-    ///   sequences.
-    public static func bundleURL(for name: String) throws -> URL {
-        try validateVMName(name)
-        return vms.appendingPathComponent("\(name).vm")
+    /// - Parameter id: The VM's stable UUID.
+    /// - Returns: The bundle URL.
+    /// - Throws: ``SpooktacularPathError/vmNotFound(id:)`` if the
+    ///   bundle does not exist.
+    public static func requireBundle(for id: UUID) throws -> URL {
+        let url = bundleURL(for: id)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw SpooktacularPathError.vmNotFound(id: id)
+        }
+        return url
     }
 
     /// Ensures the standard directories exist, creating them if
@@ -181,22 +141,118 @@ public enum SpooktacularPaths {
         try fileManager.createDirectory(at: ipswCache, withIntermediateDirectories: true)
     }
 
-    /// Returns the bundle URL for the given VM name, throwing if
-    /// the bundle does not exist on disk.
+    // MARK: - Selector resolution (CLI + HTTP API)
+
+    /// Resolves a user-supplied VM *selector* — either a
+    /// canonical UUID string or a display name — to a
+    /// concrete bundle URL on disk.
     ///
-    /// Use this in CLI commands to replace the repeated
-    /// `guard FileManager.default.fileExists` pattern.
+    /// Resolution order:
     ///
-    /// - Parameter name: The VM name.
-    /// - Returns: The bundle URL.
-    /// - Throws: `SpooktacularPathError.vmNotFound` if the bundle
-    ///   does not exist.
-    public static func requireBundle(for name: String) throws -> URL {
-        let url = try bundleURL(for: name)
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw SpooktacularPathError.vmNotFound(name: name)
+    /// 1. If the selector parses as a `UUID`, return the
+    ///    UUID-keyed bundle path directly (fastest; no
+    ///    directory scan, matches the primary-key lookup).
+    /// 2. Otherwise scan `~/.spooktacular/vms/` for bundles
+    ///    whose `metadata.json`'s `displayName` field matches
+    ///    the selector exactly (case-sensitive).
+    ///    - Zero matches → ``SpooktacularPathError/vmNotFoundBySelector(_:)``.
+    ///    - Exactly one match → return its URL.
+    ///    - Multiple matches → ``SpooktacularPathError/ambiguousSelector(selector:candidates:)``
+    ///      carrying every matching UUID so the caller can
+    ///      render a disambiguation prompt.
+    ///
+    /// This helper lets the CLI accept `spook start foo`
+    /// (friendly) AND `spook start 4A5B…` (unambiguous) from
+    /// the same argument, and lets the HTTP API accept either
+    /// shape on `/v1/vms/<selector>` routes. The JSON decode
+    /// is deliberately lightweight — just enough to reach the
+    /// `displayName` field — so a directory with a malformed
+    /// `metadata.json` doesn't crash the resolver, it's just
+    /// skipped.
+    ///
+    /// - Parameter selector: The UUID string or display name.
+    /// - Returns: The absolute URL of the resolved bundle.
+    /// - Throws: ``SpooktacularPathError`` on any failure shape.
+    public static func resolveBundle(selector: String) throws -> URL {
+        if let id = UUID(uuidString: selector) {
+            return try requireBundle(for: id)
         }
-        return url
+        let matches = try scanForDisplayName(selector)
+        switch matches.count {
+        case 0:
+            throw SpooktacularPathError.vmNotFoundBySelector(selector)
+        case 1:
+            return matches[0].url
+        default:
+            throw SpooktacularPathError.ambiguousSelector(
+                selector: selector,
+                candidates: matches.map(\.id)
+            )
+        }
+    }
+
+    /// Resolves a user-supplied selector to just the VM's
+    /// UUID — useful when the caller wants to key an in-memory
+    /// dict, not load from disk.
+    public static func resolveID(selector: String) throws -> UUID {
+        if let id = UUID(uuidString: selector) {
+            // Confirm the bundle actually exists; otherwise
+            // callers can't distinguish "typo'd UUID" from
+            // "VM exists".
+            _ = try requireBundle(for: id)
+            return id
+        }
+        let matches = try scanForDisplayName(selector)
+        switch matches.count {
+        case 0:
+            throw SpooktacularPathError.vmNotFoundBySelector(selector)
+        case 1:
+            return matches[0].id
+        default:
+            throw SpooktacularPathError.ambiguousSelector(
+                selector: selector,
+                candidates: matches.map(\.id)
+            )
+        }
+    }
+
+    private struct DisplayNameMatch {
+        let id: UUID
+        let url: URL
+    }
+
+    /// Scans the VMs directory for bundles whose
+    /// `metadata.json/displayName` equals `name`. Malformed
+    /// bundles are skipped silently (logged elsewhere).
+    private static func scanForDisplayName(_ name: String) throws -> [DisplayNameMatch] {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: vms.path) else { return [] }
+        let entries = try fm.contentsOfDirectory(
+            at: vms,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        var matches: [DisplayNameMatch] = []
+        struct MinimalMetadata: Decodable {
+            let id: UUID
+            let displayName: String?
+        }
+        let decoder = JSONDecoder()
+        for entry in entries where entry.pathExtension == "vm" {
+            let metadataURL = entry.appendingPathComponent("metadata.json")
+            guard let data = try? Data(contentsOf: metadataURL),
+                  let meta = try? decoder.decode(MinimalMetadata.self, from: data)
+            else { continue }
+            // Pre-migration bundles without a displayName field
+            // fall back to the directory basename — matches the
+            // migration behaviour in `VirtualMachineBundle.load`.
+            let effectiveName = meta.displayName
+                ?? entry.deletingPathExtension().lastPathComponent
+            if effectiveName == name {
+                matches.append(DisplayNameMatch(id: meta.id, url: entry))
+            }
+        }
+        return matches
     }
 }
 
@@ -204,19 +260,32 @@ public enum SpooktacularPaths {
 public enum SpooktacularPathError: Error, Sendable, LocalizedError {
 
     /// The specified VM bundle does not exist.
-    case vmNotFound(name: String)
+    case vmNotFound(id: UUID)
 
-    /// The VM name contains characters that could escape the
-    /// `~/.spooktacular/vms/` directory (path traversal) or
-    /// confuse downstream parsers (shell metacharacters).
-    case invalidVMName(String)
+    /// The user-facing display name is invalid. See
+    /// ``SpooktacularPaths/isValidDisplayName(_:)`` for the rules.
+    case invalidDisplayName(String)
+
+    /// No VM matched the user-supplied selector (UUID string or
+    /// display name) — reported by the CLI when the resolver
+    /// can't disambiguate.
+    case vmNotFoundBySelector(String)
+
+    /// Multiple VMs matched the user-supplied selector. Carries
+    /// the matching UUIDs so the CLI can print a disambiguation
+    /// list.
+    case ambiguousSelector(selector: String, candidates: [UUID])
 
     public var errorDescription: String? {
         switch self {
-        case .vmNotFound(let name):
-            "VM '\(name)' not found."
-        case .invalidVMName(let name):
-            "'\(name)' is not a valid VM name. Use 1–63 characters: letters, digits, dot, underscore, hyphen; must start with a letter or digit."
+        case .vmNotFound(let id):
+            "VM '\(id.uuidString)' not found."
+        case .invalidDisplayName(let name):
+            "'\(name)' is not a valid VM display name. Use 1–128 characters after trimming; no slashes or control characters."
+        case .vmNotFoundBySelector(let selector):
+            "No VM named '\(selector)' or matching that UUID."
+        case .ambiguousSelector(let selector, let candidates):
+            "'\(selector)' matches \(candidates.count) VMs. Use the full UUID: \(candidates.map(\.uuidString).joined(separator: ", "))."
         }
     }
 
@@ -224,8 +293,12 @@ public enum SpooktacularPathError: Error, Sendable, LocalizedError {
         switch self {
         case .vmNotFound:
             "Run 'spook list' to see available virtual machines."
-        case .invalidVMName:
-            "Rename the VM to match [a-zA-Z0-9][a-zA-Z0-9._-]{0,62}."
+        case .invalidDisplayName:
+            "Trim whitespace and remove any slashes or control characters; display names are 1–128 characters."
+        case .vmNotFoundBySelector:
+            "Run 'spook list' to see available VMs, or copy the UUID from the sidebar."
+        case .ambiguousSelector:
+            "Copy the full UUID of the VM you meant and pass that as the selector."
         }
     }
 }

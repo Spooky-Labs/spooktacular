@@ -1,0 +1,15 @@
+SpiceSerialTransport
+Copyright 2026 Spooky Labs
+Licensed under the MIT License (see LICENSE).
+
+Async Swift transport for the SPICE vd_agent protocol over the
+virtio-serial port Apple's VZSpiceAgentPortAttachment presents to a
+macOS guest.
+
+Depends on SpiceProtocol (also MIT-licensed by Spooky Labs).
+
+No source code from SPICE reference implementations (spice-vdagent,
+spice-gtk, utmapp/vd_agent) was copied or derived. The POSIX file
+descriptor + termios configuration follows the BSD POSIX conventions
+documented in the macOS man pages; behaviour was verified via DeepWiki
+queries against utmapp/vd_agent without reading its source.

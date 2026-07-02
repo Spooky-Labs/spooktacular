@@ -101,7 +101,7 @@ public enum SecurityControlInventory {
             name: "Per-operator break-glass trust allowlist (cryptographic attribution)",
             category: "Authentication & Identity",
             standard: "OWASP ASVS V2.7.5 (non-repudiation); OWASP Top 10 A09:2021",
-            implementation: "Sources/spooktacular-agent/BreakGlassVerification.swift (multi-key verifier) + Sources/SpooktacularInfrastructureApple/BreakGlassTicketCodec.swift (decode with [P256.Signing.PublicKey]) + SpooktacularAgent.loadTicketVerifier (loads SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR)",
+            implementation: "Sources/SpooktacularGuestAgentCore/BreakGlassVerification.swift (multi-key verifier) + Sources/SpooktacularInfrastructureApple/BreakGlassTicketCodec.swift (decode with [P256.Signing.PublicKey]) + Sources/SpooktacularGuestAgentCore/GuestAgentServer.swift loadTicketVerifier (loads SPOOKTACULAR_BREAKGLASS_PUBLIC_KEYS_DIR)",
             test: "Tests/SpooktacularKitTests/BreakGlassTicketTests.swift",
             notes: "Each operator's signature cryptographically attributes a ticket to their hardware key, not just the self-asserted issuer string. Offboarding = delete one .pem; no fleet-wide rotation."
         ),
@@ -171,7 +171,7 @@ public enum SecurityControlInventory {
             name: "Time-limited, single-use break-glass tickets",
             category: "Break-Glass",
             standard: "NIST SP 800-53 AC-14; OWASP ASVS V2.10; SOC 2 CC6.6; OWASP JWT Cheat Sheet",
-            implementation: "Sources/SpooktacularCore/BreakGlassTicket.swift + Sources/SpooktacularInfrastructureApple/BreakGlassTicketCodec.swift + Sources/spooktacular-agent/BreakGlassVerification.swift",
+            implementation: "Sources/SpooktacularCore/BreakGlassTicket.swift + Sources/SpooktacularInfrastructureApple/BreakGlassTicketCodec.swift + Sources/SpooktacularGuestAgentCore/BreakGlassVerification.swift",
             test: "Tests/SpooktacularKitTests/BreakGlassTicketTests.swift",
             notes: "Ed25519-signed, 1h TTL cap, JTI denylist. Four-gate server-side enforcement at the guest agent."
         ),
@@ -179,7 +179,7 @@ public enum SecurityControlInventory {
             name: "Three-tier vsock channel isolation",
             category: "Break-Glass",
             standard: "Transport-layer capability segregation",
-            implementation: "Sources/spooktacular-agent/AgentHTTPServer.swift listenAll + AgentRouter.endpointScope",
+            implementation: "Sources/SpooktacularGuestAgentCore/AgentHTTPServer.swift listenAll + AgentRouter.endpointScope",
             test: "Tests/SpooktacularKitTests/GuestAgentContractTests.swift",
             notes: "Ports 9470 (read-only), 9471 (runner), 9472 (break-glass). Requests exceeding channel scope rejected at accept time."
         ),
@@ -241,7 +241,7 @@ public enum SecurityControlInventory {
             name: "VM → IAM role binding (workload identity federation)",
             category: "Authentication & Identity",
             standard: "OpenID Connect Core 1.0; AWS STS AssumeRoleWithWebIdentity; OWASP ASVS V2.10 (no unchanging credentials)",
-            implementation: "Sources/SpooktacularCore/VMIAMBinding.swift + Sources/SpooktacularInfrastructureApple/JSONVMIAMBindingStore.swift + Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift (/v1/iam, /v1/vms/:name/identity-token) + Sources/spooktacular-cli/Commands/IAM.swift + Sources/spooktacular-agent/WorkloadTokenCache.swift",
+            implementation: "Sources/SpooktacularCore/VMIAMBinding.swift + Sources/SpooktacularInfrastructureApple/JSONVMIAMBindingStore.swift + Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift (/v1/iam, /v1/vms/:name/identity-token) + Sources/spooktacular-cli/Commands/IAM.swift + Sources/SpooktacularGuestAgentCore/WorkloadTokenCache.swift",
             test: "Tests/SpooktacularKitTests/VMIAMBindingTests.swift",
             notes: "Operators bind a VM to a cloud IAM role; the controller mints short-lived ES256 JWTs via the SEP-bound WorkloadTokenIssuer; VMs get temporary cloud credentials via standard OIDC federation. No long-lived access keys in VM images."
         ),
@@ -281,7 +281,7 @@ public enum SecurityControlInventory {
             name: "SEP-only signing keys — no software-key fallback",
             category: "Data at Rest",
             standard: "Threat: malware running as the logged-in user",
-            implementation: "Sources/SpooktacularInfrastructureApple/P256KeyStore.swift (loadOrCreateSEP as the sole provisioning path). The previous `loadOrCreateSoftware` helper, along with `SPOOKTACULAR_AUDIT_SIGNING_KEY_PATH` and `SPOOKTACULAR_OIDC_ISSUER_KEY_PATH`, were removed in Phase 3 of the SEP migration.",
+            implementation: "Sources/SpooktacularInfrastructureApple/P256KeyStore.swift (loadOrCreateSEP as the sole provisioning path). The previous `loadOrCreateSoftware` helper, along with `SPOOKTACULAR_AUDIT_SIGNING_KEY_PATH` and `SPOOKTACULAR_OIDC_ISSUER_KEY_PATH`, no longer exist.",
             test: "Tests/SpooktacularKitTests/P256KeyStoreTests.swift",
             notes: "PEM-on-disk keys are reachable by any process with the logged-in user's UID; SEP-bound keys are hardware-isolated and non-extractable even under full kernel compromise. The daemon resolves keys by Keychain label and fails at startup if the label is missing — silent ephemeral keys are not possible."
         ),
@@ -311,7 +311,7 @@ public enum SecurityControlInventory {
             name: "Path-traversal hardening on guest-agent /fs",
             category: "Injection & Path Safety",
             standard: "CWE-22 mitigation",
-            implementation: "Sources/spooktacular-agent/AgentRouter.swift handleListFS (component-aware containment + symmetric symlink resolution)",
+            implementation: "Sources/SpooktacularGuestAgentCore/AgentRouter.swift handleListFS (component-aware containment + symmetric symlink resolution)",
             test: "Tests/SpooktacularKitTests/GuestAgentContractTests.swift",
             notes: "Sibling directory prefix bypass closed (e.g. /Users/administrator no longer escapes /Users/admin allow-list)."
         ),

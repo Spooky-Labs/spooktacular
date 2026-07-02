@@ -105,7 +105,21 @@ enum AgentHTTPServer {
     /// ``BreakGlassTicketVerifier`` for the threat model.
     nonisolated(unsafe) static var ticketVerifier: BreakGlassTicketVerifier?
 
-    /// Starts three vsock HTTP listeners in parallel — one per capability tier.
+    /// Adapter that translates the in-process
+    /// `SpiceClipboardAgent` state into the flat
+    /// ``SpiceStatusSnapshot`` DTO returned by
+    /// `GET /api/v1/spice/status`. `nil` in builds that
+    /// don't embed the clipboard bridge — the endpoint then
+    /// responds with ``SpiceClipboardState/notStarted``.
+    ///
+    /// Set once at app launch (after the SwiftUI
+    /// `SpooktacularGuestTools` app wires up its
+    /// `AgentController`), then read concurrently from every
+    /// connection-handler queue. The `nonisolated(unsafe)`
+    /// contract matches the verifier vars above.
+    nonisolated(unsafe) static var spiceStatusProvider: (any SpiceStatusProvider)?
+
+    /// Starts four vsock HTTP listeners in parallel — one per capability tier.
     ///
     /// Each listener binds to a separate vsock port and enforces a maximum
     /// ``EndpointScope`` at the transport layer. Requests whose endpoint
@@ -116,18 +130,23 @@ enum AgentHTTPServer {
     /// |------|---------|-----------|
     /// | `readonlyPort`   | Read-only      | `.readonly`   |
     /// | `runnerPort`     | Runner control | `.runner`     |
+    /// | `tunnelPort`     | TCP tunnels    | `.tunnel`     |
     /// | `breakGlassPort` | Break-glass    | `.breakGlass` |
     ///
-    /// The read-only and runner listeners run on background dispatch
-    /// queues; the break-glass listener blocks the calling thread.
+    /// The read-only, runner, and tunnel listeners run on background
+    /// dispatch queues; the break-glass listener blocks the calling
+    /// thread for the lifetime of the server. On hosts where
+    /// `AF_VSOCK` isn't available (Guest Tools running outside a VM),
+    /// the break-glass listener returns immediately and the function
+    /// exits cleanly rather than aborting the process.
     ///
     /// - Parameters:
     ///   - readonlyPort: The vsock port for the read-only channel (default: 9470).
     ///   - runnerPort: The vsock port for the runner channel (default: 9471).
     ///   - breakGlassPort: The vsock port for the break-glass channel (default: 9472).
-    /// - Returns: Never returns; loops until the process is terminated.
+    ///   - tunnelPort: The vsock port for the TCP-tunnel channel (default: 9473).
     ///
-    /// Before calling this, set ``signatureVerifier`` and /or
+    /// Before calling this, set ``signatureVerifier`` and / or
     /// ``ticketVerifier``. At least one must be configured unless
     /// the agent is deliberately running in legacy no-auth mode
     /// (a warning should be logged at startup in that case).
@@ -136,12 +155,15 @@ enum AgentHTTPServer {
         runnerPort: UInt32 = 9471,
         breakGlassPort: UInt32 = 9472,
         tunnelPort: UInt32 = 9473
-    ) -> Never {
+    ) {
         log.notice("Starting multi-channel vsock listeners: readonly=\(readonlyPort), runner=\(runnerPort), breakGlass=\(breakGlassPort), tunnel=\(tunnelPort)")
 
-        // Start read-only, runner, and tunnel listeners on
-        // background queues. Break-glass blocks the main
-        // thread below so the process never exits.
+        // Read-only, runner, and tunnel listeners run on
+        // background queues. The break-glass listener blocks
+        // the calling thread — by design, so the caller can
+        // choose its own blocking context (a `DispatchQueue`
+        // detach for the SwiftUI app, or the `@main` CLI's
+        // main thread).
         DispatchQueue.global(qos: .default).async {
             acceptLoop(port: readonlyPort, channelScope: .readonly)
         }
@@ -152,7 +174,12 @@ enum AgentHTTPServer {
             acceptLoop(port: tunnelPort, channelScope: .tunnel)
         }
 
-        // Block the main thread on the break-glass listener.
+        // The break-glass listener holds the calling thread
+        // for the lifetime of the server. On hosts where
+        // `AF_VSOCK` isn't available (guest-tools app running
+        // outside a VM context), this returns immediately
+        // and the caller sees a clean exit rather than a
+        // process-wide `exit(1)`.
         acceptLoop(port: breakGlassPort, channelScope: .breakGlass)
     }
 
@@ -169,26 +196,36 @@ enum AgentHTTPServer {
     ///   - port: The vsock port to listen on (default: 9470).
     ///   - channelScope: The maximum ``EndpointScope`` allowed on this channel.
     ///     Defaults to `.breakGlass` for backward compatibility.
-    /// - Returns: Never returns; loops until the process is terminated.
+    ///
+    /// Returns normally when the accept loop terminates —
+    /// either because socket / bind / listen failed at setup
+    /// (most commonly `AF_VSOCK` isn't available in this
+    /// process context — i.e., the binary is running on the
+    /// host rather than inside a VZ guest) or because the
+    /// loop is cancelled. Callers must NOT assume this never
+    /// returns: the legacy `@main` CLI did, but the modern
+    /// guest-tools app treats a clean return as "this surface
+    /// unavailable; keep the rest of the app running".
     static func listen(
         port: UInt32 = 9470,
         channelScope: EndpointScope = .breakGlass
-    ) -> Never {
+    ) {
         acceptLoop(port: port, channelScope: channelScope)
     }
 
-    /// Binds a vsock socket and enters the accept loop. Blocks forever.
-    ///
-    /// - Parameters:
-    ///   - port: The vsock port to bind.
-    ///   - channelScope: The maximum ``EndpointScope`` for connections on this port.
-    private static func acceptLoop(port: UInt32, channelScope: EndpointScope) -> Never {
+    /// Binds a vsock socket and enters the accept loop.
+    /// Returns on setup failure so the caller can fail-open
+    /// instead of the whole app crashing (critical for the
+    /// SwiftUI guest-tools app, where the HTTP/vsock surface
+    /// is one of several subsystems — a vsock-unavailable
+    /// host environment must not kill the clipboard bridge).
+    private static func acceptLoop(port: UInt32, channelScope: EndpointScope) {
         log.info("Starting HTTP server on vsock port \(port) (scope: \(channelScope.debugLabel, privacy: .public))")
 
         let fd = socket(AF_VSOCK, SOCK_STREAM, 0)
         guard fd >= 0 else {
-            log.error("socket() failed: \(String(cString: strerror(errno)), privacy: .public)")
-            exit(1)
+            log.error("socket() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public) — HTTP surface unavailable, other subsystems continue")
+            return
         }
 
         var optval: Int32 = 1
@@ -208,15 +245,15 @@ enum AgentHTTPServer {
             }
         }
         guard bindResult == 0 else {
-            log.error("bind() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public)")
+            log.error("bind() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public) — HTTP surface unavailable")
             close(fd)
-            exit(1)
+            return
         }
 
         guard Darwin.listen(fd, listenBacklog) == 0 else {
-            log.error("listen() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public)")
+            log.error("listen() failed on port \(port): \(String(cString: strerror(errno)), privacy: .public) — HTTP surface unavailable")
             close(fd)
-            exit(1)
+            return
         }
 
         log.notice("Listening on vsock port \(port) (scope: \(channelScope.debugLabel, privacy: .public), backlog: \(listenBacklog))")

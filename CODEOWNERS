@@ -63,7 +63,7 @@ Sources/spook-agent/ @WikipediaBrown
 # Sources/SpookInfrastructureApple/AppendOnlyFileAuditStore.swift @WikipediaBrown @<security-team-member>
 # Sources/SpookApplication/UsedTicketCache.swift @WikipediaBrown @<security-team-member>
 # Sources/SpookCore/BreakGlassTicket.swift @WikipediaBrown @<security-team-member>
-# Sources/spooktacular-agent/BreakGlassVerification.swift @WikipediaBrown @<security-team-member>
+# Sources/SpooktacularGuestAgentCore/BreakGlassVerification.swift @WikipediaBrown @<security-team-member>
 # Sources/SpookCore/RBACModel.swift @WikipediaBrown @<security-team-member>
 # Sources/SpookApplication/ProductionPreflight.swift @WikipediaBrown @<security-team-member>
 

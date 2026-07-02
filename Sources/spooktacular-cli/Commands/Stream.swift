@@ -58,7 +58,11 @@ extension Spooktacular {
         var topics: [StreamTopic] = [.metrics]
 
         func run() async throws {
-            let socketURL = try SpooktacularPaths.apiSocketURL(for: name)
+            // The streaming socket is keyed by UUID (to match
+            // the bundle directory). Resolve the selector to
+            // a VM id first.
+            let id = try SpooktacularPaths.resolveID(selector: name)
+            let socketURL = SpooktacularPaths.apiSocketURL(for: id)
             guard FileManager.default.fileExists(atPath: socketURL.path) else {
                 print(Style.error("✗ No streaming server for '\(name)'. Is the VM running?"))
                 print(Style.dim("  Expected socket at: \(socketURL.path)"))
@@ -167,7 +171,8 @@ extension Spooktacular {
         var name: String
 
         func run() async throws {
-            let socketURL = try SpooktacularPaths.apiSocketURL(for: name)
+            let id = try SpooktacularPaths.resolveID(selector: name)
+            let socketURL = SpooktacularPaths.apiSocketURL(for: id)
             print(socketURL.path)
         }
     }

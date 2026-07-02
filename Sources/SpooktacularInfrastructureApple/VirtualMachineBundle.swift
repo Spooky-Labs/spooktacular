@@ -94,6 +94,61 @@ public struct VirtualMachineBundle: Sendable {
     /// after the installer reports success in a future pass).
     public static let installerISOFileName = "installer.iso"
 
+    /// Directory name for the per-VM provisioning share.
+    ///
+    /// Exposed to the guest via `VZVirtioFileSystemDeviceConfiguration`
+    /// under the dedicated ``provisionShareTag`` (not the generic
+    /// macOS automount tag — user shared folders still own that
+    /// slot). The Guest Tools LaunchDaemon mounts it at
+    /// `/Library/Application Support/Spooktacular/provision/` and
+    /// executes `first-boot.sh` if present.
+    ///
+    /// Flat-file layout (no subdirectories):
+    ///
+    /// ```
+    /// <bundle>.vm/provision/
+    ///     first-boot.sh         — host writes; daemon runs + deletes
+    ///     first-boot.ran.sh     — archived copy (daemon writes after run)
+    ///     first-boot.stdout.log — captured stdout
+    ///     first-boot.stderr.log — captured stderr
+    ///     first-boot.exit-code  — "0\n" etc.; presence means "ran"
+    /// ```
+    ///
+    /// Per-VM scoped (each bundle has its own); Apple's VZ
+    /// framework enforces access via the effective host user's
+    /// UID, so cross-VM leakage is structurally impossible.
+    public static let provisionDirectoryName = "provision"
+
+    /// Filename of the pending first-boot script. Host writes;
+    /// the Guest Tools LaunchDaemon reads, executes once, and
+    /// removes so the next boot no-ops.
+    public static let provisionScriptFileName = "first-boot.sh"
+
+    /// Filename of the archived script body after a run —
+    /// a plain copy the operator can inspect to see exactly
+    /// what was executed.
+    public static let provisionRanScriptFileName = "first-boot.ran.sh"
+
+    /// Captured stdout from the most recent first-boot run.
+    public static let provisionStdoutLogFileName = "first-boot.stdout.log"
+
+    /// Captured stderr from the most recent first-boot run.
+    public static let provisionStderrLogFileName = "first-boot.stderr.log"
+
+    /// Exit-code file — the daemon writes `"<code>\n"` after
+    /// the script returns. Its presence is the single
+    /// authoritative signal that a run completed.
+    public static let provisionExitCodeFileName = "first-boot.exit-code"
+
+    /// `virtio-fs` tag we announce to the guest for the
+    /// provisioning share. The Guest-Tools-installed
+    /// LaunchDaemon picks this tag explicitly via
+    /// `mount_virtiofs <tag> <mount-point>` — deliberately
+    /// NOT using `macOSGuestAutomountTag` so user-provided
+    /// shared folders can still claim that slot without
+    /// colliding with provisioning.
+    public static let provisionShareTag = "spook-provision"
+
     /// A JSON encoder configured for bundle files.
     public static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -111,7 +166,11 @@ public struct VirtualMachineBundle: Sendable {
 
     // MARK: - Properties
 
-    /// The file URL of the `.vm` bundle directory.
+    /// The file URL of the `.vm` bundle directory. Always of
+    /// the form `~/.spooktacular/vms/<uuid>.vm` for bundles
+    /// created under the UUID primary-key scheme; legacy
+    /// `<name>.vm` directories are migrated to `<uuid>.vm` by
+    /// ``load(from:)`` on first load.
     public let url: URL
 
     /// The hardware specification for this VM.
@@ -120,6 +179,20 @@ public struct VirtualMachineBundle: Sendable {
     /// The runtime metadata for this VM.
     public let metadata: VirtualMachineMetadata
 
+    // MARK: - Identity convenience
+
+    /// The VM's stable UUID — the primary key used by
+    /// `AppState`, the CLI resolver, the HTTP API router, and
+    /// every per-VM dictionary in memory. Pulled from
+    /// ``metadata``.
+    public var id: UUID { metadata.id }
+
+    /// The user-facing label — mutable via
+    /// ``Spooktacular/AppState/renameVM(id:to:)``. Pulled from
+    /// ``metadata``. Two VMs can share the same displayName;
+    /// identity is `id`, not this.
+    public var displayName: String { metadata.displayName }
+
     // MARK: - Bundle URLs
 
     /// Absolute URL of the optional save-state file used by the
@@ -127,6 +200,102 @@ public struct VirtualMachineBundle: Sendable {
     /// details.
     public var savedStateURL: URL {
         url.appendingPathComponent(Self.savedStateFileName)
+    }
+
+    /// Absolute URL of the per-VM provisioning share root
+    /// (host-side view of what the guest mounts at
+    /// `/Library/Application Support/Spooktacular/provision/`).
+    public var provisionDirectoryURL: URL {
+        url.appendingPathComponent(Self.provisionDirectoryName, isDirectory: true)
+    }
+
+    /// Absolute URL of the pending first-boot script. Host
+    /// writes here via ``SpooktacularInfrastructureApple/DiskInjector/inject(script:into:)``;
+    /// the guest daemon consumes and deletes it on next boot.
+    public var provisionScriptURL: URL {
+        provisionDirectoryURL.appendingPathComponent(Self.provisionScriptFileName)
+    }
+
+    /// Absolute URL of the archived copy of the last-run
+    /// script — written by the daemon after a successful run
+    /// so the operator can inspect the exact script body that
+    /// executed.
+    public var provisionRanScriptURL: URL {
+        provisionDirectoryURL.appendingPathComponent(Self.provisionRanScriptFileName)
+    }
+
+    /// Absolute URL of the captured stdout from the most
+    /// recent first-boot run.
+    public var provisionStdoutURL: URL {
+        provisionDirectoryURL.appendingPathComponent(Self.provisionStdoutLogFileName)
+    }
+
+    /// Absolute URL of the captured stderr from the most
+    /// recent first-boot run.
+    public var provisionStderrURL: URL {
+        provisionDirectoryURL.appendingPathComponent(Self.provisionStderrLogFileName)
+    }
+
+    /// Absolute URL of the exit-code file. Existence alone
+    /// indicates a completed run; contents parse to an
+    /// integer exit status.
+    public var provisionExitCodeURL: URL {
+        provisionDirectoryURL.appendingPathComponent(Self.provisionExitCodeFileName)
+    }
+
+    /// Reads the current first-boot state off disk and returns
+    /// a ``ProvisioningActivity`` snapshot the UI can bind to.
+    ///
+    /// Cheap enough to call on a UI-driven poll (a handful of
+    /// `stat(2)` calls per invocation); not worth caching. If
+    /// the provision directory doesn't exist yet — common for
+    /// legacy bundles that predate this field — the call
+    /// returns an empty snapshot.
+    public func readProvisioningActivity() -> ProvisioningActivity {
+        let fm = FileManager.default
+        let scriptURL = provisionScriptURL
+        let exitCodeURL = provisionExitCodeURL
+
+        let scriptPending = fm.fileExists(atPath: scriptURL.path)
+        let scriptPendingSince: Date? = scriptPending
+            ? (try? scriptURL.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ))?.contentModificationDate
+            : nil
+
+        var lastRun: ProvisioningActivity.Run?
+        if let exitCodeString = try? String(
+            contentsOf: exitCodeURL,
+            encoding: .utf8
+        ) {
+            let trimmed = exitCodeString.trimmingCharacters(in: .whitespacesAndNewlines)
+            let exitCode = Int(trimmed) ?? -1
+            let completedAt = (try? exitCodeURL.resourceValues(
+                forKeys: [.contentModificationDateKey]
+            ))?.contentModificationDate
+                ?? .distantPast
+            lastRun = ProvisioningActivity.Run(
+                completedAt: completedAt,
+                exitCode: exitCode,
+                stdoutBytes: Self.sizeOfFile(at: provisionStdoutURL, using: fm),
+                stderrBytes: Self.sizeOfFile(at: provisionStderrURL, using: fm)
+            )
+        }
+
+        return ProvisioningActivity(
+            scriptPending: scriptPending,
+            scriptPendingSince: scriptPendingSince,
+            lastRun: lastRun
+        )
+    }
+
+    private static func sizeOfFile(
+        at url: URL,
+        using fm: FileManager
+    ) -> Int {
+        guard let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+        else { return 0 }
+        return size
     }
 
     /// `true` when a `SavedState.vzstate` file is present in the
@@ -185,12 +354,21 @@ public struct VirtualMachineBundle: Sendable {
     ///
     /// - Parameters:
     ///   - url: The file URL where the `.vm` directory will be
-    ///     created. Must not already exist.
+    ///     created. Must not already exist. Typically produced
+    ///     via ``SpooktacularPaths/bundleURL(for:)-8y2wf`` so the
+    ///     directory name matches the metadata UUID.
     ///   - spec: The hardware specification for the VM.
+    ///   - displayName: The user-facing label stored in
+    ///     `metadata.json`. See
+    ///     ``SpooktacularCore/VirtualMachineMetadata/displayName``.
     /// - Returns: The newly created bundle.
     /// - Throws: ``VirtualMachineBundleError/alreadyExists(url:)`` if a file
     ///   or directory already exists at `url`.
-    public static func create(at url: URL, spec: VirtualMachineSpecification) throws -> VirtualMachineBundle {
+    public static func create(
+        at url: URL,
+        spec: VirtualMachineSpecification,
+        displayName: String
+    ) throws -> VirtualMachineBundle {
         let fileManager = FileManager.default
 
         // Validate BEFORE creating directories or writing files:
@@ -208,13 +386,37 @@ public struct VirtualMachineBundle: Sendable {
             withIntermediateDirectories: true
         )
 
-        let metadata = VirtualMachineMetadata()
+        // Align the metadata UUID with the URL's basename —
+        // the filesystem encodes identity too, and they must
+        // agree. If the basename doesn't parse as a UUID
+        // (e.g. a test path like `/tmp/foo.vm`), fall back to
+        // a freshly-minted one; callers using UUID-keyed paths
+        // (which is every runtime site) get deterministic
+        // round-tripping.
+        let basename = url.deletingPathExtension().lastPathComponent
+        let id = UUID(uuidString: basename) ?? UUID()
+        let metadata = VirtualMachineMetadata(id: id, displayName: displayName)
 
         let configData = try Self.encoder.encode(spec)
         try configData.write(to: url.appendingPathComponent(configFileName), options: .atomic)
 
         let metadataData = try Self.encoder.encode(metadata)
         try metadataData.write(to: url.appendingPathComponent(metadataFileName), options: .atomic)
+
+        // Pre-create the per-VM provisioning share. The guest
+        // mounts this via `VZVirtioFileSystemDevice` under
+        // ``provisionShareTag`` and the Guest Tools LaunchDaemon
+        // executes `first-boot.sh` at boot if the host has
+        // written one.
+        //
+        // Created unconditionally (macOS and Linux guests
+        // both): Linux doesn't use this path yet, but the
+        // empty directory costs nothing and keeps the bundle
+        // layout consistent.
+        try fileManager.createDirectory(
+            at: url.appendingPathComponent(provisionDirectoryName),
+            withIntermediateDirectories: true
+        )
 
         // For Linux guests, provision an empty EFI NVRAM
         // variable store at bundle-create time. The firmware
@@ -320,18 +522,34 @@ public struct VirtualMachineBundle: Sendable {
 
     // MARK: - Loading Bundles
 
-    /// Loads an existing VM bundle from disk.
+    /// Loads an existing VM bundle from disk, migrating legacy
+    /// name-keyed bundles to the UUID-keyed layout in-place.
     ///
-    /// Reads and parses the `config.json` and `metadata.json`
-    /// files from the bundle directory.
+    /// Two bundle-directory shapes coexist during the migration
+    /// window:
+    ///
+    /// 1. **UUID-keyed** — `<uuid>.vm/` with `metadata.displayName`
+    ///    already populated. Loaded verbatim.
+    /// 2. **Legacy name-keyed** — `<name>.vm/` whose metadata
+    ///    lacks a display name (decoded as `""`). This load
+    ///    back-fills `displayName` from the directory basename,
+    ///    re-writes `metadata.json`, and renames the directory
+    ///    to `<id>.vm/`. The returned bundle carries the
+    ///    post-migration URL so callers never touch the old
+    ///    path again.
+    ///
+    /// Migration is idempotent: a second load on an already-
+    /// migrated directory is a no-op.
     ///
     /// - Parameter url: The file URL of an existing `.vm` bundle
-    ///   directory.
-    /// - Returns: The loaded bundle.
-    /// - Throws: ``VirtualMachineBundleError/notFound(url:)`` if the directory
-    ///   does not exist. ``VirtualMachineBundleError/invalidConfiguration(url:)``
-    ///   or ``VirtualMachineBundleError/invalidMetadata(url:)`` if the JSON
-    ///   files are missing or malformed.
+    ///   directory. May be either shape.
+    /// - Returns: The loaded bundle, pointing at the UUID-keyed
+    ///   path on disk.
+    /// - Throws: ``VirtualMachineBundleError/notFound(url:)`` if
+    ///   the directory does not exist.
+    ///   ``VirtualMachineBundleError/invalidConfiguration(url:)``
+    ///   or ``VirtualMachineBundleError/invalidMetadata(url:)``
+    ///   if the JSON files are missing or malformed.
     public static func load(from url: URL) throws -> VirtualMachineBundle {
         guard FileManager.default.fileExists(atPath: url.path) else {
             Log.vm.error("Bundle not found at \(url.lastPathComponent, privacy: .public)")
@@ -345,14 +563,58 @@ public struct VirtualMachineBundle: Sendable {
             at: url.appendingPathComponent(configFileName),
             orThrow: .invalidConfiguration(url: url)
         )
-        let metadata = try decodeFile(
+        var metadata = try decodeFile(
             VirtualMachineMetadata.self,
             at: url.appendingPathComponent(metadataFileName),
             orThrow: .invalidMetadata(url: url)
         )
 
-        Log.vm.info("Loaded bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
-        return VirtualMachineBundle(url: url, spec: spec, metadata: metadata)
+        let basename = url.deletingPathExtension().lastPathComponent
+        let directoryIsUUID = UUID(uuidString: basename) != nil
+        let needsDisplayNameBackfill = metadata.displayName.isEmpty
+        let needsRename = !directoryIsUUID
+
+        if needsDisplayNameBackfill {
+            // Legacy bundles carried the display name in the
+            // directory basename only. Promote it into
+            // `metadata.json` so subsequent loads don't need to
+            // look at the path.
+            metadata.displayName = basename
+            try writeMetadata(metadata, to: url)
+            Log.vm.info(
+                "Backfilled displayName='\(basename, privacy: .public)' into metadata of legacy bundle (id=\(metadata.id.uuidString, privacy: .public))"
+            )
+        }
+
+        let finalURL: URL
+        if needsRename {
+            // Move the directory to its UUID-keyed home. Same
+            // parent dir, so this is an atomic `rename(2)` on
+            // APFS — no data copy.
+            let newURL = url
+                .deletingLastPathComponent()
+                .appendingPathComponent("\(metadata.id.uuidString).vm")
+            // Target conflict is only possible if a VM with the
+            // same UUID was already migrated. Shouldn't happen
+            // (UUIDs are unique per bundle), but guard anyway.
+            if FileManager.default.fileExists(atPath: newURL.path) {
+                Log.vm.error(
+                    "Cannot migrate \(basename, privacy: .public) → \(newURL.lastPathComponent, privacy: .public): destination already exists. Leaving bundle at legacy path."
+                )
+                finalURL = url
+            } else {
+                try FileManager.default.moveItem(at: url, to: newURL)
+                Log.vm.info(
+                    "Migrated legacy bundle \(basename, privacy: .public).vm → \(newURL.lastPathComponent, privacy: .public)"
+                )
+                finalURL = newURL
+            }
+        } else {
+            finalURL = url
+        }
+
+        Log.vm.info("Loaded bundle '\(finalURL.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
+        return VirtualMachineBundle(url: finalURL, spec: spec, metadata: metadata)
     }
 
     // MARK: - Private

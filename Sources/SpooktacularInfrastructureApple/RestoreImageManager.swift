@@ -468,7 +468,8 @@ public final class RestoreImageManager: Sendable {
     /// - Returns: The newly created bundle, ready for installation.
     @MainActor
     public func createBundle(
-        named name: String,
+        id: UUID = UUID(),
+        displayName: String,
         in directory: URL,
         from restoreImage: VZMacOSRestoreImage,
         spec: VirtualMachineSpecification
@@ -482,9 +483,17 @@ public final class RestoreImageManager: Sendable {
             throw RestoreImageError.unsupportedHardwareModel
         }
 
-        Log.ipsw.info("Creating bundle '\(name, privacy: .public)' with platform artifacts")
-        let bundleURL = directory.appendingPathComponent("\(name).vm")
-        let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
+        // The bundle directory is keyed by UUID under the
+        // UUID primary-key scheme — renames of the VM no
+        // longer require moving the directory, and two VMs
+        // with the same display name don't collide on disk.
+        Log.ipsw.info("Creating bundle id=\(id.uuidString, privacy: .public) displayName='\(displayName, privacy: .public)' with platform artifacts")
+        let bundleURL = directory.appendingPathComponent("\(id.uuidString).vm")
+        let bundle = try VirtualMachineBundle.create(
+            at: bundleURL,
+            spec: spec,
+            displayName: displayName
+        )
 
         try requirements.hardwareModel.dataRepresentation.write(
             to: bundleURL.appendingPathComponent(VirtualMachineBundle.hardwareModelFileName)
@@ -507,7 +516,7 @@ public final class RestoreImageManager: Sendable {
             sizeInBytes: spec.diskSizeInBytes
         )
 
-        Log.ipsw.notice("Bundle '\(name, privacy: .public)' created with platform artifacts (disk format: \(diskFormat.rawValue.uppercased(), privacy: .public))")
+        Log.ipsw.notice("Bundle id=\(id.uuidString, privacy: .public) displayName='\(displayName, privacy: .public)' created with platform artifacts (disk format: \(diskFormat.rawValue.uppercased(), privacy: .public))")
         return bundle
     }
 

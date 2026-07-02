@@ -1,0 +1,15 @@
+SpiceProtocol
+Copyright 2026 Spooky Labs
+Licensed under the MIT License (see LICENSE).
+
+This Swift package implements the SPICE vd_agent wire protocol as
+described in the public specification published by the SPICE project
+at <https://www.spice-space.org/agent-protocol.html>.
+
+The protocol specification documentation is maintained by Red Hat and
+the SPICE project. No source code from SPICE reference implementations
+(spice-vdagent, spice-gtk, spice-protocol, utmapp/vd_agent) was copied
+or derived; every line in this package was written from the
+specification text alone.
+
+See docs/SPEC_ATTRIBUTION.md for the detailed chain of custody.

@@ -2,7 +2,7 @@
 
 **Status:** Living document — updated per release.
 **Owner:** security@spooktacular.app
-**Scope:** `spook` CLI, `Spooktacular` GUI, `spooktacular-agent`, `spook-controller`, the HTTP API (`spook serve`).
+**Scope:** `spook` CLI, `Spooktacular` GUI, `Spooktacular Guest Tools.app` (in-guest HTTP/vsock agent + SPICE clipboard bridge), `spook-controller`, the HTTP API (`spook serve`).
 **Method:** STRIDE per asset, with explicit assumptions, attacker capabilities, and references to the code that mitigates each risk. Re-reviewed on every release-note cycle.
 
 ## 1. Assets
@@ -64,12 +64,12 @@ Every arrow is a trust boundary with explicit authentication, encryption, and au
 | **DoS** | Flooded connections | Per-IP rate limit (`SPOOK_RATE_LIMIT`), max-connections gate, request-size + timeout limits | `HTTPAPIServer.handleNewConnection` |
 | **Elevation of privilege** | Missing RBAC on an endpoint | Every dispatcher path runs `authService.authorize` before handler; deny-by-default | `routeRequest` |
 
-### 4.2 Guest agent (`spooktacular-agent`)
+### 4.2 Guest agent (`Spooktacular Guest Tools.app`)
 
 | Threat | Vector | Mitigation | Code reference |
 |--------|--------|------------|----------------|
-| **Spoofing** | Host impersonation over vsock | Host CID pinning rejects peer-to-peer attempts | `SpookAgent.acceptLoop` |
-| **Spoofing** | Network-routed connection | vsock only — no TCP socket exposed in guest | `SpookAgent.bindVsock` |
+| **Spoofing** | Host impersonation over vsock | Host CID pinning rejects peer-to-peer attempts | `AgentHTTPServer.acceptLoop` |
+| **Spoofing** | Network-routed connection | vsock only — no TCP socket exposed in guest | `AgentHTTPServer.listenAll` |
 | **Tampering** | Replay of captured exec command | Break-glass on port 9472 only; runner/read-only tokens 403 on exec | `AgentRouter.handleExec`, port binding tier |
 | **Repudiation** | Shell exec without audit | Each exec writes an `AuditRecord` via `SPOOK_AGENT_AUDIT_FILE`; append-only in enterprise mode | `AgentRouter.emitAgentAudit` |
 | **Information disclosure** | Child shell inherits auth tokens | `SPOOK_AGENT_*` and `SPOOK_AUDIT_*` scrubbed from `process.environment` before exec | `AgentRouter.handleExec` |

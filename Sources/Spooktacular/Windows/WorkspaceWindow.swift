@@ -118,6 +118,17 @@ struct WorkspaceWindow: View {
     @ToolbarContentBuilder
     private var runningToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            // Leading indicator, not a button — just reports
+            // clipboard-bridge health. Placed first so users
+            // glance at the color without their eyes having to
+            // skip past the action buttons. State is pushed by
+            // the guest via `GuestEvent.spiceStatus` on every
+            // SPICE-bridge transition; no polling.
+            ClipboardStatusPill(
+                snapshot: appState.clipboardStatuses[vmName]
+                    ?? .init(state: .notStarted)
+            )
+
             Button {
                 Task { await appState.suspendVM(vmName) }
             } label: {

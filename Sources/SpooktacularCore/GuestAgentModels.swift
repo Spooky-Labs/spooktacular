@@ -52,13 +52,43 @@ public struct GuestStatsResponse: Codable, Sendable, Equatable {
     /// Seconds since the guest booted.
     public let uptime: TimeInterval
 
+    /// Cumulative bytes read from disk since the VM started.
+    /// `nil` when the source is pre-v2 (guest agent running
+    /// an older schema). Host-side samples via `libproc`'s
+    /// `ri_diskio_bytesread` always fill this in.
+    public let diskBytesRead: UInt64?
+
+    /// Cumulative bytes written to disk since the VM started.
+    /// `nil` when the source is pre-v2. Host-side samples
+    /// via `libproc`'s `ri_diskio_byteswritten` always fill
+    /// this in.
+    public let diskBytesWritten: UInt64?
+
+    /// Cumulative energy used by the VM's backing process,
+    /// in nanojoules. `nil` outside host-observed samples —
+    /// guests can't measure their own host-side energy
+    /// footprint. Sourced from `libproc`'s `ri_energy`.
+    public let energyNanoJoules: UInt64?
+
+    /// Cumulative page-ins (on-demand faults pulling pages
+    /// back into resident RAM) since the VM started. A
+    /// high-growth rate here is the host-side signal of
+    /// memory pressure / swapping activity inside the VM.
+    /// `nil` when the source doesn't provide it. Host-side
+    /// samples read `ri_pageins`.
+    public let pageIns: UInt64?
+
     public init(
         cpuUsage: Double?,
         memoryUsedBytes: UInt64,
         memoryTotalBytes: UInt64,
         loadAverage1m: Double,
         processCount: Int,
-        uptime: TimeInterval
+        uptime: TimeInterval,
+        diskBytesRead: UInt64? = nil,
+        diskBytesWritten: UInt64? = nil,
+        energyNanoJoules: UInt64? = nil,
+        pageIns: UInt64? = nil
     ) {
         self.cpuUsage = cpuUsage
         self.memoryUsedBytes = memoryUsedBytes
@@ -66,6 +96,10 @@ public struct GuestStatsResponse: Codable, Sendable, Equatable {
         self.loadAverage1m = loadAverage1m
         self.processCount = processCount
         self.uptime = uptime
+        self.diskBytesRead = diskBytesRead
+        self.diskBytesWritten = diskBytesWritten
+        self.energyNanoJoules = energyNanoJoules
+        self.pageIns = pageIns
     }
 
     /// Convenience: memory usage as a fraction in `0.0 … 1.0`.

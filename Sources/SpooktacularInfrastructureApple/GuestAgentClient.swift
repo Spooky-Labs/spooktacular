@@ -151,6 +151,30 @@ public final class GuestAgentClient {
         try await request(method: "GET", path: "/api/v1/stats")
     }
 
+    /// Returns the current SPICE clipboard bridge state so
+    /// the workspace toolbar can render a tri-state pill
+    /// (gray / amber / green / red).
+    ///
+    /// The guest-agent process (`SpooktacularGuestTools.app`)
+    /// answers this endpoint with a live in-process snapshot
+    /// of its `SpiceClipboardAgent` actor's status; the
+    /// DTO shape lives in ``SpooktacularCore/SpiceStatusSnapshot``.
+    ///
+    /// Callers should poll on a gentle interval (~3 s). The
+    /// underlying in-process hop inside the guest is
+    /// sub-millisecond, but vsock round-trip + JSON decode
+    /// dominates — polling faster burns CPU without
+    /// meaningful UI gain. A `.failed` probe (connection
+    /// refused, VM paused mid-handshake) is handled by the
+    /// caller as "render gray, retry on the next tick".
+    ///
+    /// - Throws: ``GuestAgentError`` on connection / transport
+    ///   failures. Older agents without the endpoint return
+    ///   404; callers can catch and map to `.notStarted`.
+    public func spiceStatus() async throws -> SpiceStatusSnapshot {
+        try await request(method: "GET", path: "/api/v1/spice/status")
+    }
+
     /// Subscribes to the guest agent's unified event stream
     /// at `GET /api/v1/events/stream` (port 9470, readonly
     /// scope). Yields one ``GuestEvent`` per newline-delimited

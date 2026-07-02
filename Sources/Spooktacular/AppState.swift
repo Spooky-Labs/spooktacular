@@ -33,6 +33,12 @@ enum SpooktacularError: LocalizedError, Equatable, Sendable {
     case vmNotFound(name: String)
     case permissionDenied(what: String)
     case internalError(reason: String)
+    /// Preserves a typed `LocalizedError`'s own description +
+    /// recovery verbatim so subsystems like ``DiskInjectorError``
+    /// can surface an actionable next step (e.g. "delete and
+    /// recreate the VM") instead of being flattened into the
+    /// generic ``internalError``'s "file a bug" suggestion.
+    case detailed(description: String, recovery: String)
 
     /// A human-readable explanation of what went wrong.
     var errorDescription: String? {
@@ -53,6 +59,8 @@ enum SpooktacularError: LocalizedError, Equatable, Sendable {
             return "Permission denied: \(what)"
         case .internalError(let reason):
             return "Internal error: \(reason)"
+        case .detailed(let description, _):
+            return description
         }
     }
 
@@ -74,6 +82,8 @@ enum SpooktacularError: LocalizedError, Equatable, Sendable {
             return "Grant access in System Settings → Privacy & Security, then retry."
         case .internalError:
             return "File a bug report at github.com/Spooky-Labs/spooktacular/issues with the error text."
+        case .detailed(_, let recovery):
+            return recovery
         }
     }
 
@@ -85,6 +95,12 @@ enum SpooktacularError: LocalizedError, Equatable, Sendable {
     /// Classifies a raw `Error` into a ``SpooktacularError``
     /// so AppState's centralized alert can present a consistent
     /// message + action regardless of which subsystem surfaced it.
+    ///
+    /// Preserves typed ``LocalizedError`` descriptions *and*
+    /// recovery suggestions (via the ``detailed`` case) so
+    /// subsystem errors like ``DiskInjectorError.guestVolumeEncrypted``
+    /// keep their actionable next step instead of collapsing
+    /// into the generic "file a bug" text.
     static func classify(_ error: Error) -> SpooktacularError {
         if let already = error as? SpooktacularError { return already }
         let ns = error as NSError
@@ -96,6 +112,13 @@ enum SpooktacularError: LocalizedError, Equatable, Sendable {
         }
         if ns.domain == NSCocoaErrorDomain && ns.code == NSFileReadNoPermissionError {
             return .permissionDenied(what: ns.localizedDescription)
+        }
+        if let localized = error as? LocalizedError,
+           let description = localized.errorDescription,
+           let recovery = localized.recoverySuggestion,
+           !description.isEmpty,
+           !recovery.isEmpty {
+            return .detailed(description: description, recovery: recovery)
         }
         return .internalError(reason: error.localizedDescription)
     }
@@ -128,6 +151,18 @@ final class AppState {
 
     /// Guest agent clients for running VMs.
     var agentClients: [String: GuestAgentClient] = [:]
+
+    /// Latest SPICE clipboard-bridge snapshot per running VM,
+    /// pushed by the guest-tools app via the
+    /// `GuestEvent.spiceStatus(_:)` topic on the event
+    /// stream. Consumed by the workspace toolbar's tri-state
+    /// clipboard pill.
+    ///
+    /// Defaults to ``SpiceClipboardState/notStarted`` on the
+    /// very first read (dictionary absence) so the UI shows
+    /// a gray pill before the first event arrives — matching
+    /// reality: we haven't heard from the agent yet.
+    var clipboardStatuses: [String: SpiceStatusSnapshot] = [:]
 
     /// Names of VMs whose dedicated workspace window is currently
     /// open. Populated by ``workspaceDidOpen(_:)`` /
@@ -170,6 +205,19 @@ final class AppState {
     /// `stopVM` so publishers don't outlive the server they
     /// push to.
     private var publisherTasks: [String: [Task<Void, Never>]] = [:]
+
+    /// Per-VM host-side metrics sampler. Each running VM
+    /// gets one; `sample()` is driven at ~1 Hz from a
+    /// publisher Task in ``startStreamingServices``.
+    ///
+    /// This is the *default* metrics source — no in-guest
+    /// agent required. Reads CPU time + memory footprint
+    /// from the VM's backing XPC helper process via
+    /// `proc_pid_rusage`, which Activity Monitor and
+    /// `powermetrics` use too. The in-guest agent remains
+    /// available as an opt-in for richer data (frontmost
+    /// app, per-process tree, guest load average).
+    private var hostSamplers: [String: HostMetricsSampler] = [:]
 
     /// The shared clipboard bridge — handles sync between the host
     /// pasteboard and the focused workspace.
@@ -230,28 +278,29 @@ final class AppState {
     /// Whether the info banner is presented.
     var infoPresented: Bool = false
 
-    /// Set of VM names whose guest agent has been successfully
+    /// Set of VM names whose Guest Tools have been successfully
     /// installed at least once. Persisted across app launches
-    /// via `UserDefaults` so the UI can reflect agent status
+    /// via `UserDefaults` so the UI can reflect install state
     /// without re-mounting the guest disk to probe for the
-    /// LaunchDaemon plist.
+    /// `/Applications/Spooktacular Guest Tools.app` path.
     ///
-    /// Populated on a successful `installGuestAgent` and on any
-    /// agent connection observed by `AgentEventListener` —
-    /// which means running-with-metrics VMs self-register even
-    /// if the original install was via the CLI.
+    /// Populated on a successful ``installGuestTools(_:)`` and
+    /// on any guest-agent connection observed by
+    /// `AgentEventListener` — which means running-with-metrics
+    /// VMs self-register even if the original install was via
+    /// the CLI.
     ///
-    /// Not authoritative (the plist could be manually removed
-    /// from inside the guest), but good enough for a "Agent
-    /// Installed ✓" button label that replaces the affordance
-    /// once the op is known to have succeeded.
-    var agentsInstalled: Set<String> = Set(
-        UserDefaults.standard.stringArray(forKey: "spook.agentsInstalled") ?? []
+    /// Not authoritative (the `.app` could be manually deleted
+    /// from inside the guest), but good enough for a "Guest
+    /// Tools Installed ✓" button label that replaces the
+    /// affordance once the op is known to have succeeded.
+    var guestToolsInstalled: Set<String> = Set(
+        UserDefaults.standard.stringArray(forKey: "spook.guestToolsInstalled") ?? []
     ) {
         didSet {
             UserDefaults.standard.set(
-                Array(agentsInstalled),
-                forKey: "spook.agentsInstalled"
+                Array(guestToolsInstalled),
+                forKey: "spook.guestToolsInstalled"
             )
         }
     }
@@ -501,12 +550,32 @@ final class AppState {
                 graphicsViews[name] = view
             }
 
+            // Snapshot existing Virtualization-XPC child PIDs
+            // *before* start. After start(), the new child(ren)
+            // belong to this VM and become our metrics targets.
+            // Read more about the attribution technique on
+            // `HostMetricsSampler.init(pidsBeforeStart:)`.
+            let preStartPIDs = HostMetricsSampler.captureVirtualizationPIDs()
+
             // `startOrResume` transparently restores from a saved-
             // state file when one exists (the "close the laptop"
             // workflow from Suspend), falling back to a cold boot
             // if restore fails or when booting into Recovery.
             try await vm.startOrResume(startUpFromMacOSRecovery: recovery)
             runningVMs[name] = vm
+
+            // Host-side metrics sampler. Created eagerly —
+            // every macOS / Linux VM gets one. No entitlement,
+            // no sudo, no in-guest agent required. The
+            // sampler's publisher Task is spawned by
+            // ``startStreamingServices(for:vm:)`` below so
+            // frames start flowing within ~1s of VM start.
+            hostSamplers[name] = HostMetricsSampler(
+                vmName: name,
+                vCPUs: bundle.spec.cpuCount,
+                memoryTotalBytes: bundle.spec.memorySizeInBytes,
+                pidsBeforeStart: preStartPIDs
+            )
 
             if let socketDevice = vm.vzVM?.socketDevices.first as? VZVirtioSocketDevice {
                 agentClients[name] = GuestAgentClient(socketDevice: socketDevice)
@@ -561,12 +630,72 @@ final class AppState {
     /// ``stopStreamingServices(for:)`` cancels them.
     private func startStreamingServices(for name: String, vm: VirtualMachine) async {
         do {
-            let socketURL = try SpooktacularPaths.apiSocketURL(for: name)
+            // `name` here is still the user-facing key AppState
+            // uses for its dictionaries during the UUID
+            // transition. The socket path keys on the VM's
+            // stable UUID (from metadata), so multiple VMs
+            // sharing a display name don't collide on disk.
+            guard let bundle = vms[name] else { return }
+            let socketURL = SpooktacularPaths.apiSocketURL(for: bundle.id)
             let server = VMStreamingServer(vmName: name, socketURL: socketURL)
             try await server.start()
             streamingServers[name] = server
 
             var tasks: [Task<Void, Never>] = []
+
+            // Host-side metrics publisher — the default data
+            // source for the sidebar chart. Polls the VM's
+            // backing XPC process at ~1 Hz via `libproc`; no
+            // in-guest agent, no admin prompt, starts
+            // immediately on VM start.
+            //
+            // Every tick does two things:
+            //
+            //   1. Publish to ``VMStreamingServer`` on the
+            //      `.metrics` topic — reachable by any
+            //      external consumer on the UDS (CLI,
+            //      dashboards, Prometheus scrape).
+            //   2. Inject a synthetic ``GuestEvent.stats``
+            //      into the ``AgentEventListener`` bus — the
+            //      same bus the in-GUI chart
+            //      (``WorkspaceStatsModel``) subscribes to.
+            //      The chart treats host-sampled and
+            //      guest-pushed frames identically; if the
+            //      user later installs the guest agent for
+            //      richer data, the agent's frames are
+            //      newer on the same bus and naturally
+            //      win.
+            let listener = vm.agentEventListener()
+            if let sampler = hostSamplers[name] {
+                tasks.append(Task { [weak server, weak listener] in
+                    while !Task.isCancelled {
+                        let snapshot = await sampler.sample()
+                        await server?.publish(topic: .metrics, payload: snapshot)
+
+                        let synthetic = GuestStatsResponse(
+                            cpuUsage: snapshot.cpuUsage,
+                            memoryUsedBytes: snapshot.memoryUsedBytes,
+                            memoryTotalBytes: snapshot.memoryTotalBytes,
+                            loadAverage1m: snapshot.loadAverage1m,
+                            processCount: snapshot.processCount,
+                            uptime: snapshot.uptime,
+                            diskBytesRead: snapshot.diskBytesRead,
+                            diskBytesWritten: snapshot.diskBytesWritten,
+                            energyNanoJoules: snapshot.energyNanoJoules,
+                            pageIns: snapshot.pageIns
+                        )
+                        await MainActor.run { [weak listener] in
+                            listener?.inject(.stats(synthetic))
+                        }
+
+                        do {
+                            try await Task.sleep(for: .seconds(1))
+                        } catch {
+                            return
+                        }
+                    }
+                })
+            }
 
             // Unified guest event publisher. One vsock
             // connection carries `.stats`, `.ports`, and
@@ -587,16 +716,16 @@ final class AppState {
                         for try await event in listener.events() {
                             guard !Task.isCancelled else { return }
                             // First event of any kind proves
-                            // the agent is installed and
+                            // Guest Tools are installed and
                             // running — self-register so the
-                            // button reflects "Agent
+                            // button reflects "Guest Tools
                             // Installed ✓" even for VMs that
-                            // got the agent via CLI or another
+                            // got them via CLI or another
                             // out-of-band path.
                             if let self,
-                               !self.agentsInstalled.contains(name) {
+                               !self.guestToolsInstalled.contains(name) {
                                 await MainActor.run {
-                                    self.agentsInstalled.insert(name)
+                                    self.guestToolsInstalled.insert(name)
                                 }
                             }
                             switch event {
@@ -624,6 +753,21 @@ final class AppState {
                                 // for frontmost yet — reserved
                                 // for Track J dock-icon mirroring.
                                 break
+                            case .spiceStatus(let snapshot):
+                                // SPICE clipboard-bridge state
+                                // pushed by the guest-tools
+                                // app. Stored on AppState so
+                                // the workspace toolbar can
+                                // read it without polling;
+                                // MainActor hop because
+                                // `clipboardStatuses` is
+                                // @Observable state on the
+                                // MainActor.
+                                if let self {
+                                    await MainActor.run {
+                                        self.clipboardStatuses[name] = snapshot
+                                    }
+                                }
                             }
                         }
                     } catch {
@@ -688,10 +832,12 @@ final class AppState {
             try await vm.suspend()
             runningVMs.removeValue(forKey: name)
             agentClients.removeValue(forKey: name)
+            clipboardStatuses.removeValue(forKey: name)
             // Drop the pre-created VZVirtualMachineView so the
             // next start cycle allocates a fresh one (and a
             // fresh framebuffer subscription).
             graphicsViews.removeValue(forKey: name)
+            hostSamplers.removeValue(forKey: name)
             await stopStreamingServices(for: name)
 
             AccessibilityNotification.Announcement(
@@ -755,10 +901,12 @@ final class AppState {
             try await vm.stop(graceful: false)
             runningVMs.removeValue(forKey: name)
             agentClients.removeValue(forKey: name)
+            clipboardStatuses.removeValue(forKey: name)
             // Drop the pre-created VZVirtualMachineView so the
             // next start cycle allocates a fresh one (and a
             // fresh framebuffer subscription).
             graphicsViews.removeValue(forKey: name)
+            hostSamplers.removeValue(forKey: name)
             await stopStreamingServices(for: name)
 
             AccessibilityNotification.Announcement(
@@ -781,10 +929,11 @@ final class AppState {
         /// `.local` → use `localIpswPath`; `.latest` → download.
         let ipswSource: IPSWSource
         let localIpswPath: String
-        /// If non-nil, injected at first boot via the shared
-        /// `AgentBootstrapTemplate` path. Already-resolved URL +
-        /// ownership flag so the sheet's keychain / template
-        /// resolution happens before we dismiss.
+        /// If non-nil, injected at first boot via
+        /// ``SpooktacularInfrastructureApple/DiskInjector/inject(script:into:)``.
+        /// Already-resolved URL + ownership flag so the
+        /// sheet's keychain / template resolution happens
+        /// before we dismiss the create sheet.
         let userScriptURL: URL?
         let ownsUserScript: Bool
 
@@ -802,8 +951,15 @@ final class AppState {
     /// ``pendingCreations``.
     func beginCreateMacOSVM(_ request: MacOSCreationRequest) {
         let name = request.name
-        guard pendingCreations[name] == nil, vms[name] == nil else {
-            presentError(SpooktacularError.invalidVMName(reason: "A VM named '\(name)' already exists or is being created."))
+        // Display-name uniqueness is no longer a hard error
+        // under the UUID primary-key scheme — bundle
+        // directories are `<uuid>.vm` so two VMs named "test"
+        // coexist on disk without colliding. AppState's
+        // pending/vms dicts still use the display name as the
+        // key for now (transitional), so only an in-flight
+        // create with the exact same name blocks a new one.
+        guard pendingCreations[name] == nil else {
+            presentError(SpooktacularError.invalidVMName(reason: "A VM named '\(name)' is already being created. Dismiss or wait for the existing creation to finish."))
             return
         }
         pendingCreations[name] = PendingCreation(
@@ -820,8 +976,8 @@ final class AppState {
     /// `VZMacOSInstaller`, just bundle + disk + ISO copy).
     func beginCreateLinuxVM(_ request: LinuxCreationRequest) {
         let name = request.name
-        guard pendingCreations[name] == nil, vms[name] == nil else {
-            presentError(SpooktacularError.invalidVMName(reason: "A VM named '\(name)' already exists or is being created."))
+        guard pendingCreations[name] == nil else {
+            presentError(SpooktacularError.invalidVMName(reason: "A VM named '\(name)' is already being created. Dismiss or wait for the existing creation to finish."))
             return
         }
         pendingCreations[name] = PendingCreation(
@@ -847,16 +1003,34 @@ final class AppState {
     @MainActor
     private func runMacOSCreate(request: MacOSCreationRequest) async {
         let name = request.name
-        let bundleURL = (try? SpooktacularPaths.bundleURL(for: name))
+        // Mint the VM's permanent UUID upfront so the bundle
+        // directory, metadata, and any recovery-cleanup path
+        // all agree on a single identity. Two parallel creates
+        // with the same display name get different UUIDs and
+        // different bundle directories — the failure/collision
+        // semantics are display-name-independent.
+        let bundleID = UUID()
+        let bundleURL: URL? = SpooktacularPaths.bundleURL(for: bundleID)
         let manager = RestoreImageManager(cacheDirectory: ipswCacheDirectory)
 
         do {
-            updateCreation(name: name, progress: 0, status: "Fetching restore image info…")
-            let restoreImage = try await manager.fetchLatestSupported()
-            try Task.checkCancellation()
-            let v = restoreImage.operatingSystemVersion
-            updateCreation(name: name, progress: 0.05, status: "Found macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)")
-
+            // Restore-image resolution is source-dependent.
+            //
+            //   - `.local`  — load the user's on-disk IPSW via
+            //     `VZMacOSRestoreImage.image(from:)`. No network
+            //     I/O; `fetchLatestSupported()`'s call to Apple's
+            //     catalog is not required here.
+            //   - `.latest` — fetch from Apple's catalog to learn
+            //     the current IPSW URL, then resume-download.
+            //
+            // Previously this path unconditionally called
+            // `fetchLatestSupported()` before branching, which
+            // made every create (including local-IPSW creates)
+            // depend on Apple's catalog reachability — a single
+            // "restore image catalog failed to load" bubbled up
+            // from a network failure on the host blocked users
+            // who already had the IPSW on disk.
+            let restoreImage: VZMacOSRestoreImage
             let ipswURL: URL
             switch request.ipswSource {
             case .local:
@@ -866,9 +1040,26 @@ final class AppState {
                     failCreation(name: name, message: "IPSW file not found at '\(expanded)'.")
                     return
                 }
+                updateCreation(name: name, progress: 0, status: "Loading local IPSW…")
+                restoreImage = try await VZMacOSRestoreImage.image(from: candidate)
+                try Task.checkCancellation()
                 ipswURL = candidate
-                updateCreation(name: name, progress: 0.5, status: "Using local IPSW at \(candidate.lastPathComponent)…")
+                let v = restoreImage.operatingSystemVersion
+                updateCreation(
+                    name: name,
+                    progress: 0.5,
+                    status: "Using macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion) from \(candidate.lastPathComponent)…"
+                )
             case .latest:
+                updateCreation(name: name, progress: 0, status: "Fetching restore image info…")
+                restoreImage = try await manager.fetchLatestSupported()
+                try Task.checkCancellation()
+                let v = restoreImage.operatingSystemVersion
+                updateCreation(
+                    name: name,
+                    progress: 0.05,
+                    status: "Found macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+                )
                 updateCreation(name: name, progress: 0.05, status: "Downloading kernel and firmware…")
                 ipswURL = try await manager.downloadIPSW(from: restoreImage) { [weak self] snap in
                     Task { @MainActor in
@@ -888,7 +1079,11 @@ final class AppState {
 
             updateCreation(name: name, progress: 0.5, status: "Writing base disk…")
             let bundle = try await manager.createBundle(
-                named: name, in: vmsDirectory, from: restoreImage, spec: request.spec
+                id: bundleID,
+                displayName: name,
+                in: vmsDirectory,
+                from: restoreImage,
+                spec: request.spec
             )
             try Task.checkCancellation()
 
@@ -904,12 +1099,32 @@ final class AppState {
             }
             try Task.checkCancellation()
 
-            updateCreation(name: name, progress: 0.95, status: "Injecting agent bootstrap…")
-            try await provisionBundleForCreate(
-                bundle: bundle,
-                userScriptURL: request.userScriptURL,
-                ownsUserScript: request.ownsUserScript
-            )
+            // Provisioning phase. Runs when EITHER:
+            //
+            //   - the spec requests Guest Tools install
+            //     (`.installed`), OR
+            //   - the user supplied a first-boot script
+            //     (template or `--user-data`).
+            //
+            // `provisionBundleForCreate` handles both
+            // independently — Guest Tools via `ditto`
+            // (fully unprivileged — launch-at-login is the
+            // guest app's concern, not the host installer's),
+            // user scripts via the legacy
+            // `DiskInjector.inject(script:)` LaunchDaemon
+            // path (still requires one admin-auth prompt for
+            // `/Library/LaunchDaemons/` root:wheel chown).
+            let needsProvisioning =
+                bundle.spec.guestToolsInstall.installsAppBundle
+                || request.userScriptURL != nil
+            if needsProvisioning {
+                updateCreation(name: name, progress: 0.95, status: "Provisioning guest…")
+                try await provisionBundleForCreate(
+                    bundle: bundle,
+                    userScriptURL: request.userScriptURL,
+                    ownsUserScript: request.ownsUserScript
+                )
+            }
 
             pendingCreations.removeValue(forKey: name)
             loadVMs()
@@ -937,11 +1152,9 @@ final class AppState {
     @MainActor
     private func runLinuxCreate(request: LinuxCreationRequest) async {
         let name = request.name
-        let bundleURL = (try? SpooktacularPaths.bundleURL(for: name))
-        guard let target = bundleURL else {
-            failCreation(name: name, message: "Could not resolve VM bundle path for '\(name)'.")
-            return
-        }
+        // Mint UUID upfront — matches `runMacOSCreate`'s shape.
+        let bundleID = UUID()
+        let target = SpooktacularPaths.bundleURL(for: bundleID)
 
         let trimmedISO = request.installerISOPath.trimmingCharacters(in: .whitespaces)
         let expandedISO = (trimmedISO as NSString).expandingTildeInPath
@@ -954,7 +1167,11 @@ final class AppState {
         do {
             try Task.checkCancellation()
             updateCreation(name: name, progress: 0.1, status: "Creating bundle…")
-            let bundle = try VirtualMachineBundle.create(at: target, spec: request.spec)
+            let bundle = try VirtualMachineBundle.create(
+                at: target,
+                spec: request.spec,
+                displayName: name
+            )
 
             updateCreation(name: name, progress: 0.2, status: "Allocating \(request.spec.diskSizeInGigabytes) GB disk…")
             let diskURL = target.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
@@ -998,35 +1215,52 @@ final class AppState {
         userScriptURL: URL?,
         ownsUserScript: Bool
     ) async throws {
-        let userContent: String?
-        if let userScriptURL {
-            userContent = try? String(contentsOf: userScriptURL, encoding: .utf8)
-        } else {
-            userContent = nil
-        }
-        guard let agentBinary = AgentBootstrapTemplate.locateAgentBinary() else {
-            // No bundled binary — fall back to injecting just
-            // the user script if present.
-            if let userScriptURL {
+        let install = bundle.spec.guestToolsInstall
+
+        // 1. Guest Tools install — the Apple-native direct-copy
+        //    path. Honours the two-way user choice:
+        //      .disabled   → skip entirely
+        //      .installed  → ditto `.app` into /Applications/
+        //
+        //    Launch-at-login is owned by the guest app's own
+        //    `SMAppService.mainApp`-backed menu-bar toggle,
+        //    not the host installer, so this path is fully
+        //    unprivileged — no `/Library/LaunchAgents/`
+        //    plist, no `chownToRoot`, no admin prompt.
+        //
+        //    The locator returns `nil` during developer
+        //    iteration (when `build-app.sh` hasn't produced
+        //    the nested bundle yet). That's a soft failure:
+        //    we log a warning and continue with user script
+        //    provisioning so the create flow isn't blocked by
+        //    a missing dev artifact.
+        if install.installsAppBundle {
+            if let appBundle = AppBundleBootstrapTemplate.locateGuestToolsBundle() {
                 try await Task.detached(priority: .userInitiated) {
-                    try DiskInjector.inject(script: userScriptURL, into: bundle)
+                    try DiskInjector.installGuestTools(
+                        appBundle: appBundle,
+                        into: bundle
+                    )
                 }.value
-                if ownsUserScript {
-                    try? ScriptFile.cleanup(scriptURL: userScriptURL)
-                }
+            } else {
+                Log.provision.warning(
+                    "Guest Tools bundle not found — skipping install (user chose \(install.rawValue, privacy: .public)). Run build-app.sh to produce Contents/Applications/Spooktacular Guest Tools.app."
+                )
             }
-            return
         }
-        let combined = try AgentBootstrapTemplate.generate(
-            agentBinaryURL: agentBinary,
-            appending: userContent
-        )
-        try await Task.detached(priority: .userInitiated) {
-            try DiskInjector.inject(script: combined, into: bundle)
-        }.value
-        try? ScriptFile.cleanup(scriptURL: combined)
-        if let userScriptURL, ownsUserScript {
-            try? ScriptFile.cleanup(scriptURL: userScriptURL)
+
+        // 2. User-provided provisioning script — independent
+        //    of Guest Tools. Injected via the legacy
+        //    script+LaunchDaemon path so workload templates
+        //    (GitHub runner, OpenClaw, remote desktop) keep
+        //    working during the Phase-3 transition.
+        if let userScriptURL {
+            try await Task.detached(priority: .userInitiated) {
+                try DiskInjector.inject(script: userScriptURL, into: bundle)
+            }.value
+            if ownsUserScript {
+                try? ScriptFile.cleanup(scriptURL: userScriptURL)
+            }
         }
     }
 
@@ -1065,11 +1299,22 @@ final class AppState {
                     try await vm.stop(graceful: false)
                     runningVMs.removeValue(forKey: name)
                     agentClients.removeValue(forKey: name)
-            // Drop the pre-created VZVirtualMachineView so the
-            // next start cycle allocates a fresh one (and a
-            // fresh framebuffer subscription).
-            graphicsViews.removeValue(forKey: name)
+                    clipboardStatuses.removeValue(forKey: name)
+                    // Drop the pre-created VZVirtualMachineView so the
+                    // next start cycle allocates a fresh one (and a
+                    // fresh framebuffer subscription).
+                    graphicsViews.removeValue(forKey: name)
+                    hostSamplers.removeValue(forKey: name)
                 }
+                // Clear the "Guest Tools installed" flag — the
+                // set is keyed by VM name AND persisted to
+                // UserDefaults. Without this, deleting a VM
+                // and recreating one with the same name leaves
+                // the prior VM's installed-flag intact, and
+                // `VMDetailView` incorrectly shows "Guest
+                // Tools Installed ✓" for the fresh VM.
+                // Caught during E2E verification (task #70).
+                guestToolsInstalled.remove(name)
 
                 // Delete the bundle directory. If it's already
                 // missing, fall through — the dict entry is
@@ -1108,8 +1353,13 @@ final class AppState {
             guard let sourceBundle = vms[source] else { return }
             transitioningVMs.insert(destination)
             defer { transitioningVMs.remove(destination) }
-            let destinationURL = try SpooktacularPaths.bundleURL(for: destination)
-            let clone = try CloneManager.clone(source: sourceBundle, to: destinationURL)
+            let destinationID = UUID()
+            let destinationURL = SpooktacularPaths.bundleURL(for: destinationID)
+            let clone = try CloneManager.clone(
+                source: sourceBundle,
+                to: destinationURL,
+                displayName: destination
+            )
             vms[destination] = clone
 
             AccessibilityNotification.Announcement(
@@ -1120,25 +1370,43 @@ final class AppState {
         }
     }
 
-    /// Injects the agent-install bootstrap into a stopped VM's
-    /// disk so the guest starts pushing metrics on its next
-    /// boot. Idempotent — re-running is a no-op because
-    /// `--install-daemon` and `launchctl bootstrap` both
-    /// tolerate re-registration.
+    /// Installs Spooktacular Guest Tools into a stopped VM's
+    /// `/Applications/` directory via the Apple-native
+    /// direct-copy path (`/usr/bin/ditto`). Invoked from
+    /// `VMDetailView`'s "Install Guest Tools" toolbar button
+    /// for VMs that were created with
+    /// ``GuestToolsInstallMode/disabled`` or whose bundle
+    /// pre-dates the install.
     ///
-    /// Requires the VM to be stopped. `DiskInjector` uses
+    /// After the VM boots and the user opens Guest Tools
+    /// from `/Applications/`, the app's menu-bar UI exposes
+    /// an `SMAppService.mainApp`-backed "Launch at Login"
+    /// toggle — that's the user's control for auto-start,
+    /// not the host installer's decision.
+    ///
+    /// Requires the VM to be stopped. ``DiskInjector`` uses
     /// `diskutil image attach` which can't mount a disk image
     /// that `VZVirtualMachine` (or its XPC service) currently
     /// has open.
-    func installGuestAgent(_ name: String) {
+    func installGuestTools(_ name: String) {
         guard let bundle = vms[name] else { return }
+        // Guest Tools is a macOS-only `.app`. Calling this on
+        // a Linux VM would `ditto` a Mach-O bundle onto an
+        // ext4 data volume — almost certainly failing at the
+        // `diskutil image attach` step (Linux disks aren't
+        // APFS). Guard explicitly so the user sees a clear
+        // error instead of a raw hdiutil diagnostic.
+        guard bundle.spec.guestOS == .macOS else {
+            presentError(GuestToolsInstallError.unsupportedGuestOS)
+            return
+        }
         guard runningVMs[name] == nil else {
-            presentError(AgentInstallError.vmRunning(name))
+            presentError(GuestToolsInstallError.vmRunning(name))
             return
         }
         guard !transitioningVMs.contains(name) else { return }
-        guard let agentBinary = AgentBootstrapTemplate.locateAgentBinary() else {
-            presentError(AgentInstallError.bundledAgentMissing)
+        guard let appBundle = AppBundleBootstrapTemplate.locateGuestToolsBundle() else {
+            presentError(GuestToolsInstallError.bundleMissing)
             return
         }
 
@@ -1150,7 +1418,7 @@ final class AppState {
         // clear "try again in a moment" rather than a raw
         // POSIX error.
         if isDiskInUse(bundle: bundle) {
-            presentError(AgentInstallError.diskInUse(name))
+            presentError(GuestToolsInstallError.diskInUse(name))
             return
         }
 
@@ -1158,31 +1426,24 @@ final class AppState {
         Task {
             defer { transitioningVMs.remove(name) }
             do {
-                let script = try AgentBootstrapTemplate.generate(
-                    agentBinaryURL: agentBinary,
-                    appending: nil
-                )
                 try await Task.detached(priority: .userInitiated) {
-                    try DiskInjector.inject(script: script, into: bundle)
+                    try DiskInjector.installGuestTools(
+                        appBundle: appBundle,
+                        into: bundle
+                    )
                 }.value
-                try? ScriptFile.cleanup(scriptURL: script)
 
                 // Record the installation so the sidebar +
-                // detail-view buttons can reflect "Agent
+                // detail-view buttons can reflect "Guest Tools
                 // Installed ✓" instead of leaving the user
                 // wondering whether to click again.
-                agentsInstalled.insert(name)
+                guestToolsInstalled.insert(name)
 
-                // Visible success banner — the prior version
-                // only posted an accessibility announcement,
-                // which is invisible to sighted users. Without
-                // visible feedback, a silent success looks
-                // identical to a silent failure.
-                infoMessage = "Guest agent installed in '\(name)'. Start the VM to begin reporting metrics."
+                infoMessage = "Spooktacular Guest Tools installed in '\(name)'. Start the VM, open Spooktacular Guest Tools from /Applications/, and flip the menu-bar 'Launch at Login' toggle to have it start automatically next time."
                 infoPresented = true
 
                 AccessibilityNotification.Announcement(
-                    "Guest agent installed in \(name)"
+                    "Guest Tools installed in \(name)"
                 ).post()
             } catch {
                 presentError(error)
@@ -1222,30 +1483,35 @@ final class AppState {
         }
     }
 
-    enum AgentInstallError: LocalizedError {
+    enum GuestToolsInstallError: LocalizedError {
         case vmRunning(String)
-        case bundledAgentMissing
+        case bundleMissing
         case diskInUse(String)
+        case unsupportedGuestOS
 
         var errorDescription: String? {
             switch self {
             case .vmRunning(let name):
-                "Stop '\(name)' before installing the guest agent — disk injection requires the VM to be shut down."
-            case .bundledAgentMissing:
-                "Bundled spooktacular-agent binary not found alongside Spooktacular.app."
+                "Stop '\(name)' before installing Guest Tools — disk injection requires the VM to be shut down."
+            case .bundleMissing:
+                "Spooktacular Guest Tools bundle not found alongside Spooktacular.app."
             case .diskInUse(let name):
                 "'\(name)''s disk image is still in use by Apple's Virtualization XPC service, which lingers briefly after Stop."
+            case .unsupportedGuestOS:
+                "Spooktacular Guest Tools is macOS-only. Linux guests use spice-vdagent + distro-native tooling for the same functionality."
             }
         }
 
         var recoverySuggestion: String? {
             switch self {
             case .vmRunning:
-                "Click Stop, then retry Install Guest Agent."
-            case .bundledAgentMissing:
-                "Rebuild the app with `./build-app.sh` — the script now copies the agent binary into Contents/MacOS/."
+                "Click Stop, then retry Install Guest Tools."
+            case .bundleMissing:
+                "Rebuild the app with `./build-app.sh` — the script now bundles Spooktacular Guest Tools.app under Contents/Applications/."
             case .diskInUse:
                 "Wait 5-10 seconds for the XPC service to release the disk, then retry. If it persists, Force Quit 'com.apple.Virtualization.VirtualMachine' in Activity Monitor."
+            case .unsupportedGuestOS:
+                "On a Linux guest, install spice-vdagent with your distro's package manager: `apt install spice-vdagent` (Debian/Ubuntu) or `dnf install spice-vdagent` (Fedora/RHEL)."
             }
         }
     }
@@ -1330,6 +1596,7 @@ final class AppState {
         }
         runningVMs.removeAll()
         agentClients.removeAll()
+        clipboardStatuses.removeAll()
     }
 
     // MARK: - Error Presentation

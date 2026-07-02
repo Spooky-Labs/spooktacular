@@ -65,6 +65,13 @@ struct CreateVMSheet: View {
     @State private var audioEnabled = true
     @State private var microphoneEnabled = false
     @State private var clipboardSharingEnabled = true
+    /// Three-way control for installing Spooktacular Guest
+    /// Tools into the guest's `/Applications/`. Default
+    /// matches the zero-friction "just works" semantics —
+    /// clipboard + guest-agent API come online at first login
+    /// without the user having to click anything. Only shown
+    /// in the UI for macOS guests; Linux guests ignore it.
+    @State private var guestToolsInstall: GuestToolsInstallMode = .installed
     @State private var sharedFolders: [SharedFolderEntry] = []
     @State private var userDataPath = ""
     @State private var provisioningMode = ProvisioningMode.diskInject
@@ -88,17 +95,12 @@ struct CreateVMSheet: View {
     /// ephemeral CI pools that reclone a clean VM per run.
     @State private var ephemeralRunner: Bool = false
 
-    @State private var isCreating = false
-    @State private var statusMessage = ""
-    @State private var progress: Double = 0
-    @State private var bytesReceived: Int64 = 0
-    @State private var bytesTotal: Int64 = 0
+    /// Surface for pre-dispatch validation errors — Keychain
+    /// miss on the GitHub-runner template, missing user-data
+    /// script, etc. Once the request ships to AppState the
+    /// sheet dismisses immediately; any post-dispatch failure
+    /// lands on the sidebar's `PendingVMRow`, not here.
     @State private var errorMessage: String?
-
-    /// In-flight creation task, used by the Cancel button to
-    /// interrupt the download / install loop and clean up the
-    /// partial bundle.
-    @State private var creationTask: Task<Void, Never>?
 
     /// Network selector modes. Separating ``NetworkMode`` (the
     /// domain value) from the picker's selection avoids leaking
@@ -321,7 +323,21 @@ struct CreateVMSheet: View {
                 } header: {
                     Text("Audio & Sharing")
                 } footer: {
-                    Text("Audio uses VirtIO sound devices. Clipboard sharing is only supported for Linux guests; macOS guests do not support clipboard synchronization through the Virtualization framework.")
+                    Text("Audio uses VirtIO sound devices. Clipboard sharing enables the SPICE virtio-serial port; enabling Guest Tools below activates the guest side of the bridge.")
+                }
+
+                if guestOS == .macOS {
+                    Section {
+                        Picker("Guest Tools", selection: $guestToolsInstall) {
+                            ForEach(GuestToolsInstallMode.allCases, id: \.self) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                    } header: {
+                        Text("Guest Tools")
+                    } footer: {
+                        Text(guestToolsInstall.helpText)
+                    }
                 }
 
                 Section {
@@ -344,35 +360,44 @@ struct CreateVMSheet: View {
             }
             .formStyle(.grouped)
 
-            // Status bar
-            if isCreating || errorMessage != nil {
+            // Inline error — pre-dispatch validation failures
+            // only (Keychain miss, missing user-data script).
+            // Post-dispatch progress lives on the sidebar's
+            // pending row.
+            if errorMessage != nil {
                 Divider()
-                statusBar
+                errorBar
             }
 
-            // Button bar — Cancel + Create share a glass
-            // container so both buttons blend on hover/press and
-            // the prominent Create reads as the clear next step.
+            // Button bar. Cancel just dismisses; Create builds
+            // the request, hands it to AppState, and dismisses
+            // immediately — the actual long-running pipeline
+            // (IPSW download, install, disk inject) runs on the
+            // AppState-owned Task and publishes progress to the
+            // `pendingCreations` dict. The sidebar renders a
+            // row per entry with progress + status, so the
+            // user keeps the library available throughout.
             Divider()
             GlassEffectContainer(spacing: 8) {
                 HStack {
-                    Button("Cancel") { cancelOrDismiss() }
+                    Button("Cancel") { dismiss() }
                         .glassButton()
                         .keyboardShortcut(.cancelAction)
-                        .help("Close the sheet and cancel the in-flight download")
                         .accessibilityIdentifier(AccessibilityID.cancelButton)
                     Spacer()
-                    if isCreating {
-                        ProgressView().controlSize(.small)
-                    }
+                    // `submitCreate()` dismisses the sheet on
+                    // successful dispatch and leaves it open
+                    // (with `errorMessage` set) on validation
+                    // failure so the user can fix Keychain /
+                    // path issues without losing the form
+                    // state they just typed.
                     Button("Create") {
-                        let task = Task { await createVM() }
-                        creationTask = task
+                        submitCreate()
                     }
                     .glassProminentButton()
-                    .disabled(isCreating || !canCreate)
+                    .disabled(!canCreate)
                     .keyboardShortcut(.defaultAction)
-                    .help("Download the IPSW, install macOS, and register the bundle")
+                    .help("Create the VM. Download + install run in the background; progress shows in the sidebar.")
                     .accessibilityIdentifier(AccessibilityID.createConfirmButton)
                 }
             }
@@ -414,20 +439,6 @@ struct CreateVMSheet: View {
             }
         case .linux:
             return !installerISOPath.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-    }
-
-    // MARK: - Cancel / Dismiss
-
-    /// Cancels the in-flight creation task if running, otherwise
-    /// dismisses the sheet. Partial bundle cleanup happens in the
-    /// `catch` branch of ``createVM()``.
-    private func cancelOrDismiss() {
-        if let task = creationTask {
-            task.cancel()
-            creationTask = nil
-        } else {
-            dismiss()
         }
     }
 
@@ -693,42 +704,19 @@ struct CreateVMSheet: View {
         }
     }
 
-    // MARK: - Status Bar
+    // MARK: - Error Bar
 
     @ViewBuilder
-    private var statusBar: some View {
-        VStack(spacing: 6) {
-            if isCreating {
-                ProgressView(value: progress)
-                    .tint(.accentColor)
-                    .accessibilityIdentifier(AccessibilityID.progressIndicator)
-                    .accessibilityValue("\(Int(progress * 100)) percent")
-                HStack {
-                    Text(statusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier(AccessibilityID.statusMessage)
-                    Spacer()
-                    if bytesTotal > 0 {
-                        Text("\(byteString(bytesReceived)) / \(byteString(bytesTotal))")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            if let error = errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
+    private var errorBar: some View {
+        if let error = errorMessage {
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassCard(cornerRadius: 10)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 10)
-        .glassCard(cornerRadius: 10)
-    }
-
-    private func byteString(_ count: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 
     // MARK: - Actions
@@ -836,84 +824,6 @@ struct CreateVMSheet: View {
         }
     }
 
-    /// Generates the provisioning script (if any) and injects it
-    /// into the bundle via ``DiskInjector``. For template-backed
-    /// scripts we always use `disk-inject` — the guest hasn't
-    /// booted yet, so SSH isn't reachable. Custom scripts honour
-    /// the user's `provisioningMode` selection.
-    ///
-    /// Script cleanup policy matches
-    /// `Sources/spooktacular-cli/Commands/Create.swift`: template-generated
-    /// scripts live under `~/Library/Caches/com.spooktacular/`
-    /// and are removed post-injection to shrink the on-disk
-    /// window for the GitHub registration token.
-    @MainActor
-    private func provisionBundle(_ bundle: VirtualMachineBundle) async throws {
-        let (userScriptURL, ownsUserScript) = try resolveProvisionScript()
-
-        // ALWAYS try to inject the agent-install bootstrap.
-        // Without it, a fresh macOS guest has no
-        // spooktacular-agent binary and will never push metrics
-        // frames on the host's VZVirtioSocketListener — the
-        // "empty chart forever" bug. The bootstrap auto-
-        // installs the agent as a LaunchDaemon on first boot.
-        //
-        // If the user also picked a template (GitHub runner,
-        // OpenClaw, remote desktop, custom), we concatenate
-        // the template's bash AFTER the agent install so both
-        // run from one LaunchDaemon invocation.
-        let userScriptContent: String?
-        if let userScriptURL {
-            userScriptContent = try? String(
-                contentsOf: userScriptURL,
-                encoding: .utf8
-            )
-        } else {
-            userScriptContent = nil
-        }
-
-        guard let agentBinary = AgentBootstrapTemplate.locateAgentBinary() else {
-            // No bundled agent available (dev env without the
-            // built binary). Fall back to injecting just the
-            // user script if present — preserves the old
-            // behavior so we don't regress existing workflows.
-            if let userScriptURL {
-                statusMessage = "Injecting first-boot script…"
-                progress = 1.0
-                try await Task.detached(priority: .userInitiated) {
-                    try DiskInjector.inject(script: userScriptURL, into: bundle)
-                }.value
-                if ownsUserScript {
-                    try? ScriptFile.cleanup(scriptURL: userScriptURL)
-                }
-            }
-            return
-        }
-
-        statusMessage = "Injecting agent bootstrap…"
-        progress = 1.0
-
-        let combinedScript = try AgentBootstrapTemplate.generate(
-            agentBinaryURL: agentBinary,
-            appending: userScriptContent
-        )
-
-        // `hdiutil attach/detach` + APFS mount is synchronous and
-        // takes ~2-3s. Move it off the main actor so the progress
-        // bar keeps animating.
-        try await Task.detached(priority: .userInitiated) {
-            try DiskInjector.inject(script: combinedScript, into: bundle)
-        }.value
-
-        // Clean up the combined script (always owned — we just
-        // generated it) and the user-supplied script if we
-        // owned that too.
-        try? ScriptFile.cleanup(scriptURL: combinedScript)
-        if let userScriptURL, ownsUserScript {
-            try? ScriptFile.cleanup(scriptURL: userScriptURL)
-        }
-    }
-
     /// Resolves the provisioning script for the selected template
     /// and returns `(url, ownsScript)` — the second tuple member
     /// tells the caller whether to delete the file after use.
@@ -948,115 +858,26 @@ struct CreateVMSheet: View {
         }
     }
 
-    /// Build a Linux VM bundle: empty disk + installer ISO +
-    /// EFI NVRAM + machine identifier.  No IPSW, no
-    /// `VZMacOSInstaller`, no post-install provisioning
-    /// (first boot is interactive into the distro's
-    /// installer).  Mirrors
-    /// `runLinuxCreate` in the CLI.
-    @MainActor
-    private func createLinuxVM(
-        trimmedName: String,
-        spec: VirtualMachineSpecification,
-        bundleURL: URL?
-    ) async {
-        statusMessage = "Preparing Linux VM bundle…"
-        progress = 0
+    // MARK: - Submit
 
-        let trimmedISOPath = installerISOPath.trimmingCharacters(in: .whitespaces)
-        let expanded = (trimmedISOPath as NSString).expandingTildeInPath
-        let isoURL = URL(filePath: expanded)
-        guard FileManager.default.fileExists(atPath: isoURL.path) else {
-            errorMessage = "Installer ISO not found at '\(expanded)'."
-            isCreating = false
-            creationTask = nil
-            return
-        }
-
-        guard let targetBundleURL = bundleURL ?? (try? SpooktacularPaths.bundleURL(for: trimmedName)) else {
-            errorMessage = "Could not resolve VM bundle path for '\(trimmedName)'."
-            isCreating = false
-            creationTask = nil
-            return
-        }
-
-        do {
-            try Task.checkCancellation()
-
-            // Bundle skeleton — writes config.json,
-            // metadata.json, and (because
-            // spec.guestOS == .linux) the empty EFI NVRAM
-            // file + generic machine identifier.
-            let bundle = try VirtualMachineBundle.create(
-                at: targetBundleURL,
-                spec: spec
-            )
-            progress = 0.2
-            statusMessage = "Allocating \(Int(diskSizeInGigabytes)) GB disk…"
-
-            // Disk allocation goes through the shared
-            // `DiskImageAllocator` which prefers ASIF
-            // (Apple Sparse Image Format) and falls back to
-            // RAW on older hosts.  See its docs for the
-            // portability / APFS tradeoff — ASIF-backed
-            // `.spook.vm` bundles survive cross-filesystem
-            // transfers without materializing zeros.
-            let diskURL = targetBundleURL.appendingPathComponent(
-                VirtualMachineBundle.diskImageFileName
-            )
-            let diskFormat = try await DiskImageAllocator.create(
-                at: diskURL,
-                sizeInBytes: spec.diskSizeInBytes
-            )
-            statusMessage = "Allocated \(diskFormat.rawValue.uppercased()) disk…"
-            try Task.checkCancellation()
-
-            progress = 0.5
-            statusMessage = "Copying installer ISO…"
-            // FileManager.copyItem picks up APFS clonefile
-            // semantics when source and destination live on
-            // the same volume — the 2–4 GB copy is typically
-            // near-instant.
-            try FileManager.default.copyItem(at: isoURL, to: bundle.installerISOURL)
-            progress = 0.9
-            statusMessage = "Finalizing…"
-
-            appState.loadVMs()
-            appState.selectedVM = trimmedName
-            isCreating = false
-            creationTask = nil
-            dismiss()
-        } catch is CancellationError {
-            try? FileManager.default.removeItem(at: targetBundleURL)
-            isCreating = false
-            creationTask = nil
-            progress = 0
-            statusMessage = "Cancelled."
-            dismiss()
-        } catch {
-            try? FileManager.default.removeItem(at: targetBundleURL)
-            if let localized = error as? LocalizedError,
-               let description = localized.errorDescription {
-                let suggestion = localized.recoverySuggestion.map { " \($0)" } ?? ""
-                errorMessage = description + suggestion
-            } else {
-                errorMessage = error.localizedDescription
-            }
-            isCreating = false
-            creationTask = nil
-            progress = 0
-        }
-    }
-
-    @MainActor
-    private func createVM() async {
+    /// Builds the `VirtualMachineSpecification` from the sheet's
+    /// bindings, hands off the request to ``AppState``, and
+    /// dismisses. The long-running pipeline (IPSW download,
+    /// install, disk inject — or Linux disk + ISO copy) runs on
+    /// AppState's Task and publishes progress to
+    /// ``AppState/pendingCreations``; the sidebar renders a row
+    /// per entry so the user can keep working with other VMs
+    /// while this one builds.
+    ///
+    /// Pre-dispatch validation errors (Keychain miss on the
+    /// GitHub-runner template, missing user-data script, etc.)
+    /// keep the sheet open with ``errorMessage`` populated.
+    /// Everything after successful dispatch is AppState's
+    /// problem.
+    private func submitCreate() {
+        errorMessage = nil
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
-
-        isCreating = true
-        errorMessage = nil
-        bytesReceived = 0
-        bytesTotal = 0
 
         let spec = VirtualMachineSpecification(
             cpuCount: Int(cpuCount),
@@ -1072,133 +893,41 @@ struct CreateVMSheet: View {
             autoResizeDisplay: autoResizeDisplay,
             clipboardSharingEnabled: clipboardSharingEnabled,
             guestOS: guestOS,
-            rosettaEnabled: guestOS == .linux ? rosettaEnabled : false
+            rosettaEnabled: guestOS == .linux ? rosettaEnabled : false,
+            guestToolsInstall: guestOS == .macOS ? guestToolsInstall : .disabled
         )
 
-        let bundleURL = (try? SpooktacularPaths.bundleURL(for: trimmedName))
-
-        // Linux branch is short-and-straightforward —
-        // allocate the bundle, sparse-truncate the disk,
-        // copy the installer ISO.  No IPSW download, no
-        // `VZMacOSInstaller`, no provisioning (yet).  Mirrors
-        // `runLinuxCreate` in
-        // `Sources/spooktacular-cli/Commands/Create.swift`.
-        if guestOS == .linux {
-            await createLinuxVM(trimmedName: trimmedName, spec: spec, bundleURL: bundleURL)
-            return
-        }
-
-        let manager = RestoreImageManager(cacheDirectory: appState.ipswCacheDirectory)
-
-        do {
-            statusMessage = "Fetching restore image info…"
-            progress = 0
-            let restoreImage = try await manager.fetchLatestSupported()
-            try Task.checkCancellation()
-            let version = restoreImage.operatingSystemVersion
-            statusMessage = "Found macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-            progress = 0.05
-
-            let ipswURL: URL
-            if ipswSource == .local {
-                // Apple's VZ framework needs the hardware model
-                // from `fetchLatestSupported()` for bundle
-                // creation even when the user supplies their
-                // own IPSW, so we keep that call above and only
-                // skip the download here. Mirrors the CLI's
-                // branching in `Sources/spooktacular-cli/Commands/Create.swift`.
-                let trimmedPath = localIpswPath.trimmingCharacters(in: .whitespaces)
-                let expanded = (trimmedPath as NSString).expandingTildeInPath
-                let candidate = URL(filePath: expanded)
-                guard FileManager.default.fileExists(atPath: candidate.path) else {
-                    errorMessage = "IPSW file not found at '\(expanded)'."
-                    isCreating = false
-                    creationTask = nil
-                    return
-                }
-                ipswURL = candidate
-                statusMessage = "Using local IPSW at \(candidate.lastPathComponent)…"
-                progress = 0.5
-            } else {
-                statusMessage = "Downloading kernel and firmware…"
-                ipswURL = try await manager.downloadIPSW(from: restoreImage) { snapshot in
-                    Task { @MainActor in
-                        bytesReceived = snapshot.bytesReceived
-                        bytesTotal = snapshot.bytesTotal
-                        progress = 0.05 + snapshot.fraction * 0.45
-                        let pct = Int(snapshot.fraction * 100)
-                        statusMessage = snapshot.resumed
-                            ? "Resuming IPSW download (\(pct)%)…"
-                            : "Downloading IPSW (\(pct)%)…"
-                    }
-                }
-            }
-            try Task.checkCancellation()
-
-            statusMessage = "Writing base disk…"
-            progress = 0.5
-            let bundle = try await manager.createBundle(
-                named: trimmedName, in: appState.vmsDirectory,
-                from: restoreImage, spec: spec
+        switch guestOS {
+        case .linux:
+            let request = AppState.LinuxCreationRequest(
+                name: trimmedName,
+                spec: spec,
+                installerISOPath: installerISOPath
             )
-            try Task.checkCancellation()
-
-            statusMessage = "Installing macOS…"
-            progress = 0.55
-            try await manager.install(bundle: bundle, from: ipswURL) { fractionCompleted in
-                Task { @MainActor in
-                    progress = 0.55 + fractionCompleted * 0.45
-                    statusMessage = "Installing macOS (\(Int(fractionCompleted * 100))%)…"
+            appState.beginCreateLinuxVM(request)
+            dismiss()
+        case .macOS:
+            do {
+                let (userScriptURL, ownsUserScript) = try resolveProvisionScript()
+                let request = AppState.MacOSCreationRequest(
+                    name: trimmedName,
+                    spec: spec,
+                    ipswSource: ipswSource == .local ? .local : .latest,
+                    localIpswPath: localIpswPath,
+                    userScriptURL: userScriptURL,
+                    ownsUserScript: ownsUserScript
+                )
+                appState.beginCreateMacOSVM(request)
+                dismiss()
+            } catch {
+                if let localized = error as? LocalizedError,
+                   let description = localized.errorDescription {
+                    let suggestion = localized.recoverySuggestion.map { " \($0)" } ?? ""
+                    errorMessage = description + suggestion
+                } else {
+                    errorMessage = error.localizedDescription
                 }
             }
-
-            // Provisioning phase — generate the template script
-            // (or resolve the user-supplied one) and inject it via
-            // the same code path the CLI uses. Executed after
-            // install so the guest's data volume exists; disk
-            // injection mounts the freshly-populated APFS
-            // container and drops a LaunchDaemon that fires on
-            // first boot.
-            try Task.checkCancellation()
-            try await provisionBundle(bundle)
-
-            appState.loadVMs()
-            appState.selectedVM = trimmedName
-            isCreating = false
-            creationTask = nil
-            dismiss()
-        } catch is CancellationError {
-            // User hit Cancel — remove any partial bundle so a
-            // subsequent retry doesn't trip over it.
-            if let url = bundleURL {
-                try? FileManager.default.removeItem(at: url)
-            }
-            isCreating = false
-            creationTask = nil
-            progress = 0
-            statusMessage = "Cancelled."
-            dismiss()
-        } catch {
-            if let url = bundleURL {
-                try? FileManager.default.removeItem(at: url)
-            }
-            // Keychain misses and user-data lookup failures carry
-            // their own recoverySuggestion — render both lines so
-            // the user gets the copy-paste-ready `security add-
-            // generic-password` fix verbatim from
-            // `GitHubTokenError`. Other errors still route through
-            // SpooktacularError's classifier for consistent tone.
-            if let localized = error as? LocalizedError,
-               let description = localized.errorDescription {
-                let suggestion = localized.recoverySuggestion.map { " \($0)" } ?? ""
-                errorMessage = description + suggestion
-            } else {
-                let categorized = SpooktacularError.classify(error)
-                errorMessage = "\(categorized.errorDescription ?? error.localizedDescription) \(categorized.suggestedAction)"
-            }
-            isCreating = false
-            creationTask = nil
-            progress = 0
         }
     }
 }

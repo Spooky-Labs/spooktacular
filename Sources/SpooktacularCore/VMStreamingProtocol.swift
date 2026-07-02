@@ -179,6 +179,15 @@ public struct VMMetricsSnapshot: Sendable, Codable, Equatable {
     public let processCount: Int
     public let uptime: TimeInterval
 
+    /// See ``GuestStatsResponse/diskBytesRead``.
+    public let diskBytesRead: UInt64?
+    /// See ``GuestStatsResponse/diskBytesWritten``.
+    public let diskBytesWritten: UInt64?
+    /// See ``GuestStatsResponse/energyNanoJoules``.
+    public let energyNanoJoules: UInt64?
+    /// See ``GuestStatsResponse/pageIns``.
+    public let pageIns: UInt64?
+
     public init(
         at: Date,
         cpuUsage: Double?,
@@ -186,7 +195,11 @@ public struct VMMetricsSnapshot: Sendable, Codable, Equatable {
         memoryTotalBytes: UInt64,
         loadAverage1m: Double,
         processCount: Int,
-        uptime: TimeInterval
+        uptime: TimeInterval,
+        diskBytesRead: UInt64? = nil,
+        diskBytesWritten: UInt64? = nil,
+        energyNanoJoules: UInt64? = nil,
+        pageIns: UInt64? = nil
     ) {
         self.at = at
         self.cpuUsage = cpuUsage
@@ -195,6 +208,10 @@ public struct VMMetricsSnapshot: Sendable, Codable, Equatable {
         self.loadAverage1m = loadAverage1m
         self.processCount = processCount
         self.uptime = uptime
+        self.diskBytesRead = diskBytesRead
+        self.diskBytesWritten = diskBytesWritten
+        self.energyNanoJoules = energyNanoJoules
+        self.pageIns = pageIns
     }
 
     public var memoryUsageFraction: Double {

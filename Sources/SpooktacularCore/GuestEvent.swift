@@ -63,6 +63,17 @@ public enum GuestEvent: Sendable, Equatable {
     /// (rare — Finder always qualifies during normal
     /// operation; the nil case covers Recovery mode).
     case appsFrontmost(GuestAppInfo?)
+
+    /// SPICE clipboard-bridge health. Emitted by the guest
+    /// whenever its ``SpiceClipboardAgent`` transitions
+    /// state (notStarted → connecting → connected, or any
+    /// transition into `.failed`), so the host's workspace
+    /// toolbar can drive a tri-state clipboard indicator
+    /// without polling. The agent also emits one snapshot
+    /// at event-stream connect time so a newly-subscribed
+    /// host sees the current state without waiting for the
+    /// next transition.
+    case spiceStatus(SpiceStatusSnapshot)
 }
 
 // MARK: - Codable
@@ -83,6 +94,7 @@ extension GuestEvent: Codable {
         case stats
         case ports
         case appsFrontmost = "apps.frontmost"
+        case spiceStatus = "spice.status"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -98,6 +110,9 @@ extension GuestEvent: Codable {
         case .appsFrontmost:
             let payload = try container.decodeIfPresent(GuestAppInfo.self, forKey: .data)
             self = .appsFrontmost(payload)
+        case .spiceStatus:
+            let payload = try container.decode(SpiceStatusSnapshot.self, forKey: .data)
+            self = .spiceStatus(payload)
         }
     }
 
@@ -113,6 +128,9 @@ extension GuestEvent: Codable {
         case .appsFrontmost(let payload):
             try container.encode(Topic.appsFrontmost, forKey: .topic)
             try container.encodeIfPresent(payload, forKey: .data)
+        case .spiceStatus(let payload):
+            try container.encode(Topic.spiceStatus, forKey: .topic)
+            try container.encode(payload, forKey: .data)
         }
     }
 }
@@ -145,6 +163,7 @@ public struct GuestEventFilter: Sendable, Equatable {
     public static let statsTopic = "stats"
     public static let portsTopic = "ports"
     public static let appsFrontmostTopic = "apps.frontmost"
+    public static let spiceStatusTopic = "spice.status"
 
     /// Convenience: a filter that subscribes to everything.
     public static let all = GuestEventFilter(topics: [])
@@ -163,7 +182,10 @@ public struct GuestEventFilter: Sendable, Equatable {
         guard let query, !query.isEmpty else { return .all }
         let tokens = query.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }
         let valid = Set(tokens.filter {
-            $0 == statsTopic || $0 == portsTopic || $0 == appsFrontmostTopic
+            $0 == statsTopic
+                || $0 == portsTopic
+                || $0 == appsFrontmostTopic
+                || $0 == spiceStatusTopic
         })
         return GuestEventFilter(topics: valid)
     }

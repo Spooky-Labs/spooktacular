@@ -139,6 +139,18 @@ extension Spooktacular {
         var autoResize: Bool = true
 
         @Option(
+            help: """
+                How to install Spooktacular Guest Tools inside \
+                the macOS VM: disabled (pristine image, ideal \
+                for CI runners) or installed (default — app \
+                lands in /Applications/; user flips the menu-bar \
+                Launch-at-Login toggle after first login). \
+                Ignored for Linux guests.
+                """
+        )
+        var guestTools: GuestToolsInstallMode = .installed
+
+        @Option(
             name: .long,
             help: ArgumentHelp(
                 "Host directory to share with the VM (repeatable).",
@@ -271,20 +283,16 @@ extension Spooktacular {
 
             let startedAt = Date()
 
-            let bundleURL = try SpooktacularPaths.bundleURL(for: name)
-            guard !FileManager.default.fileExists(atPath: bundleURL.path) else {
-                if json {
-                    printJSONError(
-                        code: "bundle-exists",
-                        message: "VM '\(name)' already exists.",
-                        hint: "Choose a different name, or delete the existing VM with 'spook delete \(name)'."
-                    )
-                } else {
-                    print(Style.error("✗ VM '\(name)' already exists."))
-                    print(Style.dim("  Choose a different name, or delete the existing VM with 'spook delete \(name)'."))
-                }
-                throw ExitCode(CLIExit.generalFailure)
-            }
+            // Under the UUID primary-key scheme, the bundle
+            // directory is `<fresh-uuid>.vm` — two VMs with
+            // the same display name never collide on disk, so
+            // the old "bundle-exists" guard no longer fires.
+            // Display-name uniqueness is a UX preference, not
+            // a filesystem constraint; if users want to keep
+            // names unique they can inspect `spook list`.
+            try SpooktacularPaths.validateDisplayName(name)
+            let bundleID = UUID()
+            let bundleURL = SpooktacularPaths.bundleURL(for: bundleID)
 
             let effectiveNetwork = bridgedInterface.map { NetworkMode.bridged(interface: $0) }
                 ?? network
@@ -333,7 +341,8 @@ extension Spooktacular {
                 audioEnabled: audio,
                 microphoneEnabled: microphone,
                 macAddress: macAddress,
-                autoResizeDisplay: autoResize
+                autoResizeDisplay: autoResize,
+                guestToolsInstall: guestTools
             )
 
             let manager = RestoreImageManager(cacheDirectory: SpooktacularPaths.ipswCache)
@@ -381,9 +390,10 @@ extension Spooktacular {
                     }
                 }
 
-                if !json { print(Style.info("Creating VM bundle '\(name)'...")) }
+                if !json { print(Style.info("Creating VM bundle '\(name)' (id=\(bundleID.uuidString))...")) }
                 let bundle = try await manager.createBundle(
-                    named: name,
+                    id: bundleID,
+                    displayName: name,
                     in: SpooktacularPaths.vms,
                     from: restoreImage,
                     spec: spec
@@ -461,33 +471,36 @@ extension Spooktacular {
                     provisionScript = URL(filePath: path)
                 }
 
-                // Always install the guest agent on first boot.
-                // Without it the host's VZVirtioSocketListener
-                // sits waiting and the UI's live-metrics chart
-                // stays empty. If there's also a user-supplied
-                // template or `--user-data`, its content is
-                // concatenated after the agent install so both
-                // run from one LaunchDaemon invocation.
-                if let agentBinary = AgentBootstrapTemplate.locateAgentBinary() {
-                    let userContent: String?
-                    if let script = provisionScript {
-                        userContent = try? String(contentsOf: script, encoding: .utf8)
+                // Install Spooktacular Guest Tools via the
+                // Apple-native direct-copy path (`ditto` onto
+                // the mounted guest data volume). Two-way
+                // toggle via ``--guest-tools`` honours user
+                // intent:
+                //
+                //   .disabled   → skip, guest stays pristine
+                //   .installed  → app lands in /Applications
+                //
+                // Launch-at-login is owned by the guest app's
+                // own menu-bar `SMAppService.mainApp` toggle,
+                // so this step is fully unprivileged — no
+                // `/Library/LaunchAgents/` plist, no
+                // `osascript` admin prompt.
+                //
+                // Locator returns `nil` during dev iteration
+                // before `build-app.sh` has produced the
+                // nested `.app` wrapper; that's a soft warn,
+                // not a create-blocking error.
+                if guestTools.installsAppBundle {
+                    if let appBundle = AppBundleBootstrapTemplate.locateGuestToolsBundle() {
+                        print(Style.info("Installing Spooktacular Guest Tools into guest..."))
+                        try DiskInjector.installGuestTools(
+                            appBundle: appBundle,
+                            into: bundle
+                        )
+                        print(Style.success("✓ Guest Tools installed (\(guestTools.displayName))."))
                     } else {
-                        userContent = nil
+                        print(Style.dim("  Guest Tools bundle not found — run build-app.sh to produce Contents/Applications/Spooktacular Guest Tools.app. Continuing without install."))
                     }
-                    // Clean up the pre-existing user script
-                    // file (we already read its content into
-                    // `userContent`) before replacing
-                    // `provisionScript` with the combined
-                    // agent-bootstrap.
-                    if let script = provisionScript, ownsScript {
-                        try? ScriptFile.cleanup(scriptURL: script)
-                    }
-                    provisionScript = try AgentBootstrapTemplate.generate(
-                        agentBinaryURL: agentBinary,
-                        appending: userContent
-                    )
-                    ownsScript = true
                 }
 
                 if let script = provisionScript {
@@ -689,7 +702,16 @@ extension Spooktacular {
                 macAddress: macAddress,
                 autoResizeDisplay: autoResize,
                 guestOS: .linux,
-                rosettaEnabled: rosetta
+                // Guest Tools is a macOS-only `.app`; Linux
+                // guests use `spice-vdagent` + native tooling
+                // for the same functions. Force `.disabled`
+                // so the spec JSON reflects reality even if
+                // the user passed `--guest-tools auto-launch`
+                // on the command line (ignored for Linux, but
+                // an unsuppressed default would silently
+                // mislead a later inspector).
+                rosettaEnabled: rosetta,
+                guestToolsInstall: .disabled
             )
 
             if !json {
@@ -698,8 +720,14 @@ extension Spooktacular {
 
             // Bundle creation: writes config.json, metadata.json,
             // and (because spec.guestOS == .linux) provisions
-            // the empty EFI NVRAM file.
-            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: spec)
+            // the empty EFI NVRAM file. The bundle URL's
+            // basename is a UUID so `create` mints metadata
+            // with the matching id.
+            let bundle = try VirtualMachineBundle.create(
+                at: bundleURL,
+                spec: spec,
+                displayName: name
+            )
 
             // Allocate the primary disk image through the
             // shared `DiskImageAllocator`, which prefers

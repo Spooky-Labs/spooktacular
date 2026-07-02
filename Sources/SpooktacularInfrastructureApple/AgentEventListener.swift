@@ -54,6 +54,23 @@ public final class AgentEventListener: NSObject {
     private var readerTask: Task<Void, Never>?
     private var subscribers: [UUID: AsyncThrowingStream<GuestEvent, Error>.Continuation] = [:]
 
+    /// Per-topic most-recent-event cache. A boot-race between
+    /// the guest's `HostEventDialer` (which connects as soon
+    /// as the agent launches) and the host's subscriber
+    /// registration (which happens as `AppState` wires up its
+    /// per-VM event loop) would otherwise drop early events
+    /// — a late subscriber would miss the guest's `.connected`
+    /// transition and the toolbar pill would render gray even
+    /// though the clipboard is live.
+    ///
+    /// The cache is keyed by topic so replay stays bounded at
+    /// one event per topic (SPICE status, stats snapshot,
+    /// ports snapshot, frontmost app). On subscribe, every
+    /// cached event fires for the new subscriber in
+    /// insertion order — the subscriber's `for try await` loop
+    /// sees history + live updates as one continuous stream.
+    private var cachedEventByTopic: [String: GuestEvent] = [:]
+
     public init(socketDevice: VZVirtioSocketDevice) {
         self.socketDevice = socketDevice
         self.listener = VZVirtioSocketListener()
@@ -67,11 +84,25 @@ public final class AgentEventListener: NSObject {
     /// subscribers share the same underlying connection; each
     /// gets its own `AsyncThrowingStream` that yields the same
     /// events in the same order.
+    ///
+    /// New subscribers receive every cached per-topic event
+    /// BEFORE the next live event — so a subscriber that
+    /// registers after the guest has already connected + sent
+    /// its initial `.spiceStatus` still sees the current state.
     public func events() -> AsyncThrowingStream<GuestEvent, Error> {
         AsyncThrowingStream { continuation in
             let id = UUID()
             self.subscribers[id] = continuation
             Self.log.notice("Subscriber \(id.uuidString.prefix(8), privacy: .public) added (total=\(self.subscribers.count, privacy: .public))")
+            // Replay the last-known event per topic so the
+            // new subscriber gets current state, not just
+            // future transitions. Insertion order preserved —
+            // matters less than you'd think since each topic
+            // is independent, but keeps behaviour
+            // deterministic for the tests that verify replay.
+            for event in self.cachedEventByTopic.values {
+                continuation.yield(event)
+            }
             continuation.onTermination = { [weak self] _ in
                 Task { @MainActor in
                     self?.subscribers.removeValue(forKey: id)
@@ -95,6 +126,11 @@ public final class AgentEventListener: NSObject {
             continuation.finish()
         }
         subscribers.removeAll()
+        // Clear the replay cache so a new listener instance
+        // for a future VM doesn't inherit stale state (the
+        // same socket device CAN be reused if a lifecycle
+        // path ever reattaches one — belt-and-suspenders).
+        cachedEventByTopic.removeAll()
     }
 
     // MARK: - Reader
@@ -161,9 +197,46 @@ public final class AgentEventListener: NSObject {
         if frameCount == 1 {
             Self.log.notice("First event received from guest — pipeline live, \(self.subscribers.count, privacy: .public) subscriber(s)")
         }
+        // Update the replay cache BEFORE fan-out so a
+        // concurrent `events()` subscription racing the same
+        // event can't see it twice (once from replay, once
+        // from live broadcast). Dict writes are
+        // MainActor-isolated alongside everything else here.
+        cachedEventByTopic[Self.topicKey(for: event)] = event
         for continuation in subscribers.values {
             continuation.yield(event)
         }
+    }
+
+    /// Per-topic key matching the wire-level `Topic` raw
+    /// values in ``SpooktacularCore/GuestEvent`` Codable.
+    /// Static so tests can exercise the mapping without
+    /// instantiating a listener.
+    static func topicKey(for event: GuestEvent) -> String {
+        switch event {
+        case .stats:         GuestEventFilter.statsTopic
+        case .ports:         GuestEventFilter.portsTopic
+        case .appsFrontmost: GuestEventFilter.appsFrontmostTopic
+        case .spiceStatus:   GuestEventFilter.spiceStatusTopic
+        }
+    }
+
+    /// Injects a ``GuestEvent`` into the fan-out bus from
+    /// outside the guest. Used by ``HostMetricsSampler`` to
+    /// push host-observed `.stats` frames so the existing
+    /// UI subscriber path (``WorkspaceStatsModel``) doesn't
+    /// need a second transport — the chart treats guest-
+    /// pushed and host-sampled frames identically, which is
+    /// the right model since both are "the same metric,
+    /// different vantage point".
+    ///
+    /// The guest agent (when installed) *overrides* host
+    /// samples via the same bus: it publishes richer
+    /// ``GuestStatsResponse`` objects carrying load average
+    /// and process count that the host can't see, and
+    /// subscribers get whichever frame is newest.
+    public func inject(_ event: GuestEvent) {
+        broadcast(event, frameCount: Int.max)
     }
 }
 

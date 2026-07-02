@@ -113,7 +113,7 @@ N/A — no passwords, no reset flow; break-glass is the emergency-access path, c
 | V2.7.2 | Out-of-band verifier is separate from the primary authenticator | PASS | The Secure Enclave Processor is a physically separate die from the AP with its own ROM / RAM / AES engine. `.userPresence` evaluation runs inside the SEP using biometric data that never leaves the SEP. Fully independent trust domain. |
 | V2.7.3 | Verifier expires unused tokens | PASS | Break-glass tickets carry 1 h max TTL (enforced at encode time) and are single-use via `UsedTicketCache`. |
 | V2.7.4 | IdP stepped-up authentication enforced when federated | PASS | `OIDCProviderConfig.requiredACRValues` (RFC 8176 / OIDC Core §5.5.1.1) — verifier rejects any admin-scope token whose `acr` claim isn't in the operator's allowlist. `OIDCError.insufficientACR`. `Sources/SpookInfrastructureApple/OIDCTokenVerifier.swift` |
-| V2.7.5 | Cryptographic attribution of privileged actions | PASS | Per-operator SEP keys — each operator generates their own key on their own workstation; the fleet's agents trust the **union** of operator public keys. A successful ticket signature cryptographically attributes the action to a specific operator's hardware, not just the self-asserted `issuer` string. Agent-side trust roster: `SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` (PEM SPKI files, one per operator). `Sources/spooktacular-agent/BreakGlassVerification.swift` |
+| V2.7.5 | Cryptographic attribution of privileged actions | PASS | Per-operator SEP keys — each operator generates their own key on their own workstation; the fleet's agents trust the **union** of operator public keys. A successful ticket signature cryptographically attributes the action to a specific operator's hardware, not just the self-asserted `issuer` string. Agent-side trust roster: `SPOOK_BREAKGLASS_PUBLIC_KEYS_DIR` (PEM SPKI files, one per operator). `Sources/SpooktacularGuestAgentCore/BreakGlassVerification.swift` |
 
 ### V2.8 One-Time Verifier
 
@@ -359,7 +359,7 @@ Stateless JSON API authenticated per-request via Bearer or ticket. No session ID
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
 | V12.3.1 | Uploads not executed by the app | PASS | Agent writes uploads to `~/Downloads/SpooktacularInbox/`; no `exec` path reads this dir |
-| V12.3.2 | Path traversal prevented | PASS | `Sources/spooktacular-agent/AgentRouter.swift:handleListFS` — component-aware containment + symmetric symlink resolution |
+| V12.3.2 | Path traversal prevented | PASS | `Sources/SpooktacularGuestAgentCore/AgentRouter.swift:handleListFS` — component-aware containment + symmetric symlink resolution |
 | V12.3.3 | Filename restricted | PASS | `URL.lastPathComponent` strips path components; VM names regex-validated |
 | V12.3.4 | No file execution from public space | PASS | Host scripts under `~/Library/Caches/...` at 0700 (only the guest agent executes) |
 | V12.3.5 | No server-side code eval | PASS | Agent exec is break-glass-only and uses `/bin/bash -c <literal>`, never an attacker-controlled interpreter |

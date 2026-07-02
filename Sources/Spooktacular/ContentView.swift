@@ -77,6 +77,16 @@ struct ContentView: View {
         let images = appState.imageLibrary.images
         List(selection: $selection) {
             Section("Virtual Machines") {
+                // Pending creations render above the live VM list
+                // so the user sees the row they just asked for
+                // immediately (not buried below alphabetical
+                // neighbors). Rows are deliberately un-tagged so
+                // clicking them doesn't drive the detail pane to
+                // an empty-state for a not-yet-loaded bundle.
+                ForEach(pendingCreations, id: \.id) { pending in
+                    PendingVMRow(pending: pending)
+                }
+
                 ForEach(filteredVMs, id: \.self) { name in
                     VMRow(name: name)
                         .tag(SidebarSelection.vm(name))
@@ -199,5 +209,17 @@ struct ContentView: View {
         return searchText.isEmpty
             ? all
             : all.filter { $0.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    /// Live list of in-flight creations for the sidebar, filtered
+    /// by the same search query as ``filteredVMs``. Sorted by name
+    /// for a stable visual order — `Dictionary.values` makes no
+    /// ordering guarantee, so without the sort SwiftUI's diffing
+    /// can't tell "progress moved" from "row reordered."
+    private var pendingCreations: [AppState.PendingCreation] {
+        let all = appState.pendingCreations.values.sorted { $0.name < $1.name }
+        return searchText.isEmpty
+            ? all
+            : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
     }
 }

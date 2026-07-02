@@ -187,4 +187,4 @@ custom_rules:
     # `http://www.apple.com/DTDs/PropertyList-1.0.dtd` per the
     # Core Foundation plist spec; W3C XML-dsig identifiers are
     # fixed strings in the XMLDSig standard.
-    excluded: "Tests/.*|Sources/spooktacular-agent/LaunchDaemon\\.swift|Sources/SpooktacularApplication/ServicePlist\\.swift|Sources/SpooktacularInfrastructureApple/SAMLAssertionVerifier\\.swift|Sources/SpooktacularInfrastructureApple/XMLCanonicalization\\.swift|Sources/SpooktacularInfrastructureApple/DiskInjector\\.swift|Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner\\.swift"
+    excluded: "Tests/.*|Sources/SpooktacularApplication/ServicePlist\\.swift|Sources/SpooktacularInfrastructureApple/SAMLAssertionVerifier\\.swift|Sources/SpooktacularInfrastructureApple/XMLCanonicalization\\.swift|Sources/SpooktacularInfrastructureApple/DiskInjector\\.swift|Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner\\.swift"

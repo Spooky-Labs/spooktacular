@@ -21,6 +21,7 @@ struct VMDetailView: View {
             VStack(spacing: 24) {
                 heroPane
                 if isRunning { statsPane }
+                ProvisioningPane(bundle: bundle)
             }
             .frame(maxWidth: 560)
             .padding(24)
@@ -167,21 +168,39 @@ struct VMDetailView: View {
         .glassEffect(.regular, in: .capsule)
     }
 
+    /// Unified action-bar button shape: every button in the
+    /// row is `.glassButton()` (never `.glassProminentButton`)
+    /// so they share one visual weight — rounded-rect glass
+    /// capsule, same height, same chrome. Semantic emphasis
+    /// comes from `.tint(...)` color, not from a different
+    /// fill style. That reads as one Liquid Glass "button
+    /// group" rather than a mismatched mix of filled /
+    /// subtle / outlined styles.
+    ///
+    /// Tint mapping:
+    ///   - primary action in the current state → accent blue
+    ///     (Open Workspace when running, Start when stopped)
+    ///   - destructive-ish but not destructive → red (Stop)
+    ///   - resume / positive → green (Start/Resume, Agent
+    ///     Installed confirmation)
+    ///   - neutral → no tint, inherits secondary (Suspend,
+    ///     Install Agent idle state)
     private var actionBar: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 12) {
+        let transitioning = appState.transitioningVMs.contains(name)
+        let suspended = !isRunning && appState.isSuspended(name)
+
+        return GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 10) {
                 Button {
                     openWindow(id: "workspace", value: name)
                 } label: {
                     Label("Open Workspace", systemImage: "macwindow")
-                        .padding(.horizontal, 8)
                 }
-                .glassProminentButton()
+                .glassButton()
                 .controlSize(.large)
+                .tint(isRunning ? .accentColor : nil)
                 .keyboardShortcut(.return, modifiers: [])
 
-                let transitioning = appState.transitioningVMs.contains(name)
-                let suspended = !isRunning && appState.isSuspended(name)
                 if isRunning {
                     Button {
                         Task { await appState.suspendVM(name) }
@@ -189,7 +208,7 @@ struct VMDetailView: View {
                         if transitioning {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("Suspend", systemImage: "pause.fill")
+                            Label("Suspend", systemImage: "pause.circle")
                         }
                     }
                     .glassButton()
@@ -200,11 +219,13 @@ struct VMDetailView: View {
                     Button {
                         Task { await appState.stopVM(name) }
                     } label: {
-                        Label("Stop", systemImage: "stop.fill")
+                        Label("Stop", systemImage: "stop.circle")
                     }
                     .glassButton()
                     .controlSize(.large)
+                    .tint(.red)
                     .disabled(transitioning)
+                    .help("Hard-stop the VM. The guest doesn't get a chance to flush state — use Suspend for graceful.")
                 } else {
                     Button {
                         Task { await appState.startVM(name) }
@@ -214,7 +235,7 @@ struct VMDetailView: View {
                         } else {
                             Label(
                                 suspended ? "Resume" : "Start",
-                                systemImage: suspended ? "play.rectangle.fill" : "play.fill"
+                                systemImage: suspended ? "play.circle.fill" : "play.circle"
                             )
                         }
                     }
@@ -223,29 +244,29 @@ struct VMDetailView: View {
                     .tint(.green)
                     .disabled(transitioning)
                     .help(suspended
-                        ? "Restore from the saved state and continue."
+                        ? "Restore from the saved state and continue exactly where you left off."
                         : "Cold-boot the VM.")
 
                     if bundle.spec.guestOS == .macOS {
-                        let isAgentInstalled = appState.agentsInstalled.contains(name)
+                        let installed = appState.guestToolsInstalled.contains(name)
                         Button {
-                            appState.installGuestAgent(name)
+                            appState.installGuestTools(name)
                         } label: {
                             if transitioning {
                                 ProgressView().controlSize(.small)
-                            } else if isAgentInstalled {
-                                Label("Agent Installed", systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
+                            } else if installed {
+                                Label("Guest Tools Installed", systemImage: "checkmark.seal.fill")
                             } else {
-                                Label("Install Agent", systemImage: "arrow.down.circle")
+                                Label("Install Guest Tools", systemImage: "arrow.down.to.line.circle")
                             }
                         }
                         .glassButton()
                         .controlSize(.large)
+                        .tint(installed ? .green : nil)
                         .disabled(transitioning)
-                        .help(isAgentInstalled
-                            ? "The guest agent is already installed. Click to reinstall — idempotent and safe."
-                            : "Disk-inject the guest agent so the live-metrics chart will populate on next start.")
+                        .help(installed
+                            ? "Spooktacular Guest Tools are already installed. Click to reinstall — idempotent and safe."
+                            : "Install Spooktacular Guest Tools (clipboard bridge + guest-agent API) into /Applications and auto-launch at first login. Requires admin password once.")
                     }
                 }
             }
@@ -657,5 +678,113 @@ struct VMRow: View {
             Spacer()
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Sidebar row for an in-flight VM creation.
+///
+/// Renders while `AppState.pendingCreations[name]` is populated —
+/// during the IPSW download, install, and disk-inject phases (or
+/// the Linux disk + ISO copy path). Mirrors ``VMRow``'s layout so
+/// the sidebar doesn't jump when the row flips from pending →
+/// live on `loadVMs()` pickup.
+///
+/// Three states:
+///
+/// - **In progress** — orange state dot (matching the
+///   `transitioningVMs` convention in the menu bar), linear
+///   `ProgressView(value:)` bound to `pending.progress`, status
+///   message underneath, cancel button on trailing edge.
+/// - **Errored** — the row stays in the sidebar so the user can
+///   read the failure; the cancel glyph flips to a dismiss glyph
+///   that calls ``AppState/dismissPending(_:)``.
+/// - **Indeterminate** — `progress == 0` renders an
+///   indeterminate bar so "Queued…" doesn't look frozen.
+struct PendingVMRow: View {
+
+    let pending: AppState.PendingCreation
+    @Environment(AppState.self) private var appState
+
+    private var hasError: Bool { pending.errorMessage != nil }
+
+    private var percentLabel: String? {
+        guard !hasError, pending.progress > 0 else { return nil }
+        return "\(Int(pending.progress * 100))%"
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Orange while creating (matches transitioning /
+            // suspended convention); red when errored so the
+            // row reads as a failure at a glance.
+            Image(systemName: "circle.fill")
+                .font(.system(size: 7))
+                .foregroundStyle(hasError ? .red : .orange)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(pending.name)
+                        .font(.body)
+                    Text(pending.guestOSLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Spacer(minLength: 0)
+                    if let percentLabel {
+                        Text(percentLabel)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !hasError {
+                    // `ProgressView(value: V?)` — Apple's
+                    // canonical form: a nil value produces an
+                    // indeterminate bar, a non-nil value
+                    // produces a determinate bar. Keeping one
+                    // view (not two branches) preserves
+                    // SwiftUI view identity so the bar
+                    // animates smoothly when the first real
+                    // progress update lands.
+                    //
+                    // See ProgressView.init(value:total:) —
+                    // "A value of `nil` represents
+                    // indeterminate progress, in which case
+                    // the progress view ignores `total`."
+                    ProgressView(
+                        value: pending.progress > 0 ? pending.progress : nil,
+                        total: 1.0
+                    )
+                    .progressViewStyle(.linear)
+                    .tint(.orange)
+                    .controlSize(.small)
+                }
+
+                Text(pending.errorMessage ?? pending.statusMessage)
+                    .font(.caption)
+                    .foregroundStyle(hasError ? .red : .secondary)
+                    .lineLimit(2)
+            }
+
+            Button {
+                if hasError {
+                    appState.dismissPending(pending.name)
+                } else {
+                    appState.cancelPending(pending.name)
+                }
+            } label: {
+                Image(systemName: hasError ? "xmark.circle.fill" : "stop.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(hasError ? "Dismiss" : "Cancel")
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            hasError
+                ? "Creation of \(pending.name) failed: \(pending.errorMessage ?? "")"
+                : "Creating \(pending.name), \(Int(pending.progress * 100)) percent, \(pending.statusMessage)"
+        )
     }
 }

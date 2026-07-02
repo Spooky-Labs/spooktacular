@@ -1214,17 +1214,13 @@ public actor HTTPAPIServer {
             return response
         }
 
-        if components.count >= 3 {
-            let vmName = components[2]
-            guard SpooktacularPaths.isValidVMName(vmName) else {
-                let response = HTTPResponse.error(message: "Invalid VM name.", statusCode: 400)
-                await emitAPIAudit(
-                    method: request.method, path: request.path,
-                    statusCode: response.statusCode, actorIdentity: actorIdentity
-                )
-                return response
-            }
-        }
+        // Selector in the path (`:name` segment) can be either
+        // a UUID string or a display name — resolution happens
+        // inside each handler via
+        // `SpooktacularPaths.resolveBundle(selector:)`, not at
+        // the router. Dropping the up-front format check means
+        // display names with spaces / unicode can flow through
+        // URL-decoded without being flagged as "invalid".
 
         let response: HTTPResponse
         switch (request.method, components.count) {
@@ -1863,9 +1859,7 @@ public actor HTTPAPIServer {
     ///
     /// Returns the full configuration and metadata for a single VM.
     private func handleGetVM(name: String) -> HTTPResponse {
-        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
-
-        guard FileManager.default.fileExists(atPath: bundleURL.path) else {
+        guard let bundleURL = try? SpooktacularPaths.resolveBundle(selector: name) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
         }
 
@@ -1935,19 +1929,23 @@ public actor HTTPAPIServer {
 
         let sourceName = cloneRequest.source
 
-        guard SpooktacularPaths.isValidVMName(sourceName) else {
-            return HTTPResponse.error(message: "Invalid source VM name.", statusCode: 400)
-        }
-
-        guard let destinationURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
-        guard !FileManager.default.fileExists(atPath: destinationURL.path) else {
-            return HTTPResponse.error(message: "VM '\(name)' already exists.", statusCode: 409)
-        }
-
-        guard let sourceURL = try? SpooktacularPaths.bundleURL(for: sourceName) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
-        guard FileManager.default.fileExists(atPath: sourceURL.path) else {
+        // Source is an existing VM — resolve via selector.
+        guard let sourceURL = try? SpooktacularPaths.resolveBundle(selector: sourceName) else {
             return HTTPResponse.error(message: "Source VM '\(sourceName)' not found.", statusCode: 404)
         }
+
+        // Destination is a NEW VM. Under the UUID primary-key
+        // scheme, callers supply a *display name* here (`name`
+        // from the path) and the server mints a fresh UUID for
+        // the bundle directory. Display names are not unique,
+        // so the "already exists" check that the legacy code
+        // did no longer applies — a fresh UUID path never
+        // collides.
+        guard SpooktacularPaths.isValidDisplayName(name) else {
+            return HTTPResponse.error(message: "Invalid display name '\(name)'.", statusCode: 400)
+        }
+        let destinationID = UUID()
+        let destinationURL = SpooktacularPaths.bundleURL(for: destinationID)
 
         do {
             let sourceBundle = try VirtualMachineBundle.load(from: sourceURL)
@@ -1960,7 +1958,11 @@ public actor HTTPAPIServer {
             }
 
             try SpooktacularPaths.ensureDirectories()
-            let clonedBundle = try CloneManager.clone(source: sourceBundle, to: destinationURL)
+            let clonedBundle = try CloneManager.clone(
+                source: sourceBundle,
+                to: destinationURL,
+                displayName: name
+            )
 
             logger.notice("[\(self.tenantID.description, privacy: .public)] Cloned VM '\(sourceName, privacy: .public)' → '\(name, privacy: .public)' via API")
             return HTTPResponse.ok(vmStatus(name: name, bundle: clonedBundle), statusCode: 201)
@@ -1982,9 +1984,7 @@ public actor HTTPAPIServer {
     /// `ProcessInfo.processInfo.arguments[0]`, which is unreliable
     /// under launchd, Docker, or other non-standard deployments.
     private func handleStartVM(name: String) -> HTTPResponse {
-        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
-
-        guard FileManager.default.fileExists(atPath: bundleURL.path) else {
+        guard let bundleURL = try? SpooktacularPaths.resolveBundle(selector: name) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
         }
 
@@ -2048,9 +2048,7 @@ public actor HTTPAPIServer {
     /// a graceful shutdown. Uses the same PID-file mechanism as
     /// `spook stop`.
     private func handleStopVM(name: String) -> HTTPResponse {
-        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
-
-        guard FileManager.default.fileExists(atPath: bundleURL.path) else {
+        guard let bundleURL = try? SpooktacularPaths.resolveBundle(selector: name) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
         }
 
@@ -2087,9 +2085,7 @@ public actor HTTPAPIServer {
     /// Deletes a VM bundle and all its data. The VM must be stopped
     /// before deletion.
     private func handleDeleteVM(name: String) -> HTTPResponse {
-        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
-
-        guard FileManager.default.fileExists(atPath: bundleURL.path) else {
+        guard let bundleURL = try? SpooktacularPaths.resolveBundle(selector: name) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
         }
 
@@ -2114,9 +2110,7 @@ public actor HTTPAPIServer {
     /// Resolves the IP address of a running VM by looking up its
     /// MAC address in the host's DHCP lease table and ARP cache.
     private func handleGetIP(name: String) async -> HTTPResponse {
-        guard let bundleURL = try? SpooktacularPaths.bundleURL(for: name) else { return HTTPResponse.error(message: "Invalid VM name.", statusCode: 400) }
-
-        guard FileManager.default.fileExists(atPath: bundleURL.path) else {
+        guard let bundleURL = try? SpooktacularPaths.resolveBundle(selector: name) else {
             return HTTPResponse.error(message: "VM '\(name)' not found.", statusCode: 404)
         }
 

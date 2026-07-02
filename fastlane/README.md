@@ -23,6 +23,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Run all unit tests (parallel) with a false-green guard
 
+### mac build_dev
+
+```sh
+[bundle exec] fastlane mac build_dev
+```
+
+Build the .app bundle for local development
+
 ### mac build
 
 ```sh
@@ -54,6 +62,14 @@ Sync code-signing certificates and profiles via match
 ```
 
 Sync development cert + profile for local builds (NEFilter included)
+
+### mac signing_dev_force
+
+```sh
+[bundle exec] fastlane mac signing_dev_force
+```
+
+Force-regenerate development profiles (revokes old, creates new)
 
 ### mac notarize_app
 
@@ -110,14 +126,6 @@ Run UI tests and extract XCTAttachment screenshots into fastlane/screenshots/en-
 ```
 
 Capture, process, and frame App Store screenshots (requires an interactive macOS session)
-
-### mac generate_docs
-
-```sh
-[bundle exec] fastlane mac generate_docs
-```
-
-Generate DocC documentation
 
 ### mac lint
 

@@ -211,7 +211,7 @@ extension Spooktacular {
                 var vmBySourceIP: [String: (tenant: String, vmName: String)] = [:]
                 for policy in policies {
                     let vmName = policy.vmName
-                    guard let bundleURL = try? SpooktacularPaths.bundleURL(for: vmName),
+                    guard let bundleURL = try? SpooktacularPaths.resolveBundle(selector: vmName),
                           let bundle = try? VirtualMachineBundle.load(from: bundleURL),
                           let mac = bundle.spec.macAddress,
                           let ip = try? await IPResolver.resolveIP(macAddress: mac) else {

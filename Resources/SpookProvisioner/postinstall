@@ -1,0 +1,36 @@
+#!/bin/bash
+# Spooktacular Provisioner — pkg postinstall script.
+#
+# Installer.app invokes this as root after the payload has been
+# copied to its target locations:
+#   /Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist
+#   /usr/local/libexec/spook-provision-runner.sh
+#
+# Responsibilities:
+#   - Enforce the ownership/mode launchd requires (plist must be
+#     root:wheel / 644, runner must be root:wheel / 755).
+#   - Bootstrap the daemon into the system launchd domain so it
+#     fires on first boot without a reboot.
+#
+# pkgbuild preserves file ownership/mode from the payload root
+# when run with --ownership recommended, but we re-apply them
+# here explicitly so the install is robust against payload-tree
+# edge cases (e.g. when the pkg was repackaged by a third-party
+# tool and the inode metadata got stripped).
+
+set -euo pipefail
+
+PLIST_PATH="/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist"
+RUNNER_PATH="/usr/local/libexec/spook-provision-runner.sh"
+
+chown root:wheel "${PLIST_PATH}" "${RUNNER_PATH}"
+chmod 644 "${PLIST_PATH}"
+chmod 755 "${RUNNER_PATH}"
+
+# `launchctl bootstrap` is the modern (macOS 10.10+) way to
+# load a system-domain daemon without rebooting. Idempotent:
+# if the label is already bootstrapped, the call returns
+# `Input/output error (5)` which we treat as success.
+launchctl bootstrap system "${PLIST_PATH}" || true
+
+exit 0

@@ -41,12 +41,24 @@ let package = Package(
         // process per connecting parent and reaps it when
         // the parent exits.
         .executable(name: "SpooktacularVMHelper", targets: ["SpooktacularVMHelper"]),
+        // Spooktacular Guest Tools — the in-guest companion
+        // app. Ships as a sandboxed `.app` in /Applications
+        // inside every Spooktacular macOS VM. Runs the SPICE
+        // clipboard bridge AND (once Phase 2 lands) the
+        // HTTP/vsock guest-agent API. MenuBarExtra UI so the
+        // user can open/restart/quit it from the menu bar.
+        .executable(name: "SpooktacularGuestTools", targets: ["SpooktacularGuestTools"]),
     ],
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-argument-parser",
             from: "1.5.0"
         ),
+        // Clean-room Swift implementation of the SPICE vd_agent
+        // protocol. Standalone MIT-licensed package (will be
+        // extracted to its own public repo post-launch — see
+        // Packages/SpiceProtocol/docs/SPEC_ATTRIBUTION.md).
+        .package(path: "Packages/SpiceGuestAgent"),
     ],
     targets: [
         // ──────────────────────────────────────────────
@@ -133,10 +145,59 @@ let package = Package(
             dependencies: ["SpooktacularCore"],
             path: "Sources/SpooktacularVMHelper"
         ),
-        .executableTarget(
-            name: "spooktacular-agent",
+        // ──────────────────────────────────────────────
+        // Guest-agent HTTP/vsock server core. Library target —
+        // both `spooktacular-agent` (legacy CLI) and
+        // `SpooktacularGuestTools` (the new `.app`) consume
+        // this. The library exposes `GuestAgentServer` as its
+        // entry point; the multi-channel vsock accept loops
+        // and the full HTTP router + handler table live here.
+        //
+        // Will absorb more of the app's guest-side behavior
+        // over subsequent phases (Phase 3 adds an
+        // `/api/v1/spice/status` route; Phase 4 consolidates
+        // host-event streaming).
+        // ──────────────────────────────────────────────
+        .target(
+            name: "SpooktacularGuestAgentCore",
             dependencies: ["SpooktacularCore", "SpooktacularApplication"],
-            path: "Sources/spooktacular-agent"
+            path: "Sources/SpooktacularGuestAgentCore"
+        ),
+        // ──────────────────────────────────────────────
+        // Spooktacular Guest Tools — the `.app` that lives
+        // inside every macOS guest VM under /Applications.
+        //
+        // Combines:
+        //   - SPICE clipboard bridge (SpiceClipboardAgent lib)
+        //   - Menu-bar status + user controls (MenuBarExtra)
+        //   - HTTP/vsock guest-agent API (Phase 2)
+        //
+        // Auto-installed by DiskInjector at VM first boot (no
+        // DMG drag, no installer). Registers itself as a
+        // login item on first launch via SMAppService so it
+        // persists across reboots.
+        //
+        // Runs SANDBOXED. See SpooktacularGuestTools.entitlements
+        // for the narrow entitlements it needs (virtio-serial
+        // tty access via `com.apple.security.device.serial`,
+        // NSPasteboard access via the stock sandbox). Does NOT
+        // use AF_VSOCK — that socket family has no sandbox
+        // entitlement on macOS, so the Phase-2 HTTP/vsock
+        // guest-agent API was removed from this bundle. If
+        // host→guest RPC returns, it'll land as a Track-J XPC
+        // helper that's un-sandboxed and talks to this bundle
+        // over `NSXPCConnection`.
+        // ──────────────────────────────────────────────
+        .executableTarget(
+            name: "SpooktacularGuestTools",
+            dependencies: [
+                "SpooktacularCore",
+                .product(
+                    name: "SpiceClipboardAgent",
+                    package: "SpiceGuestAgent"
+                ),
+            ],
+            path: "Sources/SpooktacularGuestTools"
         ),
         .executableTarget(
             name: "spooktacular-controller",
@@ -165,7 +226,16 @@ let package = Package(
         // ──────────────────────────────────────────────
         .testTarget(
             name: "SpooktacularKitTests",
-            dependencies: ["SpooktacularKit"],
+            dependencies: [
+                "SpooktacularKit",
+                // Direct dep for tests exercising the
+                // guest-agent library (auth policy,
+                // event dialer coalesce buffer, etc.) — these
+                // need `@testable import` access to internal
+                // types that aren't re-exported through the
+                // SpooktacularKit umbrella.
+                "SpooktacularGuestAgentCore",
+            ],
             path: "Tests/SpooktacularKitTests"
         ),
         // UI tests — XCUITest-based, capture App Store

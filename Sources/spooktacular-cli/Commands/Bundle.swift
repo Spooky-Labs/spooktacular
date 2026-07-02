@@ -119,8 +119,10 @@ extension Spooktacular {
             var to: String
 
             func run() async throws {
-                let bundleURL = try SpooktacularPaths.bundleURL(for: name)
-                guard FileManager.default.fileExists(atPath: bundleURL.path) else {
+                let bundleURL: URL
+                do {
+                    bundleURL = try SpooktacularPaths.resolveBundle(selector: name)
+                } catch {
                     print(Style.error("✗ VM '\(name)' not found in the library."))
                     throw ExitCode.failure
                 }
@@ -200,7 +202,7 @@ extension Spooktacular {
                     let contents = try fm.contentsOfDirectory(at: vmDir, includingPropertiesForKeys: nil)
                     targetURLs = contents.filter { $0.pathExtension == "vm" }
                 } else if !names.isEmpty {
-                    targetURLs = try names.map { try SpooktacularPaths.bundleURL(for: $0) }
+                    targetURLs = try names.map { try SpooktacularPaths.resolveBundle(selector: $0) }
                 } else {
                     print(Style.error("Provide at least one VM name or pass --all."))
                     throw ExitCode.failure

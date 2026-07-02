@@ -72,6 +72,25 @@ XPC_HELPER_MACOS="$XPC_HELPER_CONTENTS/MacOS"
 XPC_HELPER_ENTITLEMENTS="$PROJECT_DIR/SpooktacularVMHelper.entitlements"
 XPC_HELPER_INFO_PLIST="$PROJECT_DIR/Resources/SpooktacularVMHelper-Info.plist"
 
+# Spooktacular Guest Tools — the in-guest companion app.
+# Nested under Contents/Applications/ inside the host app so
+# `AppBundleBootstrapTemplate.locateGuestToolsBundle()` can
+# walk up from the running GUI executable to find it, tar it,
+# and disk-inject it into every macOS VM on first-boot.
+#
+# The bundle is ITSELF a signed `.app` (sandboxed, distinct
+# entitlements) — effectively a nested app, a pattern Apple
+# supports for exactly this "ship a helper alongside the
+# main app" use case.
+GUEST_TOOLS_ID="com.spooktacular.GuestTools"
+GUEST_TOOLS_TARGET="SpooktacularGuestTools"
+GUEST_TOOLS_NAME="Spooktacular Guest Tools.app"
+GUEST_TOOLS_DIR="$CONTENTS/Applications/$GUEST_TOOLS_NAME"
+GUEST_TOOLS_CONTENTS="$GUEST_TOOLS_DIR/Contents"
+GUEST_TOOLS_MACOS="$GUEST_TOOLS_CONTENTS/MacOS"
+GUEST_TOOLS_ENTITLEMENTS="$PROJECT_DIR/SpooktacularGuestTools.entitlements"
+GUEST_TOOLS_INFO_PLIST="$PROJECT_DIR/Resources/SpooktacularGuestTools-Info.plist"
+
 # 1. Build all targets together
 echo "Compiling..."
 swift build $CONFIG_FLAG
@@ -89,17 +108,17 @@ fi
 # 3. Assemble .app bundle
 echo "Assembling app bundle..."
 rm -rf "$BUNDLE_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES" "$SYSEX_MACOS" "$XPC_HELPER_MACOS"
+mkdir -p "$MACOS_DIR" "$RESOURCES" "$SYSEX_MACOS" "$XPC_HELPER_MACOS" "$GUEST_TOOLS_MACOS"
 
-# Copy binaries
+# Copy binaries. The legacy `spooktacular-agent` Mach-O is
+# gone — its HTTP/vsock server moved into
+# `SpooktacularGuestAgentCore` (library) and ships inside the
+# Spooktacular Guest Tools nested `.app` (see step 3c below).
+# No more base64 binary embedding; `DiskInjector.installGuestTools`
+# ditto's the nested bundle directly onto the guest volume.
 cp "$BINARY_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$BINARY_DIR/$CLI_TARGET" "$MACOS_DIR/$CLI_NAME"
-# Bundle the guest agent alongside the CLI + app so the GUI's
-# pre-boot agent-bootstrap injection can find it without a
-# second download. `AgentBootstrapScript.locateAgentBinary()`
-# walks up from the running executable to find this path.
-cp "$BINARY_DIR/spooktacular-agent" "$MACOS_DIR/spooktacular-agent"
-chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME" "$MACOS_DIR/spooktacular-agent"
+chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME"
 
 # 3a. Assemble system-extension bundle (Track F'').
 #
@@ -150,6 +169,153 @@ cp "$XPC_HELPER_INFO_PLIST" "$XPC_HELPER_CONTENTS/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SYSEX_VERSION" "$XPC_HELPER_CONTENTS/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $SYSEX_BUILD" "$XPC_HELPER_CONTENTS/Info.plist"
 
+# 3c. Assemble Spooktacular Guest Tools nested .app bundle.
+#
+# Layout:
+#   Contents/Applications/Spooktacular Guest Tools.app/
+#     Contents/
+#       Info.plist                 — CFBundlePackageType=APPL, LSUIElement=true
+#       MacOS/
+#         SpooktacularGuestTools   — the executable (matches CFBundleExecutable)
+#
+# AppBundleBootstrapTemplate on the host GUI walks up from
+# the running Spooktacular binary to find this nested `.app`,
+# tars it + gzips it + base64-encodes it into a first-boot
+# script, and DiskInjector drops that script on the guest's
+# data volume so launchd installs the app to /Applications/
+# on first boot — no DMG, no installer, no user intervention.
+#
+# Signed SEPARATELY (below) because it's a distinct sandbox
+# boundary with its own entitlements (`app-sandbox`,
+# `network.server`, tty file-exception for /dev/tty.com.redhat.spice.0).
+echo "Assembling guest-tools nested app..."
+cp "$BINARY_DIR/$GUEST_TOOLS_TARGET" "$GUEST_TOOLS_MACOS/$GUEST_TOOLS_TARGET"
+chmod +x "$GUEST_TOOLS_MACOS/$GUEST_TOOLS_TARGET"
+cp "$GUEST_TOOLS_INFO_PLIST" "$GUEST_TOOLS_CONTENTS/Info.plist"
+
+# Provisioner pkg. Apple's macOS-14.4 sandbox rules forbid a
+# sandboxed app from registering a LaunchDaemon via
+# SMAppService.daemon unless the daemon is itself a sandboxed
+# Mach-O — our runner is a bash script that needs to
+# `mount_virtiofs` and exec arbitrary user scripts as root,
+# which can't meet that requirement. The sanctioned escape
+# hatch for "sandboxed app installs a privileged helper" is
+# a signed `.pkg` that `Installer.app` (a system-privileged
+# app) unpacks. Guest Tools ships this pkg in its Resources
+# and opens it via `NSWorkspace.open(pkgURL)` when the user
+# clicks Enable Provisioning.
+#
+# pkgbuild layout:
+#   pkg-root/
+#     Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist
+#     usr/local/libexec/spook-provision-runner.sh
+#   pkg-scripts/
+#     postinstall  ← chown root:wheel + launchctl bootstrap
+#
+# `--install-location /` tells the installer to extract the
+# payload relative to the system root, so
+# `Library/LaunchDaemons/…` lands at `/Library/LaunchDaemons/…`.
+echo "Building provisioner pkg..."
+PKG_ROOT=$(mktemp -d)
+PKG_SCRIPTS=$(mktemp -d)
+mkdir -p "$PKG_ROOT/Library/LaunchDaemons"
+mkdir -p "$PKG_ROOT/usr/local/libexec"
+cp "$PROJECT_DIR/Resources/SpookProvisioner/com.spookylabs.spooktacular.provisioner.plist" \
+   "$PKG_ROOT/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist"
+cp "$PROJECT_DIR/Resources/SpookProvisioner/spook-provision-runner.sh" \
+   "$PKG_ROOT/usr/local/libexec/spook-provision-runner.sh"
+chmod 644 "$PKG_ROOT/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist"
+chmod 755 "$PKG_ROOT/usr/local/libexec/spook-provision-runner.sh"
+cp "$PROJECT_DIR/Resources/SpookProvisioner/postinstall" "$PKG_SCRIPTS/postinstall"
+chmod 755 "$PKG_SCRIPTS/postinstall"
+
+mkdir -p "$GUEST_TOOLS_CONTENTS/Resources"
+PKG_OUTPUT="$GUEST_TOOLS_CONTENTS/Resources/Spooktacular Provisioner.pkg"
+
+# Two-stage build: pkgbuild produces a *component* pkg with
+# the raw payload + scripts; productbuild then wraps it as a
+# *distribution* pkg with a Distribution.xml that
+# Installer.app accepts in its GUI. A bare component pkg
+# opens in Installer.app on macOS 14+ but the install button
+# is non-functional — Installer requires a Distribution
+# wrapper to actually run the install. That's why the
+# previous build's payload never landed on disk despite the
+# wizard appearing to complete.
+COMPONENT_PKG=$(mktemp -t provisioner-component.XXXXXX).pkg
+pkgbuild \
+    --root "$PKG_ROOT" \
+    --identifier com.spookylabs.spooktacular.provisioner \
+    --version "${SYSEX_VERSION:-1.0.0}" \
+    --scripts "$PKG_SCRIPTS" \
+    --install-location / \
+    "$COMPONENT_PKG" \
+    >/dev/null
+
+# `--package <path>` embeds the component pkg inside the
+# distribution pkg with the same identifier. `--root /` tells
+# productbuild to synthesize a default Distribution.xml that
+# installs the component to the system root — equivalent to
+# the component pkg's `--install-location /`.
+productbuild \
+    --package "$COMPONENT_PKG" \
+    "$PKG_OUTPUT" \
+    >/dev/null
+
+rm -f "$COMPONENT_PKG"
+
+# Sign the pkg with Developer ID Installer if that cert is
+# available. Without signing, Gatekeeper blocks the pkg when
+# Guest Tools opens it via NSWorkspace on the end-user's Mac;
+# with signing + notarization below, the Installer wizard
+# launches with no warning. `bundle exec fastlane signing_dev_id`
+# syncs the cert (Developer ID Application + Developer ID
+# Installer in one match call).
+if security find-identity -v -p basic | grep -q "Developer ID Installer"; then
+    INSTALLER_IDENTITY=$(security find-identity -v -p basic \
+        | grep "Developer ID Installer" | head -1 \
+        | sed -E 's/.*"(.*)".*/\1/')
+    productsign --sign "$INSTALLER_IDENTITY" "$PKG_OUTPUT" "${PKG_OUTPUT}.signed"
+    mv "${PKG_OUTPUT}.signed" "$PKG_OUTPUT"
+    echo "Signed provisioner pkg with: $INSTALLER_IDENTITY"
+
+    # Notarize the pkg via notarytool when credentials are in
+    # place. `xcrun notarytool submit --wait` blocks until
+    # Apple's notary service returns, then `stapler staple`
+    # attaches the ticket so Gatekeeper can validate offline.
+    # On dev boxes without a notary keychain profile (the
+    # common case), we skip with a hint — the pkg still
+    # installs, just with a one-time "unidentified developer"
+    # warning the user overrides via Privacy & Security.
+    #
+    # `NOTARY_PROFILE` names an `xcrun notarytool store-credentials`
+    # entry (e.g. "spook-notary"). Set it via env or rely on CI
+    # secrets; we probe `notarytool history` to confirm the
+    # profile is actually resolvable before spending ~2 minutes
+    # on a submit that's just going to 403.
+    if [ -n "${NOTARY_PROFILE:-}" ] && xcrun notarytool history \
+            --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1; then
+        echo "Notarizing provisioner pkg (this may take a minute)..."
+        xcrun notarytool submit "$PKG_OUTPUT" \
+            --keychain-profile "${NOTARY_PROFILE}" \
+            --wait
+        xcrun stapler staple "$PKG_OUTPUT"
+        echo "Notarized + stapled provisioner pkg"
+    else
+        echo "Note: skipping pkg notarization — set NOTARY_PROFILE to a stored"
+        echo "  notarytool keychain profile to enable. Unsigned/unnotarized"
+        echo "  pkgs still install, but Gatekeeper shows a first-open warning."
+    fi
+else
+    echo "Warning: no 'Developer ID Installer' cert in keychain — shipping unsigned provisioner pkg."
+    echo "  Run 'bundle exec fastlane signing_dev_id' to sync the cert, then rebuild."
+fi
+
+rm -rf "$PKG_ROOT" "$PKG_SCRIPTS"
+# Version-sync with the main app for consistent diagnostics
+# — same rationale as the sysex / XPC helper blocks.
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SYSEX_VERSION" "$GUEST_TOOLS_CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $SYSEX_BUILD" "$GUEST_TOOLS_CONTENTS/Info.plist"
+
 # Copy Info.plist and inject version from git
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS/Info.plist"
 VERSION="${MARKETING_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo '1.0.0')}"
@@ -195,18 +361,97 @@ if [ -n "${PROVISIONING_PROFILE:-}" ] && [ -f "${PROVISIONING_PROFILE}" ]; then
     echo "Embedding provisioning profile: $(basename "$PROVISIONING_PROFILE")"
     cp "$PROVISIONING_PROFILE" "$CONTENTS/embedded.provisionprofile"
 
-    SYSEX_PROVISIONING_PROFILE="${SYSEX_PROVISIONING_PROFILE:-}"
-    if [ -z "$SYSEX_PROVISIONING_PROFILE" ]; then
-        SYSEX_PROVISIONING_PROFILE="$("$PROJECT_DIR/scripts/find-provisioning-profile.sh" \
-            "$SYSEX_ID" 2>/dev/null || true)"
+    # The `content-filter-provider-systemextension` value on
+    # `com.apple.developer.networking.networkextension` is
+    # Apple-gated beyond the standard `NETWORK_EXTENSIONS`
+    # bundle-ID capability — it needs a separate team-level
+    # grant that ordinary dev teams don't have. If the profile
+    # doesn't include that exact string in its networkextension
+    # array, amfid rejects launch with AMFIError -413
+    # "No matching profile found" because our entitlements file
+    # declares it and the profile doesn't grant it.
+    #
+    # Compute the intersection of declared values ∩ profile-
+    # granted values and rewrite the effective entitlements to
+    # match. If the profile can't cover the systemextension
+    # variant, also drop the sysex bundle (it can't load
+    # anyway without the grant).
+    # PlistBuddy reads from files, not stdin — `- ` is treated
+    # as a nonexistent filename. Decrypt the profile to a temp
+    # plist, query it there, then discard.
+    PROFILE_PLIST_TMP="$(mktemp -t spook-profile).plist"
+    security cms -D -i "$PROVISIONING_PROFILE" > "$PROFILE_PLIST_TMP" 2>/dev/null
+    PROFILE_NE_VALUES=$(
+        /usr/libexec/PlistBuddy -c \
+            "Print :Entitlements:com.apple.developer.networking.networkextension" \
+            "$PROFILE_PLIST_TMP" 2>/dev/null \
+        | awk 'NR > 1 && !/^}/ { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print }'
+    )
+    rm -f "$PROFILE_PLIST_TMP"
+    PROFILE_HAS_SYSEX=0
+    if echo "$PROFILE_NE_VALUES" | grep -qx 'content-filter-provider-systemextension'; then
+        PROFILE_HAS_SYSEX=1
     fi
-    if [ -z "$SYSEX_PROVISIONING_PROFILE" ] || [ ! -f "$SYSEX_PROVISIONING_PROFILE" ]; then
-        echo "✗ Main-app profile present but no profile for $SYSEX_ID." >&2
-        echo "  Run: bundle exec fastlane signing_dev" >&2
-        exit 1
+
+    if [ "$PROFILE_HAS_SYSEX" -eq 0 ]; then
+        echo "Profile doesn't grant content-filter-provider-systemextension."
+        echo "  Filtering entitlements to app-extension variant + dropping sysex."
+        echo "  (Full sysex build requires Apple grant for com.apple.developer.system-extension.install.)"
+
+        # Filter the app entitlements' networkextension array
+        # to values the profile actually grants. Currently that
+        # means dropping any `-systemextension` suffix variant.
+        RESTRICTED_ENTITLEMENTS="$(mktemp -t spook-ent).plist"
+        cp "$ENTITLEMENTS" "$RESTRICTED_ENTITLEMENTS"
+        # Nuke the array then re-add only the intersection.
+        /usr/libexec/PlistBuddy -c \
+            "Delete :com.apple.developer.networking.networkextension" \
+            "$RESTRICTED_ENTITLEMENTS" 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c \
+            "Add :com.apple.developer.networking.networkextension array" \
+            "$RESTRICTED_ENTITLEMENTS"
+        # Source values declared by the app's own file.
+        APP_NE_VALUES=$(
+            /usr/libexec/PlistBuddy -c \
+                "Print :com.apple.developer.networking.networkextension" \
+                "$ENTITLEMENTS" 2>/dev/null \
+            | awk '/^[[:space:]]/ && !/^Array/ && !/^{/ && !/^}/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0); print}'
+        )
+        idx=0
+        while IFS= read -r val; do
+            [ -z "$val" ] && continue
+            # Drop any systemextension subtype — the profile
+            # can't grant it, so embedding it trips amfid.
+            if echo "$val" | grep -q -- '-systemextension$'; then
+                continue
+            fi
+            /usr/libexec/PlistBuddy -c \
+                "Add :com.apple.developer.networking.networkextension:$idx string $val" \
+                "$RESTRICTED_ENTITLEMENTS"
+            idx=$((idx + 1))
+        done <<< "$APP_NE_VALUES"
+        ENTITLEMENTS="$RESTRICTED_ENTITLEMENTS"
+
+        # Drop the sysex: it can't load without the
+        # systemextension grant.
+        rm -rf "$CONTENTS/Library/SystemExtensions"
+        SYSEX_DROPPED=1
     fi
-    echo "Embedding sysex profile: $(basename "$SYSEX_PROVISIONING_PROFILE")"
-    cp "$SYSEX_PROVISIONING_PROFILE" "$SYSEX_CONTENTS/embedded.provisionprofile"
+
+    if [ "${SYSEX_DROPPED:-0}" -ne 1 ]; then
+        SYSEX_PROVISIONING_PROFILE="${SYSEX_PROVISIONING_PROFILE:-}"
+        if [ -z "$SYSEX_PROVISIONING_PROFILE" ]; then
+            SYSEX_PROVISIONING_PROFILE="$("$PROJECT_DIR/scripts/find-provisioning-profile.sh" \
+                "$SYSEX_ID" 2>/dev/null || true)"
+        fi
+        if [ -z "$SYSEX_PROVISIONING_PROFILE" ] || [ ! -f "$SYSEX_PROVISIONING_PROFILE" ]; then
+            echo "✗ Main-app profile present but no profile for $SYSEX_ID." >&2
+            echo "  Run: bundle exec fastlane signing_dev" >&2
+            exit 1
+        fi
+        echo "Embedding sysex profile: $(basename "$SYSEX_PROVISIONING_PROFILE")"
+        cp "$SYSEX_PROVISIONING_PROFILE" "$SYSEX_CONTENTS/embedded.provisionprofile"
+    fi
 else
     echo "No provisioning profile — building dev variant."
     echo "  Full NEFilter build: bundle exec fastlane signing_dev && ./build-app.sh"
@@ -235,6 +480,17 @@ else
         /usr/libexec/PlistBuddy -c "Delete :$key" "$DEV_XPC_ENTITLEMENTS" 2>/dev/null || true
     done
     XPC_HELPER_ENTITLEMENTS="$DEV_XPC_ENTITLEMENTS"
+    # Guest-tools nested .app keeps its full sandbox
+    # entitlements in every variant. Per Apple's TN3125,
+    # `com.apple.security.app-sandbox` + hardened-runtime
+    # + file-access exceptions are all UNRESTRICTED
+    # entitlements that don't require a provisioning
+    # profile — amfid accepts them with any valid cert.
+    # The guest-tools codesign block below uses an Apple
+    # Distribution (or Developer ID) cert rather than the
+    # device-locked Apple Development cert used for the
+    # outer app in dev-variant builds, so the nested
+    # bundle launches on fresh guest VMs.
 fi
 
 # 4. Code sign
@@ -291,12 +547,86 @@ TIMESTAMP_FLAG="--timestamp"
 #   3. CLI binary (sibling of the app binary).
 #   4. App binary.
 #   5. App bundle root (covers everything above).
-if [ "$DEV_VARIANT" != "1" ]; then
+# Sign the system extension only if it's still in the bundle.
+# Two cases drop it: `DEV_VARIANT=1` (no profile at all) and
+# `SYSEX_DROPPED=1` (profile present but doesn't grant the
+# systemextension subtype). Guarding on the directory
+# existence is the most honest gate since it matches the
+# filesystem state the codesign commands will encounter.
+if [ -d "$SYSEX_DIR" ]; then
     codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_MACOS/$SYSEX_ID"
     codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$SYSEX_ENTITLEMENTS" "$SYSEX_DIR"
 fi
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$XPC_HELPER_ENTITLEMENTS" "$XPC_HELPER_MACOS/$XPC_HELPER_ID"
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$XPC_HELPER_ENTITLEMENTS" "$XPC_HELPER_DIR"
+# Guest-tools nested .app — signed with an identity that
+# runs on ANY Mac (unlike `Apple Development:` which is
+# tied to per-device dev profiles).
+#
+# Apple's TN3125 (Inside Code Signing: Provisioning
+# Profiles) documents that an app whose entitlements are
+# all UNRESTRICTED — `com.apple.security.app-sandbox`,
+# hardened-runtime config, file-access exceptions — needs
+# no provisioning profile to launch. Every entitlement in
+# `SpooktacularGuestTools.entitlements` is in that
+# unrestricted set, so amfid will accept the nested bundle
+# on a fresh macOS guest without a profile embedded.
+#
+# Identity selection, in priority order:
+#   1. `$GUEST_TOOLS_SIGN_IDENTITY` env override — for
+#      advanced operators who have a Developer ID App
+#      cert and want to ship fully-notarizable guest
+#      tools.
+#   2. First `Apple Distribution:` cert in the login
+#      keychain — ships with most match-managed teams,
+#      works for any Mac without per-device registration.
+#   3. `Developer ID Application:` as a fallback.
+#   4. Ad-hoc `--sign -` as a last resort (loses sandbox
+#      and notarization capability; emergency-only).
+if [ -n "${GUEST_TOOLS_SIGN_IDENTITY:-}" ]; then
+    GT_IDENTITY="$GUEST_TOOLS_SIGN_IDENTITY"
+    GT_IDENTITY_LABEL="(explicit override)"
+else
+    # `security find-identity` output: `<n>) <SHA1-HASH> "<cert name>"`
+    # Extract the HASH (column 2), not the name — cert-name
+    # ambiguity (multiple identical-CN certs in the keychain,
+    # common after renewal) makes codesign fail with:
+    #   "ambiguous (matches ... and ... in ...keychain-db)"
+    # A SHA-1 hash is always unique and unambiguous.
+    GT_IDENTITY="$(security find-identity -v -p codesigning | \
+        awk '/"Apple Distribution:/ { print $2; exit }')"
+    GT_IDENTITY_LABEL="(Apple Distribution)"
+    if [ -z "$GT_IDENTITY" ]; then
+        GT_IDENTITY="$(security find-identity -v -p codesigning | \
+            awk '/"Developer ID Application:/ { print $2; exit }')"
+        GT_IDENTITY_LABEL="(Developer ID Application)"
+    fi
+fi
+if [ -n "$GT_IDENTITY" ]; then
+    # Strip the two restricted entitlement keys
+    # (`com.apple.application-identifier` and
+    # `com.apple.developer.team-identifier`) before signing.
+    # Per Apple TN3125, restricted entitlements require a
+    # matching provisioning profile at launch — and we
+    # deliberately DON'T embed a profile in the nested
+    # guest-tools bundle so it can run on any macOS guest.
+    # Everything else in the entitlements file
+    # (`app-sandbox`, `network.server`, file exception) is
+    # UNRESTRICTED per the same technote, so the bundle
+    # still sandboxes correctly on every target Mac.
+    GT_EFFECTIVE_ENTITLEMENTS="$(mktemp -t spook-gt-eff).plist"
+    cp "$GUEST_TOOLS_ENTITLEMENTS" "$GT_EFFECTIVE_ENTITLEMENTS"
+    for key in com.apple.application-identifier com.apple.developer.team-identifier; do
+        /usr/libexec/PlistBuddy -c "Delete :$key" "$GT_EFFECTIVE_ENTITLEMENTS" 2>/dev/null || true
+    done
+    echo "Signing guest-tools nested bundle: $GT_IDENTITY $GT_IDENTITY_LABEL"
+    codesign --force --sign "$GT_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$GT_EFFECTIVE_ENTITLEMENTS" "$GUEST_TOOLS_MACOS/$GUEST_TOOLS_TARGET"
+    codesign --force --sign "$GT_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$GT_EFFECTIVE_ENTITLEMENTS" "$GUEST_TOOLS_DIR"
+else
+    echo "⚠  No Apple Distribution / Developer ID identity — falling back to ad-hoc (guest-tools won't be notarizable)."
+    codesign --force --sign - "$GUEST_TOOLS_MACOS/$GUEST_TOOLS_TARGET"
+    codesign --force --sign - "$GUEST_TOOLS_DIR"
+fi
 # CLI gets its own entitlements (`com.apple.security.inherit`
 # in the canonical signed path) and a distinct code-signing
 # identifier so Apple's embedded-tool pattern resolves
