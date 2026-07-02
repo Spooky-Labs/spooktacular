@@ -71,52 +71,53 @@ git clone https://github.com/Spooky-Labs/spooktacular.git
 cd spooktacular
 ./build-app.sh release
 
-# Create a base VM from the latest macOS
-spook create base --from-ipsw latest
-
-# Clone it — 48ms, APFS copy-on-write
-spook clone base runner-01
-
 # Store the runner registration token in the Keychain — the only
 # accepted way to supply it (never a flag, env var, or file path)
 security add-generic-password -s com.spooktacular.github \
   -a your-org -w ghp_xxx -U
 
-# Configure the clone as an ephemeral GitHub Actions runner, then boot it —
-# `create` only stages the provisioning script; `start` runs it
+# Create a macOS VM configured as an ephemeral GitHub Actions runner.
+# --from-ipsw latest (the default) downloads the newest compatible
+# macOS restore image; `create` only stages the runner-registration
+# script — `start` boots the VM and runs it.
 spook create runner-01 --github-runner --github-repo your-org/repo \
   --github-token-keychain your-org --ephemeral
 spook start runner-01
 ```
 
+`spook clone` (APFS copy-on-write, ~48ms) duplicates any existing VM bundle
+for other workloads — see [Features](#features) below. Cloning doesn't yet
+carry forward `--github-runner` template state, so a second runner today
+means a second `create --github-runner` + `start`.
+
 ## Architecture
 
 ```
-┌─────────────────────────────────────────┐
-│            SpooktacularCore              │
-│  Domain types · Protocols · Policies    │
-│  TenancyModel · RunnerStateMachine      │
-│  AuthorizationContext · ReusePolicy     │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────▼───────────────────────┐
-│         SpooktacularApplication          │
-│  Use cases · Ports · Orchestration      │
-│  RunnerPoolManager · GitHubRunnerTemplate│
-│  WebhookSignatureVerifier · TenantQuota │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────▼───────────────────────┐
-│     SpooktacularInfrastructureApple      │
-│  VZ* · Network · Security · CryptoKit  │
-│  HTTPAPIServer · AgentEventListener     │
-│  KeychainTLSProvider · ProcessRunner    │
-└─────────────┬────────────────┘
-              │                │
-         ┌────▼──┐        ┌────▼────┐
-         │ spook │        │   GUI   │
-         │ (CLI) │        │(SwiftUI)│
-         └───────┘        └─────────┘
+┌──────────────────────────────────────────────────┐
+│                 SpooktacularCore                 │
+│  Domain types · Protocols · Policies             │
+│  TenancyModel · RunnerStateMachine               │
+│  AuthorizationContext · ReusePolicy              │
+└─────────────────────────┬────────────────────────┘
+                         │
+┌─────────────────────────▼────────────────────────┐
+│             SpooktacularApplication              │
+│  Use cases · Ports · Orchestration               │
+│  RunnerPoolManager · GitHubRunnerTemplate        │
+│  WebhookSignatureVerifier · TenantQuota          │
+└─────────────────────────┬────────────────────────┘
+                         │
+┌─────────────────────────▼────────────────────────┐
+│         SpooktacularInfrastructureApple          │
+│  VZ* · Network · Security · CryptoKit            │
+│  HTTPAPIServer · AgentEventListener              │
+│  KeychainTLSProvider · ProcessRunner             │
+└────────────┬────────────────────────┬────────────┘
+            │                        │
+        ┌───────┐               ┌─────────┐
+        │ spook │               │   GUI   │
+        │ (CLI) │               │(SwiftUI)│
+        └───────┘               └─────────┘
 ```
 
 Clean Architecture with compiler-enforced boundaries (checked in CI —
