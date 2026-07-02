@@ -79,10 +79,12 @@ security add-generic-password -s com.spooktacular.github \
 # Create a macOS VM configured as an ephemeral GitHub Actions runner.
 # --from-ipsw latest (the default) downloads the newest compatible
 # macOS restore image; `create` only stages the runner-registration
-# script — `start` boots the VM and runs it.
+# script — `start` boots the VM and runs it. `--ephemeral` is needed
+# on BOTH: on `create` it registers the runner as ephemeral with
+# GitHub, on `start` it auto-destroys the VM bundle once it stops.
 spook create runner-01 --github-runner --github-repo your-org/repo \
   --github-token-keychain your-org --ephemeral
-spook start runner-01
+spook start runner-01 --headless --ephemeral
 ```
 
 `spook clone` (APFS copy-on-write, ~48ms) duplicates any existing VM bundle
