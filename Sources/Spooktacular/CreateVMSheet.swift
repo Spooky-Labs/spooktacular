@@ -829,20 +829,19 @@ struct CreateVMSheet: View {
     /// tells the caller whether to delete the file after use.
     /// Templates we generate live in a cache directory and should
     /// be cleaned; user-supplied scripts are left alone.
+    ///
+    /// The GitHub-runner template does **not** produce a script
+    /// here — see ``resolveRunnerRequest()``. Resolving its
+    /// Keychain token and rendering the runner script at
+    /// sheet-submit time would mint a registration token up to
+    /// hours before the VM finishes installing macOS; GitHub
+    /// registration tokens expire after one hour. AppState's
+    /// create pipeline mints the token late instead, mirroring
+    /// `spook create --github-runner`.
     private func resolveProvisionScript() throws -> (URL?, Bool) {
         switch template {
-        case .none:
+        case .none, .githubRunner:
             return (nil, false)
-        case .githubRunner:
-            let repo = githubRepo.trimmingCharacters(in: .whitespaces)
-            let account = githubKeychainAccount.trimmingCharacters(in: .whitespaces)
-            let token = try GitHubTokenResolver.resolve(keychainAccount: account)
-            let url = try GitHubRunnerTemplate.generate(
-                repo: repo,
-                token: token,
-                ephemeral: ephemeralRunner
-            )
-            return (url, true)
         case .openclaw:
             return (try OpenClawTemplate.generate(), true)
         case .remoteDesktop:
@@ -856,6 +855,25 @@ struct CreateVMSheet: View {
             }
             return (URL(filePath: expanded), false)
         }
+    }
+
+    /// Validates and builds the ``RunnerRequest`` carried in the
+    /// creation request when ``template`` is ``ProvisioningTemplate/githubRunner``.
+    ///
+    /// Only validates shape (non-blank fields, `owner/repo` form
+    /// via ``RunnerRequest``'s initializer) — the Keychain lookup
+    /// and registration-token mint happen later, in
+    /// `AppState.runMacOSCreate`, seconds before the VM boots.
+    ///
+    /// - Returns: `nil` for every template other than
+    ///   ``ProvisioningTemplate/githubRunner``.
+    private func resolveRunnerRequest() throws -> RunnerRequest? {
+        guard template == .githubRunner else { return nil }
+        return try RunnerRequest(
+            repo: githubRepo,
+            keychainAccount: githubKeychainAccount,
+            ephemeral: ephemeralRunner
+        )
     }
 
     // MARK: - Submit
@@ -909,13 +927,15 @@ struct CreateVMSheet: View {
         case .macOS:
             do {
                 let (userScriptURL, ownsUserScript) = try resolveProvisionScript()
+                let runnerSpec = try resolveRunnerRequest()
                 let request = AppState.MacOSCreationRequest(
                     name: trimmedName,
                     spec: spec,
                     ipswSource: ipswSource == .local ? .local : .latest,
                     localIpswPath: localIpswPath,
                     userScriptURL: userScriptURL,
-                    ownsUserScript: ownsUserScript
+                    ownsUserScript: ownsUserScript,
+                    runnerSpec: runnerSpec
                 )
                 appState.beginCreateMacOSVM(request)
                 dismiss()

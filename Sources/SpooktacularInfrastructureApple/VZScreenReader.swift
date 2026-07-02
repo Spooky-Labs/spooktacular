@@ -1,6 +1,5 @@
 import AppKit
-import os
-import SpooktacularKit
+import SpooktacularCore
 import Vision
 @preconcurrency import Virtualization
 
@@ -20,7 +19,7 @@ import Vision
 /// 2. `cacheDisplay(in:to:)` renders the view into the bitmap.
 /// 3. The bitmap's `CGImage` is passed to a Vision
 ///    `VNRecognizeTextRequest` with `.accurate` recognition level.
-/// 4. Results are mapped to ``RecognizedText`` values with bounding
+/// 4. Results are mapped to ``SpooktacularCore.RecognizedText`` values with bounding
 ///    boxes and confidence scores.
 ///
 /// ## Polling Strategy
@@ -35,7 +34,7 @@ import Vision
 /// All methods are `@MainActor` because `VZVirtualMachineView` and
 /// `NSBitmapImageRep` must be accessed on the main thread.
 @MainActor
-final class VZScreenReader: ScreenReader {
+public final class VZScreenReader: ScreenReader {
 
     /// The VM view to capture.
     private let vmView: VZVirtualMachineView
@@ -49,14 +48,20 @@ final class VZScreenReader: ScreenReader {
     ///   - vmView: The `VZVirtualMachineView` to capture for OCR.
     ///   - pollInterval: Seconds between screen captures when polling.
     ///     Defaults to 2 seconds.
-    init(vmView: VZVirtualMachineView, pollInterval: TimeInterval = 2) {
+    public init(vmView: VZVirtualMachineView, pollInterval: TimeInterval = 2) {
         self.vmView = vmView
         self.pollInterval = pollInterval
     }
 
     // MARK: - ScreenReader
 
-    func recognizeText() async throws -> [SpooktacularKit.RecognizedText] {
+    /// Captures the VM's current display and recognizes every
+    /// visible text region via Vision OCR.
+    ///
+    /// - Returns: Recognized text regions with bounding boxes and
+    ///   confidence scores, or an empty array if the view couldn't
+    ///   be captured.
+    public func recognizeText() async throws -> [SpooktacularCore.RecognizedText] {
         // Capture the view as a CGImage.
         guard let bitmap = vmView.bitmapImageRepForCachingDisplay(in: vmView.bounds) else {
             Log.provision.warning("VZScreenReader: bitmapImageRepForCachingDisplay returned nil")
@@ -78,12 +83,12 @@ final class VZScreenReader: ScreenReader {
             return []
         }
 
-        let results = observations.compactMap { observation -> SpooktacularKit.RecognizedText? in
+        let results = observations.compactMap { observation -> SpooktacularCore.RecognizedText? in
             guard let candidate = observation.topCandidates(1).first else {
                 return nil
             }
             let bbox = observation.boundingBox
-            return SpooktacularKit.RecognizedText(
+            return SpooktacularCore.RecognizedText(
                 text: candidate.string,
                 boundingBox: NormalizedRect(
                     x: Double(bbox.origin.x),
@@ -101,7 +106,17 @@ final class VZScreenReader: ScreenReader {
         return results
     }
 
-    func waitForText(_ text: String, timeout: TimeInterval) async throws -> SpooktacularKit.RecognizedText {
+    /// Polls the VM's display every ``pollInterval`` seconds until
+    /// `text` appears, or throws once `timeout` elapses.
+    ///
+    /// - Parameters:
+    ///   - text: The text to search for (case-insensitive substring
+    ///     match).
+    ///   - timeout: Maximum seconds to wait.
+    /// - Returns: The matching ``SpooktacularCore.RecognizedText``.
+    /// - Throws: ``ScreenReaderError/textNotFound(_:timeout:)`` if
+    ///   `text` never appears within `timeout`.
+    public func waitForText(_ text: String, timeout: TimeInterval) async throws -> SpooktacularCore.RecognizedText {
         let deadline = Date().addingTimeInterval(timeout)
         Log.provision.info(
             "VZScreenReader: waiting for '\(text, privacy: .public)' (timeout: \(Int(timeout))s)"

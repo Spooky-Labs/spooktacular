@@ -900,6 +900,13 @@ final class AppState {
         /// before we dismiss the create sheet.
         let userScriptURL: URL?
         let ownsUserScript: Bool
+        /// Non-nil when the sheet's provisioning template is
+        /// GitHub Actions Runner. Unlike ``userScriptURL``, this
+        /// carries no secret — the Keychain lookup and
+        /// registration-token mint happen late, in
+        /// ``runMacOSCreate(request:)``, seconds before the VM
+        /// boots. See ``RunnerRequest``.
+        let runnerSpec: RunnerRequest?
 
         enum IPSWSource: Sendable { case latest, local }
     }
@@ -967,6 +974,16 @@ final class AppState {
     @MainActor
     private func runMacOSCreate(request: MacOSCreationRequest) async {
         let name = request.name
+        // Captured now, before anything below touches
+        // `pendingCreations[name]` — `beginCreateMacOSVM` sets this
+        // synchronously, on the same actor, immediately after
+        // scheduling the `Task` that runs this method, so it's
+        // guaranteed populated by the time this line executes.
+        // Re-threaded into `provisionGitHubRunnerForCreate` so its
+        // re-populated pending-creation row keeps working Cancel
+        // support instead of silently losing the handle when the
+        // base pipeline's own success tail removes this row below.
+        let cancellationTask = pendingCreations[name]?.cancellationTask
         // Mint the VM's permanent UUID upfront so the bundle
         // directory, metadata, and any recovery-cleanup path
         // all agree on a single identity. Two parallel creates
@@ -976,6 +993,13 @@ final class AppState {
         let bundleID = UUID()
         let bundleURL: URL? = SpooktacularPaths.bundleURL(for: bundleID)
         let manager = RestoreImageManager(cacheDirectory: ipswCacheDirectory)
+
+        // Captured across the do/catch boundary below so the
+        // runner-provisioning phase at the bottom of this method
+        // — deliberately OUTSIDE the do/catch, see its call site —
+        // has what it needs without re-deriving it.
+        var createdBundle: VirtualMachineBundle?
+        var installedMacOSMajorVersion: Int?
 
         do {
             // Restore-image resolution is source-dependent.
@@ -1009,6 +1033,7 @@ final class AppState {
                 try Task.checkCancellation()
                 ipswURL = candidate
                 let v = restoreImage.operatingSystemVersion
+                installedMacOSMajorVersion = v.majorVersion
                 updateCreation(
                     name: name,
                     progress: 0.5,
@@ -1019,6 +1044,7 @@ final class AppState {
                 restoreImage = try await manager.fetchLatestSupported()
                 try Task.checkCancellation()
                 let v = restoreImage.operatingSystemVersion
+                installedMacOSMajorVersion = v.majorVersion
                 updateCreation(
                     name: name,
                     progress: 0.05,
@@ -1090,6 +1116,7 @@ final class AppState {
                 )
             }
 
+            createdBundle = bundle
             pendingCreations.removeValue(forKey: name)
             loadVMs()
             selectedVM = name
@@ -1110,6 +1137,26 @@ final class AppState {
             }
             let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             failCreation(name: name, message: msg)
+        }
+
+        // GitHub Actions runner provisioning — mirrors Create.swift's
+        // `provisionGitHubRunner`, which deliberately runs OUTSIDE its
+        // do/catch for the same reason: by this point the VM has been
+        // created successfully (the guard below requires
+        // `createdBundle`, which is only set on the success path
+        // above), and it's already visible in the sidebar via
+        // `loadVMs()`. A late failure here (Keychain miss, GitHub API
+        // error, boot failure) must NOT delete a bundle that took
+        // 10-20 minutes to install — see
+        // ``provisionGitHubRunnerForCreate(bundle:runnerSpec:macOSMajorVersion:displayName:)``.
+        if let runnerSpec = request.runnerSpec, let createdBundle {
+            await provisionGitHubRunnerForCreate(
+                bundle: createdBundle,
+                runnerSpec: runnerSpec,
+                macOSMajorVersion: installedMacOSMajorVersion,
+                displayName: name,
+                cancellationTask: cancellationTask
+            )
         }
     }
 
@@ -1225,6 +1272,229 @@ final class AppState {
             if ownsUserScript {
                 try? ScriptFile.cleanup(scriptURL: userScriptURL)
             }
+        }
+    }
+
+    /// Zero-touch GitHub Actions runner provisioning for a freshly
+    /// created macOS VM. Mirrors `Create.swift`'s
+    /// `automateSetupAssistant` → `provisionGitHubRunner` →
+    /// `bootRunnerAndAwaitOnline` chain, adapted to the GUI's
+    /// in-process VM lifecycle: no PID file and no headless-process
+    /// signal handling — the running app itself is the long-lived
+    /// host process, and ``startVM(_:recovery:)`` /
+    /// ``stopVM(_:)`` already own that bookkeeping.
+    ///
+    /// Called from ``runMacOSCreate(request:)`` **after** its
+    /// do/catch has already revealed the VM in the sidebar
+    /// (`loadVMs()` ran; the bundle exists on disk). A failure in
+    /// any stage below therefore must NOT delete the bundle — the
+    /// VM was already created successfully, exactly like
+    /// `Create.swift` keeps the bundle and reports the runner-phase
+    /// failure separately from VM creation.
+    ///
+    /// Re-populates a fresh ``pendingCreations`` row — the base
+    /// pipeline's row was already cleared by the success tail this
+    /// method is called after — so the sidebar keeps showing live
+    /// progress through setup automation, minting, injection, boot,
+    /// and the online poll. This reuses the same progress surface
+    /// as the IPSW download/install stages rather than introducing
+    /// a new one; on completion (success or a non-fatal "not yet
+    /// confirmed online" outcome) the row is cleared, and on a hard
+    /// failure it's left in its errored state via ``failCreation(name:message:)``
+    /// so the user can read it and dismiss.
+    ///
+    /// ``transitioningVMs`` guards the VM's Start/Stop controls
+    /// (see ``startVM(_:recovery:)``'s own guard) for the seed +
+    /// Setup Assistant automation window, since this method drives
+    /// its own raw ``VirtualMachine`` instance outside
+    /// ``runningVMs`` during that window — a concurrent user-
+    /// initiated start would otherwise race the same bundle's disk
+    /// image. The guard is lifted before handing off to
+    /// ``startVM(_:recovery:)``, which manages its own
+    /// insert/remove for the boot it performs.
+    ///
+    /// - Parameter cancellationTask: The Task handle
+    ///   ``beginCreateMacOSVM(_:)`` originally attached to this VM's
+    ///   pending-creation row — the SAME task that is currently
+    ///   executing this method via `runMacOSCreate(request:)`'s
+    ///   plain `await` call, so cancelling it cooperatively trips
+    ///   this method's `Task.checkCancellation()` checkpoints.
+    ///   Re-attached to the fresh row below so the sidebar's Cancel
+    ///   button keeps working — without it, the row this method
+    ///   creates would carry a `nil` handle (the original row, and
+    ///   its handle, was already removed by the base pipeline's own
+    ///   success tail before this method runs) and Cancel would
+    ///   silently no-op for the remainder of this phase.
+    @MainActor
+    private func provisionGitHubRunnerForCreate(
+        bundle: VirtualMachineBundle,
+        runnerSpec: RunnerRequest,
+        macOSMajorVersion: Int?,
+        displayName: String,
+        cancellationTask: Task<Void, Never>?
+    ) async {
+        let name = displayName
+        pendingCreations[name] = PendingCreation(
+            name: name,
+            guestOSLabel: "GitHub Actions Runner"
+        )
+        pendingCreations[name]?.cancellationTask = cancellationTask
+        transitioningVMs.insert(name)
+
+        do {
+            // 1. Seed the provisioner pkg into the bundle's
+            //    provisioning share BEFORE Setup Assistant
+            //    automation runs — its typed `installer` command
+            //    needs the pkg already sitting on the share. Soft
+            //    fail: dev builds that never ran build-app.sh
+            //    don't have a pkg to stage, so continue without
+            //    zero-touch provisioning rather than blocking the
+            //    whole runner flow on a missing dev artifact.
+            updateCreation(name: name, progress: 0.05, status: "Staging provisioner package…")
+            var installProvisioner = false
+            if let pkgURL = AppBundleBootstrapTemplate.locateProvisionerPkg() {
+                try FileManager.default.createDirectory(
+                    at: bundle.provisionDirectoryURL,
+                    withIntermediateDirectories: true
+                )
+                let destination = bundle.provisionDirectoryURL
+                    .appendingPathComponent(pkgURL.lastPathComponent)
+                try? FileManager.default.removeItem(at: destination)
+                try FileManager.default.copyItem(at: pkgURL, to: destination)
+                installProvisioner = true
+            } else {
+                Log.provision.warning(
+                    "Provisioner pkg not found — continuing without zero-touch install. Run build-app.sh to produce Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg."
+                )
+            }
+            try Task.checkCancellation()
+
+            // 2. Setup Assistant automation — boot headless, drive
+            //    the keyboard automation sequence for the macOS
+            //    version this VM was installed with, then stop.
+            //    Mirrors Create.swift's `automateSetupAssistant`
+            //    VM construction and driver/screen-reader wiring.
+            guard let macOSMajorVersion else {
+                throw RunnerProvisioningError.macOSVersionUnknown
+            }
+            updateCreation(name: name, progress: 0.15, status: "Booting for Setup Assistant automation…")
+            let setupVM = try VirtualMachine(bundle: bundle)
+            guard let underlyingVM = setupVM.vzVM else {
+                throw RunnerProvisioningError.vmInstanceUnavailable
+            }
+            try await setupVM.start()
+            // Once booted, every failure path below must still stop
+            // this VM before propagating — otherwise a thrown
+            // `SetupAutomationExecutorError` (e.g. an unmappable
+            // character) would leave a booted `VZVirtualMachine`
+            // running with no tracking in `runningVMs` and no UI
+            // affordance to stop it.
+            do {
+                let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
+                let screenReader = VZScreenReader(vmView: driver.vmView)
+                let steps = try SetupAutomation.sequence(
+                    for: macOSMajorVersion,
+                    installProvisioner: installProvisioner
+                )
+                updateCreation(name: name, progress: 0.2, status: "Running Setup Assistant automation…")
+                try await SetupAutomationExecutor.run(steps: steps, using: driver, screenReader: screenReader)
+            } catch {
+                try? await setupVM.stop(graceful: false)
+                throw error
+            }
+            updateCreation(name: name, progress: 0.55, status: "Stopping VM after Setup Assistant…")
+            try? await setupVM.stop(graceful: false)
+            try Task.checkCancellation()
+
+            // 3. Mint a fresh registration token — seconds before
+            //    boot, since GitHub's tokens expire after one
+            //    hour and Setup Assistant automation alone can
+            //    take several minutes.
+            updateCreation(name: name, progress: 0.6, status: "Resolving GitHub token…")
+            let pat = try GitHubTokenResolver.resolve(keychainAccount: runnerSpec.keychainAccount)
+            let scope = try GitHubRunnerScope("repos/\(runnerSpec.repo)")
+            let service = GitHubRunnerService(auth: GitHubPATAuth(token: pat), http: URLSessionHTTPClient())
+            updateCreation(name: name, progress: 0.65, status: "Minting registration token…")
+            let issued = try await service.issueRegistrationToken(scope: scope)
+            try Task.checkCancellation()
+
+            // 4. Render + inject the runner script. Named after
+            //    the VM's display name, matching `config.sh
+            //    --name` so `waitForOnline(named:)` below finds
+            //    the right runner record.
+            updateCreation(name: name, progress: 0.7, status: "Injecting runner setup script…")
+            let scriptURL = try GitHubRunnerTemplate.generate(
+                repo: runnerSpec.repo,
+                token: issued.token,
+                labels: runnerSpec.labels,
+                ephemeral: runnerSpec.ephemeral,
+                runnerName: name
+            )
+            do {
+                try DiskInjector.inject(script: scriptURL, into: bundle)
+            } catch {
+                try? ScriptFile.cleanup(scriptURL: scriptURL)
+                throw error
+            }
+            do {
+                try ScriptFile.cleanup(scriptURL: scriptURL)
+            } catch {
+                Log.provision.error("Runner script cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+
+            // The raw setup-automation VM is stopped and dropped;
+            // hand off to the existing GUI start path, which
+            // manages its own `transitioningVMs` insert/remove.
+            // Removing our hold here first avoids self-blocking
+            // `startVM`'s own re-entrancy guard.
+            transitioningVMs.remove(name)
+            try Task.checkCancellation()
+
+            // 5. Start via the existing GUI start path — same
+            //    method every other VM in the sidebar uses, so
+            //    the VM becomes a normal running instance in
+            //    `runningVMs` with streaming services, graphics
+            //    view, and lifecycle notifications wired up.
+            updateCreation(name: name, progress: 0.85, status: "Starting VM…")
+            await startVM(name)
+            guard runningVMs[name] != nil else {
+                throw RunnerProvisioningError.startFailed
+            }
+
+            // 6. Poll GitHub until the runner reports online. A
+            //    timeout here is non-fatal — mirrors the CLI's
+            //    `bootRunnerAndAwaitOnline`, which leaves the VM
+            //    running and warns rather than tearing anything
+            //    down, since the runner may still come online.
+            updateCreation(name: name, progress: 0.9, status: "Waiting for runner to come online…")
+            do {
+                let runner = try await service.waitForOnline(
+                    named: name,
+                    scope: scope,
+                    deadline: Date().addingTimeInterval(600),
+                    pollInterval: 10
+                )
+                updateCreation(name: name, progress: 1.0, status: "Runner online (GitHub runner id \(runner.id)).")
+            } catch {
+                Log.provision.warning(
+                    "Runner '\(name, privacy: .public)' not confirmed online: \(error.localizedDescription, privacy: .public)"
+                )
+                updateCreation(
+                    name: name,
+                    progress: 1.0,
+                    status: "VM running — runner not yet confirmed online. Check its provisioning logs."
+                )
+            }
+            await service.revokeRegistrationToken(handle: issued.handle)
+
+            pendingCreations.removeValue(forKey: name)
+        } catch is CancellationError {
+            transitioningVMs.remove(name)
+            pendingCreations.removeValue(forKey: name)
+        } catch {
+            transitioningVMs.remove(name)
+            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            failCreation(name: name, message: msg)
         }
     }
 
@@ -1475,6 +1745,47 @@ final class AppState {
                 "Wait 5-10 seconds for the XPC service to release the disk, then retry. If it persists, Force Quit 'com.apple.Virtualization.VirtualMachine' in Activity Monitor."
             case .unsupportedGuestOS:
                 "On a Linux guest, install spice-vdagent with your distro's package manager: `apt install spice-vdagent` (Debian/Ubuntu) or `dnf install spice-vdagent` (Fedora/RHEL)."
+            }
+        }
+    }
+
+    /// Diagnostics for ``provisionGitHubRunnerForCreate(bundle:runnerSpec:macOSMajorVersion:displayName:)``.
+    ///
+    /// Every case describes a failure that happens after the VM
+    /// bundle already exists on disk — the recovery text always
+    /// points at manual next steps rather than "recreate the VM,"
+    /// matching the CLI's "the VM was created and has been kept"
+    /// framing for a late runner-phase failure.
+    enum RunnerProvisioningError: LocalizedError {
+        /// The macOS version installed by this create couldn't be
+        /// determined, so Setup Assistant automation has no
+        /// sequence to run.
+        case macOSVersionUnknown
+        /// `VirtualMachine.vzVM` was `nil` right after
+        /// construction — the underlying `VZVirtualMachine`
+        /// failed to initialize.
+        case vmInstanceUnavailable
+        /// ``AppState/startVM(_:recovery:)`` returned without the
+        /// VM appearing in ``AppState/runningVMs``.
+        case startFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .macOSVersionUnknown:
+                "Could not determine the installed macOS version for Setup Assistant automation."
+            case .vmInstanceUnavailable:
+                "Failed to create a virtual machine instance for Setup Assistant automation."
+            case .startFailed:
+                "The VM failed to start after the runner script was injected."
+            }
+        }
+
+        var recoverySuggestion: String? {
+            switch self {
+            case .macOSVersionUnknown, .vmInstanceUnavailable:
+                "The VM was created and has been kept. Start it manually from the sidebar to complete Setup Assistant, then register the runner by hand."
+            case .startFailed:
+                "The runner script is injected. Try starting the VM manually from the sidebar."
             }
         }
     }

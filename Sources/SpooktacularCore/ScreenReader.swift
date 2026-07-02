@@ -55,10 +55,13 @@ public struct NormalizedRect: Sendable, Equatable, Hashable {
 ///
 /// ## Architecture
 ///
-/// The protocol lives in SpooktacularKit (no AppKit or Vision
+/// The protocol lives in SpooktacularCore (no AppKit or Vision
 /// imports) so it can be referenced from any target. The concrete
-/// implementation (`VZScreenReader`) lives in the `spook` CLI
-/// target where AppKit and Vision are available.
+/// implementation (`VZScreenReader`) lives in
+/// `SpooktacularInfrastructureApple`, alongside every other Apple
+/// framework adapter, where AppKit and Vision are available — both
+/// the CLI (`spooktacular-cli`) and the GUI (`Spooktacular`) reach
+/// it through the `SpooktacularKit` umbrella re-export.
 ///
 /// ## Example
 ///

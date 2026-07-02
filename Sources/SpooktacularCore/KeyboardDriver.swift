@@ -3,8 +3,11 @@ import Foundation
 /// Delivers keyboard events to a running virtual machine.
 ///
 /// Implement this protocol to provide platform-specific keyboard
-/// input to `VZVirtualMachine`. The CLI provides ``VZKeyboardDriver``
-/// (AppKit-based), the GUI can use its existing `VZVirtualMachineView`.
+/// input to `VZVirtualMachine`. `SpooktacularInfrastructureApple`
+/// provides the concrete, AppKit-based ``VZKeyboardDriver`` — both
+/// the CLI (`spooktacular-cli`) and the GUI (`Spooktacular`) use it
+/// for Setup Assistant automation, reached through the
+/// `SpooktacularKit` umbrella re-export.
 ///
 /// ## Conformance Requirements
 ///

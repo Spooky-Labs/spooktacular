@@ -1,6 +1,5 @@
 import AppKit
-import os
-import SpooktacularKit
+import SpooktacularCore
 @preconcurrency import Virtualization
 
 /// AppKit-based ``KeyboardDriver`` that delivers keyboard events
@@ -45,10 +44,11 @@ public final class VZKeyboardDriver: KeyboardDriver, @unchecked Sendable {
 
     /// The VM view used for keyboard and mouse event delivery.
     ///
-    /// Exposed as `internal` so that ``VZScreenReader`` can capture
-    /// the view's display for OCR. The view is owned by this driver
-    /// and lives inside the offscreen window.
-    let vmView: VZVirtualMachineView
+    /// Exposed as `public` so that ``VZScreenReader`` — and callers
+    /// in other modules driving Setup Assistant automation — can
+    /// capture the view's display for OCR. The view is owned by
+    /// this driver and lives inside the offscreen window.
+    public let vmView: VZVirtualMachineView
 
     /// Creates a keyboard driver connected to the given virtual machine.
     ///
