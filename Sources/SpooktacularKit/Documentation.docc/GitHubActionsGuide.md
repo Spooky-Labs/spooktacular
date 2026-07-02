@@ -116,7 +116,7 @@ and `--provision ssh`.
 |--------|----------|-------------|
 | `--github-runner` | Yes | Generates a GitHub Actions runner setup script |
 | `--github-repo <org/repo>` | Yes | GitHub repository (e.g., `myorg/myrepo`) |
-| `--github-token <token>` | Yes | GitHub PAT or registration token |
+| `--github-token-keychain <account>` | Yes | Keychain account (service `com.spooktacular.github`) holding a GitHub PAT with repo admin scope |
 | `--ephemeral` | No | Runner exits after one job |
 
 ## Ephemeral Runners
@@ -411,7 +411,7 @@ curl -s -H "Authorization: token ghp_xxxx" \
 
 **Symptom:** Runner fails to register or deregisters unexpectedly.
 
-**Cause:** The GitHub PAT or registration token has expired.
+**Cause:** The GitHub PAT stored in the Keychain has expired or been revoked.
 
 **Solution:**
 

@@ -72,7 +72,7 @@ USAGE: spook create <name> [options]
 | `--enable-auto-resize` / `--disable-auto-resize` | enabled | Auto-resize display |
 | `--github-runner` | false | Configure as a GitHub Actions runner |
 | `--github-repo <org/repo>` | - | GitHub repository for `--github-runner` |
-| `--github-token <token>` | - | Runner registration token for `--github-runner` |
+| `--github-token-keychain <account>` | - | Keychain account (service `com.spooktacular.github`) holding the GitHub PAT for `--github-runner` |
 | `--openclaw` | false | Configure as an OpenClaw AI agent |
 | `--remote-desktop` | false | Enable Screen Sharing (VNC) |
 | `--ephemeral` | false | Destroy and recreate after each job |
@@ -94,9 +94,10 @@ spook create ci --from-ipsw latest \
 # From a local IPSW file
 spook create dev --from-ipsw ~/Downloads/macOS15.4.ipsw
 
-# As a GitHub Actions runner
+# As a GitHub Actions runner (PAT stored once via
+# `security add-generic-password -s com.spooktacular.github -a org-acme -w <PAT> -U`)
 spook create runner --from-ipsw latest \
-    --github-runner --github-repo myorg/myrepo --github-token ghp_xxx
+    --github-runner --github-repo myorg/myrepo --github-token-keychain org-acme
 
 # With shared folder
 spook create ml --cpu 8 --memory 16 \

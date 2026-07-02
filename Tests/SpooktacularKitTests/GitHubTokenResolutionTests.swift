@@ -2,8 +2,9 @@ import Testing
 import Foundation
 @testable import SpooktacularKit
 
-/// Covers the Keychain-only resolution path for the GitHub runner
-/// registration token. Earlier revisions accepted env-var, CLI
+/// Covers the Keychain-only resolution path for the GitHub PAT
+/// (from which the host mints short-lived runner registration
+/// tokens). Earlier revisions accepted env-var, CLI
 /// flag, and file-path sources; those were removed to close the
 /// "malware running as the logged-in user" threat — a sibling
 /// process reading an env var, CLI arg, or world-readable file
@@ -44,6 +45,11 @@ struct GitHubTokenResolutionTests {
         #expect(hint.contains("security add-generic-password"))
         #expect(hint.contains("com.spooktacular.github"))
         #expect(hint.contains("org-acme"))
+        // The Keychain item is a PAT (the host mints short-lived
+        // registration tokens from it at create time) — the hint
+        // must say so, or operators paste a 1-hour registration
+        // token that dies before a 40-minute install finishes.
+        #expect(hint.contains("<PAT with repo admin scope>"))
     }
 
     @Test("every error case has both description and recovery hint")
