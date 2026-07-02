@@ -79,4 +79,25 @@ struct RunnerCreateFlowPlanTests {
         #expect(error.errorDescription?.contains("--remote-desktop") == true)
         #expect(error.recoverySuggestion != nil)
     }
+
+    // MARK: - Provision mode
+
+    @Test("disk-inject provision mode passes")
+    func provisionModeDiskInject() throws {
+        try RunnerCreateFlowPlan.validateProvisionMode(isDiskInject: true)
+    }
+
+    @Test("non-disk-inject provision mode is a hard error")
+    func provisionModeOther() {
+        #expect(throws: RunnerCreateFlowError.unsupportedProvisionMode) {
+            try RunnerCreateFlowPlan.validateProvisionMode(isDiskInject: false)
+        }
+    }
+
+    @Test("unsupportedProvisionMode error has description and recovery text")
+    func provisionModeErrorText() {
+        let error = RunnerCreateFlowError.unsupportedProvisionMode
+        #expect(error.errorDescription?.contains("disk-inject") == true)
+        #expect(error.recoverySuggestion != nil)
+    }
 }

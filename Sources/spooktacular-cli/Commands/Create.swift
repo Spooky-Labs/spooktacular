@@ -357,11 +357,12 @@ extension Spooktacular {
             // Validate everything statically knowable about the
             // --github-runner invocation BEFORE spending 10-20
             // minutes on an IPSW download and macOS install: flag
-            // presence, scope shape, template exclusivity, and the
-            // --skip-setup/--no-start interaction. Only the Keychain
-            // PAT resolution and token mint stay late (the token's
-            // one-hour TTL must cover the guest's first boot). See
-            // ``RunnerCreateFlowPlan`` for the pure decision logic.
+            // presence, scope shape, template exclusivity, provision
+            // mode, and the --skip-setup/--no-start interaction.
+            // Only the Keychain PAT resolution and token mint stay
+            // late (the token's one-hour TTL must cover the guest's
+            // first boot). See ``RunnerCreateFlowPlan`` for the pure
+            // decision logic.
             var runnerAutoStart = false
             var runnerRepo = ""
             var runnerKeychainAccount = ""
@@ -385,6 +386,9 @@ extension Spooktacular {
                         remoteDesktop: remoteDesktop,
                         openclaw: openclaw,
                         hasUserData: userData != nil
+                    )
+                    try RunnerCreateFlowPlan.validateProvisionMode(
+                        isDiskInject: provision == .diskInject
                     )
                     runnerAutoStart = try RunnerCreateFlowPlan.autoStartDecision(
                         skipSetup: skipSetup,
@@ -780,9 +784,10 @@ extension Spooktacular {
                         autoStart: runnerAutoStart
                     )
                 } catch let exit as ExitCode {
-                    // Throwing sites inside provisionGitHubRunner /
-                    // bootRunnerAndAwaitOnline already printed their
-                    // own message before throwing ExitCode.
+                    // Only the degraded-poll path throws ExitCode
+                    // (runner never confirmed online after the VM
+                    // stopped) — its warning was already printed at
+                    // poll time, so rethrow without a second report.
                     throw exit
                 } catch {
                     reportRunnerProvisioningFailure(error)
@@ -1206,17 +1211,11 @@ extension Spooktacular {
             keychainAccount: String,
             autoStart: Bool
         ) async throws {
-            let pat: String
-            do {
-                pat = try GitHubTokenResolver.resolve(keychainAccount: keychainAccount)
-            } catch {
-                print(Style.error("✗ \(error.localizedDescription)"))
-                if let suggestion = (error as? LocalizedError)?.recoverySuggestion {
-                    print(Style.dim("  \(suggestion)"))
-                }
-                print(Style.dim("  The VM '\(name)' was created successfully and has been kept."))
-                throw ExitCode.failure
-            }
+            // Failures here (Keychain miss, GitHub API errors)
+            // propagate to the runner-phase catch in `run()`, whose
+            // json-aware reporter prints the message, recovery hint,
+            // and the VM-was-kept note.
+            let pat = try GitHubTokenResolver.resolve(keychainAccount: keychainAccount)
 
             let scope = try GitHubRunnerScope("repos/\(repo)")
             let service = GitHubRunnerService(
@@ -1224,38 +1223,47 @@ extension Spooktacular {
                 http: URLSessionHTTPClient()
             )
 
-            print(Style.info("Minting GitHub Actions runner registration token..."))
+            if !json { print(Style.info("Minting GitHub Actions runner registration token...")) }
             let issued = try await service.issueRegistrationToken(scope: scope)
-            print(Style.success("✓ Registration token minted."))
+            if !json { print(Style.success("✓ Registration token minted.")) }
 
+            // GitHubRunnerTemplate always writes to the host-side
+            // cache — we always own this script, unlike the shared
+            // provisionScript/ownsScript dance above which also
+            // handles operator-supplied --user-data paths.
             let scriptURL = try GitHubRunnerTemplate.generate(
                 repo: repo,
                 token: issued.token,
                 ephemeral: ephemeral,
                 runnerName: name
             )
-            // GitHubRunnerTemplate always writes to the host-side
-            // cache — we always own this script, unlike the shared
-            // provisionScript/ownsScript dance above which also
-            // handles operator-supplied --user-data paths.
-            var scriptConsumed = false
-            defer {
-                if scriptConsumed {
-                    do {
-                        try ScriptFile.cleanup(scriptURL: scriptURL)
-                    } catch {
-                        Log.provision.error("Runner script cleanup failed: \(error.localizedDescription, privacy: .public)")
-                    }
-                }
-            }
 
-            print(Style.info("Injecting runner setup script into guest disk..."))
-            try DiskInjector.inject(script: scriptURL, into: bundle)
-            scriptConsumed = true
-            print(Style.success("✓ Script injected. The provisioner runs it automatically on first boot."))
+            // The rendered script embeds the live registration
+            // token, so the host-side copy is deleted the moment
+            // injection has copied the bytes into the bundle share
+            // — and on injection failure too. Deliberately NOT a
+            // `defer`: the headless-hosting phase below ends through
+            // signal handlers that call `Foundation.exit`, which
+            // terminates the process without unwinding this frame,
+            // so a deferred cleanup would never run on the mainline
+            // Ctrl-C path. Nothing past this block may depend on
+            // the host-side script file existing.
+            if !json { print(Style.info("Injecting runner setup script into guest disk...")) }
+            do {
+                try DiskInjector.inject(script: scriptURL, into: bundle)
+            } catch {
+                try? ScriptFile.cleanup(scriptURL: scriptURL)
+                throw error
+            }
+            do {
+                try ScriptFile.cleanup(scriptURL: scriptURL)
+            } catch {
+                Log.provision.error("Runner script cleanup failed: \(error.localizedDescription, privacy: .public)")
+            }
+            if !json { print(Style.success("✓ Script injected. The provisioner runs it automatically on first boot.")) }
 
             guard autoStart else {
-                print(Style.dim("  --no-start: VM not started. Boot manually with 'spook start \(name)' when ready."))
+                if !json { print(Style.dim("  --no-start: VM not started. Boot manually with 'spook start \(name)' when ready.")) }
                 return
             }
 
@@ -1275,6 +1283,13 @@ extension Spooktacular {
         /// result, then blocks until the VM stops — the VM is left
         /// running for as long as this process keeps running,
         /// exactly like `spook start --headless`.
+        ///
+        /// The process exit code reflects the poll outcome: if the
+        /// runner was never confirmed online, both exit paths — the
+        /// signal handlers (`Foundation.exit`) and the normal
+        /// state-stream unwind (thrown `ExitCode.failure`) — report
+        /// non-zero, even though the VM is (correctly) left running
+        /// in the meantime because the runner may still come online.
         ///
         /// `SIGUSR1` (the `spook suspend` signal) is deliberately
         /// left at its default-ignored disposition rather than
@@ -1299,35 +1314,39 @@ extension Spooktacular {
                 bundle = try VirtualMachineBundle.load(from: bundleURL)
             }
 
-            print(Style.info("Starting VM '\(name)' headless for runner registration..."))
+            if !json { print(Style.info("Starting VM '\(name)' headless for runner registration...")) }
             let vm = try VirtualMachine(bundle: bundle)
             guard vm.vzVM != nil else {
-                print(Style.error("✗ Failed to create virtual machine instance."))
-                throw ExitCode.failure
-            }
-
-            do {
-                try PIDFile.writeAndEnsureCapacity(
-                    bundleURL: bundleURL,
-                    vmDirectory: SpooktacularPaths.vms
+                throw NSError(
+                    domain: "com.spooktacular",
+                    code: 1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Failed to create a virtual machine instance for the runner boot.",
+                    ]
                 )
-            } catch let error as CapacityError {
-                print(Style.error("✗ \(error.localizedDescription)"))
-                if let recovery = error.recoverySuggestion {
-                    print(Style.dim("  \(recovery)"))
-                }
-                print(Style.dim("  The VM '\(name)' was created and provisioned; the runner registers on its first boot: spook start \(name) --headless"))
-                throw ExitCode.failure
             }
 
+            // CapacityError (too many running VMs) propagates to the
+            // runner-phase catch in `run()` — the script is already
+            // injected at this point, so its json-aware reporter's
+            // "boot it with 'spook start'" guidance is exactly right.
+            try PIDFile.writeAndEnsureCapacity(
+                bundleURL: bundleURL,
+                vmDirectory: SpooktacularPaths.vms
+            )
+
+            let outcome = RunnerOnlineOutcome()
             let nameCapture = name
             let isEphemeralCapture = ephemeral
+            let jsonCapture = json
             for sig in [SIGTERM, SIGINT] {
                 signal(sig, SIG_IGN)
                 let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
                 source.setEventHandler {
                     let sigName = sig == SIGTERM ? "SIGTERM" : "SIGINT"
-                    print("\nReceived \(sigName) — stopping VM '\(nameCapture)'...")
+                    if !jsonCapture {
+                        print("\nReceived \(sigName) — stopping VM '\(nameCapture)'...")
+                    }
                     Task { @MainActor in
                         try? await vm.stop(graceful: false)
                         cleanupRunnerVMAfterStop(
@@ -1335,7 +1354,11 @@ extension Spooktacular {
                             name: nameCapture,
                             ephemeral: isEphemeralCapture
                         )
-                        Foundation.exit(0)
+                        // Exit status must reflect whether the
+                        // runner was ever confirmed online —
+                        // Foundation.exit bypasses the thrown-
+                        // ExitCode path below.
+                        Foundation.exit(outcome.confirmed ? 0 : 1)
                     }
                 }
                 source.resume()
@@ -1347,9 +1370,9 @@ extension Spooktacular {
             signal(SIGUSR1, SIG_IGN)
 
             try await vm.startOrResume()
-            print(Style.success("✓ VM '\(name)' is running."))
+            if !json { print(Style.success("✓ VM '\(name)' is running.")) }
 
-            print(Style.info("Waiting for runner '\(name)' to come online (up to 10 minutes)..."))
+            if !json { print(Style.info("Waiting for runner '\(name)' to come online (up to 10 minutes)...")) }
             do {
                 let runner = try await service.waitForOnline(
                     named: name,
@@ -1357,13 +1380,16 @@ extension Spooktacular {
                     deadline: Date().addingTimeInterval(600),
                     pollInterval: 10
                 )
-                print(Style.success("✓ Runner '\(name)' is online (GitHub runner id \(runner.id))."))
+                outcome.confirmed = true
+                if !json { print(Style.success("✓ Runner '\(name)' is online (GitHub runner id \(runner.id)).")) }
             } catch {
-                print(Style.warning("Runner '\(name)' did not come online: \(error.localizedDescription)"))
+                var lines = ["⚠ Runner '\(name)' was NOT confirmed online: \(error.localizedDescription)"]
                 if let recovery = (error as? LocalizedError)?.recoverySuggestion {
-                    print(Style.dim("  \(recovery)"))
+                    lines.append("  \(recovery)")
                 }
-                print(Style.dim("  The VM is still running — 'spook ssh \(name)' to investigate, or 'spook stop \(name)' to give up."))
+                lines.append("  The VM is left running — the runner may still come online. Investigate with 'spook ssh \(name)' or stop with 'spook stop \(name)'.")
+                lines.append("  This command will exit non-zero because the runner was not confirmed.")
+                emitRunnerWarning(lines)
             }
             // The token has either already been consumed by the
             // guest's `config.sh --token` (online) or is no longer
@@ -1372,15 +1398,50 @@ extension Spooktacular {
             // good hygiene rather than a correctness requirement.
             await service.revokeRegistrationToken(handle: issuedHandle)
 
-            print(Style.dim("Running headless. Press Ctrl+C to stop."))
+            if !json { print(Style.dim("Running headless. Press Ctrl+C to stop.")) }
             for await state in vm.stateStream {
                 if state == .stopped || state == .error {
                     break
                 }
             }
             cleanupRunnerVMAfterStop(bundleURL: bundleURL, name: name, ephemeral: ephemeral)
+            if !outcome.confirmed {
+                // The poll never confirmed the runner online — the
+                // warning above already explained why. This is the
+                // normal-unwind twin of the signal handlers' exit(1):
+                // the runner-phase catch in `run()` rethrows
+                // ExitCode as-is, so the process exits non-zero
+                // without printing a second, redundant message.
+                throw ExitCode.failure
+            }
+        }
+
+        /// Prints warning lines for the runner flow — styled to
+        /// stdout normally; plain text to stderr in `--json` mode so
+        /// stdout stays a single JSON document.
+        private func emitRunnerWarning(_ lines: [String]) {
+            if json {
+                let text = lines.joined(separator: "\n") + "\n"
+                FileHandle.standardError.write(Data(text.utf8))
+            } else {
+                for (index, line) in lines.enumerated() {
+                    print(index == 0 ? Style.warning(line) : Style.dim(line))
+                }
+            }
         }
     }
+}
+
+/// Whether the poll phase confirmed the runner online.
+///
+/// Shared between `bootRunnerAndAwaitOnline`'s mainline and its
+/// SIGTERM/SIGINT handlers so BOTH exit paths report a non-zero
+/// status when the runner was never verified: the signal path exits
+/// via `Foundation.exit`, which cannot observe an `ExitCode` thrown
+/// on the normal unwind.
+@MainActor
+private final class RunnerOnlineOutcome {
+    var confirmed = false
 }
 
 // MARK: - Runner VM Cleanup

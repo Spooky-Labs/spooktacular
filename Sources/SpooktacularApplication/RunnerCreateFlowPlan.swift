@@ -80,6 +80,29 @@ public enum RunnerCreateFlowPlan {
             throw RunnerCreateFlowError.conflictingTemplate(flag: "--user-data")
         }
     }
+
+    /// Rejects `--github-runner` with any `--provision` mode other
+    /// than disk-inject.
+    ///
+    /// The runner script is executed by the Spooktacular Provisioner
+    /// LaunchDaemon, which only consumes disk-injected
+    /// `first-boot.sh` scripts from the provisioning share. With
+    /// `--provision ssh` or `--provision shared-folder` the create
+    /// flow would skip staging the provisioner pkg (only the
+    /// disk-inject path stages it) while the runner branch still
+    /// disk-injects its script — leaving a script on the share that
+    /// nothing ever executes, i.e. a guaranteed, undiagnosable
+    /// online-poll timeout.
+    ///
+    /// - Parameter isDiskInject: Whether the effective provisioning
+    ///   mode is disk-inject (the default).
+    /// - Throws: ``RunnerCreateFlowError/unsupportedProvisionMode``
+    ///   for any other mode.
+    public static func validateProvisionMode(isDiskInject: Bool) throws {
+        guard isDiskInject else {
+            throw RunnerCreateFlowError.unsupportedProvisionMode
+        }
+    }
 }
 
 /// Errors surfaced by ``RunnerCreateFlowPlan``.
@@ -94,6 +117,11 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
     /// wins.
     case conflictingTemplate(flag: String)
 
+    /// `--github-runner` was combined with a `--provision` mode
+    /// other than disk-inject — the provisioner daemon that executes
+    /// the runner script only consumes disk-injected scripts.
+    case unsupportedProvisionMode
+
     public var errorDescription: String? {
         switch self {
         case .zeroTouchRequiresSetupAutomation:
@@ -102,6 +130,10 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
         case .conflictingTemplate(let flag):
             return "--github-runner cannot be combined with \(flag): both produce a first-boot "
                 + "script and they would silently overwrite each other."
+        case .unsupportedProvisionMode:
+            return "--github-runner only supports --provision disk-inject: the runner script is "
+                + "executed by the provisioner LaunchDaemon on first boot, which only consumes "
+                + "disk-injected scripts."
         }
     }
 
@@ -113,6 +145,9 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
         case .conflictingTemplate(let flag):
             return "Drop \(flag), or create a separate VM for it — each VM runs exactly one "
                 + "first-boot provisioning script."
+        case .unsupportedProvisionMode:
+            return "Drop the --provision flag — disk-inject is the default and the only mode "
+                + "the runner flow supports."
         }
     }
 }

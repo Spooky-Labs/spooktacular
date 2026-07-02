@@ -415,16 +415,32 @@ public actor GitHubRunnerService {
 
     /// Lists every self-hosted runner currently registered under `scope`.
     ///
-    /// Wraps `GET {scope}/actions/runners`, GitHub's collection
-    /// endpoint. Callers looking for one specific runner should
-    /// prefer ``findRunner(named:scope:)``.
+    /// Wraps `GET {scope}/actions/runners`, GitHub's paginated
+    /// collection endpoint, requesting `per_page=100` (GitHub's
+    /// maximum) and following `page=N` until a short page arrives,
+    /// the reported `total_count` is reached, or the 10-page safety
+    /// bound (1,000 runners) is hit — a pathological server that
+    /// keeps reporting more must not spin the client forever.
+    /// Callers looking for one specific runner should prefer
+    /// ``findRunner(named:scope:)``.
     ///
     /// - Throws: ``GitHubServiceError`` on API failure.
     public func listRunners(scope: GitHubRunnerScope) async throws -> [RunnerRecord] {
-        let url = try Self.apiURL("\(scope.apiPath)/actions/runners")
-        let (data, _) = try await request(url: url, method: .get)
-        let decoded = try JSONDecoder().decode(RunnerListResponse.self, from: data)
-        return decoded.runners
+        let perPage = 100
+        let maxPages = 10
+        var all: [RunnerRecord] = []
+        for page in 1...maxPages {
+            let url = try Self.apiURL(
+                "\(scope.apiPath)/actions/runners?per_page=\(perPage)&page=\(page)"
+            )
+            let (data, _) = try await request(url: url, method: .get)
+            let decoded = try JSONDecoder().decode(RunnerListResponse.self, from: data)
+            all.append(contentsOf: decoded.runners)
+            if decoded.runners.count < perPage || all.count >= decoded.totalCount {
+                break
+            }
+        }
+        return all
     }
 
     /// Finds the runner named `name` under `scope`, or `nil` if no
