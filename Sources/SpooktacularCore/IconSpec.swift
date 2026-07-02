@@ -101,7 +101,6 @@ public enum IconSpec: Sendable, Codable, Equatable, Hashable {
         "ios-sim",
         "runner",
         "jenkins",
-        "mdm",
         "desktop",
         "spook",
     ]

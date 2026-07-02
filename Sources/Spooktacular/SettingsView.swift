@@ -60,8 +60,9 @@ struct SecuritySettingsView: View {
     /// detection; `"cufua"` forces CUFUA everywhere; `"none"`
     /// disables the protection. `SPOOKTACULAR_BUNDLE_PROTECTION`
     /// env var, when set, overrides this setting at runtime —
-    /// operators who configure via MDM / launchd plist don't
-    /// get silently overridden by a per-user GUI toggle.
+    /// operators who configure via a device-management profile
+    /// or launchd plist don't get silently overridden by a
+    /// per-user GUI toggle.
     @AppStorage(BundleProtection.userDefaultsKey)
     private var policy: String = "auto"
 

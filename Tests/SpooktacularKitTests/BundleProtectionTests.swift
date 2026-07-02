@@ -108,7 +108,7 @@ struct BundleProtectionTests {
         )
         #expect(protection == .completeUntilFirstUserAuthentication)
         #expect(policy == .overrideCUFUA,
-                "Env-var intent (LaunchDaemon / MDM) must override per-user GUI preference")
+                "Env-var intent (LaunchDaemon / device-management profile) must override per-user GUI preference")
     }
 
     @Test("UserDefaults 'auto' (sentinel) falls through to auto-detect")

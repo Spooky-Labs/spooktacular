@@ -182,7 +182,7 @@ commits. Highlights:
 |---|---|---|
 | **Dead code** | [`de07cbd5`](https://github.com/Spooky-Labs/spooktacular/commit/de07cbd5) | MDM cleanup — drops dead `MDMContentStore.register()`, the `BuiltPackage` typealias, Phase-N pointers across 14 EmbeddedMDM files. |
 | **Dead code** | [`ee11dda5`](https://github.com/Spooky-Labs/spooktacular/commit/ee11dda5) | DiskInjector cleanup (closes #85) — rips vestigial LaunchDaemon plist generator + `chownFailed` error case. |
-| **Doc rewrite** | [`64b74d1f`](https://github.com/Spooky-Labs/spooktacular/commit/64b74d1f) | docs/MDM.md — adds architecture map, on-disk state layout, per-removal simplification log. |
+| **Doc rewrite** | [`64b74d1f`](https://github.com/Spooky-Labs/spooktacular/commit/64b74d1f) | MDM doc — added architecture map, on-disk state layout, per-removal simplification log (doc removed along with the embedded MDM subsystem). |
 | **Doc rot** | [`a4d6c958`](https://github.com/Spooky-Labs/spooktacular/commit/a4d6c958) | Phase-N sweep across the rest of the codebase. |
 | **User-impact bug** | [`639f7d86`](https://github.com/Spooky-Labs/spooktacular/commit/639f7d86) | `GuestAgentError.notConnected` suggested `sudo spooktacular-agent --install-daemon` — a binary that no longer exists. |
 | **User-impact bug** | [`e9211449`](https://github.com/Spooky-Labs/spooktacular/commit/e9211449) | `spook doctor --strict` item 11 validated the deleted `SPOOKTACULAR_AUDIT_SIGNING_KEY` file-path env var — inverting the pass/fail signal vs. production reality. |
@@ -207,7 +207,5 @@ This doc is not:
 
 ## See also
 
-- [`docs/MDM.md`](MDM.md) — the embedded MDM doc, includes a
-  per-removal simplification log for the largest cleanup pass.
 - `git log --oneline` — vintage of every change, with PR rationale
   in the commit body.

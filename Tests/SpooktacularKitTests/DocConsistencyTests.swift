@@ -139,7 +139,7 @@ struct DocConsistencyTests {
         //
         // `os` is allowed for the same reason: it's the system `os.Logger`
         // facade, equally Apple-native and equally lightweight (no
-        // architecture coupling). The embedded MDM's actors emit
+        // architecture coupling). Application-layer actors emit
         // structured diagnostic logs through it for unified-log filtering.
         try assertLayerImports(layer: "Sources/SpooktacularApplication", allowed: ["Foundation", "SpooktacularCore", "CryptoKit", "os"])
     }

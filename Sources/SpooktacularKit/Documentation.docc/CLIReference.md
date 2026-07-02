@@ -660,7 +660,7 @@ spook service status
 
 The data directory is always `~/.spooktacular/`. The CLI targets
 the local Spooktacular instance; remote targeting is per-command
-(e.g. `spook mdm serve --host`) rather than via a global URL
+(e.g. `spook serve --host 0.0.0.0`) rather than via a global URL
 override.
 
 ```bash

@@ -25,7 +25,7 @@
 
 - **2 VMs per Mac** — The maximum Apple's [EULA (Section 2B(iii))](https://www.apple.com/legal/sla/) allows, enforced at the kernel level. Every Mac mini, Mac Studio, or Mac Pro becomes two workloads.
 - **48ms clones** — APFS copy-on-write duplicates a 64GB VM in milliseconds. No disk copy, no waiting.
-- **Everything that needs a Mac** — CI/CD runners, iOS/macOS code signing, remote desktops, MDM profile signing, computer-using AI agents (iMessage, Final Cut Pro, Xcode).
+- **Everything that needs a Mac** — CI/CD runners, iOS/macOS code signing, remote desktops, computer-using AI agents (iMessage, Final Cut Pro, Xcode).
 - **$0 forever** — MIT licensed. No sales calls. No per-core fees. Audit every line of [source code](https://github.com/Spooky-Labs/spooktacular).
 
 ### Why not something else?
@@ -138,7 +138,6 @@ SpookApplication depends on SpookCore only. Infrastructure wraps Apple framework
 | Kubernetes | [`Sources/spooktacular-controller/`](Sources/spooktacular-controller/) | MacOSVM CRD, Swift controller, Helm chart |
 | Service | [`ServicePlist.swift`](Sources/SpooktacularApplication/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
 | Networking | [`VirtualMachineConfiguration.swift`](Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
-| Embedded MDM | [`Sources/SpooktacularApplication/EmbeddedMDM/`](Sources/SpooktacularApplication/EmbeddedMDM/) · [docs](docs/MDM.md) | Host acts as its own MDM — `spook mdm enroll <vm>` and VMs auto-enroll on boot. Signed + TLS by default. |
 | Accessibility | GUI sources | Full VoiceOver: labels, hints, identifiers, announcements |
 
 ## CLI Reference
@@ -161,7 +160,6 @@ SpookApplication depends on SpookCore only. Infrastructure wraps Apple framework
 | `spook share` | Manage VirtIO shared folders |
 | `spook serve` | Start the HTTP API server |
 | `spook remote` | Interact with the guest agent (exec, clipboard, apps, ports, health) |
-| `spook mdm` | Embedded MDM — enroll VMs and push commands (see [docs/MDM.md](docs/MDM.md)) |
 
 ## HTTP API
 
