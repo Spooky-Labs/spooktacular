@@ -127,13 +127,16 @@ extension Spooktacular {
             var tlsOptions: NWProtocolTLS.Options?
             if let certPath = resolvedTLSCert, let keyPath = resolvedTLSKey {
                 let identity = try Self.loadTLSIdentity(certPath: certPath, keyPath: keyPath)
+                guard let bridgedIdentity = sec_identity_create(identity) else {
+                    throw TLSLoadingError.identityBridgingFailed
+                }
                 let options = NWProtocolTLS.Options()
                 sec_protocol_options_set_min_tls_protocol_version(
                     options.securityProtocolOptions, .TLSv13
                 )
                 sec_protocol_options_set_local_identity(
                     options.securityProtocolOptions,
-                    sec_identity_create(identity)!
+                    bridgedIdentity
                 )
                 tlsOptions = options
             }
@@ -361,8 +364,9 @@ extension Spooktacular {
                     }
                     throw ExitCode.failure
                 }
-                oidcIssuer = WorkloadTokenIssuer(issuerURL: issuerURL, signer: signer)
-                print(Style.info("Workload-identity OIDC issuer enabled: \(issuerURL) (kid: \(oidcIssuer!.kid))"))
+                let issuer = WorkloadTokenIssuer(issuerURL: issuerURL, signer: signer)
+                oidcIssuer = issuer
+                print(Style.info("Workload-identity OIDC issuer enabled: \(issuerURL) (kid: \(issuer.kid))"))
             }
 
             // Host-identity signing key. Used whenever this
@@ -717,6 +721,11 @@ enum TLSLoadingError: Error, LocalizedError, Equatable {
     /// certificate with its private key.
     case identityCreationFailed(OSStatus)
 
+    /// `sec_identity_create` failed to bridge a validated
+    /// `SecIdentity` into the `sec_identity_t` the Network
+    /// framework's TLS options require.
+    case identityBridgingFailed
+
     /// `SecItemImport` returned a CF object whose dynamic type
     /// is not the expected `SecCertificate` / `SecKey`. Surfaced
     /// as a typed error instead of a trapping force-cast so a
@@ -733,6 +742,8 @@ enum TLSLoadingError: Error, LocalizedError, Equatable {
             "Keychain operation failed (OSStatus \(status))."
         case .identityCreationFailed(let status):
             "Failed to create TLS identity from certificate and key (OSStatus \(status))."
+        case .identityBridgingFailed:
+            "Failed to bridge the TLS identity into a Network-framework sec_identity_t."
         case .invalidTLSMaterial(let path, let reason):
             "TLS material at '\(path)' was not in the expected CF class: \(reason)"
         }
@@ -748,6 +759,8 @@ enum TLSLoadingError: Error, LocalizedError, Equatable {
             "Check that the certificate and key are valid and not corrupted."
         case .identityCreationFailed:
             "Ensure the private key matches the certificate. Generate a new pair if needed."
+        case .identityBridgingFailed:
+            "This is typically transient or indicates a malformed SecIdentity — regenerate the certificate/key pair and retry."
         case .invalidTLSMaterial:
             "Confirm the PEM is a plain X.509 certificate / PKCS#8 private key — not a bundle, trust store, or PKCS#12 archive. Regenerate with `openssl x509 -in cert.pem -outform PEM` if unsure."
         }

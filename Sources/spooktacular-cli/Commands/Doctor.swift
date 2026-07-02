@@ -724,11 +724,12 @@ extension Spooktacular {
         /// Non-blocking TCP probe — resolves to `true` if the
         /// TCP handshake completes within 2s, `false` otherwise.
         private static func canTCPConnect(port: UInt16) async -> Bool {
-            await withCheckedContinuation { continuation in
+            guard let nwPort = NWEndpoint.Port(rawValue: port) else { return false }
+            return await withCheckedContinuation { continuation in
                 nonisolated(unsafe) var resumed = false
                 let connection = NWConnection(
                     host: NWEndpoint.Host("127.0.0.1"),
-                    port: NWEndpoint.Port(rawValue: port)!,
+                    port: nwPort,
                     using: .tcp
                 )
                 let queue = DispatchQueue(label: "doctor.tcp-probe")
@@ -758,7 +759,8 @@ extension Spooktacular {
 
         /// TLS 1.3 handshake probe to a local endpoint.
         private static func tlsHandshakeSucceeds(port: UInt16) async -> Bool {
-            await withCheckedContinuation { continuation in
+            guard let nwPort = NWEndpoint.Port(rawValue: port) else { return false }
+            return await withCheckedContinuation { continuation in
                 nonisolated(unsafe) var resumed = false
                 let tlsParams = NWProtocolTLS.Options()
                 sec_protocol_options_set_min_tls_protocol_version(
@@ -767,7 +769,7 @@ extension Spooktacular {
                 let params = NWParameters(tls: tlsParams, tcp: NWProtocolTCP.Options())
                 let connection = NWConnection(
                     host: NWEndpoint.Host("127.0.0.1"),
-                    port: NWEndpoint.Port(rawValue: port)!,
+                    port: nwPort,
                     using: params
                 )
                 let queue = DispatchQueue(label: "doctor.tls-probe")

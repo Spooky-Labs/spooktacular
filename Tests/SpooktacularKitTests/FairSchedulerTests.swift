@@ -41,7 +41,7 @@ struct FairSchedulerTests {
     }
 
     @Test("minGuaranteed prevents starvation of low-weight tenants")
-    func minGuaranteedHonored() {
+    func minGuaranteedHonored() throws {
         let s = FairScheduler(policies: [
             .init(tenant: TenantID("hog"), weight: 10),
             .init(tenant: TenantID("security"), weight: 1, minGuaranteed: 2),
@@ -52,7 +52,8 @@ struct FairSchedulerTests {
         )
         // security gets at least its minimum even though its
         // weight would otherwise yield ~1 slot out of 10.
-        #expect(alloc[TenantID("security")]! >= 2)
+        let securityAllocation = try #require(alloc[TenantID("security")])
+        #expect(securityAllocation >= 2)
     }
 
     @Test("maxCap caps a tenant even when weight would give them more")
