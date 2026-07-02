@@ -100,4 +100,18 @@ struct RunnerCreateFlowPlanTests {
         #expect(error.errorDescription?.contains("disk-inject") == true)
         #expect(error.recoverySuggestion != nil)
     }
+
+    // MARK: - Setup automation failure fatality
+
+    @Test("--github-runner: a Setup Assistant automation failure is fatal")
+    func setupAutomationFailureFatalUnderRunner() {
+        let isFatal = RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: true)
+        #expect(isFatal == true)
+    }
+
+    @Test("no --github-runner: a Setup Assistant automation failure is swallowed")
+    func setupAutomationFailureSwallowedWithoutRunner() {
+        let isFatal = RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: false)
+        #expect(isFatal == false)
+    }
 }

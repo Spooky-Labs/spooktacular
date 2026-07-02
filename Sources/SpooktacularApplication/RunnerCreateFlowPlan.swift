@@ -103,6 +103,38 @@ public enum RunnerCreateFlowPlan {
             throw RunnerCreateFlowError.unsupportedProvisionMode
         }
     }
+
+    /// Decides whether a Setup Assistant automation failure must
+    /// abort the create flow rather than being swallowed so a
+    /// desktop VM can still be used with setup finished by hand.
+    ///
+    /// Zero-touch runner registration depends on the Spooktacular
+    /// Provisioner LaunchDaemon inside the guest, which is only
+    /// ever installed by ``SetupAutomation`` automation (see
+    /// `SetupAutomation.installProvisionerSteps(password:)`). If
+    /// that automation fails under `--github-runner`, the
+    /// provisioner never lands, so the runner script that's about
+    /// to be disk-injected would sit on the provisioning share with
+    /// nothing to ever execute it — a guaranteed ~10-minute online
+    /// poll timeout with no actionable diagnostic. Failing fast
+    /// instead — before minting a registration token, injecting the
+    /// script, or booting — surfaces the real failure immediately
+    /// and keeps the (fully macOS-installed) VM bundle so the
+    /// operator can finish Setup Assistant by hand.
+    ///
+    /// For a plain desktop create (no `--github-runner`), nothing
+    /// downstream depends on the provisioner, so a failed automation
+    /// is safe to swallow: the VM is still a perfectly usable
+    /// desktop VM once the operator completes Setup Assistant
+    /// manually via `spook start`.
+    ///
+    /// - Parameter githubRunner: Whether `--github-runner` was
+    ///   passed to `create`.
+    /// - Returns: `true` when a Setup Assistant automation failure
+    ///   must abort the create flow instead of being swallowed.
+    public static func setupAutomationFailureIsFatal(githubRunner: Bool) -> Bool {
+        githubRunner
+    }
 }
 
 /// Errors surfaced by ``RunnerCreateFlowPlan``.

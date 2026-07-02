@@ -738,6 +738,19 @@ extension Spooktacular {
 
                 createdBundle = bundle
 
+            } catch let failure as RunnerSetupAutomationFailure {
+                // --github-runner + failed Setup Assistant automation:
+                // fail fast WITHOUT deleting the bundle — the macOS
+                // install itself succeeded and the VM is fully usable
+                // once setup is finished by hand — and WITHOUT falling
+                // through to the runner-provisioning phase below,
+                // which would mint a registration token, inject the
+                // runner script, and boot into a guaranteed online-
+                // poll timeout (the Spooktacular Provisioner that
+                // would execute the script never installed). See
+                // ``RunnerSetupAutomationFailure``.
+                reportSetupAutomationFailureForRunner(failure.underlying)
+                throw ExitCode(classifyExitCode(failure.underlying))
             } catch {
                 if json {
                     printJSONError(
@@ -1045,6 +1058,23 @@ extension Spooktacular {
 
         // MARK: - Setup Assistant Automation
 
+        /// Thrown by ``automateSetupAssistant(bundle:macOSVersion:macAddress:installProvisioner:)``
+        /// when Setup Assistant automation fails under
+        /// `--github-runner`, per
+        /// ``RunnerCreateFlowPlan/setupAutomationFailureIsFatal(githubRunner:)``.
+        ///
+        /// `run()`'s outer catch matches this type specifically —
+        /// see the comment at that catch site — so it can report the
+        /// failure and exit non-zero WITHOUT deleting the VM bundle
+        /// (the macOS install itself succeeded) and WITHOUT falling
+        /// through to mint a registration token, inject the runner
+        /// script, or boot again.
+        private struct RunnerSetupAutomationFailure: Error {
+            /// The underlying error `SetupAutomationExecutor.run` (or
+            /// the SSH-confirmation step) threw.
+            let underlying: Error
+        }
+
         /// Boots the VM, automates Setup Assistant, waits for SSH,
         /// and marks ``VirtualMachineMetadata/setupCompleted``.
         ///
@@ -1063,6 +1093,15 @@ extension Spooktacular {
         ///     Pass `true` only once `Spooktacular Provisioner.pkg`
         ///     has actually been copied into `bundle`'s
         ///     provisioning share — see the call site in `run()`.
+        ///
+        /// - Throws: ``RunnerSetupAutomationFailure`` if automation
+        ///   fails and ``RunnerCreateFlowPlan/setupAutomationFailureIsFatal(githubRunner:)``
+        ///   says the failure is fatal for this create (always true
+        ///   when `--github-runner` is active) — the VM is still
+        ///   stopped first, exactly as in the swallowed case, so the
+        ///   caller never has to. For a plain desktop create the
+        ///   failure is logged and swallowed, matching prior
+        ///   behavior.
         @MainActor
         private func automateSetupAssistant(
             bundle: VirtualMachineBundle,
@@ -1084,6 +1123,12 @@ extension Spooktacular {
             try await vm.start()
             logger.notice("VM booted for Setup Assistant automation")
             print(Style.success("✓ VM booted."))
+
+            // Captured on failure so the fail-fast decision below can
+            // run AFTER the VM is stopped (same shutdown as the
+            // swallowed case) rather than duplicating the stop
+            // sequence in a second catch.
+            var automationFailure: Error?
 
             do {
                 let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
@@ -1131,7 +1176,11 @@ extension Spooktacular {
             } catch {
                 logger.error("Setup Assistant automation failed: \(error.localizedDescription, privacy: .public)")
                 print(Style.error("✗ Setup Assistant automation failed: \(error.localizedDescription)"))
-                print(Style.dim("  The VM was created. Run 'spook start \(name)' to complete setup manually."))
+                if RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: githubRunner) {
+                    automationFailure = error
+                } else {
+                    print(Style.dim("  The VM was created. Run 'spook start \(name)' to complete setup manually."))
+                }
             }
 
             logger.info("Stopping VM after Setup Assistant automation")
@@ -1139,6 +1188,19 @@ extension Spooktacular {
             try? await vm.stop(graceful: false)
             logger.notice("VM stopped after Setup Assistant automation")
             print(Style.success("✓ VM stopped."))
+
+            // Fail fast under --github-runner: the Spooktacular
+            // Provisioner never installed, so minting a registration
+            // token, injecting the runner script, and booting again
+            // below would be a guaranteed ~10-minute online-poll
+            // timeout with nothing useful to diagnose. Thrown AFTER
+            // the VM is stopped above so the caller doesn't have to
+            // stop it again; caught by `run()`'s outer catch, which
+            // reports it without deleting the (fully macOS-installed)
+            // bundle — see ``RunnerSetupAutomationFailure``.
+            if let automationFailure {
+                throw RunnerSetupAutomationFailure(underlying: automationFailure)
+            }
         }
 
         // MARK: - GitHub Actions Runner Provisioning
@@ -1169,6 +1231,44 @@ extension Spooktacular {
                     print(Style.dim("  \(recovery)"))
                 }
                 print(Style.dim("  \(keepNote)"))
+            }
+        }
+
+        /// Reports a fatal Setup Assistant automation failure that
+        /// aborted a `--github-runner` create before minting a
+        /// registration token, injecting the runner script, or
+        /// booting again.
+        ///
+        /// Distinct from ``reportRunnerProvisioningFailure(_:)``:
+        /// that one reports failures AFTER the runner phase already
+        /// started (mint/inject/start), whose `--json` success
+        /// payload has already been written to stdout, so it writes
+        /// failure text to stderr only. This one fires before any of
+        /// that — the create flow's own success summary was never
+        /// printed either — so in `--json` mode it still owes callers
+        /// a single machine-parsable error document on stdout via
+        /// `printJSONError`, same as every other pre-success failure
+        /// in this command. The "what failed" line was already
+        /// printed by `automateSetupAssistant`'s catch (unconditional
+        /// on `--json`, like its other progress lines), so this only
+        /// adds the "kept + how to recover" guidance.
+        private func reportSetupAutomationFailureForRunner(_ error: Error) {
+            let keepNote = "The VM '\(name)' was created and macOS installed successfully — it has been kept."
+            let nextSteps = "Run 'spook start \(name)' to boot it and complete Setup Assistant by hand. "
+                + "Once setup is done, either register a self-hosted GitHub Actions runner manually "
+                + "inside the guest, or delete this VM ('spook delete \(name)') and re-run "
+                + "'spook create --github-runner ...' once the automation failure above is fixed."
+            if json {
+                printJSONError(
+                    code: classifyErrorCode(error),
+                    message: "Setup Assistant automation failed: \(error.localizedDescription)",
+                    hint: (error as? LocalizedError)?.recoverySuggestion
+                )
+                let text = "  " + keepNote + "\n  " + nextSteps + "\n"
+                FileHandle.standardError.write(Data(text.utf8))
+            } else {
+                print(Style.dim("  \(keepNote)"))
+                print(Style.dim("  \(nextSteps)"))
             }
         }
 
