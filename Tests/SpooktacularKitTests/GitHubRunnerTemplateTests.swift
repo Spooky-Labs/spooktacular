@@ -171,4 +171,25 @@ struct GitHubRunnerTemplateTests {
             .map { s.distance(from: s.startIndex, to: $0.lowerBound) } ?? Int.max
         #expect(apiIndex > waitIndex)
     }
+
+    @Test("every curl invocation is bounded with --max-time")
+    func curlHasMaxTime() throws {
+        let url = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let s = try String(contentsOf: url, encoding: .utf8)
+        let lines = s.split(separator: "\n", omittingEmptySubsequences: false)
+        let curlLines = lines.filter { line in
+            line.contains("curl") && !line.trimmingCharacters(in: .whitespaces).starts(with: "#")
+        }
+        #expect(!curlLines.isEmpty, "Script should contain curl invocations")
+        for curlLine in curlLines {
+            #expect(curlLine.contains("--max-time"), "curl line missing --max-time: \(curlLine)")
+        }
+    }
+
+    @Test("empty TARBALL_URL triggers diagnostic message")
+    func tarballUrlDiagnostic() {
+        let s = GitHubRunnerTemplate.scriptContent(repo: "o/r", token: "t")
+        #expect(s.contains("failed to resolve runner tarball URL"), "Script should diagnose empty TARBALL_URL")
+    }
 }

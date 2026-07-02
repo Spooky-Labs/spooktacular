@@ -179,15 +179,16 @@ public enum GitHubRunnerTemplate {
         # settling on first boot, so give the network up to two
         # minutes to come up before hitting the GitHub API.
         for _ in $(seq 1 60); do
-            curl -fsS https://api.github.com >/dev/null 2>&1 && break
+            curl -fsS --max-time 10 https://api.github.com >/dev/null 2>&1 && break
             sleep 2
         done
 
         sudo -u "$RUNNER_USER" mkdir -p "$RUNNER_DIR"
         cd "$RUNNER_DIR"
 
-        TARBALL_URL=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest \\
+        TARBALL_URL=$(curl -fsSL --max-time 30 https://api.github.com/repos/actions/runner/releases/latest \\
             | /usr/bin/python3 -c 'import json,sys;print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if "osx-arm64" in a["name"] and a["name"].endswith(".tar.gz")))')
+        [ -n "$TARBALL_URL" ] || { echo "failed to resolve runner tarball URL" >&2; exit 1; }
 
         # `cd` runs once, here, in this (root) shell — the working
         # directory is inherited by every `sudo -u` child below.
@@ -198,7 +199,7 @@ public enum GitHubRunnerTemplate {
         # the raw, unescaped result to a second shell for re-parsing —
         # a single quote in the token would break out of that second
         # parse (verified empirically), defeating the escaping above.
-        sudo -u "$RUNNER_USER" curl -fsSL -o runner.tar.gz "$TARBALL_URL"
+        sudo -u "$RUNNER_USER" curl -fsSL --max-time 300 -o runner.tar.gz "$TARBALL_URL"
         sudo -u "$RUNNER_USER" tar xzf runner.tar.gz
         sudo -u "$RUNNER_USER" rm -f runner.tar.gz
 
