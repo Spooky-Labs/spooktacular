@@ -488,7 +488,21 @@ extension Spooktacular {
                 }
             }
 
-            try await Task.sleep(for: .seconds(Double(Int.max)))
+            // Block `run()` forever so the process stays alive —
+            // actual shutdown happens out-of-band via the SIGTERM/
+            // SIGINT handlers registered above, which call
+            // `shutdownServer.stop()` then `Foundation.exit(0)`
+            // directly. `HTTPAPIServer` exposes no "wait until
+            // stopped" stream/continuation to await instead.
+            //
+            // A single `Task.sleep(for: .seconds(Double(Int.max)))`
+            // crashes immediately: `Duration.seconds(Double)` can't
+            // represent `Double(Int.max)` ("Not enough bits to
+            // represent the passed value"). Loop a large-but-valid
+            // finite duration instead.
+            while true {
+                try await Task.sleep(for: .seconds(3600))
+            }
         }
 
         // MARK: - TLS Identity Loading

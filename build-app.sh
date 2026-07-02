@@ -365,13 +365,18 @@ fi
 
 # 4. Code sign
 #
-# Reference architecture: require a real Apple-issued signing
+# Reference architecture: prefer a real Apple-issued signing
 # identity (Apple Development for local dev, Apple Distribution /
-# Developer ID Application for release). Ad-hoc signing fails
-# at launch because `taskgated` refuses `app-sandbox` without
-# a provisioning profile; there's no product path that works
-# without real signing. So: no "ad-hoc fallback" — the script
-# either signs with a real cert or exits with instructions.
+# Developer ID Application for release) — ad-hoc-signed builds
+# fail at launch because `taskgated` refuses `app-sandbox`
+# without a provisioning profile, so local development should
+# install a real cert via `fastlane match`. CI runners (and any
+# other environment without a keychain identity) still need
+# `build-app.sh` to produce a bundle for compile/assembly
+# verification, so when no identity is found we fall back to
+# ad-hoc (`--sign -`) instead of hard-failing — the same
+# ad-hoc-last-resort pattern the guest-tools signing block below
+# already uses.
 #
 # Discovery order:
 #   1. `$CODESIGN_IDENTITY` — fastlane's `build` lane sets
@@ -379,6 +384,8 @@ fi
 #   2. First `Apple Development:` cert in the login keychain
 #      — the canonical local-dev flow. Install one with:
 #        bundle exec fastlane match development
+#   3. Ad-hoc (`-`) — CI / no-keychain fallback. The resulting
+#      bundle won't launch standalone (see above).
 #
 # Entitlements are passed to `codesign --entitlements` below
 # and embedded into the signature. Do not copy the
@@ -393,12 +400,13 @@ if [ -z "$SIGN_IDENTITY" ]; then
         awk -F '"' '/"Apple Development:/ { print $2; exit }')
 fi
 if [ -z "$SIGN_IDENTITY" ]; then
-    echo "✗ No code-signing identity found." >&2
-    echo "  Install one via fastlane match (preferred):" >&2
-    echo "    bundle exec fastlane signing" >&2
-    echo "  Or pass the identity explicitly:" >&2
+    echo "⚠  No code-signing identity found — falling back to ad-hoc signing." >&2
+    echo "  The resulting bundle won't launch standalone (sandboxed apps need" >&2
+    echo "  a provisioning profile). Install a real identity for local dev:" >&2
+    echo "    bundle exec fastlane match development" >&2
+    echo "  Or pass one explicitly:" >&2
     echo "    CODESIGN_IDENTITY='Apple Development: Your Name (XXXX)' ./build-app.sh" >&2
-    exit 1
+    SIGN_IDENTITY="-"
 fi
 echo "Code signing with identity: $SIGN_IDENTITY"
 
@@ -408,8 +416,12 @@ echo "Code signing with identity: $SIGN_IDENTITY"
 # --timestamp requests a secure timestamp from Apple's RFC 3161 TSA
 # (timestamp.apple.com). Notarization rejects signatures without one,
 # and a trusted timestamp keeps the signature verifiable even after
-# the signing certificate expires.
+# the signing certificate expires. Ad-hoc builds (identity "-") skip
+# the timestamp because the TSA will not stamp unsigned objects.
 TIMESTAMP_FLAG="--timestamp"
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    TIMESTAMP_FLAG=""
+fi
 # Sign innermost-first so the outer signature can cover the
 # now-signed inner subcomponents. Order:
 #   1. VM Helper XPC executable + bundle (nested).

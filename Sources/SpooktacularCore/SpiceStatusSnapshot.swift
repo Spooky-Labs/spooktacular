@@ -20,7 +20,19 @@ import Foundation
 public enum SpiceClipboardState: String, Codable, Sendable {
     /// The clipboard bridge hasn't started yet. Host shows
     /// a gray pill ("Clipboard Off" / "Starting up…").
-    case notStarted
+    ///
+    /// The explicit raw value below is required by the
+    /// `raw_value_for_camel_cased_codable_enum` opt-in lint rule
+    /// (this case name is camelCase) but intentionally matches
+    /// Swift's default synthesis — that's the wire value the
+    /// guest and host already agree on (see
+    /// `SpiceStatusSnapshotTests`). That puts it in direct
+    /// conflict with the default `redundant_string_enum_value`
+    /// rule, which flags a raw value equal to its case name;
+    /// silencing that one rule on this one line documents the
+    /// wire format without breaking the existing contract.
+    // swiftlint:disable:next redundant_string_enum_value
+    case notStarted = "notStarted"
 
     /// Serial port opened, waiting for the SPICE
     /// capabilities handshake. Host shows an amber pill

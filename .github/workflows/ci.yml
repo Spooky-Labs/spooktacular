@@ -1,9 +1,11 @@
 # CI runs on every PR against main and on every push to main.
 #
-# The pipeline is four parallel jobs, each a thin driver over
-# Fastlane lanes or SwiftPM. No imperative shell logic lives here —
-# anything worth reproducing on a contributor's laptop lives in
-# the Fastfile or a script under `scripts/`.
+# The pipeline is three jobs, each a thin driver over Fastlane
+# lanes or SwiftPM: `lint` runs first, then `test-and-build` and
+# `xcode-build` run in parallel once it passes. No imperative
+# shell logic lives here — anything worth reproducing on a
+# contributor's laptop lives in the Fastfile or a script under
+# `scripts/`.
 name: CI
 
 on:

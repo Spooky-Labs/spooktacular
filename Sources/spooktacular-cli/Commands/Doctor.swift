@@ -501,17 +501,19 @@ extension Spooktacular {
         /// cannot open a vsock from the host side without a
         /// VZVirtualMachine reference, so we use the presence of
         /// a running PID file as a proxy. Downstream operators
-        /// can run `spook remote health <vm>` for a live check.
+        /// can run `spook ssh <vm>` (or `spook ip <vm>`) for a
+        /// live check.
         static func check23GuestAgentReachable() async -> CheckResult {
             let running = CapacityCheck.runningVMs(in: SpooktacularPaths.vms)
             if running.isEmpty {
                 return pass(23, "Guest-agent probe — no running VMs (nothing to probe)")
             }
             // Without a host-side vsock connector, we report the
-            // count + hint. Actor-wire probe stays in
-            // `spook remote health` to keep doctor hermetic.
+            // count + hint. A live reachability probe stays out
+            // of doctor (which is hermetic) — use `spook ssh` or
+            // `spook ip` for one.
             let names = running.prefix(3).joined(separator: ", ")
-            return pass(23, "Guest-agent — \(running.count) running VM(s) detected (\(names)); run `spook remote health <vm>` to probe vsock")
+            return pass(23, "Guest-agent — \(running.count) running VM(s) detected (\(names)); run `spook ssh <vm>` (or `spook ip <vm>`) to check reachability")
         }
 
         // MARK: - Shared Helpers
