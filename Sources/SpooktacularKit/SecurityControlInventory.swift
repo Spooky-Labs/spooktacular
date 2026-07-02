@@ -121,6 +121,14 @@ public enum SecurityControlInventory {
             test: "Tests/SpooktacularKitTests/WorkloadTokenIssuerTests.swift",
             notes: "Spooktacular can federate directly with AWS STS. Signing key is SEP-bound; VMs get short-lived IAM credentials via AssumeRoleWithWebIdentity with no long-lived secrets. The most common ES256 JWT bug (DER vs raw signature) is pinned by test."
         ),
+        SecurityControl(
+            name: "Per-request signed operator-to-API auth",
+            category: "Authentication & Identity",
+            standard: "OWASP ASVS V2.10 (no unchanging service credentials); OWASP API Top 10 2023 A02 (broken authentication)",
+            implementation: "Sources/SpooktacularApplication/SignedRequestVerifier.swift (P-256 ECDSA, nonce replay cache, ±60s skew, canonical-string body-hash binding) + Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift (operator-to-control-plane auth)",
+            test: "Tests/SpooktacularKitTests/SignedRequestVerifierTests.swift",
+            notes: "Operator-to-API requests signed with P-256 ECDSA. Trust allowlist via SPOOKTACULAR_API_PUBLIC_KEYS_DIR. No shared static tokens."
+        ),
         // MARK: Authorization
 
         SecurityControl(
@@ -200,6 +208,14 @@ public enum SecurityControlInventory {
             implementation: "Sources/SpooktacularInfrastructureApple/KeychainTLSProvider.swift + Sources/SpooktacularKit/GitHubTokenResolution.swift",
             test: "Tests/SpooktacularKitTests/GitHubTokenResolutionTests.swift",
             notes: "API tokens, TLS private keys, GitHub PATs. kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly enforced."
+        ),
+        SecurityControl(
+            name: "VM → IAM role binding (workload identity federation)",
+            category: "Authentication & Identity",
+            standard: "OpenID Connect Core 1.0; AWS STS AssumeRoleWithWebIdentity; OWASP ASVS V2.10 (no unchanging credentials)",
+            implementation: "Sources/SpooktacularCore/VMIAMBinding.swift + Sources/SpooktacularInfrastructureApple/JSONVMIAMBindingStore.swift + Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift (/v1/iam, /v1/vms/:name/identity-token) + Sources/spooktacular-cli/Commands/IAM.swift",
+            test: "Tests/SpooktacularKitTests/VMIAMBindingTests.swift",
+            notes: "Operators bind a VM to a cloud IAM role; the host mints short-lived ES256 JWTs via the SEP-bound WorkloadTokenIssuer; VMs get temporary cloud credentials via standard OIDC federation. No long-lived access keys in VM images."
         ),
         SecurityControl(
             name: "Tenant quota enforcement on VM create / clone",
