@@ -238,6 +238,18 @@ public enum SetupAutomation {
     ///   - username: The account name and full name for the admin user.
     ///     Defaults to `"admin"`.
     ///   - password: The password for the admin user. Defaults to `"admin"`.
+    ///   - installProvisioner: When `true`, appends
+    ///     ``installProvisionerSteps(password:)`` to the end of the
+    ///     sequence so it runs inside the same Terminal session
+    ///     opened for SSH enablement. Defaults to `false`, which
+    ///     produces a sequence byte-identical to calling this
+    ///     method without the parameter at all. Callers should only
+    ///     pass `true` after confirming `Spooktacular Provisioner.pkg`
+    ///     was actually staged into the VM's provisioning share
+    ///     (see ``AppBundleBootstrapTemplate/locateProvisionerPkg()``)
+    ///     — typing the `installer` command against a pkg that was
+    ///     never copied in just fails loudly inside the guest for
+    ///     no benefit.
     /// - Returns: An ordered, non-empty array of boot steps.
     /// - Throws: ``SetupAutomationError/unsupportedVersion(requested:supported:)``
     ///   when no registered sequence matches the macOS version. Callers
@@ -247,11 +259,16 @@ public enum SetupAutomation {
     public static func sequence(
         for macOSVersion: Int,
         username: String = "admin",
-        password: String = "admin"
+        password: String = "admin",
+        installProvisioner: Bool = false
     ) throws -> [BootStep] {
         switch macOSVersion {
         case 15, 26:
-            return sequoiaSequence(username: username, password: password)
+            return sequoiaSequence(
+                username: username,
+                password: password,
+                installProvisioner: installProvisioner
+            )
         default:
             throw SetupAutomationError.unsupportedVersion(
                 requested: macOSVersion,
@@ -272,9 +289,10 @@ public enum SetupAutomation {
     /// then enables SSH via Terminal.
     private static func sequoiaSequence(
         username: String,
-        password: String
+        password: String,
+        installProvisioner: Bool
     ) -> [BootStep] {
-        languageAndCountrySteps()
+        let steps = languageAndCountrySteps()
             + transferDataSteps()
             + skipScreenSteps()
             + accountCreationSteps(username: username, password: password)
@@ -282,6 +300,12 @@ public enum SetupAutomation {
             + timezoneSteps()
             + finalScreensSteps()
             + enableSSHSteps(password: password)
+        guard installProvisioner else { return steps }
+        // Appended, not woven in: `enableSSHSteps` never closes
+        // Terminal, so the session it opened is still the
+        // foreground app and still has a live shell prompt when
+        // these steps begin.
+        return steps + installProvisionerSteps(password: password)
     }
 
     // MARK: - Sequoia Sequence Segments
@@ -413,6 +437,100 @@ public enum SetupAutomation {
             BootStep(delay: 5, action: .text(password)),
             BootStep(delay: 0, action: enter),
         ]
+    }
+
+    // MARK: - Zero-Touch Provisioner Install
+
+    /// The guest-side mount point for the per-VM provisioning
+    /// share. Must match `MOUNT_POINT` in
+    /// `Resources/SpookProvisioner/spook-provision-runner.sh` —
+    /// that script's `mount_virtiofs` call (run by the installed
+    /// LaunchDaemon on every later boot) has to find the share at
+    /// the exact path this one-time manual mount uses.
+    ///
+    /// `SpooktacularApplication` sits below
+    /// `SpooktacularInfrastructureApple` in the module graph (see
+    /// `Package.swift`), so this can't import
+    /// `VirtualMachineBundle` and reuse its constant directly —
+    /// the path is duplicated here rather than shared.
+    private static let provisionMountPoint = "/Library/Application Support/Spooktacular/provision"
+
+    /// The virtio-fs tag for the provisioning share, announced to
+    /// every macOS guest by
+    /// `VirtualMachineConfiguration.applyProvisioning(from:to:)`.
+    /// Must match `VirtualMachineBundle.provisionShareTag` — see
+    /// ``provisionMountPoint`` for why it's a literal instead of
+    /// an imported symbol.
+    private static let provisionShareTag = "spook-provision"
+
+    /// Mounts the provisioning share and installs
+    /// `Spooktacular Provisioner.pkg` from it, all inside the
+    /// Terminal session ``enableSSHSteps(password:)`` opened.
+    ///
+    /// The host stages the pkg into the VM bundle's `provision/`
+    /// directory (see `Create.swift`) before Setup Assistant
+    /// automation starts; every macOS guest already auto-attaches
+    /// that directory as the ``provisionShareTag`` virtio-fs share
+    /// on boot (`VirtualMachineConfiguration.applyProvisioning`),
+    /// so by the time these steps run the pkg is sitting on the
+    /// share, waiting to be mounted.
+    ///
+    /// Three commands, typed and returned in order:
+    ///
+    /// 1. `sudo mkdir -p <mount point>` — `mkdir(1)`'s `-p` makes
+    ///    the call idempotent if the directory already exists.
+    /// 2. `sudo mount_virtiofs <tag> <mount point>` —
+    ///    `mount_virtiofs(8)` takes exactly `fs_tag directory`
+    ///    (see its man page); this is the same primitive the
+    ///    installed daemon's runner script uses on every later
+    ///    boot, just invoked once by hand here.
+    /// 3. `sudo installer -pkg <mount point>/<pkg> -target /` —
+    ///    `installer(8)` "requires root privileges to run" and
+    ///    installs "to a specified domain or volume"; `-target /`
+    ///    selects the running system volume (the `LocalSystem`
+    ///    domain the pkg's payload paths — `/Library/LaunchDaemons/`,
+    ///    `/usr/local/libexec/` — are already rooted at). Its
+    ///    postinstall (`Resources/SpookProvisioner/postinstall`)
+    ///    runs `launchctl bootstrap` synchronously before
+    ///    `installer` exits, so the daemon is live before the
+    ///    guest's next boot without a reboot in between.
+    ///
+    /// Each `sudo` call is followed by a password entry, mirroring
+    /// ``enableSSHSteps(password:)`` exactly. Per `sudoers(5)`,
+    /// the default `timestamp_timeout` is 5 minutes with
+    /// `timestamp_type tty`, so the ticket the `systemsetup` sudo
+    /// call created moments earlier should still cover these
+    /// three calls in the same terminal — but blind keystroke
+    /// automation can't read the screen to confirm a password
+    /// prompt actually appeared before typing into it. Retyping
+    /// the password after every `sudo` is the same defensive
+    /// choice ``enableSSHSteps(password:)`` already makes for its
+    /// one `sudo` call, generalized to three: if the ticket is
+    /// still valid the extra keystrokes land on an ordinary shell
+    /// prompt as a harmless unrecognized command, but if it
+    /// somehow wasn't, the sequence still supplies the password
+    /// the prompt is waiting on instead of stalling forever.
+    ///
+    /// A trailing 20-second wait gives `installer` — including its
+    /// synchronous postinstall — time to finish before the caller
+    /// (`Create.swift`'s `automateSetupAssistant`) starts polling
+    /// for SSH.
+    private static func installProvisionerSteps(password: String) -> [BootStep] {
+        let pkgPath = "\(provisionMountPoint)/\(AppBundleBootstrapTemplate.provisionerPkgFileName)"
+
+        func sudoStep(_ command: String) -> [BootStep] {
+            [
+                BootStep(delay: 5, action: .text(command)),
+                BootStep(delay: 0, action: enter),
+                BootStep(delay: 5, action: .text(password)),
+                BootStep(delay: 0, action: enter),
+            ]
+        }
+
+        return sudoStep("sudo mkdir -p '\(provisionMountPoint)'")
+            + sudoStep("sudo mount_virtiofs \(provisionShareTag) '\(provisionMountPoint)'")
+            + sudoStep("sudo installer -pkg '\(pkgPath)' -target /")
+            + [BootStep(delay: 20, action: .wait(0))]
     }
 
 }

@@ -200,6 +200,103 @@ struct SetupAutomationTests {
         }
     }
 
+    // MARK: - Provisioner Install
+
+    @Suite("Provisioner install", .tags(.configuration))
+    struct ProvisionerInstallTests {
+
+        @Test(
+            "installProvisioner: false leaves the sequence byte-identical to the default",
+            arguments: [15, 26]
+        )
+        func installProvisionerFalseIsUnchanged(version: Int) throws {
+            let withFlag = try SetupAutomation.sequence(for: version, installProvisioner: false)
+            let withoutFlag = try SetupAutomation.sequence(for: version)
+            #expect(withFlag == withoutFlag)
+        }
+
+        @Test(
+            "installProvisioner: true appends a step typing the installer command",
+            arguments: [15, 26]
+        )
+        func installProvisionerTrueTypesInstallerCommand(version: Int) throws {
+            let steps = try SetupAutomation.sequence(for: version, installProvisioner: true)
+            let hasInstallerCommand = steps.contains { step in
+                if case .text(let text) = step.action {
+                    return text == "sudo installer -pkg "
+                        + "'/Library/Application Support/Spooktacular/provision/Spooktacular Provisioner.pkg' "
+                        + "-target /"
+                }
+                return false
+            }
+            #expect(hasInstallerCommand, "Must type the exact installer(8) invocation")
+        }
+
+        @Test("installProvisioner: true mounts the share before running the installer")
+        func installProvisionerTrueMountsBeforeInstalling() throws {
+            let steps = try SetupAutomation.sequence(for: 15, installProvisioner: true)
+            let textSteps = steps.enumerated().compactMap { index, step -> (Int, String)? in
+                if case .text(let text) = step.action { return (index, text) }
+                return nil
+            }
+            let mountIndex = try #require(textSteps.first {
+                $0.1 == "sudo mount_virtiofs spook-provision '/Library/Application Support/Spooktacular/provision'"
+            }?.0)
+            let installIndex = try #require(textSteps.first {
+                $0.1.hasPrefix("sudo installer -pkg ")
+            }?.0)
+            #expect(mountIndex < installIndex, "Must mount the provisioning share before invoking installer(8)")
+        }
+
+        @Test("installProvisioner: true creates the mount point before mounting")
+        func installProvisionerTrueCreatesMountPointFirst() throws {
+            let steps = try SetupAutomation.sequence(for: 15, installProvisioner: true)
+            let textSteps = steps.enumerated().compactMap { index, step -> (Int, String)? in
+                if case .text(let text) = step.action { return (index, text) }
+                return nil
+            }
+            let mkdirIndex = try #require(textSteps.first {
+                $0.1 == "sudo mkdir -p '/Library/Application Support/Spooktacular/provision'"
+            }?.0)
+            let mountIndex = try #require(textSteps.first {
+                $0.1.hasPrefix("sudo mount_virtiofs")
+            }?.0)
+            #expect(mkdirIndex < mountIndex, "Must create the mount point before mounting it")
+        }
+
+        @Test("installProvisioner: true appends steps after SSH is enabled")
+        func installProvisionerStepsFollowSSH() throws {
+            let steps = try SetupAutomation.sequence(for: 15, installProvisioner: true)
+            let textSteps = steps.enumerated().compactMap { index, step -> (Int, String)? in
+                if case .text(let text) = step.action { return (index, text) }
+                return nil
+            }
+            let sshIndex = try #require(textSteps.first {
+                $0.1.contains("setremotelogin")
+            }?.0)
+            let mkdirIndex = try #require(textSteps.first {
+                $0.1.hasPrefix("sudo mkdir -p")
+            }?.0)
+            #expect(sshIndex < mkdirIndex, "Provisioner steps must reuse the Terminal session opened for SSH")
+        }
+
+        @Test("installProvisioner: true waits after installer for the postinstall daemon bootstrap")
+        func installProvisionerWaitsAfterInstaller() throws {
+            let steps = try SetupAutomation.sequence(for: 15, installProvisioner: true)
+            let installIndex = try #require(steps.firstIndex { step in
+                if case .text(let text) = step.action { return text.hasPrefix("sudo installer -pkg ") }
+                return false
+            })
+            // A handful of steps after the installer command (Return,
+            // password, Return) there should be a generous wait so
+            // `installer(8)`'s postinstall (`launchctl bootstrap`) has
+            // time to finish before the caller starts polling SSH.
+            let tail = steps[installIndex...]
+            let hasLongWait = tail.contains { $0.delay >= 20 }
+            #expect(hasLongWait, "Must allow time after installer(8) for the postinstall to bootstrap the daemon")
+        }
+    }
+
     // MARK: - Boot Action Types
 
     @Suite("Boot action types", .tags(.configuration))

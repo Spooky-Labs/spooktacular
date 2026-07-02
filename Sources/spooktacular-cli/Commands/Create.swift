@@ -408,10 +408,62 @@ extension Spooktacular {
 
                 let macOSMajor = version.majorVersion
                 if !skipSetup && SetupAutomation.isSupported(macOSVersion: macOSMajor) {
+                    // Zero-touch provisioner install: stage
+                    // `Spooktacular Provisioner.pkg` into the
+                    // bundle's provisioning share BEFORE Setup
+                    // Assistant automation starts, so it's already
+                    // sitting on the share (mounted by every macOS
+                    // guest's `applyProvisioning` virtio-fs device)
+                    // when the automation's typed `installer`
+                    // command runs inside the guest.
+                    //
+                    // Only worth doing when something will actually
+                    // consume the provisioner daemon afterward: a
+                    // first-boot script about to be disk-injected
+                    // (only `--provision disk-inject` writes
+                    // `first-boot.sh` to the share — `--provision
+                    // ssh` never touches it) or Guest Tools being
+                    // installed. `githubRunner` / `remoteDesktop` /
+                    // `openclaw` / `userData` are the only sources
+                    // of a provisioning script later in this method
+                    // (see the `provisionScript` assignment below),
+                    // and all four are already-parsed flags at this
+                    // point, so the check doesn't need to wait for
+                    // that assignment to run.
+                    let willInjectFirstBootScript = provision == .diskInject
+                        && (githubRunner || remoteDesktop || openclaw || userData != nil)
+                    var installProvisioner = willInjectFirstBootScript || guestTools.installsAppBundle
+
+                    if installProvisioner {
+                        if let pkgURL = AppBundleBootstrapTemplate.locateProvisionerPkg() {
+                            try FileManager.default.createDirectory(
+                                at: bundle.provisionDirectoryURL,
+                                withIntermediateDirectories: true
+                            )
+                            let destination = bundle.provisionDirectoryURL
+                                .appendingPathComponent(pkgURL.lastPathComponent)
+                            try? FileManager.default.removeItem(at: destination)
+                            try FileManager.default.copyItem(at: pkgURL, to: destination)
+                            print(Style.info("Staged provisioner pkg for zero-touch install."))
+                        } else {
+                            // Soft warn, mirroring the Guest Tools
+                            // bundle-not-found path below — dev
+                            // builds that never ran build-app.sh
+                            // don't have a pkg to stage. Skipping
+                            // `installProvisioner` here (rather than
+                            // leaving it true) keeps the typed
+                            // `installer` command from running
+                            // against a file that was never copied.
+                            print(Style.dim("  Provisioner pkg not found — run build-app.sh to produce Contents/Applications/Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg. Continuing without zero-touch provisioning."))
+                            installProvisioner = false
+                        }
+                    }
+
                     try await automateSetupAssistant(
                         bundle: bundle,
                         macOSVersion: macOSMajor,
-                        macAddress: macAddress
+                        macAddress: macAddress,
+                        installProvisioner: installProvisioner
                     )
                 } else if !skipSetup {
                     Log.provision.info("No Setup Assistant sequence for macOS \(macOSMajor, privacy: .public)")
@@ -889,11 +941,17 @@ extension Spooktacular {
         ///   - bundle: The newly created VM bundle.
         ///   - macOSVersion: The macOS major version (e.g., 15 for Sequoia).
         ///   - macAddress: The VM's MAC address for IP resolution.
+        ///   - installProvisioner: Forwarded to
+        ///     ``SetupAutomation/sequence(for:username:password:installProvisioner:)``.
+        ///     Pass `true` only once `Spooktacular Provisioner.pkg`
+        ///     has actually been copied into `bundle`'s
+        ///     provisioning share — see the call site in `run()`.
         @MainActor
         private func automateSetupAssistant(
             bundle: VirtualMachineBundle,
             macOSVersion: Int,
-            macAddress: MACAddress
+            macAddress: MACAddress,
+            installProvisioner: Bool = false
         ) async throws {
             let logger = Log.provision
 
@@ -913,7 +971,10 @@ extension Spooktacular {
             do {
                 let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
                 let screenReader = VZScreenReader(vmView: driver.vmView)
-                let steps = try SetupAutomation.sequence(for: macOSVersion)
+                let steps = try SetupAutomation.sequence(
+                    for: macOSVersion,
+                    installProvisioner: installProvisioner
+                )
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
                 print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
                 try await SetupAutomationExecutor.run(

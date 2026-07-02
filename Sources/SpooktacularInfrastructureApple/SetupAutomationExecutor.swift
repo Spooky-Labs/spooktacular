@@ -84,7 +84,7 @@ public enum SetupAutomationExecutor {
     ///
     /// - Parameters:
     ///   - steps: The ordered boot step sequence from
-    ///     ``SetupAutomation/sequence(for:username:password:)``.
+    ///     ``SetupAutomation/sequence(for:username:password:installProvisioner:)``.
     ///   - driver: A ``KeyboardDriver`` that delivers keyboard events
     ///     to the virtual machine.
     ///   - screenReader: An optional ``ScreenReader`` for screen-aware
