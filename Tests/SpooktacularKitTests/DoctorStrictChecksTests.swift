@@ -95,9 +95,6 @@ struct DoctorStrictChecksTests {
         if env["SPOOKTACULAR_DYNAMO_TABLE"]?.isEmpty == false {
             return StrictResult(item: 13, status: .pass, message: "dynamo")
         }
-        if env["SPOOK_K8S_API"]?.isEmpty == false {
-            return StrictResult(item: 13, status: .pass, message: "k8s")
-        }
         return StrictResult(item: 13, status: .warn, message: "file")
     }
 
@@ -233,13 +230,6 @@ struct DoctorStrictChecksTests {
         let result = Self.check13(env: ["SPOOKTACULAR_DYNAMO_TABLE": "spook-locks"])
         #expect(result.status == .pass)
         #expect(result.message == "dynamo")
-    }
-
-    @Test("13 passes with Kubernetes Lease")
-    func item13K8s() {
-        let result = Self.check13(env: ["SPOOK_K8S_API": "https://k8s.local:6443"])
-        #expect(result.status == .pass)
-        #expect(result.message == "k8s")
     }
 
     @Test("13 warns on file fallback")

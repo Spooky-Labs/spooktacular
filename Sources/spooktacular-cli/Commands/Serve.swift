@@ -198,16 +198,15 @@ extension Spooktacular {
             //
             // Selection is driven by `DistributedLockFactory` which
             // reads the environment — `SPOOKTACULAR_DYNAMO_TABLE` picks the
-            // cross-region DynamoDB backend, `SPOOK_K8S_API` picks
-            // Kubernetes Leases, otherwise falls back to file/NFS
-            // flock. We engage the factory whenever the operator has
-            // explicitly opted into a shared backend OR when running
-            // multi-tenant (where coordination is mandatory).
+            // cross-region DynamoDB backend, otherwise falls back to
+            // file/NFS flock. We engage the factory whenever the
+            // operator has explicitly opted into a shared backend OR
+            // when running multi-tenant (where coordination is
+            // mandatory).
             let dynamoSelected = env["SPOOKTACULAR_DYNAMO_TABLE"]?.isEmpty == false
-            let k8sSelected = env["SPOOK_K8S_API"]?.isEmpty == false
             let fileLockSelected = env["SPOOKTACULAR_LOCK_DIR"] != nil
             var distributedLockBuilt: DistributedLockFactory.Built?
-            if dynamoSelected || k8sSelected || fileLockSelected || tenancyMode == .multiTenant {
+            if dynamoSelected || fileLockSelected || tenancyMode == .multiTenant {
                 let built = try DistributedLockFactory.makeFromEnvironment(environment: env)
                 print(Style.info("Distributed lock backend: \(built.backend)"))
                 if let lease = try? await built.lock.acquire(

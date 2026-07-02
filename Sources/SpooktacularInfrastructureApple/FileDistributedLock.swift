@@ -2,7 +2,7 @@ import Foundation
 import SpooktacularCore
 import SpooktacularApplication
 
-/// Distributed lock using file-based advisory locking for non-Kubernetes deployments.
+/// Distributed lock using file-based advisory locking for single-host or shared-filesystem deployments.
 ///
 /// Uses `open(2)` with `O_CREAT | O_EXCL` as the create-if-absent
 /// primitive plus `flock(2)` for process-level mutual exclusion on
@@ -23,11 +23,11 @@ import SpooktacularApplication
 ///
 /// ## When to use
 ///
-/// - Non-Kubernetes deployments (standalone Mac hosts)
+/// - Standalone Mac hosts
 /// - Hosts sharing an NFS mount or network filesystem
 /// - Single-host deployments (local coordination)
 ///
-/// For Kubernetes deployments, use `KubernetesLeaseLock` instead.
+/// For cross-region fleets, use ``DynamoDBDistributedLock`` instead.
 ///
 /// ## Configuration
 ///
@@ -126,7 +126,7 @@ public actor FileDistributedLock: DistributedLockService {
 
     public func renew(_ lease: DistributedLease, duration: TimeInterval) async throws -> DistributedLease {
         guard let held = heldLocks[lease.name] else {
-            throw LockError.leaseLost(lease.name)
+            throw FileLockError.leaseLost(lease.name)
         }
         // Inode check: if a human operator rm'd + recreated the
         // lockfile while we held it, the fd we still own points
@@ -136,7 +136,7 @@ public actor FileDistributedLock: DistributedLockService {
         var statBuf = stat()
         guard fstat(held.fd, &statBuf) == 0,
               UInt64(statBuf.st_ino) == held.inode else {
-            throw LockError.leaseLost(lease.name)
+            throw FileLockError.leaseLost(lease.name)
         }
         // Bound the number of renewals per lease. See
         // ``DistributedLease/maxRenewals``.
@@ -255,10 +255,9 @@ public actor FileDistributedLock: DistributedLockService {
 
 /// Typed errors from the file-backed lock backend.
 ///
-/// Distinct from ``LockError`` so callers can discriminate
-/// filesystem failures (permissions, ENOSPC, a lock dir that
-/// doesn't exist) from coordination failures (a lease lost to
-/// another controller). The raw `errno` is preserved so ops can
+/// Discriminates filesystem failures (permissions, ENOSPC, a lock
+/// dir that doesn't exist) from coordination failures (a lease lost
+/// to another holder). The raw `errno` is preserved so ops can
 /// pivot to `man 2 open` when diagnosing.
 public enum FileLockError: Error, LocalizedError, Sendable, Equatable {
 
@@ -270,12 +269,20 @@ public enum FileLockError: Error, LocalizedError, Sendable, Equatable {
     /// filesystem corruption territory.
     case fstatFailed(path: String, errnoCode: Int32)
 
+    /// The lease was lost before `renew(_:duration:)` could
+    /// extend it — either this process never held it, or the
+    /// lockfile's inode changed underneath us (a human operator
+    /// `rm`'d and recreated it while we still held the fd).
+    case leaseLost(String)
+
     public var errorDescription: String? {
         switch self {
         case .openFailed(let path, let code):
             "open(\(path)) failed with errno \(code): \(String(cString: strerror(code)))"
         case .fstatFailed(let path, let code):
             "fstat(\(path)) failed with errno \(code): \(String(cString: strerror(code)))"
+        case .leaseLost(let name):
+            "Lease '\(name)' was lost"
         }
     }
 
@@ -287,6 +294,8 @@ public enum FileLockError: Error, LocalizedError, Sendable, Equatable {
                 : "Check the error code against `man 2 open` and verify the directory exists."
         case .fstatFailed:
             "The filesystem may be in an inconsistent state. Unmount / remount the lock directory if it's an NFS share."
+        case .leaseLost:
+            "The lockfile was likely removed and recreated out from under this process. Verify no other process or operator is touching SPOOKTACULAR_LOCK_DIR manually."
         }
     }
 }

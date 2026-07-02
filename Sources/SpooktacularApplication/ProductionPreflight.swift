@@ -141,7 +141,7 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
         case .productionRequiresAudit:
             "Refusing to start: production deployments require an audit sink. No SPOOKTACULAR_AUDIT_FILE / SPOOKTACULAR_AUDIT_IMMUTABLE_PATH / SPOOKTACULAR_AUDIT_MERKLE was configured."
         case .multiTenantRequiresDistributedLock:
-            "Refusing to start: multi-tenant mode requires a DistributedLockService. None of SPOOKTACULAR_DYNAMO_TABLE / SPOOK_K8S_API / SPOOKTACULAR_LOCK_DIR was configured."
+            "Refusing to start: multi-tenant mode requires a DistributedLockService. None of SPOOKTACULAR_DYNAMO_TABLE / SPOOKTACULAR_LOCK_DIR was configured."
         }
     }
 
@@ -154,7 +154,7 @@ public enum ProductionPreflightError: Error, LocalizedError, Sendable, Equatable
         case .productionRequiresAudit:
             "Set at minimum SPOOKTACULAR_AUDIT_FILE. For SOC 2 Type II, combine with SPOOKTACULAR_AUDIT_IMMUTABLE_PATH, SPOOKTACULAR_AUDIT_MERKLE=1 + SPOOKTACULAR_AUDIT_SIGNING_KEY, and SPOOK_AUDIT_S3_BUCKET (Object Lock). Operators who genuinely need to run without audit must pass --insecure explicitly."
         case .multiTenantRequiresDistributedLock:
-            "Set SPOOKTACULAR_DYNAMO_TABLE (cross-region) or SPOOK_K8S_API (single-cluster) to select a distributed backend. SPOOKTACULAR_LOCK_DIR on a shared NFS mount is acceptable only on a single-host deployment and is not valid with SPOOKTACULAR_TENANCY_MODE=multi-tenant."
+            "Set SPOOKTACULAR_DYNAMO_TABLE (cross-region) to select a distributed backend. SPOOKTACULAR_LOCK_DIR on a shared NFS mount is acceptable only on a single-host deployment and is not valid with SPOOKTACULAR_TENANCY_MODE=multi-tenant."
         }
     }
 }

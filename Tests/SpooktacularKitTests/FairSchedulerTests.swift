@@ -2,11 +2,11 @@ import Testing
 import Foundation
 @testable import SpooktacularCore
 
-/// Covers the max-min fair allocator that sits above the runner
-/// pool reconciler. These are algorithm-level tests — the wiring
-/// into `RunnerPoolReconciler` is a separate plug-in point an
-/// operator adopts when they hit the "one tenant took everything"
-/// failure mode on a busy fleet.
+/// Covers the max-min fair allocator that sits above runner pool
+/// orchestration. These are algorithm-level tests — wiring the
+/// allocator into a pool orchestrator is a separate plug-in point
+/// an operator adopts when they hit the "one tenant took
+/// everything" failure mode on a busy fleet.
 @Suite("Fair scheduler", .tags(.scheduler))
 struct FairSchedulerTests {
 
@@ -217,7 +217,7 @@ struct FairSchedulerTests {
         #expect(policy.weight == 1)
     }
 
-    // MARK: - Pool-level allocation (wired from RunnerPoolReconciler)
+    // MARK: - Pool-level allocation (wired from a pool orchestrator)
 
     @Test("allocatePools splits a tenant's share across their pools by demand")
     func poolAllocationSplitsByDemand() {

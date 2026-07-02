@@ -438,7 +438,6 @@ log show --predicate 'subsystem == "com.apple.Virtualization"' --last 5m
 ### Related Guides
 
 - <doc:GettingStarted>
-- <doc:KubernetesGuide>
 - <doc:GitHubActionsGuide>
 - <doc:Provisioning>
 

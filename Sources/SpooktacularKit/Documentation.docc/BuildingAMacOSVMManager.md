@@ -23,8 +23,8 @@ The app target depends on three Swift packages in this repo:
 
 Views stay thin: they observe `@Observable` state objects and
 call through to these libraries. Keeping logic out of views is
-what makes the same codebase ship a CLI, a Kubernetes
-controller, and an App Store binary from one package.
+what makes the same codebase ship a CLI and an App Store binary
+from one package.
 
 ## Topics
 

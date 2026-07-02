@@ -2,7 +2,7 @@
 
 **Status:** Living document — updated per release.
 **Owner:** security@spooktacular.app
-**Scope:** `spook` CLI, `Spooktacular` GUI, `Spooktacular Guest Tools.app` (in-guest HTTP/vsock agent + SPICE clipboard bridge), `spook-controller`, the HTTP API (`spook serve`).
+**Scope:** `spook` CLI, `Spooktacular` GUI, `Spooktacular Guest Tools.app` (in-guest HTTP/vsock agent + SPICE clipboard bridge), the HTTP API (`spook serve`).
 **Method:** STRIDE per asset, with explicit assumptions, attacker capabilities, and references to the code that mitigates each risk. Re-reviewed on every release-note cycle.
 
 ## 1. Assets
@@ -11,7 +11,7 @@
 |-------|----------------|-----------|
 | Guest macOS VM | Holds CI secrets, source code, signing material | Host (`VZVirtualMachine`) |
 | Host Mac | Unit of compute; compromise = fleet compromise | Operator |
-| mTLS client certs | Identify Mac nodes to the controller | Keychain |
+| mTLS client certs | Identify API callers to `spook serve` | Keychain |
 | Guest agent tokens | Scope-tiered API auth (read / runner / break-glass) | Keychain + shared-folder file |
 | Merkle signing key | Non-repudiation of audit log | `open(2) O_EXCL, 0600` file |
 | AWS credentials | DynamoDB lock, S3 Object Lock writes | Environment / IAM role |
@@ -31,13 +31,8 @@
 
 ```
 ┌─────────────────┐   mTLS TLS 1.3    ┌───────────────────┐
-│  CI / Operator  │ ─────────────────▶│  spook-controller │
-└─────────────────┘                    └────────┬──────────┘
-                                                │ mTLS TLS 1.3
-                                                ▼
-                                       ┌───────────────────┐
-                                       │  Mac host (spook  │
-                                       │  serve, HTTP API) │
+│  CI / Operator  │ ─────────────────▶│  Mac host (spook  │
+└─────────────────┘                    │  serve, HTTP API) │
                                        └────────┬──────────┘
                                                 │ vsock (host-CID pinned)
                                                 ▼
@@ -94,7 +89,7 @@ Every arrow is a trust boundary with explicit authentication, encryption, and au
 | Threat | Vector | Mitigation | Code reference |
 |--------|--------|------------|----------------|
 | **Elevation of privilege** | Tenant A calls tenant B's VMs | `TenantIsolationPolicy` filters pools and runner groups by tenant on every dispatch | `MultiTenantIsolation` |
-| **Elevation of privilege** | Warm-pool VM reused cross-tenant | `canReuse()` returns `true` only when `fromTenant == forTenant`; reconciler enforces before recycle | `RunnerPoolReconciler.recycle` |
+| **Elevation of privilege** | Warm-pool VM reused cross-tenant | `canReuse()` returns `true` only when `fromTenant == forTenant`. This policy primitive is defined but not yet wired into a runtime recycle path — the prior enforcement point lived in the now-removed Kubernetes reconciler. Treat cross-tenant warm-pool reuse as **unenforced** until the replacement runner-pool orchestrator ships. | `TenancyPorts.swift` (`canReuse`) |
 | **Elevation of privilege** | Resource exhaustion by noisy tenant | Per-tenant `TenantQuota` evaluated before admission | `TenantQuota.evaluate` |
 | **Tampering** | Rogue admin edits role file on disk | Admin REST endpoints (`/v1/roles*`, `/v1/tenants*`) require `role:*` / `tenant:*` permissions, every mutation audited | `HTTPAPIServer.handleRoleAPI`, `handleTenantAPI` |
 
@@ -123,7 +118,6 @@ Insider risk is where most mature programs actually get hurt, and it is worth it
 | Threat | Vector | Mitigation | Code / tests reference |
 |--------|--------|------------|------------------------|
 | **Repudiation / EoP** — disgruntled security-admin holding a break-glass key misuses it | Legitimate SEP-bound break-glass key + `security-admin` role; issues a ticket for an unrelated tenant during an unsanctioned window | Tenant scoping on ticket mint (`bgt:` payload carries `tenant`); per-operator key makes the signature cryptographically attributable; every mint + consume emits an `AuditRecord` with `jti`, `issuer`, `tenant`, `reason`; monitoring alerts on break-glass use outside change-management windows; offboarding is a single-file delete of the operator's public-key PEM | `Sources/SpookCore/BreakGlassTicket.swift`, `Sources/spooktacular-agent/BreakGlassVerification.swift`, `Sources/SpookApplication/UsedTicketCache.swift`, [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) Runbook 1 |
-| **EoP** — compromised ServiceAccount (controller pod) | Attacker lands shell in controller pod, holds its K8s ServiceAccount token | Least-privilege RBAC on the ServiceAccount; mTLS client cert is **separately** required to reach `spook serve` (token alone is insufficient); SPOOK_INSECURE_CONTROLLER refuses to set itself in production; break-glass is disabled by default in multi-tenant mode; audit records every admission with the verified mTLS identity, not the token | `HTTPAPIServer.init` (TLS required), `ProductionPreflight.validate()`, `Sources/spook-controller/` |
 | **EoP** — CI user escalates to platform-admin | CI user abuses `/v1/roles/assign` to grant themselves `platform-admin` | `/v1/roles/assign` requires `role:assign` permission, which only `security-admin` holds; separation of duties enforced by the RBAC model (platform-admin can admin platform, security-admin admins identity — neither can self-promote); every mutation emits `AuditRecord` including failed attempts | `Sources/SpookInfrastructureApple/HTTPAPIServer.swift` (`handleRoleAPI`), `Sources/SpookCore/RBACModel.swift` |
 | **Repudiation** — audit-key operator forges or back-dates records | Operator with access to the Merkle signing key emits STHs that rewrite history | Key is generated **inside the Secure Enclave** and non-exportable — the operator has signing capability but cannot copy the key material elsewhere; `AppendOnlyFileAuditStore` sets `UF_APPEND` (kernel-enforced); S3 Object Lock in Compliance mode is WORM at AWS; any attempt to back-date appears as divergence between local tree, append-only file, and S3 copy — verifiable by anyone holding the current public key; rotation runbook (Runbook 3) cryptographically chain-links old and new keys | `Sources/SpookInfrastructureApple/AuditSinkFactory.swift` (SEP path), `Sources/SpookInfrastructureApple/MerkleAuditSink.swift`, [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) Runbook 3 |
 | **Information disclosure** — operator with Keychain access exfiltrates mTLS certs | Logged-in operator on an EC2 Mac reads the Keychain-stored client cert and uses it from outside the fleet | mTLS private keys are stored with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` — they do not sync via iCloud Keychain; on SEP-capable hosts the key can be bound with `kSecAttrTokenIDSecureEnclave` (non-exportable); cert rotation is zero-downtime via `DispatchSource` hot-reload, so suspected exfiltration triggers a same-hour rotation without an outage; audit shows every API request the cert authenticated, so post-rotation traffic coming from the exfiltrated cert produces an alert-able delta | `Sources/SpookInfrastructureApple/KeychainTLSProvider.swift`, `Sources/SpookInfrastructureApple/HTTPAPIServer.swift` (`reloadTLS`), [`INCIDENT_RESPONSE.md`](INCIDENT_RESPONSE.md) Runbook 2 |
@@ -165,7 +159,7 @@ Insider threats are **never fully eliminated by code** — the defense depth is 
 
 The following are open tracking items; the threat model is **not** a substitute for them:
 
-- [ ] Third-party penetration test (scope: HTTP API, guest agent, controller). Target: 2026 Q2.
+- [ ] Third-party penetration test (scope: HTTP API, guest agent). Target: 2026 Q2.
 - [ ] SOC 2 Type II attestation including the audit chain (append-only + Merkle + S3 Object Lock).
 - [ ] CIS Benchmark conformance scan for the .app bundle.
 - [ ] Red-team exercise simulating a CI-user break-glass escalation attempt.

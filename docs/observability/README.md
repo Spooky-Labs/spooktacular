@@ -9,13 +9,9 @@ Everything in this directory is production-hardened: the scrape config uses mTLS
 | File | What it does |
 |------|--------------|
 | [`metrics.md`](metrics.md) | The full metric catalog — every series `/metrics` exposes, with type, unit, and an operational meaning |
-| [`slo-catalog.md`](slo-catalog.md) | The SLI/SLO catalog — user-facing + platform SLOs, with PromQL, targets, and alert mappings |
 | [`prometheus.yml`](prometheus.yml) | Minimal scrape config for a single Spooktacular deployment |
-| [`prometheus-scrape-config.yaml`](prometheus-scrape-config.yaml) | Full production scrape config covering controller (K8s SD) + fleet (EC2 SD / file-SD) |
 | [`alerts.yml`](alerts.yml) | Prometheus alerting rules — capacity, API health, audit-pipeline, VM lifecycle, and SLO burn-rate alerts |
-| [`grafana-dashboard.json`](grafana-dashboard.json) | Legacy single-dashboard layout (kept for backward compatibility) |
-| [`grafana-dashboard-controller.json`](grafana-dashboard-controller.json) | Controller dashboard — reconcile latency, error rate, queue depth, watch stream, API p95 |
-| [`grafana-dashboard-fleet.json`](grafana-dashboard-fleet.json) | Fleet dashboard — VMs per host, pool size, scale events, job throughput, audit volume |
+| [`grafana-dashboard.json`](grafana-dashboard.json) | Single-dashboard layout — VMs per host, API latency, audit volume, lock contention |
 
 ## Fifteen-minute setup
 
@@ -35,7 +31,7 @@ systemctl reload prometheus
 
 ## mTLS scrape gotcha
 
-`spook serve` in production refuses to respond without a valid client certificate (`HTTPAPIServerError.tlsRequired`). Prometheus's scrape needs the same cert Spooktacular gives its CI callers — not a new certificate. Re-use whatever trust store holds your controller's client cert, and configure `tls_config.cert_file` / `key_file` in `prometheus.yml` to point at it.
+`spook serve` in production refuses to respond without a valid client certificate (`HTTPAPIServerError.tlsRequired`). Prometheus's scrape needs the same cert Spooktacular gives its CI callers — not a new certificate. Re-use whatever trust store holds your host's client cert, and configure `tls_config.cert_file` / `key_file` in `prometheus.yml` to point at it.
 
 For local-dev deployments started with `--insecure`, strip the `tls_config` block; the HTTP listener won't enforce TLS.
 

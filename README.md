@@ -107,12 +107,12 @@ spook start runner-02 --ephemeral --headless --github-runner \
 │  VZ* · Network · Security · CryptoKit  │
 │  HTTPAPIServer · GuestAgentClient       │
 │  Keychain · TLS · ProcessRunner         │
-└─────┬──────────┬──────────┬─────────────┘
-      │          │          │
- ┌────▼──┐  ┌───▼───┐  ┌──▼────────┐
- │ spook │  │  GUI  │  │ controller │
- │ (CLI) │  │(SwiftUI│  │   (K8s)   │
- └───────┘  └───────┘  └────────────┘
+└─────────────┬────────────────┘
+              │                │
+         ┌────▼──┐        ┌────▼────┐
+         │ spook │        │   GUI   │
+         │ (CLI) │        │(SwiftUI)│
+         └───────┘        └─────────┘
 ```
 
 Clean Architecture with compiler-enforced boundaries. SpookCore imports Foundation only.
@@ -135,7 +135,6 @@ SpookApplication depends on SpookCore only. Infrastructure wraps Apple framework
 | Snapshots | [`SnapshotManager.swift`](Sources/SpooktacularInfrastructureApple/SnapshotManager.swift) | Save, restore, list, delete disk-level snapshots |
 | Capacity Check | [`CapacityCheck.swift`](Sources/SpooktacularInfrastructureApple/CapacityCheck.swift) | Enforces 2-VM kernel limit with actionable errors |
 | HTTP API | [`HTTPAPIServer.swift`](Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift) | 9 REST endpoints, TLS support, bearer token auth |
-| Kubernetes | [`Sources/spooktacular-controller/`](Sources/spooktacular-controller/) | MacOSVM CRD, Swift controller, Helm chart |
 | Service | [`ServicePlist.swift`](Sources/SpooktacularApplication/ServicePlist.swift) | Per-VM LaunchDaemon for headless servers |
 | Networking | [`VirtualMachineConfiguration.swift`](Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift) | NAT, bridged, isolated |
 | Accessibility | GUI sources | Full VoiceOver: labels, hints, identifiers, announcements |
@@ -201,28 +200,6 @@ spook remote ports my-vm
 
 The host-side [`GuestAgentClient`](Sources/SpooktacularInfrastructureApple/GuestAgentClient.swift) provides a typed Swift API for all endpoints. The agent ships inside `Spooktacular Guest Tools.app`, which is installed into each macOS guest's `/Applications/` automatically at VM create time (driven by the `--guest-tools` flag on `spook create` or the GUI Create sheet's Guest Tools picker).
 
-## Runner Pools (Kubernetes)
-
-The fastest way to get CI runners on Mac:
-
-```bash
-# Install CRDs + controller
-kubectl apply -f deploy/kubernetes/crds/
-helm install spooktacular deploy/kubernetes/helm/spooktacular/
-
-# Create a GitHub Actions runner pool — 2 ephemeral runners
-kubectl create secret generic github-runner-token \
-  --from-literal=token=ghp_xxx
-kubectl apply -f deploy/kubernetes/examples/github-runner-pool.yaml
-
-# Watch runners come online
-kubectl get rp -w
-# NAME              READY  BUSY  MIN  MAX  MODE       PHASE    AGE
-# ios-ci-runners    2      0     2    4    ephemeral  Healthy  30s
-```
-
-Three CI integrations: **GitHub Actions**, **CircleCI**, **Jenkins**. Three lifecycle modes: **ephemeral** (fresh clone per job), **warm-pool** (scrub and reuse), **persistent** (long-lived agents). See [`deploy/kubernetes/README.md`](deploy/kubernetes/README.md) for the full architecture.
-
 ## EC2 Mac Quickstart
 
 Turn one EC2 Mac Dedicated Host into two schedulable macOS worker slots:
@@ -256,7 +233,7 @@ Spooktacular supports **single-tenant** and **multi-tenant** deployment modes:
 - **Three vsock channels** — read-only (9470), runner (9471), break-glass (9472) with transport-layer scope enforcement
 - **OIDC + SAML federated identity** — JWKS pinning via `staticJWKSPath` / `jwksURLOverride`; strict RS256 + `nbf/iat/exp/aud/iss` + replay cache
 - **Merkle tree audit** — RFC 6962-aligned with signed tree heads (Ed25519), append-only kernel flag, optional S3 Object Lock
-- **Distributed locking** — DynamoDB Global Tables, Kubernetes Lease, or file-based; selected via environment
+- **Distributed locking** — DynamoDB Global Tables or file-based; selected via environment
 
 **Production checklist** — follow [`docs/DEPLOYMENT_HARDENING.md`](docs/DEPLOYMENT_HARDENING.md) for the 18-item pre-flight, the reference LaunchDaemon plist, and verification commands. Run `spook doctor --strict` to verify every control at runtime, or `spook security-controls` to print an audit-ready inventory of every shipped control with OWASP / NIST / ASVS citations + code + test references.
 

@@ -72,8 +72,8 @@ public struct TenantSchedulingPolicy: Sendable, Codable, Equatable {
 /// Max-min fair share allocator for VM slots across tenants.
 ///
 /// Solves the "who gets the last slot when demand > supply?"
-/// problem the prior reconciler side-stepped. The current
-/// ``RunnerPoolReconciler`` scales each pool independently based
+/// problem the prior reconciler side-stepped. The removed
+/// Kubernetes reconciler scaled each pool independently based
 /// on `minRunners`/`maxRunners`; under multi-tenant contention,
 /// the first pool to ask wins. That's fine for small fleets but
 /// produces starvation on busy ones — a Fortune-20 CI org with
@@ -124,8 +124,7 @@ public struct FairScheduler: Sendable {
     /// demand (typically `pool.spec.maxRunners`).
     ///
     /// The pure shape makes the allocator testable without
-    /// dragging in the Kubernetes CRD types the reconciler
-    /// works with.
+    /// dragging in any pool-orchestrator-specific types.
     public struct PoolDemand: Sendable, Equatable {
         public let poolName: String
         public let tenant: TenantID

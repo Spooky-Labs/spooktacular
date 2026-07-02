@@ -179,12 +179,6 @@ let package = Package(
             ],
             path: "Sources/SpooktacularGuestTools"
         ),
-        .executableTarget(
-            name: "spooktacular-controller",
-            dependencies: ["SpooktacularKit"],
-            path: "Sources/spooktacular-controller"
-        ),
-
         // ──────────────────────────────────────────────
         // Examples — minimum-viable embedding programs that
         // demonstrate the library API. Engineers reading the

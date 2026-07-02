@@ -268,43 +268,7 @@ Production controls (--strict)
 
 Every `✓` is a control an auditor can walk straight to. Any `✗` on a production host is a ship-blocker.
 
-## 6. Dedicated-Host → Kubernetes-Node mapping
-
-Each EC2 Mac Dedicated Host surfaces in Kubernetes as exactly **one** Node. The kubelet runs on the EC2 Mac instance itself; the two VM slots are managed as Spooktacular `MacOSVM` custom resources scheduled onto that Node by the controller.
-
-Label every Mac Node with this canonical set so the controller's scheduler and the fair-share scheduler (§7) can filter correctly:
-
-| Label | Value | Purpose |
-|-------|-------|---------|
-| `spooktacular.app/role` | `mac-host` | Identifies the Node as a Spooktacular Mac host |
-| `spooktacular.app/capacity` | `2` | Apple-EULA kernel cap — never more than 2 VMs per host |
-| `topology.kubernetes.io/zone` | `<az>` | Matches the Dedicated Host's AZ (e.g., `us-east-1a`) |
-| `topology.kubernetes.io/region` | `<region>` | AWS region |
-| `node.kubernetes.io/instance-type` | `mac2.metal` | Kubelet auto-populates this from IMDS |
-
-### kubeadm join example
-
-Run this on the EC2 Mac after `bootstrap.sh` finishes, before any VMs start:
-
-```bash
-sudo kubeadm join \
-  --token "${KUBEADM_TOKEN}" \
-  --discovery-token-ca-cert-hash "sha256:${CA_HASH}" \
-  --node-name "$(hostname -s)" \
-  "${CONTROL_PLANE_ENDPOINT}:6443" \
-  --node-labels "spooktacular.app/role=mac-host,spooktacular.app/capacity=2,topology.kubernetes.io/zone=$(curl -sS -H 'X-aws-ec2-metadata-token: $(curl -sS -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 300" http://169.254.169.254/latest/api/token)' http://169.254.169.254/latest/meta-data/placement/availability-zone)"
-```
-
-Verify the controller sees the Node labels:
-
-```bash
-kubectl get nodes -l spooktacular.app/role=mac-host \
-  -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone,CAPACITY:.metadata.labels.spooktacular\\.app/capacity
-```
-
-The controller's `RunnerPoolReconciler` filters Nodes on the `spooktacular.app/role=mac-host` label before placing `MacOSVM` objects. If a Node is cordoned (`kubectl cordon`), the reconciler skips it and any in-flight VM requests for that Node are re-queued to another host.
-
-## 7. 24-hour minimum allocation + drill cadence
+## 6. 24-hour minimum allocation + drill cadence
 
 EC2 Mac dedicated hosts enforce a 24-hour minimum allocation — the single biggest operational constraint of the platform. Spooktacular's `spook serve` doesn't fight this — but it DOES need a graceful drain path so hosts can be released when their 24h window is up.
 
@@ -343,8 +307,8 @@ With Savings Plans (up to 44% off), the "actual" column drops proportionally, bu
 ### Drain sequence
 
 ```bash
-# 1. Cordon this host in your controller (no new VMs)
-kubectl cordon node-ec2-mac-01   # if using the K8s controller
+# 1. Drain this host (stop accepting new VMs) — see bootstrap.sh --drain
+sudo bash /path/to/bootstrap.sh --drain
 
 # 2. Stop all running VMs gracefully
 for vm in $(spook list --running --format=names); do
@@ -372,20 +336,15 @@ Every quarter, rehearse each of these against a non-prod fleet and log the time-
 
 Report times + remediation to the `docs/THREAT_MODEL.md` §9 external-validation checklist.
 
-## 8. Tenant-aware fair scheduling
+## 7. Tenant-aware fair scheduling
 
-On fleets where multiple business units share the same Spooktacular deployment, the default reconciler scales each runner pool independently — the first pool to ask for a VM wins. Under heavy load that produces "one tenant took everything" starvation.
+On fleets where multiple business units share the same Spooktacular deployment and demand exceeds capacity, naive independent scaling per pool produces "one tenant took everything" starvation. `SpooktacularCore` ships `FairScheduler`, a weighted max-min allocator built for exactly this problem.
 
-`spooktacular-controller` activates weighted max-min fair-share scheduling when **both** environment variables are set:
+`FairScheduler` is not currently wired into a runtime orchestrator — the reconciler that previously called it ran inside the (now removed) Kubernetes controller. It ships as a tested, standalone algorithm ready for the next runner-pool orchestrator to adopt.
 
-- `SPOOKTACULAR_SCHEDULER_POLICY` — path to a JSON policy file
-- `SPOOKTACULAR_FLEET_CAPACITY` — integer total of VM slots across the fleet (typically `hostCount * 2` for Apple Silicon's 2-VM kernel limit)
+### Policy shape
 
-Either unset → the reconciler falls through to independent per-pool scaling (the documented single-team posture).
-
-### Policy file format
-
-`/etc/spooktacular/scheduler.json`:
+`FairScheduler` takes a `TenantSchedulingPolicy` per tenant:
 
 ```json
 [
@@ -397,37 +356,10 @@ Either unset → the reconciler falls through to independent per-pool scaling (t
 
 Each entry:
 
-- `tenant` — matches the `spooktacular.app/tenant` label on a `RunnerPool` CRD.
+- `tenant` — the `TenantID` this policy applies to.
 - `weight` — integer share used when demand exceeds capacity. `3:2:1` gives platform 3× mobile's share, 6× data's.
 - `minGuaranteed` — minimum slots this tenant always gets (even under pressure). Prevents starvation of critical tenants.
 - `maxCap` — optional hard ceiling; a tenant that demands more is capped here even if the fleet has room.
-
-### Controller env vars
-
-Add to `spooktacular-controller`'s Deployment spec:
-
-```yaml
-env:
-  - name: SPOOKTACULAR_SCHEDULER_POLICY
-    value: /etc/spooktacular/scheduler.json
-  - name: SPOOKTACULAR_FLEET_CAPACITY
-    value: "40"   # 20 EC2 Mac hosts × 2 VMs each
-```
-
-At startup the controller logs:
-
-```
-RunnerPoolReconciler starting
-Fair-share scheduler active: 3 policies, fleet capacity 40
-```
-
-During reconciliation, pools whose tenant is under pressure see their effective `maxRunners` clamped with a log line:
-
-```
-Fair-share: pool 'mobile-android' maxRunners clamped 30 → 12
-```
-
-The pool's own `minRunners` floor is always honored — the scheduler ensures the sum of all tenants' minimums fits in fleet capacity, so fair-share only ever reduces max, never min.
 
 ### Properties
 
@@ -436,7 +368,7 @@ The pool's own `minRunners` floor is always honored — the scheduler ensures th
 - **Monotone** — adding capacity never reduces anyone's allocation; adding demand never reduces anyone else's.
 - **No starvation** — `minGuaranteed` + the max-min algorithm mean even the lowest-weight tenant gets their floor.
 
-16 tests in `FairSchedulerTests` pin the algorithm: weighted splits, minimums, caps, pool-level proportional breakdown, determinism, work-conservation, and the "sum never exceeds capacity" invariant across a sweep of capacities.
+`FairSchedulerTests` pins the algorithm: weighted splits, minimums, caps, pool-level proportional breakdown, determinism, work-conservation, and the "sum never exceeds capacity" invariant across a sweep of capacities.
 
 ## Common pitfalls
 

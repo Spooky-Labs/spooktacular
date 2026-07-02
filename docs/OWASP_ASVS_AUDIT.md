@@ -302,10 +302,10 @@ Stateless JSON API authenticated per-request via Bearer or ticket. No session ID
 | ID | Requirement | Verdict | Evidence |
 |----|------------|---------|----------|
 | V9.1.1 | TLS 1.2+ for all communications | PASS | TLS 1.3 floor — `HTTPAPIServer.init` + `KeychainTLSProvider.makeHTTPClient` + `reloadTLS` |
-| V9.1.2 | Trusted CAs; revocation checked | PASS | `ClusterTLSDelegate` anchor-pins in-cluster CA; JWKS pinning via `staticJWKSPath` / `jwksURLOverride` |
+| V9.1.2 | Trusted CAs; revocation checked | PASS | `HTTPAPIServer` anchor-pins the operator-supplied `TLS_CA_PATH`; JWKS pinning via `staticJWKSPath` / `jwksURLOverride` |
 | V9.1.3 | Weak ciphers disabled | PASS | TLS 1.3 only — mandatory cipher set (AES-GCM / ChaCha20-Poly1305) |
-| V9.2.1 | External connections authenticated | PASS | K8s API ServiceAccount Bearer + pinned CA; AWS SigV4; GitHub Bearer PAT over TLS |
-| V9.2.2 | Outgoing TLS-authenticated | PASS | `URLSession` with pinned delegates for K8s; system trust for public CAs |
+| V9.2.1 | External connections authenticated | PASS | mTLS client certs + SPKI pinning; AWS SigV4; GitHub Bearer PAT over TLS |
+| V9.2.2 | Outgoing TLS-authenticated | PASS | `URLSession` with pinned delegates via `KeychainTLSProvider`; system trust for public CAs |
 | V9.2.3 | CN/SAN validated | PASS | Default `URLSession` behavior; explicit `server_name` in `prometheus.yml` reference |
 
 ---
@@ -332,7 +332,7 @@ Stateless JSON API authenticated per-request via Bearer or ticket. No session ID
 | V11.1.2 | Business-logic rate limits | PASS | Per-IP rate limit; per-tenant `TenantQuota`; fair-share `FairScheduler` |
 | V11.1.3 | Rules enforced server-side | PASS | RBAC + isolation checks in `HTTPAPIServer.routeRequest` before handler dispatch |
 | V11.1.4 | Anti-automation for repeated ops | PASS | Break-glass single-use + 1h TTL; runner pool capacity limits |
-| V11.1.5 | Reads return consistent state | PASS | Actor-isolated `RunnerPoolReconciler` + K8s optimistic concurrency via `resourceVersion` |
+| V11.1.5 | Reads return consistent state | PASS | `DistributedLease` optimistic concurrency via `version` + DynamoDB conditional writes |
 | V11.1.6 | Timely state updates | PASS | Watch events drive real-time reconciliation; `periodicHealthCheck` reconciles periodically |
 | V11.1.7 | State transitions authorized | PASS | Every state-changing API call goes through RBAC; break-glass gated by ticket |
 

@@ -151,36 +151,6 @@ sudo mount_virtiofs imagenet /Volumes/imagenet
 sudo mount_virtiofs checkpoints /Volumes/checkpoints
 ```
 
-### Kubernetes Configuration
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVM
-metadata:
-  name: ml-trainer
-spec:
-  image: ghcr.io/spooktacular/macos-ml:15.4
-  resources:
-    cpu: 8
-    memory: 24Gi
-    disk: 100Gi
-  sharedFolders:
-    - hostPath: /data/imagenet
-      guestTag: imagenet
-      readOnly: true
-    - hostPath: /data/checkpoints
-      guestTag: checkpoints
-      readOnly: false
-  provisioning:
-    mode: agent
-    userData: |
-      #!/bin/bash
-      mkdir -p /Volumes/imagenet /Volumes/checkpoints
-      mount_virtiofs imagenet /Volumes/imagenet
-      mount_virtiofs checkpoints /Volumes/checkpoints
-      cd /Volumes/imagenet && python3 /opt/train.py
-```
-
 See ``SharedFolder`` for the API details and ``VirtualMachineSpecification/sharedFolders``
 for how shared folders are configured in the VM specification.
 
@@ -615,7 +585,6 @@ ls /data/models/
 
 - <doc:GettingStarted>
 - <doc:Provisioning>
-- <doc:KubernetesGuide>
 - <doc:RemoteDesktop>
 
 ### Key Types

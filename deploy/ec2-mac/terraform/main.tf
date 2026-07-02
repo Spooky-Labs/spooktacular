@@ -88,7 +88,7 @@ resource "aws_ec2_host" "mac" {
 #   - Spooktacular API (port 8484) for VM management over TLS
 #
 # In production, restrict the CIDR blocks to your VPN, bastion, or
-# Kubernetes controller node IPs only.
+# API caller IPs only.
 
 resource "aws_security_group" "spooktacular" {
   name_prefix = "${var.name_prefix}-"

@@ -181,10 +181,6 @@ done
 
 ## Webhook-Driven Autoscaling (Planned)
 
-> Important: Webhook-driven autoscaling requires the Kubernetes
-> operator, which is planned for a future release. The architecture
-> below describes the planned design.
-
 Scale your runner pool based on actual demand using GitHub webhook
 events. When a `workflow_job` event with `action: queued` arrives, the
 autoscaler increases the pool size. When `action: completed`, it
@@ -298,13 +294,6 @@ jobs:
       - uses: actions/checkout@v4
       - run: xcodebuild -scheme MyApp -sdk iphoneos build
 ```
-
-## Scaling with Kubernetes (Planned)
-
-> Important: The Kubernetes operator is planned for a future release.
-> See <doc:KubernetesGuide> for the planned architecture. For now,
-> use the pool-manager script above or manage runners directly with
-> the CLI.
 
 ## EC2 Mac Fleet for GitHub Actions
 
@@ -488,7 +477,6 @@ spook start runner-01 --headless
 
 - <doc:GettingStarted>
 - <doc:EC2MacDeployment>
-- <doc:KubernetesGuide>
 - <doc:Provisioning>
 - <doc:CLIReference>
 

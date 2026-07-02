@@ -6,12 +6,12 @@ import SpooktacularApplication
 
 /// Cross-region distributed lock backed by an AWS DynamoDB table.
 ///
-/// `KubernetesLeaseLock` is cluster-scoped — a Kubernetes Lease
-/// can't synchronize a controller running in us-east-1 with one
-/// running in eu-west-1. That's fine for a single-cluster deploy
-/// but Fortune-20 Mac fleets routinely span regions and need a
-/// globally-consistent coordination primitive so two regions
-/// don't both decide to scale the same runner pool.
+/// ``FileDistributedLock`` is host- or filesystem-scoped — `flock(2)`
+/// can't synchronize a host running in us-east-1 with one running in
+/// eu-west-1. That's fine for a single-region deploy but Fortune-20
+/// Mac fleets routinely span regions and need a globally-consistent
+/// coordination primitive so two regions don't both decide to scale
+/// the same runner pool.
 ///
 /// DynamoDB gives us:
 ///

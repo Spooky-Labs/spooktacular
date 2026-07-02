@@ -11,9 +11,9 @@ import Foundation
 ///
 /// ## Clean Architecture
 ///
-/// Controllers declare WHAT security posture they need for node
+/// Callers declare WHAT security posture they need for host-to-host
 /// communication. The ``TLSIdentityProvider`` protocol is the port;
-/// ``KeychainTLSProvider`` is the adapter. ``NodeManager`` depends on
+/// ``KeychainTLSProvider`` is the adapter. Consumers depend on
 /// this protocol, not on `URLSession`, `Security`, or `SecIdentity`
 /// directly — keeping the domain layer free of infrastructure types.
 ///

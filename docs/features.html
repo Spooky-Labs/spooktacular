@@ -132,7 +132,7 @@ Spooktacular
 <a href="#ml">ML Workloads</a>
 <a href="#devops">DevOps Automation</a>
 <a href="#agent">Guest Agent</a>
-<a href="#api">HTTP API &amp; K8s</a>
+<a href="#api">HTTP API</a>
 </div>
 </div>
 
@@ -264,11 +264,11 @@ Spooktacular
 </div>
 </div>
 
-<!-- HTTP API & K8s -->
+<!-- HTTP API -->
 <div class="use-case" id="api">
 <div class="section-label">&#127760; Use Case</div>
-<h2>HTTP API &amp; Kubernetes</h2>
-<p class="sub">Control everything over REST. 9 endpoints for VM lifecycle, 15+ CLI commands, native SwiftUI GUI, and a Kubernetes operator.</p>
+<h2>HTTP API</h2>
+<p class="sub">Control everything over REST. 9 endpoints for VM lifecycle, 15+ CLI commands, and a native SwiftUI GUI.</p>
 <div class="terminal" role="figure" aria-label="API usage example">
 <div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">api-examples.sh</span></div>
 <div class="terminal-body">
@@ -280,11 +280,6 @@ Spooktacular
 <div>&nbsp;</div>
 <div><span class="cmt"># Create a VM via the API</span></div>
 <div><span class="dim">$</span> <span class="cmd">curl -X POST http://localhost:8080/vms/runner-01/start</span></div>
-<div>&nbsp;</div>
-<div><span class="cmt"># Kubernetes: kubectl apply -f vm.yaml</span></div>
-<div><span class="dim">$</span> <span class="cmd">kubectl get macosvm</span></div>
-<div><span class="file">NAME        STATE     AGE</span></div>
-<div><span class="file">runner-01   Running   2m</span></div>
 </div>
 </div>
 <div class="feat-grid">
@@ -293,7 +288,6 @@ Spooktacular
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128421;</span><div class="tag tag-shipped">Shipped</div><h3>SwiftUI GUI</h3><p>Native macOS app with NavigationSplitView, inspector panel, and VM creation sheet. Liquid Glass support on macOS 26+.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#9776;</span><div class="tag tag-shipped">Shipped</div><h3>Menu Bar Extra</h3><p>Persistent menu bar icon for quick VM status checks and actions without opening the full app.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128218;</span><div class="tag tag-shipped">Shipped</div><h3>Full DocC API Reference</h3><p>Complete API documentation generated from source. Browse types, methods, and articles in the hosted DocC archive.</p><a href="api/documentation/spooktacularkit/" class="source-link">View API Docs &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#9096;</span><div class="tag tag-shipped">Shipped</div><h3>Kubernetes Operator</h3><p><code>kubectl apply -f vm.yaml</code> creates macOS VMs. MacOSVM CRD with full spec/status, Helm chart, Swift controller that reconciles via the HTTP API on Mac nodes.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes" class="source-link">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128230;</span><div class="tag tag-planned">Planned</div><h3>OCI Registry Push/Pull</h3><p>Push and pull VM images to/from OCI-compliant container registries. On the roadmap, not yet shipped.</p><a href="roadmap.html" class="source-link">View Roadmap &rarr;</a></div>
 </div>
 </div>

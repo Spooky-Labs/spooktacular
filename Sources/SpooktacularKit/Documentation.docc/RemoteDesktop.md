@@ -59,35 +59,6 @@ sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resourc
 echo "Screen Sharing enabled"
 ```
 
-### Using the Kubernetes CRD
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVM
-metadata:
-  name: remote-desktop
-  namespace: desktops
-spec:
-  image: ghcr.io/spooktacular/macos:15.4
-  resources:
-    cpu: 4
-    memory: 8Gi
-    disk: 64Gi
-  displays: 1
-  network:
-    mode: bridged
-    interface: en0
-  provisioning:
-    mode: disk-inject
-    userData: |
-      #!/bin/bash
-      sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
-      sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-          -activate -configure -access -on \
-          -configure -allowAccessFor -allUsers \
-          -configure -restart -agent -privs -all
-```
-
 See <doc:Provisioning> for details on all four ``ProvisioningMode``
 strategies.
 
@@ -405,65 +376,6 @@ spook set qa-sequoia --network bridged:en0
 # QA team members connect to whichever version they need
 ```
 
-### Kubernetes-Managed Desktops
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVM
-metadata:
-  name: desktop-alice
-  namespace: desktops
-  labels:
-    user: alice
-spec:
-  image: ghcr.io/spooktacular/macos:15.4
-  resources:
-    cpu: 4
-    memory: 8Gi
-    disk: 64Gi
-  displays: 1
-  network:
-    mode: bridged
-    interface: en0
-  provisioning:
-    mode: disk-inject
-    userData: |
-      #!/bin/bash
-      sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
----
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVM
-metadata:
-  name: desktop-bob
-  namespace: desktops
-  labels:
-    user: bob
-spec:
-  image: ghcr.io/spooktacular/macos:15.4
-  resources:
-    cpu: 4
-    memory: 8Gi
-    disk: 64Gi
-  displays: 1
-  network:
-    mode: bridged
-    interface: en0
-  provisioning:
-    mode: disk-inject
-    userData: |
-      #!/bin/bash
-      sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
-```
-
-```bash
-# Find each user's VM IP
-kubectl get macosvm -n desktops -o wide
-
-# NAMESPACE  NAME           IP              NODE         STATUS
-# desktops   desktop-alice  192.168.1.101   mac-host-01  Running
-# desktops   desktop-bob    192.168.1.102   mac-host-01  Running
-```
-
 ## Topics
 
 ### Related Guides
@@ -471,7 +383,6 @@ kubectl get macosvm -n desktops -o wide
 - <doc:GettingStarted>
 - <doc:Provisioning>
 - <doc:EC2MacDeployment>
-- <doc:KubernetesGuide>
 - <doc:CLIReference>
 
 ### Key Types

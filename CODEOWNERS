@@ -17,7 +17,7 @@
 #      @username who owns security review (SAML, OIDC,
 #      break-glass, audit, RBAC).
 #   2. Replace `<platform-team-member>` with the platform /
-#      infrastructure reviewer (controller, K8s, agent, EC2).
+#      infrastructure reviewer (agent, EC2).
 #   3. Uncomment the line and delete the placeholder token.
 #   4. Cross-review the permission sets on sensitive paths
 #      (two reviewers required for security-critical diffs —
@@ -40,12 +40,6 @@ Sources/spook/ @WikipediaBrown
 # GUI
 Sources/Spooktacular/ @WikipediaBrown
 # Sources/Spooktacular/ @WikipediaBrown @<platform-team-member>
-
-# Kubernetes operator
-Sources/spook-controller/ @WikipediaBrown
-deploy/kubernetes/ @WikipediaBrown
-# Sources/spook-controller/ @WikipediaBrown @<platform-team-member>
-# deploy/kubernetes/ @WikipediaBrown @<platform-team-member>
 
 # Guest agent
 Sources/spook-agent/ @WikipediaBrown

@@ -152,7 +152,7 @@ public enum SecurityControlInventory {
             name: "Multi-tenant isolation (no cross-tenant reuse / warm-pool leakage)",
             category: "Authorization",
             standard: "SOC 2 CC6.1",
-            implementation: "Sources/SpooktacularCore/TenancyModel.swift (MultiTenantIsolation.canReuse) + RunnerPoolReconciler",
+            implementation: "Sources/SpooktacularCore/TenancyModel.swift (MultiTenantIsolation.canReuse)",
             test: "Tests/SpooktacularKitTests/MultiTenantAuthTests.swift",
             notes: "Every request carries a TenantID; scheduler gates ensure tenant A can't schedule onto tenant B's host pools."
         ),
@@ -160,7 +160,7 @@ public enum SecurityControlInventory {
             name: "Fair-share scheduler (weighted max-min)",
             category: "Authorization",
             standard: "Capacity fairness — no starvation",
-            implementation: "Sources/SpooktacularCore/FairScheduler.swift + RunnerPoolReconciler.fairShareAllocation",
+            implementation: "Sources/SpooktacularCore/FairScheduler.swift",
             test: "Tests/SpooktacularKitTests/FairSchedulerTests.swift",
             notes: "Activated via SPOOKTACULAR_SCHEDULER_POLICY + SPOOKTACULAR_FLEET_CAPACITY. Deterministic, work-conserving, monotone."
         ),
@@ -243,7 +243,7 @@ public enum SecurityControlInventory {
             standard: "OpenID Connect Core 1.0; AWS STS AssumeRoleWithWebIdentity; OWASP ASVS V2.10 (no unchanging credentials)",
             implementation: "Sources/SpooktacularCore/VMIAMBinding.swift + Sources/SpooktacularInfrastructureApple/JSONVMIAMBindingStore.swift + Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift (/v1/iam, /v1/vms/:name/identity-token) + Sources/spooktacular-cli/Commands/IAM.swift + Sources/SpooktacularGuestAgentCore/WorkloadTokenCache.swift",
             test: "Tests/SpooktacularKitTests/VMIAMBindingTests.swift",
-            notes: "Operators bind a VM to a cloud IAM role; the controller mints short-lived ES256 JWTs via the SEP-bound WorkloadTokenIssuer; VMs get temporary cloud credentials via standard OIDC federation. No long-lived access keys in VM images."
+            notes: "Operators bind a VM to a cloud IAM role; the host mints short-lived ES256 JWTs via the SEP-bound WorkloadTokenIssuer; VMs get temporary cloud credentials via standard OIDC federation. No long-lived access keys in VM images."
         ),
         SecurityControl(
             name: "Tenant quota enforcement on VM create / clone",
@@ -294,7 +294,7 @@ public enum SecurityControlInventory {
             standard: "Strong consistency for global fleets",
             implementation: "Sources/SpooktacularInfrastructureApple/DynamoDBDistributedLock.swift + DistributedLockFactory",
             test: "Tests/SpooktacularKitTests/EnterpriseReadinessTests.swift",
-            notes: "Selected via SPOOKTACULAR_DYNAMO_TABLE; K8s Lease and file-lock alternatives via same factory."
+            notes: "Selected via SPOOKTACULAR_DYNAMO_TABLE; file-lock fallback via same factory."
         ),
 
         // MARK: Injection & Path Safety
@@ -321,7 +321,7 @@ public enum SecurityControlInventory {
             standard: "OWASP input validation",
             implementation: "Sources/SpooktacularInfrastructureApple/SpooktacularPaths.swift (vmNamePattern, validateVMName)",
             test: "Tests/SpooktacularKitTests/VMBundleTests.swift",
-            notes: "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$ applied at CLI + HTTP API + controller."
+            notes: "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$ applied at CLI + HTTP API."
         ),
 
         // MARK: Supply Chain

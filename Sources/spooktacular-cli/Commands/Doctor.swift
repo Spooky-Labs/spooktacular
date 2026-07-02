@@ -479,10 +479,7 @@ extension Spooktacular {
             if env["SPOOKTACULAR_DYNAMO_TABLE"]?.isEmpty == false {
                 return pass(13, "Distributed lock: DynamoDB (SPOOKTACULAR_DYNAMO_TABLE=\(env["SPOOKTACULAR_DYNAMO_TABLE"] ?? ""))")
             }
-            if env["SPOOK_K8S_API"]?.isEmpty == false {
-                return pass(13, "Distributed lock: Kubernetes Lease (SPOOK_K8S_API set)")
-            }
-            return warn(13, "Distributed lock: file/flock fallback — fleets of ≥ 2 hosts MUST set SPOOKTACULAR_DYNAMO_TABLE or SPOOK_K8S_API")
+            return warn(13, "Distributed lock: file/flock fallback — fleets of ≥ 2 hosts MUST set SPOOKTACULAR_DYNAMO_TABLE")
         }
 
         // MARK: - Item 14: Tenancy mode

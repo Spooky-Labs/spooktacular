@@ -44,11 +44,10 @@ to your account.
  │                              │ :8484 (HTTPS)                     │
  │                              ▼                                   │
  │                  ┌────────────────────┐                          │
- │                  │  K8s Controller    │                          │
- │                  │  (optional)        │                          │
+ │                  │  spook / CI caller │                          │
  │                  │                    │                          │
  │                  │  Manages VMs via   │                          │
- │                  │  MacOSVM CRD       │                          │
+ │                  │  the HTTP API      │                          │
  │                  └────────────────────┘                          │
  └─────────────────────────────────────────────────────────────────┘
 ```
@@ -284,7 +283,7 @@ VMs. When a host is drained:
 - A marker file is written to `/etc/spooktacular/drain`
 - `spook serve` checks for this file and stops accepting new VMs
 - Existing VMs are allowed to finish their work
-- When all VMs stop, the host reports "drained" to the controller
+- When all VMs stop, the host's status becomes queryable as "drained" via the HTTP API
 
 #### Via bootstrap.sh
 
@@ -375,5 +374,4 @@ See [Host Drain / Undrain](#host-drain--undrain) for details.
 ## Related Documentation
 
 - [Main README](../../README.md) -- Project overview, CLI reference, and Quick Start
-- [Kubernetes Integration](../kubernetes/README.md) -- Managing VMs as K8s custom resources
 - [API Documentation](https://spooktacular.app/api/documentation/spooktacularkit/) -- Full HTTP API reference

@@ -166,7 +166,7 @@ groups:
           summary: "Runner idle-to-claimed p95 > 30s on {{ $labels.host }}"
           description: |
             SLO target is p95 < 30s. Sustained misses usually point at
-            GitHub API rate-limits or an overwhelmed controller watch loop.
+            GitHub API rate-limits or an overwhelmed host.
           runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#runner-claim-latency
 
   # -------------------------------------------------------------------
@@ -230,23 +230,6 @@ groups:
             pressure / IAM / S3 Object Lock connectivity immediately.
           runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#audit-write-failure
 
-      - alert: SpooktacularReconcileQueueDeep
-        expr: |
-          histogram_quantile(0.95,
-            sum by (le, pod) (rate(spooktacular_reconcile_queue_depth_bucket[5m]))
-          ) > 10
-        for: 15m
-        labels:
-          severity: ticket
-          component: controller
-          slo: reconcile-queue-depth-p95
-        annotations:
-          summary: "Reconcile queue p95 depth > 10 items"
-          description: |
-            Reconciler is falling behind. Check for a wedged watch stream
-            or a misbehaving CRD that keeps re-enqueueing.
-          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#reconcile-backlog
-
       - alert: SpooktacularTLSCertExpiringSoon
         expr: min(spooktacular_tls_cert_days_until_expiry) < 14
         for: 0m
@@ -275,17 +258,3 @@ groups:
             in the last 15 minutes. Either the signer is down or writes
             are not being published to S3 Object Lock.
           runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#merkle-gap
-
-      - alert: SpooktacularControllerWatchStreamDown
-        expr: avg_over_time(up{job="spooktacular-controller"}[5m]) < 0.999
-        for: 10m
-        labels:
-          severity: page
-          component: controller
-          slo: watch-stream-uptime
-        annotations:
-          summary: "Controller watch stream uptime < 99.9% over the last 5 minutes"
-          description: |
-            The controller's Kubernetes watch is flapping. Pods may be
-            CrashLoopBackOff or the API server is rate-limiting.
-          runbook_url: https://spooktacular.app/docs/DISASTER_RECOVERY#controller-watch-down

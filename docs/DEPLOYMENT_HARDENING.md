@@ -35,7 +35,7 @@ The **Doctor** column indicates how `spook doctor --strict` surfaces each row �
 | 10 | Append-only audit backing | `SPOOKTACULAR_AUDIT_IMMUTABLE_PATH` set; after first write, `ls -lO` shows `uappnd` on the file | Y — `stat(2)` on the path checks `UF_APPEND` |
 | 11 | Merkle signing key persisted | `SPOOKTACULAR_AUDIT_SIGNING_KEY_LABEL` points at a path with mode 0600; verify with `stat -f '%Op' /path` — must be `100600` | Y — POSIX mode 0600 assertion via `FileManager.attributesOfItem` |
 | 12 | S3 Object Lock audit copy | `SPOOK_AUDIT_S3_BUCKET` set, bucket is in Object-Lock **Compliance mode** with a retention period | manual — CLI prints `?` with the bucket name + `aws s3api get-object-lock-configuration` one-liner (AWS call not issued from doctor) |
-| 13 | Distributed lock backend | `SPOOKTACULAR_DYNAMO_TABLE` (cross-region) or `SPOOK_K8S_API` (cluster) — **not** the file fallback, in fleets of ≥ 2 hosts | Y — DynamoDB / K8s / file fallback all classified |
+| 13 | Distributed lock backend | `SPOOKTACULAR_DYNAMO_TABLE` (cross-region) — **not** the file fallback, in fleets of ≥ 2 hosts | Y — DynamoDB / file fallback all classified |
 | 14 | Tenancy mode set | `SPOOKTACULAR_TENANCY_MODE=multi-tenant` for any fleet with more than one team's workloads | Y — echoes the configured mode |
 | 15 | Insecure mode is OFF | `SPOOKTACULAR_INSECURE_CONTROLLER` is unset and `spook serve --insecure` is never in a unit file | Y — env var guard |
 | 16 | Hardened Runtime + notarization | `codesign -d --verbose=4 /usr/local/bin/spook` shows `flags=0x10000(runtime)` and `TeamIdentifier` | Y — invokes `codesign -d --verbose=4` on `$ARGV[0]` |
@@ -349,7 +349,7 @@ If any of these fails, the deployment is **not** hardened — stop traffic.
 Simulate these in non-prod once a quarter; measure time-to-detect + time-to-remediate:
 
 1. **Leaked break-glass token** — revoke the role assignment via `POST /v1/roles/revoke`, then rotate the token. Audit trail should show every break-glass use in the prior week.
-2. **Compromised Mac host** — cordon via K8s (or removal from DynamoDB lock), stop scheduling, rotate all its secrets from Keychain, re-image.
+2. **Compromised Mac host** — remove it from the fleet's dispatch target list (or release its DynamoDB lock holder), stop scheduling, rotate all its secrets from Keychain, re-image.
 3. **Merkle key compromise** — rotate, then verify that pre-rotation tree heads are flagged as "signed with revoked key" in the verifier.
 4. **S3 Object Lock bucket misconfigured** — prove the alerting (`SpooktacularAPIErrorRateHigh` + audit-sink logs) catches silent failure within 10 minutes.
 

@@ -6,8 +6,8 @@ Manage macOS virtual machines from the terminal with the `spook` CLI.
 
 The `spook` CLI creates, starts, stops, clones, and configures macOS
 virtual machines on Apple Silicon. It uses the same ``SpooktacularKit``
-library as the GUI app and Kubernetes operator, so behavior is
-identical across all interfaces.
+library as the GUI app, so behavior is identical across both
+interfaces.
 
 > Important: The `spook` CLI requires an Apple Silicon Mac running
 > macOS 14.0 or later. Apple Silicon supports a maximum of 2
@@ -847,17 +847,6 @@ spook list --json | jq '[.[].memoryGB] | add'
 
 # Get VMs that are ready
 spook list --json | jq '[.[] | select(.setupCompleted)] | length'
-```
-
-### kubectl (Kubernetes)
-
-```bash
-# Get Spooktacular-managed K8s VMs and local VMs side by side
-echo "=== Kubernetes VMs ==="
-kubectl get macosvm -A
-echo ""
-echo "=== Local VMs ==="
-spook list
 ```
 
 ### gh (GitHub CLI)

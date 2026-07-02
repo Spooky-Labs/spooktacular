@@ -14,7 +14,7 @@ We support the current release and the immediately prior release (N and N-1). Ol
 
 Spooktacular supports two deployment classes: **Pilot (Single-Tenant)** and **Enterprise Platform (Multi-Tenant)**. See [Deployment Classes](#deployment-classes) for the full comparison. Single-tenant is the recommended starting point; multi-tenant adds tenant-partitioned scheduling, cross-tenant reuse prevention, and structured SIEM audit export.
 
-In Pilot mode, the security model assumes the operator controls both the host and all guests. Production deployments require mandatory mTLS for controller-to-node traffic, Keychain-backed secret storage, and three-tier guest agent authorization.
+In Pilot mode, the security model assumes the operator controls both the host and all guests. Production deployments require mandatory mTLS for client-to-host API traffic, Keychain-backed secret storage, and three-tier guest agent authorization.
 
 ### What this security model covers
 
@@ -26,7 +26,7 @@ In Pilot mode, the security model assumes the operator controls both the host an
   Requests exceeding the channel's scope are rejected with 403 at the socket accept layer.
 - **HTTP API authentication**: The HTTP API requires TLS in production (`--tls-cert`/`--tls-key`) and per-request P-256 ECDSA signature verification via `SignedRequestVerifier`. Operators provision trusted caller public keys (one PEM per identity) in `SPOOK_API_PUBLIC_KEYS_DIR`; each request except `GET /health` carries `X-Spook-Timestamp`, `X-Spook-Nonce`, and `X-Spook-Signature` headers signed over a canonical string (`METHOD\npath\nsha256-hex(body)\ntimestamp\nnonce`). Replay-protected by a nonce cache with ±60s timestamp-skew tolerance. The static-Bearer-token path (`SPOOK_API_TOKEN`) was **retired**: shared secrets at rest on any client host are a liability that asymmetric signing with SEP-bound private keys eliminates structurally. Operators who need ad-hoc `curl` access use `spook sign-request` to produce the three headers. Production startup fails without TLS + a populated keys dir unless `--insecure` is explicitly set.
 - **Three-tier guest agent authorization**: Read-only, runner, and break-glass token tiers. Shell execution (`/api/v1/exec`) requires a break-glass token and is only accessible on port 9472. Runner tokens get 403 on exec. Read-only tokens cannot mutate anything.
-- **Mandatory mTLS in production**: The controller refuses to start without TLS certificates (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`). Both the controller and Mac nodes present certificates, preventing unauthorized API access even if a bearer token is compromised. Bearer tokens are retained as a secondary auth layer (defense in depth). The `SPOOK_INSECURE_CONTROLLER=1` bypass exists for local development only.
+- **Mandatory mTLS in production**: `spook serve` refuses to start without TLS certificates (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`). Both the host and its API clients present certificates, preventing unauthorized API access even if a bearer token is compromised. Bearer tokens are retained as a secondary auth layer (defense in depth). The `SPOOK_INSECURE_CONTROLLER=1` bypass exists for local development only.
 - **Keychain-based secret storage**: API tokens, runner registration tokens, and TLS private keys are stored in the macOS Keychain via `SecItemAdd`/`SecItemCopyMatching` rather than plaintext configuration files.
 - **TLS certificate hot reload**: TLS certificates can be rotated without restarting the server. The server watches certificate files via `DispatchSource` and reloads them on change, enabling zero-downtime cert rotation.
 - **Structured audit logging**: Every control-plane action produces an `AuditRecord` with: actor identity, tenant ID, authorization scope, resource, action, outcome, request ID, and ISO-8601 timestamp. Two concrete sinks:
@@ -35,7 +35,7 @@ In Pilot mode, the security model assumes the operator controls both the host an
   
   JSONL schema per line:
   ```json
-  {"id":"...","timestamp":"2026-04-15T...","actorIdentity":"spook-controller","tenant":"blue","scope":"runner","resource":"vm-001","action":"deleteVM","outcome":"success","correlationID":"req-123"}
+  {"id":"...","timestamp":"2026-04-15T...","actorIdentity":"spook-serve@mac-host-01","tenant":"blue","scope":"runner","resource":"vm-001","action":"deleteVM","outcome":"success","correlationID":"req-123"}
   ```
 - **VM name validation**: Regex-validated to prevent path traversal.
 - **Capacity enforcement**: 2-VM limit with flock-serialized PID file writes to prevent TOCTOU races.
@@ -54,12 +54,11 @@ These are **known limitations**, not bugs:
 - **Secure Enclave-backed audit signing key**: The Merkle audit signing key is persisted at `SPOOK_AUDIT_SIGNING_KEY` with mode 0600 created atomically via `open(2) O_CREAT | O_EXCL | O_NOFOLLOW`. On Apple Silicon the key can additionally be rotated into Secure-Enclave storage via the Keychain's `kSecAttrTokenIDSecureEnclave` policy; mTLS private keys loaded by `KeychainTLSProvider` are marked `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` so they never sync via iCloud Keychain. On CI hosts without a Secure Enclave the software-key path is still constant-time and never writes the private material outside the Keychain / owner-only file.
 - **VM bundle data-at-rest protection**: On portable Macs (laptops), `VirtualMachineBundle.create` applies `FileProtectionType.completeUntilFirstUserAuthentication` to the bundle directory — defense-in-depth on top of FileVault for stolen-laptop-with-compromised-recovery-key scenarios. Desktops and EC2 Mac hosts stay at `.none` so pre-login LaunchDaemons can still read bundles. Operators migrate existing bundles with `spook bundle protect --all`. See [`docs/DATA_AT_REST.md`](docs/DATA_AT_REST.md) for the OWASP ASVS V6.1.1 / V6.4.1 / V14.2.6 mapping.
 - **GitHub runner tokens via Keychain**: `spook create --github-token-keychain <account>` reads registration tokens from the macOS Keychain under service `com.spooktacular.github`. Tokens never reach `ps auxww`, shell history, `launchctl print`, or backup archives. Provisioning scripts that embed those tokens are written to `~/Library/Caches/com.spooktacular/provisioning/<uuid>/` with mode 0700 (owner-only) instead of the previous `/tmp` + 0755 path.
-- **Distributed locking — three backends, factory-selected**: `DistributedLockFactory.makeFromEnvironment()` picks the lock implementation based on deployment context:
-  - `SPOOK_DYNAMO_TABLE` set → `DynamoDBDistributedLock` — cross-region strong-consistency via DynamoDB Global Tables + conditional writes. Fortune-20 multi-region fleets where K8s Leases can't bridge regions. SigV4 signing is hand-rolled (zero AWS SDK dependency).
-  - `SPOOK_K8S_API` set → `KubernetesLeaseLock` — cluster-scoped coordination via K8s Lease objects with optimistic concurrency (`resourceVersion`).
+- **Distributed locking — two backends, factory-selected**: `DistributedLockFactory.makeFromEnvironment()` picks the lock implementation based on deployment context:
+  - `SPOOK_DYNAMO_TABLE` set → `DynamoDBDistributedLock` — cross-region strong-consistency via DynamoDB Global Tables + conditional writes. Fortune-20 multi-region fleets where file locks don't work at all. SigV4 signing is hand-rolled (zero AWS SDK dependency).
   - Default → `FileDistributedLock` — `flock(2)` over `SPOOK_LOCK_DIR` (local or NFS). Single-host and shared-filesystem deployments.
   The chosen backend is logged at startup so operators can detect unintended downgrades (a DynamoDB-expected deployment falling back to file lock would be a catastrophic multi-region coordination failure).
-- **Tamper-evident audit with hardware-bound signing (RFC 6962 + S3 Object Lock + NIST SP 800-53 AU-9/AU-10; FIPS 140-3 Level 2)**: `MerkleAuditSink` uses an RFC 6962 Merkle tree. Leaf hashes use `SHA256(0x00 || data)`, interior nodes use `SHA256(0x01 || left || right)`. Signed Tree Heads sign the RFC 6962 §3.5 `TreeHeadSignature` structure (version byte 0x00 + signature_type 0x01 + milliseconds timestamp + tree_size + root) with **P-256 ECDSA, using a Secure-Enclave-bound signing key**. The private key is generated inside the SEP on first use (`SecureEnclave.P256.Signing.PrivateKey`, stored as an opaque blob in the Keychain under `SPOOK_AUDIT_SIGNING_KEY_LABEL`) and is non-exportable by hardware — a compromised controller process cannot forge tree heads even with full code-execution capability, because the SEP only signs what the daemon requests and the key material never enters the AP's address space. Inclusion proofs verify specific records in O(log n). The full sink chain composes: `OSLog` | `JSONFileAuditSink` → optional `AppendOnlyFileAuditStore` (BSD `UF_APPEND` via `chflags`, kernel-verified on init) → optional `MerkleAuditSink` → optional `S3ObjectLockAuditStore` (WORM, AWS S3 Object Lock in Compliance mode, SigV4 signing). Hosts without a Secure Enclave (bare-metal Linux controllers, unit tests) can fall back to a PEM-encoded P-256 software key at mode 0600 (`SPOOK_AUDIT_SIGNING_KEY_PATH`) — the factory refuses to build the Merkle sink without exactly one of the two key sources configured.
+- **Tamper-evident audit with hardware-bound signing (RFC 6962 + S3 Object Lock + NIST SP 800-53 AU-9/AU-10; FIPS 140-3 Level 2)**: `MerkleAuditSink` uses an RFC 6962 Merkle tree. Leaf hashes use `SHA256(0x00 || data)`, interior nodes use `SHA256(0x01 || left || right)`. Signed Tree Heads sign the RFC 6962 §3.5 `TreeHeadSignature` structure (version byte 0x00 + signature_type 0x01 + milliseconds timestamp + tree_size + root) with **P-256 ECDSA, using a Secure-Enclave-bound signing key**. The private key is generated inside the SEP on first use (`SecureEnclave.P256.Signing.PrivateKey`, stored as an opaque blob in the Keychain under `SPOOK_AUDIT_SIGNING_KEY_LABEL`) and is non-exportable by hardware — a compromised host process cannot forge tree heads even with full code-execution capability, because the SEP only signs what the daemon requests and the key material never enters the AP's address space. Inclusion proofs verify specific records in O(log n). The full sink chain composes: `OSLog` | `JSONFileAuditSink` → optional `AppendOnlyFileAuditStore` (BSD `UF_APPEND` via `chflags`, kernel-verified on init) → optional `MerkleAuditSink` → optional `S3ObjectLockAuditStore` (WORM, AWS S3 Object Lock in Compliance mode, SigV4 signing). Hosts without a Secure Enclave (unit tests, CI runners) can fall back to a PEM-encoded P-256 software key at mode 0600 (`SPOOK_AUDIT_SIGNING_KEY_PATH`) — the factory refuses to build the Merkle sink without exactly one of the two key sources configured.
 - **Blast radius of a compromised token**: A break-glass token grants shell execution inside the guest, but only on port 9472. Runner and read-only tokens cannot reach exec even if replayed against other ports. Child processes spawned from break-glass exec have `SPOOK_AGENT_*` and `SPOOK_AUDIT_*` stripped from their environment so a caller can't read the agent's own credentials. Use the narrowest token tier that meets your needs.
 - **Server-side break-glass enforcement (four gates, all in the guest agent)**: Shell execution passes four independent server-side checks before `/bin/bash` ever runs:
   1. **Port-tier gate** — port 9472 is the only vsock port configured with `channelScope: .breakGlass`. Requests for `/api/v1/exec` on any other port are rejected at the transport layer with a 403. See `Sources/SpooktacularGuestAgentCore/AgentHTTPServer.swift` (`listenAll`) and `AgentRouter.endpointScope`.
@@ -119,11 +118,9 @@ required.
 
 ## Deployment Models
 
-Spooktacular supports three deployment topologies, each with different security considerations:
+Spooktacular supports two deployment topologies, each with different security considerations:
 
 - **Single-host standalone**: A single Mac runs `spook serve` (or the GUI app) and manages its own VMs. Authentication is via bearer token. This is the simplest model and suitable for small teams or individual developers. No network coordination is needed.
-
-- **Multi-host with controller**: A Kubernetes controller (running on Linux) manages multiple Mac nodes over HTTPS with mandatory mTLS. Each Mac node runs `spook serve`. The controller presents a client certificate; nodes verify it. Bearer tokens provide secondary auth. The controller uses a dedicated ServiceAccount with least-privilege RBAC. Runner tokens are stored in Kubernetes Secrets.
 
 - **EC2 Mac fleet**: Mac instances run on AWS EC2 dedicated hosts (e.g., `mac2-m2pro.metal`). Each host runs `spook serve` as a LaunchDaemon. In enterprise mode, hosts integrate with EC2 Host Resource Groups (HRG) for placement, implement drain procedures for 24-hour minimum allocation compliance, and can use IMDS for instance identity verification. Keychain-based secret storage is recommended over environment variables in this model.
 
@@ -139,9 +136,9 @@ Spooktacular supports three deployment topologies, each with different security 
 | **Warm-pool reuse** | Allowed with scrub validation | Same-tenant only, cross-tenant forbidden (`canReuse()`) |
 | **Break-glass shell** | Available with admin controls | Disabled by default, explicit per-tenant opt-in |
 | **Audit** | os.Logger + optional JSONL export + optional S3 Object Lock | Merkle-signed JSONL (`MerkleAuditSink`) + append-only file + S3 Object Lock + SIEM forwarding |
-| **Locking** | `FileDistributedLock` (flock over local/NFS) | `DistributedLockFactory`: DynamoDB (cross-region, Global Tables), Kubernetes Lease, or file — selected via `SPOOK_DYNAMO_TABLE` / `SPOOK_K8S_API` / `SPOOK_LOCK_DIR` |
+| **Locking** | `FileDistributedLock` (flock over local/NFS) | `DistributedLockFactory`: DynamoDB (cross-region, Global Tables) or file — selected via `SPOOK_DYNAMO_TABLE` / `SPOOK_LOCK_DIR` |
 
-**Both deployment classes are supported.** Single-tenant is the recommended starting point. Multi-tenant adds OIDC identity, tenant-partitioned scheduling, hash-chained audit, and K8s distributed locking.
+**Both deployment classes are supported.** Single-tenant is the recommended starting point. Multi-tenant adds OIDC identity, tenant-partitioned scheduling, hash-chained audit, and cross-region distributed locking.
 
 ## Security Operations
 
@@ -181,10 +178,10 @@ Every admin call emits a structured `AuditRecord` with the authenticated caller'
 
 ### Incident Response
 
-1. **Contain**: Stop scheduling new VMs on the affected host. In a controller deployment, cordon the node via Kubernetes.
+1. **Contain**: Stop scheduling new VMs on the affected host (`spook service stop` or remove it from the fleet's dispatch target list).
 2. **Investigate**: Query audit logs (`log show --predicate 'subsystem == "com.spooktacular.agent" AND category == "audit"' --last 1h`).
 3. **Remediate**: Rotate credentials, destroy affected VMs, restore from known-good base image.
-4. **Recover**: Uncordon the host, verify `spook doctor` passes, resume scheduling.
+4. **Recover**: Restore the host to the dispatch target list, verify `spook doctor` passes, resume scheduling.
 
 ### Deployment Support Matrix
 
@@ -193,7 +190,6 @@ Every admin call emits a structured `AuditRecord` with the authenticated caller'
 | Single host, single team | Yes | Bearer token + optional TLS | OSLog / JSONL | `FileDistributedLock` (local) |
 | Multi-host, single team | Yes | Mandatory mTLS + bearer token | JSONL + append-only + Merkle | `FileDistributedLock` (NFS) |
 | EC2 Mac fleet | Yes | mTLS + IMDS identity | JSONL + append-only + Merkle + S3 Object Lock | `DynamoDBDistributedLock` |
-| Kubernetes-managed | Yes | mTLS + ServiceAccount | Merkle + S3 Object Lock | `KubernetesLeaseLock` |
 | Multi-tenant (cross-region) | Supported | OIDC/SAML + tenant isolation | Merkle + S3 Object Lock + SIEM | `DynamoDBDistributedLock` (Global Tables) |
 
 ## Reporting a Vulnerability
@@ -263,7 +259,6 @@ The following are in scope for security reports:
 - The `spook` CLI tool
 - The `Spooktacular` GUI app
 - The `Spooktacular Guest Tools.app` in-guest companion (HTTP/vsock agent + SPICE clipboard bridge)
-- The `spook-controller` Kubernetes controller
 - The HTTP API server (`spook serve`)
 - The website at spooktacular.app
 
@@ -277,11 +272,11 @@ The following are in scope for security reports:
 
 These rules are enforced by the compiler (separate SwiftPM targets) and runtime checks:
 
-1. **No production control-plane call without mTLS.** Controller refuses to start without TLS certificates (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`). The `SPOOK_INSECURE_CONTROLLER=1` bypass exists for local development only and logs a prominent warning.
+1. **No production control-plane call without mTLS.** `spook serve` refuses to start without TLS certificates (`TLS_CERT_PATH`, `TLS_KEY_PATH`, `TLS_CA_PATH`). The `SPOOK_INSECURE_CONTROLLER=1` bypass exists for local development only and logs a prominent warning.
 2. **No VM returned to a warm pool without positive scrub validation.** `ScrubStrategy.recycleWithValidation()` runs a verification script; failed validation triggers stop + delete via `NodeClient`.
 3. **No runner considered Ready until both guest health check and GitHub registration are confirmed.** `RunnerStateMachine` transitions through `booting` (requires `.healthCheckPassed`) and `registering` (requires `.runnerRegistered`) before reaching `.ready`.
 4. **No break-glass operation without separate scope and audit.** Shell execution requires `AuthScope.breakGlass` tier on vsock port 9472; every invocation produces an `AuditRecord`. Disabled by default in multi-tenant mode.
 5. **No domain logic in Apple-framework adapters.** `SpookCore` and `SpookApplication` import Foundation only (compiler-enforced via separate SwiftPM targets with no framework dependencies).
 6. **No Apple-framework types in domain objects.** `SpookCore` has zero framework imports beyond Foundation across all 22 source files.
 7. **No tenantless request path.** `AuthorizationContext` requires `TenantID` at construction. Single-tenant deployments use `TenantID.default`.
-8. **No cross-tenant warm-pool reuse.** `MultiTenantIsolation.canReuse()` returns `true` only when `fromTenant == forTenant`. Enforced in `RunnerPoolReconciler` before every recycle operation.
+8. **No cross-tenant warm-pool reuse.** `MultiTenantIsolation.canReuse()` returns `true` only when `fromTenant == forTenant`. This policy primitive is defined in `SpookApplication`; the runner-pool orchestrator that must call it before every recycle operation is being rebuilt (the prior enforcement point lived in the now-removed Kubernetes reconciler) — treat cross-tenant warm-pool isolation as unenforced until that orchestrator ships.

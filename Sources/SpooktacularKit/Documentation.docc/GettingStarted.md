@@ -7,8 +7,7 @@ Create your first macOS virtual machine in minutes.
 Spooktacular runs macOS virtual machines on Apple Silicon using
 Apple's Virtualization framework. You interact with it through the
 GUI app or the `spook` CLI --- both backed by the same
-``SpooktacularKit`` library. A Kubernetes operator is planned for
-a future release.
+``SpooktacularKit`` library.
 
 > Important: You need an Apple Silicon Mac (M1 or later) running
 > macOS 14.0 (Sonoma) or later. Each VM requires at least 20 GB of
@@ -97,9 +96,6 @@ configured bases, and start runners with SSH provisioning.
 
 See <doc:EC2MacDeployment> for detailed EC2 Mac configuration.
 
-> Note: A Kubernetes operator (MacOSVM CRD) is planned for a future
-> release. See <doc:KubernetesGuide> for the planned architecture.
-
 ## Topics
 
 ### Core Types
@@ -120,4 +116,3 @@ See <doc:EC2MacDeployment> for detailed EC2 Mac configuration.
 - <doc:Provisioning>
 - <doc:GitHubActionsGuide>
 - <doc:EC2MacDeployment>
-- <doc:KubernetesGuide>

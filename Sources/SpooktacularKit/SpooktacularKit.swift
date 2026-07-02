@@ -1,8 +1,8 @@
 // SpooktacularKit — Umbrella module
 //
 // Re-exports SpooktacularCore, SpooktacularApplication, and SpooktacularInfrastructureApple
-// so existing consumers (spook, Spooktacular, spooktacular-controller) can
-// continue to `import SpooktacularKit` without changes.
+// so existing consumers (spook, Spooktacular) can continue to
+// `import SpooktacularKit` without changes.
 //
 // New code should import the specific target it needs:
 //   import SpooktacularCore             — domain types and protocols

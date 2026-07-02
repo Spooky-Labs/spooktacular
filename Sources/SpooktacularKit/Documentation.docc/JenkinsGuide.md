@@ -91,36 +91,12 @@ sudo spook service install jenkins-agent-01
 sudo spook service install jenkins-agent-02
 ```
 
-## Kubernetes Integration
-
-If your Jenkins runs on Kubernetes, use the Spooktacular
-Kubernetes operator to manage agents declaratively:
-
-```yaml
-apiVersion: spooktacular.app/v1alpha1
-kind: MacOSVM
-metadata:
-  name: jenkins-agent-01
-spec:
-  sourceVM: jenkins-base
-  cpu: 4
-  memoryInGigabytes: 8
-  provisioning:
-    mode: ssh
-    script: |
-      #!/bin/bash
-      curl -sO https://jenkins.example.com/jnlpJars/agent.jar
-      java -jar agent.jar -url https://jenkins.example.com \
-        -secret $AGENT_SECRET -name $(hostname) -workDir /tmp/jenkins
-```
-
 ## Topics
 
 ### Related Guides
 
 - <doc:GettingStarted>
 - <doc:CLIReference>
-- <doc:KubernetesGuide>
 
 ### Key Types
 
