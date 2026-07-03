@@ -1,4 +1,10 @@
 git_url("https://github.com/Spooky-Labs/spooktacular-certificates")
 storage_mode("git")
 type("appstore")
-app_identifier(["com.spooktacular.app"])
+
+# Both the host app and its bundled `.systemextension` are
+# signed by the same team, so they share one match repo.
+app_identifier([
+  "com.spooktacular.app",
+  "com.spooktacular.app.NetworkFilter",
+])

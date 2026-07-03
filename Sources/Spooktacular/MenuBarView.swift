@@ -75,6 +75,7 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func vmMenuItem(name: String) -> some View {
+        let displayName = appState.vms[name]?.displayName ?? name
         let isRunning = appState.isRunning(name)
         let isTransitioning = appState.transitioningVMs.contains(name)
 
@@ -82,7 +83,10 @@ struct MenuBarView: View {
             // Show an hourglass while the VM is mid-start/stop —
             // gives immediate feedback that the click registered.
             Label {
-                Text(name) + Text("  ") + Text("…").foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Text(displayName)
+                    Text("…").foregroundStyle(.secondary)
+                }
             } icon: {
                 Image(systemName: "hourglass")
                     .foregroundStyle(.orange)
@@ -99,7 +103,10 @@ struct MenuBarView: View {
                 }
             } label: {
                 Label {
-                    Text(name) + Text("  ") + Text("Running").foregroundColor(.green)
+                    HStack(spacing: 4) {
+                        Text(displayName)
+                        Text("Running").foregroundStyle(.green)
+                    }
                 } icon: {
                     Image(systemName: "play.circle.fill")
                         .foregroundStyle(.green)
@@ -117,12 +124,17 @@ struct MenuBarView: View {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
             } label: {
-                Label(name, systemImage: "stop.circle")
+                Label(displayName, systemImage: "stop.circle")
             }
         }
     }
 
+    /// `vms` keys sorted by each bundle's display name — never by
+    /// the raw UUID key.
     private var sortedNames: [String] {
-        appState.vms.keys.sorted()
+        appState.vms.keys.sorted {
+            (appState.vms[$0]?.displayName ?? $0)
+                .localizedCaseInsensitiveCompare(appState.vms[$1]?.displayName ?? $1) == .orderedAscending
+        }
     }
 }

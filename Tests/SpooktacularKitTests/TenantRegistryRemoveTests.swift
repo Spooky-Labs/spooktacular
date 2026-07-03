@@ -1,8 +1,8 @@
 import Testing
 import Foundation
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
-@testable import SpookCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularCore
 
 /// Tests for the `remove` vs `removeForce` contract on
 /// ``InMemoryTenantRegistry`` — previously `remove` was documented

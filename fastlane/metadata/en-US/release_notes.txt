@@ -1,13 +1,13 @@
-v1.0.1 — GUI now has feature parity with the spook CLI.
+v1.0.1 — GUI now has feature parity with the spook CLI, plus a zero-touch GitHub Actions runner flow.
 
 GUI parity
 • SSH into workspaces with one tap. The toolbar split-button's primary action copies the IP, the chevron opens Terminal with an ssh session.
 • Install from a local IPSW file. Skip the 10–20 GB Apple download when you already have the restore image on disk — useful for offline installs, pinning to a known build, and re-creating VMs from a fleet-wide snapshot.
-• Built-in first-boot templates in Create: GitHub Actions runner, OpenClaw agent, Screen Sharing (VNC), or a custom shell script. The GitHub runner flow reads its registration token from the Keychain — env-var / CLI-flag / file paths were removed pre-1.0 to keep the token off of ps and disk.
+• Built-in first-boot templates in Create: GitHub Actions runner, OpenClaw agent, Screen Sharing (VNC), or a custom shell script. The GitHub runner template reads a personal access token from the Keychain — never a flag, env var, or file — mints a runner registration token at boot time, and starts the VM headless automatically.
 • Clone VMs from the sidebar with a proper name dialog (⌘D). APFS copy-on-write, so a 100 GB disk clones in milliseconds.
 • Add, remove, and toggle read-only on shared folders in the Hardware editor — post-creation management matches spook share on the CLI.
 
 Bug fixes
 • Custom user-data scripts selected in the Create sheet are now actually injected into the guest. Prior builds silently dropped them on the floor.
 
-The CLI, HTTP API, and Kubernetes operator are unchanged in this release.
+The CLI and HTTP API ship the same zero-touch flow: `spook create --github-runner --github-repo org/repo --github-token-keychain <account>` creates the VM, registers it as an ephemeral runner, boots it headless, and waits until GitHub reports it online — one command, no manual config.sh.

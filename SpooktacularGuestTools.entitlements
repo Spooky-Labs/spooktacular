@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	    Team-scoped application identity. Matches the nested
+	    bundle's CFBundleIdentifier in SpooktacularGuestTools-Info.plist.
+	    Both keys are required for amfid to accept launch of a
+	    Developer-ID-signed bundle on any macOS where SIP is
+	    engaged (the norm). `build-app.sh` strips them when the
+	    build targets the Apple Distribution cert without a
+	    matching per-device provisioning profile.
+	-->
+	<key>com.apple.application-identifier</key>
+	<string>4AM5US9G8B.com.spooktacular.GuestTools</string>
+
+	<key>com.apple.developer.team-identifier</key>
+	<string>4AM5US9G8B</string>
+
+	<!--
+	    App Sandbox — retained deliberately.
+
+	    Spooktacular Guest Tools ships INSIDE each macOS guest
+	    VM under /Applications/. Narrow responsibility
+	    surface (SPICE clipboard + provisioner daemon install
+	    via SMAppService); least privilege matters most here.
+
+	    For daemon install we use `SMAppService.daemon` rather
+	    than `osascript … with administrator privileges` —
+	    the latter is blocked under sandbox (confirmed
+	    empirically: auth dialog never appears, call fails
+	    silently with `errAEBadUserName` -60005).
+	    `SMAppService.daemon` is Apple's sandbox-compatible
+	    path: the plist ships inside the app bundle at
+	    `Contents/Library/LaunchDaemons/`, `.register()`
+	    notifies the user to approve in System Settings →
+	    Login Items & Extensions, then `launchd` bootstraps
+	    the daemon automatically.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!--
+	    Serial-device access for SPICE. Apple's
+	    `VZSpiceAgentPortAttachment` exposes the guest-side
+	    SPICE virtio-console port at
+	    `/dev/tty.com.redhat.spice.0`; the vd_agent protocol
+	    requires the fd be in raw mode via `cfmakeraw` +
+	    `tcsetattr(TCSANOW)`. Without this entitlement,
+	    `tcsetattr` returns EPERM under sandbox.
+	-->
+	<key>com.apple.security.device.serial</key>
+	<true/>
+
+	<!--
+	    Virtio-serial tty access — absolute-path exception
+	    for the single SPICE port. Paired with
+	    `device.serial`: this permits `open()`, that permits
+	    the subsequent `tcsetattr`.
+	-->
+	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
+	<array>
+		<string>/dev/tty.com.redhat.spice.0</string>
+	</array>
+</dict>
+</plist>

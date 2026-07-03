@@ -1,1 +1,1 @@
-virtualization,vm,macos,ci/cd,runner,github,kubernetes,enterprise,devops,clone,mdm,vdi,xcode
+virtualization,vm,macos,ci/cd,runner,github,actions,devops,clone,vdi,xcode,remote desktop

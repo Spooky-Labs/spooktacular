@@ -1,51 +1,39 @@
-Spooktacular is the fastest way to create, provision, and orchestrate macOS virtual machines on Apple Silicon. Built on Apple's Virtualization.framework for native performance, it serves enterprise CI/CD teams and individual developers with equal ease.
+Spooktacular is a native macOS app for creating, running, and managing macOS virtual machines on Apple Silicon. Built directly on Apple's Virtualization.framework, it serves individual developers and small teams who need real macOS VMs — not shared runners, not containers.
 
 DOUBLE YOUR MAC CAPACITY
-Run 2 macOS VMs per Mac — the maximum Apple's EULA allows, enforced at the kernel level. Every Mac mini, Mac Studio, or Mac Pro becomes two workloads.
+Run 2 macOS VMs per Mac — the maximum Apple's EULA allows, enforced at the kernel level. Every Mac mini, Mac Studio, or Mac Pro becomes two independent workloads.
 
 CREATE VMs IN SECONDS
-Spin up macOS virtual machines from IPSW restore images with automatic download, SHA-256 content-addressed caching, and HTTP range resume — no more re-downloading a 15 GB IPSW after a dropped connection. Unattended Setup Assistant automation completes initial configuration hands-free on macOS 15 and macOS 26. APFS copy-on-write clones stamp out identical VMs in ~48 ms without duplicating disk space.
+Spin up macOS virtual machines from IPSW restore images with automatic download, content-addressed caching, and resumable transfers — no re-downloading a multi-gigabyte IPSW after a dropped connection. Unattended Setup Assistant automation gets a VM to a usable desktop hands-free. APFS copy-on-write clones stamp out identical VMs in milliseconds without duplicating disk space.
 
-4 PROVISIONING MODES
-• SSH — execute user-data scripts with real-time output streaming
-• Disk-inject — write files directly into the VM disk image
-• VirtIO socket — communicate via the built-in guest agent over three scope-separated channels (read-only / runner / break-glass)
-• Shared-folder — drop scripts into a watched folder
+ZERO-TOUCH GITHUB ACTIONS RUNNERS
+One command creates a macOS VM, registers it as an ephemeral GitHub Actions runner using a personal access token stored in the Keychain — never a CLI flag, env var, or file, so it never touches disk or the process list — boots it headless, and polls GitHub until the runner reports online. No separate registration step.
 
-GITHUB ACTIONS RUNNERS, FIRST-CLASS
-Ephemeral, warm-pool, and persistent runner modes. Registration-token hygiene, drain-before-delete on scale-down, and a 10-check warm-pool scrub validator that verifies the guest is clean before the VM returns to the pool.
+PROVISION YOUR WAY
+Run scripts over SSH with real-time output streaming, or inject files directly into the VM disk image before first boot.
 
-KUBERNETES OPERATOR
-Deploy MacOSVM and RunnerPool custom resources via the included Helm chart. ValidatingWebhookConfiguration enforces tenant/namespace isolation and the 2-VM-per-host cap at admission. NetworkPolicy, PodDisruptionBudget, ServiceMonitor, and PrometheusRule ship with the chart.
+REMOTE DESKTOP AND CLIPBOARD
+First-boot templates for Screen Sharing (VNC) remote desktops and the OpenClaw AI agent, plus Guest Tools' SPICE-based clipboard sync between host and guest.
 
-ENTERPRISE CONTROLS
-OIDC + SAML federated identity with JWKS pinning. Multi-tenant RBAC with an audit record on every decision. Per-VM network egress policies that generate pf(8) rules. Break-glass tickets with Secure-Enclave-bound keys, single-use per-JTI and per-fleet via a distributed singleton.
-
-AUDIT TRAIL
-RFC 6962-aligned Merkle tree with Ed25519 signed tree heads. Append-only file store with fsync on every write. The spook audit verify CLI validates inclusion proofs end-to-end. Optional S3 Object Lock with HEAD-after-PUT verification to catch silently-disabled WORM buckets.
+SECURITY BUILT IN
+mTLS with TLS 1.3 on the control plane, multi-tenant RBAC with deny-by-default policy, Secure-Enclave-backed break-glass access for emergency operations, per-action MFA via Local Authentication, and an append-only local audit log.
 
 HTTP API
-REST control plane with request-ID correlation, a standard error envelope, body-size caps, split read/write rate buckets, and slow-loris defense.
-
-OBSERVABILITY
-OpenTelemetry trace export on every API request. Prometheus metrics with bounded cardinality. SLO catalog, Grafana dashboards (controller + fleet), and alert rules shipped as code.
+A REST control plane covering VM lifecycle, snapshots, IAM, and RBAC, with OpenTelemetry tracing and Prometheus metrics on every request.
 
 NETWORKING AND SNAPSHOTS
-NAT, bridged, or isolated per VM. Disk-level snapshot save, restore, and atomic staging to avoid half-restored state.
+NAT, bridged, or isolated networking per VM. Disk-level snapshot save, restore, and atomic staging to avoid half-restored state.
 
 HEADLESS AND GUI
-A native SwiftUI app with macOS 26 Liquid Glass provides full visibility into every VM. The menu-bar extra animates during transitions. Per-VM LaunchDaemon services keep VMs running unattended on servers. The bundled CLI (spook) ships 16 commands with --json on every command, documented exit codes, and NO_COLOR support.
+A native SwiftUI app with macOS 26 Liquid Glass gives full visibility into every VM, plus a menu-bar extra. Per-VM LaunchDaemon services keep VMs running unattended on headless servers. The bundled CLI (spook) covers the same surface with --json output on every command, documented exit codes, and NO_COLOR support.
 
 ACCESSIBILITY
 Dynamic VoiceOver labels throughout the GUI. Every control, every state change, every notification is accessible.
 
-822 TESTS
-Comprehensive coverage across 224 suites. Clean Architecture enforced by build-time checks: SpookCore is Foundation-only.
-
 PERFECT FOR
-• CI/CD runners (GitHub Actions, CircleCI, Jenkins)
+• GitHub Actions self-hosted runners, zero-touch
 • iOS and macOS development and testing across OS versions
-• MDM and code signing for enterprise Apple fleets
-• Remote development environments and virtual desktop infrastructure
-• Kubernetes-managed Mac infrastructure
-• Computer-using AI agents inside sandboxed macOS guests
+• Remote development environments and interactive remote desktops
+• Computer-using AI agents inside a real macOS guest
+
+Spooktacular works only on Apple Silicon Macs. MIT licensed, $0 forever — audit every line of source code.

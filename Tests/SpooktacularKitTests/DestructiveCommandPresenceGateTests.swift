@@ -1,11 +1,10 @@
 import Testing
 import Foundation
 
-/// Regression guard for Phase 2 of the Secure-Enclave migration:
-/// destructive CLI commands must route through
-/// `AdminPresenceGate.requirePresence` so that malware running
-/// as the logged-in user cannot delete or roll back VMs / snapshots
-/// without a fresh Touch ID / passcode gesture.
+/// Regression guard: destructive CLI commands must route
+/// through `AdminPresenceGate.requirePresence` so malware
+/// running as the logged-in user cannot delete or roll back
+/// VMs / snapshots without a fresh Touch ID / passcode gesture.
 ///
 /// The test greps each destructive command's source file for
 /// `AdminPresenceGate.requirePresence`. A regression that drops
@@ -52,11 +51,11 @@ struct DestructiveCommandPresenceGateTests {
     func deleteCommandGates() throws {
         let hasGate = try sourceContains(
             "AdminPresenceGate.requirePresence",
-            in: "Sources/spook/Commands/Delete.swift"
+            in: "Sources/spooktacular-cli/Commands/Delete.swift"
         )
         #expect(
             hasGate,
-            "Delete.swift must call AdminPresenceGate.requirePresence — dropping the presence gate re-opens the malware-as-logged-in-user VM-wipe path (Phase 2)."
+            "Delete.swift must call AdminPresenceGate.requirePresence — dropping the presence gate re-opens the malware-as-logged-in-user VM-wipe path."
         )
     }
 
@@ -64,7 +63,7 @@ struct DestructiveCommandPresenceGateTests {
     func snapshotCommandsGate() throws {
         // Delete + Restore = 2 expected call sites. Save + List
         // do not gate — save is non-destructive, list is read-only.
-        let url = repoRoot().appendingPathComponent("Sources/spook/Commands/Snapshot.swift")
+        let url = repoRoot().appendingPathComponent("Sources/spooktacular-cli/Commands/Snapshot.swift")
         let contents = try String(contentsOf: url, encoding: .utf8)
         let count = contents
             .components(separatedBy: "AdminPresenceGate.requirePresence")

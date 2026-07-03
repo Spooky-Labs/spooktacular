@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookApplication
+@testable import SpooktacularApplication
 
 /// Tests for ``OTelSpan`` + ``OTLPHTTPJSONExporter``'s body
 /// construction. Live export is validated by pointing the

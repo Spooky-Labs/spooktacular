@@ -198,62 +198,61 @@ Spooktacular
 <div class="phase">
 <h3>Core VM Engine</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachine.swift">VM lifecycle: start, stop, pause, resume</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachine.swift#L217">Save/restore machine state (macOS 14+)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/RestoreImageManager.swift">IPSW restore image management + auto-download</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift">VM configuration: CPU, memory, displays, audio, networking</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CloneManager.swift">APFS copy-on-write cloning</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CloneManager.swift#L92">MachineIdentifier regeneration on clone</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SnapshotManager.swift">Disk-level snapshots: save, restore, list, delete</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CapacityCheck.swift">2-VM capacity enforcement</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/PIDFile.swift">PID file tracking</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachine.swift">VM lifecycle: start, stop, pause, resume</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachine.swift#L599">Save/restore machine state (macOS 14+)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/RestoreImageManager.swift">IPSW restore image management + auto-download</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">VM configuration: CPU, memory, displays, audio, networking</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/CloneManager.swift">APFS copy-on-write cloning</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/CloneManager.swift#L98">MachineIdentifier regeneration on clone</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/SnapshotManager.swift">Disk-level snapshots: save, restore, list, delete</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/CapacityCheck.swift">2-VM capacity enforcement</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/PIDFile.swift">PID file tracking</a></li>
 </ul>
 </div>
 <div class="phase">
 <h3>Provisioning</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SSHExecutor.swift">SSH provisioning: wait-for-SSH + streaming execution</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/DiskInjector.swift">Disk-inject provisioning: LaunchDaemon injection</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VsockProvisioner.swift">VirtIO socket provisioning (host side)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SharedFolderProvisioner.swift">Shared folder provisioning</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/IPResolver.swift">IP resolution: DHCP leases + ARP fallback</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/SetupAutomationExecutor.swift">Unattended Setup Assistant (keyboard driver, macOS 15+)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook/Commands/Create.swift">Template auto-execution: create, install, setup, provision</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/SSHExecutor.swift">SSH provisioning: wait-for-SSH + streaming execution</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/DiskInjector.swift">Disk-inject provisioning: LaunchDaemon injection</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/AgentEventListener.swift">VirtIO socket guest event stream (host side, stats/ports — not a provisioning mode)</a></li>
+<li><span class="todo" aria-hidden="true">&#9675;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner.swift">Shared folder provisioning (host-side plumbing exists; <code>--provision shared-folder</code> is not yet wired up in the CLI)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/IPResolver.swift">IP resolution: DHCP leases + ARP fallback</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/SetupAutomationExecutor.swift">Unattended Setup Assistant (keyboard driver, macOS 15+)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-cli/Commands/Create.swift">Template auto-execution: create, install, setup, provision</a></li>
 </ul>
 </div>
 <div class="phase">
 <h3>Templates</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GitHubRunnerTemplate.swift">GitHub Actions runner template</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/RemoteDesktopTemplate.swift">Remote desktop template</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/OpenClawTemplate.swift">OpenClaw AI template</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/GitHubRunnerTemplate.swift">GitHub Actions runner template</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/RemoteDesktopTemplate.swift">Remote desktop template</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/OpenClawTemplate.swift">OpenClaw AI template</a></li>
 </ul>
 </div>
 <div class="phase">
 <h3>Networking</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift">NAT networking</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift">Bridged networking (NAT fallback)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/VirtualMachineConfiguration.swift">Isolated networking (air-gapped)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">NAT networking</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">Bridged networking (NAT fallback)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">Isolated networking (air-gapped)</a></li>
 </ul>
 </div>
 <div class="phase">
 <h3>Interfaces</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands">15+ CLI commands (25+ including subcommands)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/HTTPAPIServer.swift">HTTP REST API: 9 endpoints, Network.framework</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-cli/Commands">15+ CLI commands (25+ including subcommands)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift">HTTP REST API: VM lifecycle, IAM, RBAC, tenants; Network.framework</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">SwiftUI GUI: NavigationSplitView, inspector, create sheet</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">Menu bar extra</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/GlassModifiers.swift">Liquid Glass (macOS 26+)</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> Full VoiceOver accessibility: labels, hints, identifiers, announcements</li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook/Commands/Start.swift">Ephemeral runners: --ephemeral flag</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-cli/Commands/Start.swift">Ephemeral runners: --ephemeral flag</a></li>
 </ul>
 </div>
 <div class="phase">
 <h3>Infrastructure</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/ServicePlist.swift">Per-VM LaunchDaemon service</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-agent">Guest agent (VirtIO socket daemon)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/ServicePlist.swift">Per-VM LaunchDaemon service</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/VMDetailView.swift">Auto-resize display (macOS 14+)</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> Metal GPU displays: 1-2 per VM at 1920x1200</li>
 <li><span class="check" aria-hidden="true">&#10003;</span> Audio output + microphone passthrough</li>
@@ -268,43 +267,17 @@ Spooktacular
 </div>
 </div>
 
-<!-- Shipped: K8s -->
+<!-- Shipped: Guest Tools -->
 <div class="milestone shipped" role="listitem">
 <div class="dot-marker" aria-hidden="true"></div>
 <div class="header">
-<h2>Kubernetes Operator</h2>
+<h2>Guest Tools</h2>
 <span class="status status-shipped">Shipped</span>
 </div>
 <div class="phase">
-<h3>Cloud-Native Integration</h3>
+<h3>SPICE Clipboard Bridge</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/deploy/kubernetes/crds/macosvm-crd.yaml">MacOSVM CRD</a> &mdash; <code>kubectl apply -f vm.yaml</code></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook-controller">Swift controller</a> &mdash; watches CRDs, reconciles via HTTP API</li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes/helm">Helm chart</a> &mdash; RBAC, ConfigMap, Deployment</li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/deploy/kubernetes/examples">Examples</a> &mdash; GitHub runner, remote desktop, ephemeral pool</li>
-</ul>
-</div>
-</div>
-
-<!-- Shipped: Guest Agent -->
-<div class="milestone shipped" role="listitem">
-<div class="dot-marker" aria-hidden="true"></div>
-<div class="header">
-<h2>Guest Agent</h2>
-<span class="status status-shipped">Shipped</span>
-</div>
-<div class="phase">
-<h3>Remote Control via vsock</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">12 HTTP endpoints over VirtIO socket</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Clipboard sync (read/write guest clipboard)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Remote exec (run commands in guest, stream output)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">App control (list/launch running applications)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">File transfer (host-guest file exchange)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Port discovery (find listening ports in guest)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-agent/AgentRouter.swift">Health monitoring (agent version, uptime)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift">GuestAgentClient actor in SpooktacularKit</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spook/Commands"><code>spook remote</code> CLI command group (exec, clipboard, apps, health, ports)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/SpooktacularGuestTools">Clipboard sync (read/write guest clipboard) over a SPICE serial channel</a></li>
 </ul>
 </div>
 </div>
@@ -418,7 +391,7 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 <p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
 </div>
 </div>

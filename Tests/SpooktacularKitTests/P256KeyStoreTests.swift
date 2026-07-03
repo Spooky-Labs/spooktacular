@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 /// Tests for ``P256KeyStore`` — the unified SEP / software
 /// key-provisioning primitive used by every SEP-bound signing
@@ -66,7 +66,6 @@ struct P256KeyStoreTests {
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.breakGlass, label: label) == false)
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.operatorIdentity, label: label) == false)
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.hostIdentity, label: label) == false)
-        #expect(P256KeyStore.exists(service: P256KeyStore.Service.merkleAudit, label: label) == false)
         #expect(P256KeyStore.exists(service: P256KeyStore.Service.oidcIssuer, label: label) == false)
     }
 
@@ -76,7 +75,6 @@ struct P256KeyStoreTests {
             P256KeyStore.Service.breakGlass,
             P256KeyStore.Service.operatorIdentity,
             P256KeyStore.Service.hostIdentity,
-            P256KeyStore.Service.merkleAudit,
             P256KeyStore.Service.oidcIssuer,
         ]
         #expect(Set(all).count == all.count,
@@ -89,7 +87,6 @@ struct P256KeyStoreTests {
             P256KeyStore.Service.breakGlass,
             P256KeyStore.Service.operatorIdentity,
             P256KeyStore.Service.hostIdentity,
-            P256KeyStore.Service.merkleAudit,
             P256KeyStore.Service.oidcIssuer,
         ]
         for service in all {
@@ -117,10 +114,10 @@ struct P256KeyStoreTests {
 
         let noSEPHost = KeyStoreError.secureEnclaveUnavailableOnHost
         #expect(noSEPHost.errorDescription?.contains("Secure Enclave") == true)
-        // Per Phase 3, the recovery hint must NOT point the
-        // operator at a software-fallback API — that path was
-        // removed. Mentioning "software" in the context of why
-        // it's forbidden is fine; suggesting `loadOrCreateSoftware`
+        // The recovery hint must NOT point the operator at a
+        // software-fallback API — that path was removed.
+        // Mentioning "software" in the context of why it's
+        // forbidden is fine; suggesting `loadOrCreateSoftware`
         // or a file path is not.
         let hint = noSEPHost.recoverySuggestion ?? ""
         #expect(!hint.contains("loadOrCreateSoftware"))

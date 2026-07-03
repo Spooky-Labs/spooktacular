@@ -15,14 +15,13 @@ in macOS VMs with Spooktacular gives you:
   or production + staging).
 - **Snapshots** — save a working OpenClaw configuration, experiment,
   and roll back if something breaks.
-- **Kubernetes-managed** — scale OpenClaw instances across a fleet
-  of Macs using ``MacOSVMPool``.
 
 ### Prerequisites
 
 - Apple Silicon Mac (M1 or later)
-- macOS 14+ on the host
-- Spooktacular installed (`brew install --cask spooktacular`)
+- macOS 26+ on the host
+- Spooktacular installed — build from source (signed releases aren't
+  published yet; see <doc:GettingStarted>)
 - API key from Anthropic, OpenAI, or Google
 
 ## Quick Start: Two OpenClaw Instances
@@ -129,45 +128,6 @@ mkdir -p ~/.openclaw
 cp "/Volumes/My Shared Files/openclaw.json" ~/.openclaw/openclaw.json
 openclaw config validate
 ```
-
-## Kubernetes: OpenClaw Fleet
-
-Deploy OpenClaw instances across multiple Macs using
-the Kubernetes operator:
-
-```yaml
-apiVersion: spooktacular.io/v1alpha1
-kind: MacOSVMPool
-metadata:
-  name: openclaw-agents
-  namespace: ai
-spec:
-  replicas: 2
-  image: ghcr.io/spooktacular/macos:15.4
-
-  provisioning:
-    mode: disk-inject
-    userData: |
-      #!/bin/bash
-      brew install node@24
-      export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
-      npm install -g openclaw@latest
-      mkdir -p ~/.openclaw
-      # Config injected via K8s secret → shared folder
-      cp "/Volumes/My Shared Files/openclaw.json" ~/.openclaw/
-      openclaw onboard --install-daemon
-
-  resources:
-    cpu: 4
-    memory: 8Gi
-    disk: 32Gi
-
-  network:
-    mode: nat
-```
-
-Each Mac in the fleet runs 2 OpenClaw VMs. Ten Macs =
-20 OpenClaw instances.
 
 ## Networking Between Instances
 

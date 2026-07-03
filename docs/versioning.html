@@ -196,17 +196,17 @@ Spooktacular
 </ul>
 
 <h2>Pinning versions</h2>
-<p>For enterprise deployments, pin to a specific version to avoid surprises.</p>
+<p>For enterprise deployments, pin to a specific version to avoid surprises. Signed releases (Homebrew cask, GitHub Release downloads) aren't published yet — build from source pinned to a tag or commit instead.</p>
 <div class="code-block">
 <div class="code-header">
 <span class="dot-r" aria-hidden="true"></span><span class="dot-y" aria-hidden="true"></span><span class="dot-g" aria-hidden="true"></span>
-<span class="title">Homebrew</span>
+<span class="title">Build from source</span>
 </div>
-<pre><span class="cmt"># Pin to a specific version</span>
-brew install spooktacular@1.0.0
-
-<span class="cmt"># Or download a specific release from GitHub</span>
-curl -LO <span class="hl">https://github.com/Spooky-Labs/spooktacular/releases/download/v1.0.0/Spooktacular.dmg</span></pre>
+<pre><span class="cmt"># Pin to a specific tag or commit</span>
+git clone <span class="hl">https://github.com/Spooky-Labs/spooktacular.git</span>
+cd spooktacular
+git checkout v1.0.1
+./build-app.sh release</pre>
 </div>
 
 <div class="code-block">
@@ -288,7 +288,7 @@ curl -LO <span class="hl">https://github.com/Spooky-Labs/spooktacular/releases/d
 </div>
 </div>
 <div class="foot-bottom">
-<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 <p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
 </div>
 </div>

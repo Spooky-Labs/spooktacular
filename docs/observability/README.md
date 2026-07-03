@@ -1,21 +1,17 @@
 # Spooktacular Observability Kit
 
-Ready-to-deploy Prometheus + Grafana configuration for Fortune-20 operators scraping the `/metrics` endpoint exposed by `spook serve`.
+Ready-to-deploy Prometheus + Grafana configuration for operators scraping the `/metrics` endpoint exposed by `spook serve`.
 
-Everything in this directory is production-hardened: the scrape config uses mTLS (which `spook serve` requires in production), the dashboard is accessibility-audited for high-contrast mode, and the alert rules map one-to-one against the SLO targets documented in the Enterprise Readiness Evaluation.
+This kit covers **host-level** metrics only: capacity, API latency, and VM lifecycle timing. The scrape config uses mTLS (which `spook serve` requires in production), and the dashboard is accessibility-audited for high-contrast mode.
 
 ## What you get
 
 | File | What it does |
 |------|--------------|
 | [`metrics.md`](metrics.md) | The full metric catalog — every series `/metrics` exposes, with type, unit, and an operational meaning |
-| [`slo-catalog.md`](slo-catalog.md) | The SLI/SLO catalog — user-facing + platform SLOs, with PromQL, targets, and alert mappings |
 | [`prometheus.yml`](prometheus.yml) | Minimal scrape config for a single Spooktacular deployment |
-| [`prometheus-scrape-config.yaml`](prometheus-scrape-config.yaml) | Full production scrape config covering controller (K8s SD) + fleet (EC2 SD / file-SD) |
-| [`alerts.yml`](alerts.yml) | Prometheus alerting rules — capacity, API health, audit-pipeline, VM lifecycle, and SLO burn-rate alerts |
-| [`grafana-dashboard.json`](grafana-dashboard.json) | Legacy single-dashboard layout (kept for backward compatibility) |
-| [`grafana-dashboard-controller.json`](grafana-dashboard-controller.json) | Controller dashboard — reconcile latency, error rate, queue depth, watch stream, API p95 |
-| [`grafana-dashboard-fleet.json`](grafana-dashboard-fleet.json) | Fleet dashboard — VMs per host, pool size, scale events, job throughput, audit volume |
+| [`alerts.yml`](alerts.yml) | Prometheus alerting rules — capacity, API health, and VM lifecycle alerts |
+| [`grafana-dashboard.json`](grafana-dashboard.json) | Single-dashboard layout — VMs per host, API latency, VM lifecycle latencies, runner SLOs |
 
 ## Fifteen-minute setup
 
@@ -35,10 +31,10 @@ systemctl reload prometheus
 
 ## mTLS scrape gotcha
 
-`spook serve` in production refuses to respond without a valid client certificate (`HTTPAPIServerError.tlsRequired`). Prometheus's scrape needs the same cert Spooktacular gives its CI callers — not a new certificate. Re-use whatever trust store holds your controller's client cert, and configure `tls_config.cert_file` / `key_file` in `prometheus.yml` to point at it.
+`spook serve` in production refuses to respond without a valid client certificate (`HTTPAPIServerError.tlsRequired`). Prometheus's scrape needs the same cert Spooktacular gives its CI callers — not a new certificate. Re-use whatever trust store holds your host's client cert, and configure `tls_config.cert_file` / `key_file` in `prometheus.yml` to point at it.
 
 For local-dev deployments started with `--insecure`, strip the `tls_config` block; the HTTP listener won't enforce TLS.
 
 ## Scope
 
-This kit covers **platform health** — capacity, API latency, audit pipeline, lock contention, VM lifecycle. It intentionally does **not** try to re-expose application-layer metrics from workloads running **inside** the VMs. Guest-side observability is the tenant's responsibility; Spooktacular's job is to make sure their runners boot, pass scrub, and register on time.
+This kit covers **host-level platform health** — capacity, API latency, VM lifecycle timing (clone/boot/scrub), and runner registration SLOs. It intentionally does **not** try to re-expose application-layer metrics from workloads running **inside** the VMs. Guest-side observability is the tenant's responsibility; Spooktacular's job is to make sure their runners boot, pass scrub, and register on time.

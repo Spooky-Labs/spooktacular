@@ -106,7 +106,6 @@ struct SecurityControlInventoryTests {
         let expected: Set<String> = [
             "Authentication & Identity",
             "Authorization",
-            "Break-Glass",
             "Audit & Non-Repudiation",
             "Data at Rest",
         ]

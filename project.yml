@@ -29,8 +29,8 @@
 #     .xcodeproj is only used by `fastlane ui_tests` (local and
 #     CI) to produce App Store screenshots.
 #   - Package.swift is still the source of truth for every
-#     library target (SpookCore, SpookApplication,
-#     SpookInfrastructureApple, SpooktacularKit, spook CLI, etc.).
+#     library target (SpooktacularCore, SpooktacularApplication,
+#     SpooktacularInfrastructureApple, SpooktacularKit, spook CLI, etc.).
 #
 # Regenerating after edits to this file:
 #   brew install xcodegen     # one-time
@@ -57,7 +57,7 @@ name: Spooktacular
 options:
   createIntermediateGroups: true
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "26.0"
   developmentLanguage: en
   groupSortPosition: top
   generateEmptyDirectories: true
@@ -67,7 +67,7 @@ settings:
     SWIFT_VERSION: "6.0"
     DEVELOPMENT_TEAM: 4AM5US9G8B
     ENABLE_HARDENED_RUNTIME: YES
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
     # Manual signing so `fastlane match`-installed profiles are
     # usable on CI. Automatic signing requires an Apple ID
     # signed into Xcode.app Accounts pane — CI headless runners
@@ -143,30 +143,27 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
-      # Per-config signing strategy.
+      # Per-config signing strategy — single entitlements file,
+      # real signing in every config.
       #
-      # Debug:   No signing at all. The separate
-      #          `Spooktacular.debug.entitlements` file omits
-      #          `com.apple.security.app-sandbox`, so the app can
-      #          launch without a valid code signature. This lets
-      #          the XCUITest runner on ephemeral CI VMs (whose
-      #          UDID isn't registered with Apple Developer) build
-      #          and run the host app without a Mac Development
-      #          profile. Registering the UDID per run would burn
-      #          through Apple's 100-device/year cap fast.
+      # Debug:   Apple Development cert (match-managed). CI
+      #          runners import the cert into an ephemeral
+      #          keychain via `fastlane setup_ci` before the
+      #          `ui_tests` lane runs. No "unsigned fallback" —
+      #          the reference architecture requires every
+      #          launch path to carry a real signature because
+      #          `app-sandbox` + taskgated reject ad-hoc.
       #
-      # Release: Manual signing with the match-managed AppStore
-      #          profile, for anyone who opens the .xcodeproj in
-      #          Xcode and archives. Not the shipping path —
-      #          `build-app.sh` drives release via `swift build -c
-      #          release` + manual `codesign --entitlements
-      #          Spooktacular.entitlements` (the sandboxed real one).
+      # Release: Apple Distribution cert with the App Store
+      #          provisioning profile, for anyone who opens
+      #          the .xcodeproj in Xcode and archives. Not the
+      #          shipping path — `build-app.sh` drives release
+      #          via `swift build -c release` + manual `codesign`
+      #          with the same `Spooktacular.entitlements`.
       configs:
         Debug:
-          CODE_SIGN_ENTITLEMENTS: Spooktacular.debug.entitlements
-          CODE_SIGNING_ALLOWED: NO
-          CODE_SIGNING_REQUIRED: NO
-          CODE_SIGN_IDENTITY: ""
+          PROVISIONING_PROFILE_SPECIFIER: match Development com.spooktacular.app macos
+          CODE_SIGN_IDENTITY: Apple Development
         Release:
           PROVISIONING_PROFILE_SPECIFIER: match AppStore com.spooktacular.app macos
           CODE_SIGN_IDENTITY: Apple Distribution
@@ -183,15 +180,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.spooktacular.uitests
         TEST_TARGET_NAME: SpooktacularApp
         GENERATE_INFOPLIST_FILE: YES
-        # Match SpooktacularApp's Debug config: no signing for
-        # the runner + plugin either. Since the host app launches
-        # unsigned, the test bundle must too — otherwise Team ID
-        # mismatch on plugin load.
       configs:
         Debug:
-          CODE_SIGNING_ALLOWED: NO
-          CODE_SIGNING_REQUIRED: NO
-          CODE_SIGN_IDENTITY: ""
+          CODE_SIGN_IDENTITY: Apple Development
 
 schemes:
   # Named `SpooktacularApp` (not `Spooktacular`) to avoid a

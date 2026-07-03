@@ -44,11 +44,10 @@ to your account.
  │                              │ :8484 (HTTPS)                     │
  │                              ▼                                   │
  │                  ┌────────────────────┐                          │
- │                  │  K8s Controller    │                          │
- │                  │  (optional)        │                          │
+ │                  │  spook / CI caller │                          │
  │                  │                    │                          │
  │                  │  Manages VMs via   │                          │
- │                  │  MacOSVM CRD       │                          │
+ │                  │  the HTTP API      │                          │
  │                  └────────────────────┘                          │
  └─────────────────────────────────────────────────────────────────┘
 ```
@@ -122,7 +121,7 @@ Terraform will:
 2. Launch an EC2 Mac instance with the macOS AMI
 3. Register the `SpooktacularInstall` SSM document from `ssm/install-spooktacular.yaml`
 4. Run `bootstrap.sh` as user-data to install and configure Spooktacular
-5. Create CloudWatch alarms for host utilization, API errors, audit export failures, TLS expiry, and ASG capacity gaps
+5. Create CloudWatch alarms for host utilization, API errors, TLS expiry, and ASG capacity gaps
 6. (Optional, `enable_license_manager = true`) Create a License Manager license configuration and Host Resource Group
 7. (Optional, `enable_asg = true`) Provision a launch template, ASG, and drain-on-terminate lifecycle hook
 8. Output the instance IP and SSH command
@@ -284,7 +283,7 @@ VMs. When a host is drained:
 - A marker file is written to `/etc/spooktacular/drain`
 - `spook serve` checks for this file and stops accepting new VMs
 - Existing VMs are allowed to finish their work
-- When all VMs stop, the host reports "drained" to the controller
+- When all VMs stop, the host's status becomes queryable as "drained" via the HTTP API
 
 #### Via bootstrap.sh
 
@@ -375,5 +374,4 @@ See [Host Drain / Undrain](#host-drain--undrain) for details.
 ## Related Documentation
 
 - [Main README](../../README.md) -- Project overview, CLI reference, and Quick Start
-- [Kubernetes Integration](../kubernetes/README.md) -- Managing VMs as K8s custom resources
 - [API Documentation](https://spooktacular.app/api/documentation/spooktacularkit/) -- Full HTTP API reference

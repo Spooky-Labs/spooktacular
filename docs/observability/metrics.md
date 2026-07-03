@@ -42,7 +42,7 @@ Or — preferred for real quantile SLOs — add a proxy layer (e.g., an OpenTele
 
 ## Extending the catalog
 
-New metrics belong in `Sources/SpookApplication/Metrics.swift`. The guiding rules:
+New metrics belong in `Sources/SpooktacularApplication/Metrics.swift`. The guiding rules:
 
 1. **Actor-isolated counters only.** No shared-mutable state outside the actor.
 2. **Keep cardinality bounded.** API request labels are already cardinality-dense (method × path); don't add a third label without a hard upper bound.

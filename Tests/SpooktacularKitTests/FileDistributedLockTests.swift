@@ -1,8 +1,8 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 /// Tests the O_CREAT | O_EXCL + fstat-inode path of
 /// ``FileDistributedLock``, the CAS semantics, and the

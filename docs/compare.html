@@ -276,16 +276,8 @@ Spooktacular
 <td class="no">&#10005;</td>
 </tr>
 <tr>
-<td>VirtIO socket provisioning</td>
-<td class="highlight-col yes">&#10003; Host + guest agent</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Guest agent (clipboard/exec/apps)</td>
-<td class="highlight-col yes">&#10003; 12 endpoints over vsock</td>
+<td>Clipboard sync (guest agent)</td>
+<td class="highlight-col partial">~ SPICE clipboard only</td>
 <td class="no">&#10005;</td>
 <td class="no">&#10005;</td>
 <td class="no">&#10005;</td>
@@ -396,14 +388,6 @@ Spooktacular
 
 <tr class="cat-row"><td colspan="6">Enterprise &amp; Scale</td></tr>
 <tr>
-<td>Kubernetes-native</td>
-<td class="highlight-col yes">&#10003; CRD + Controller</td>
-<td class="partial">Orchard (basic)</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
 <td>OCI registries</td>
 <td class="highlight-col no">&#10005; <a href="roadmap.html">Planned</a></td>
 <td class="yes">&#10003;</td>
@@ -500,10 +484,10 @@ Spooktacular
 <li><strong>OCI registries:</strong> Tart ships OCI push/pull today. We have it planned but not yet implemented.</li>
 <li><strong>Fleet autoscaling:</strong> Orka autoscales. Anka has manual pool management. We have no fleet management yet.</li>
 <li><strong>Multi-CI templates:</strong> Anka and Orka support BuildKite, CircleCI, and Jenkins natively. We only have GitHub Actions today.</li>
-<li><strong>Pool auto-replacement:</strong> Anka replaces failed VMs automatically. Spooktacular's RunnerPool reconciler now handles this via its lifecycle state machine, but it is still in development on the <code>feat/runner-lifecycle-engine</code> branch.</li>
+<li><strong>Pool auto-replacement:</strong> Anka replaces failed VMs automatically. Spooktacular has no fleet-level pool reconciler yet — pool management is a roadmap item.</li>
 <li><strong>Enterprise support:</strong> Anka and Orka offer paid support contracts. We are community-supported only.</li>
 </ul>
-<p style="color: var(--dim); font-size: 0.85rem; margin-top: 0.75rem; font-style: italic;">Note: GhostVM previously had an edge on clipboard/exec/apps via its guest agent. Spooktacular now ships the same capabilities with 12 HTTP endpoints over vsock, plus file transfer, port discovery, and health monitoring that GhostVM does not offer.</p>
+<p style="color: var(--dim); font-size: 0.85rem; margin-top: 0.75rem; font-style: italic;">Note: GhostVM has an edge on clipboard/exec/apps via its guest agent. Spooktacular currently ships SPICE-based clipboard sync only; remote exec and app control are not yet implemented.</p>
 </div>
 </div>
 </section>
@@ -691,7 +675,7 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 <p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
 </div>
 </div>

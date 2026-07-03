@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpookInfrastructureApple
+@testable import SpooktacularInfrastructureApple
 
 /// Adversarial HTTP-edge hardening tests.
 ///
@@ -136,8 +136,8 @@ struct HTTPHardeningTests {
         let serialized = String(data: rewritten.serialize(), encoding: .utf8) ?? ""
         #expect(serialized.contains("X-Request-ID: new-id"))
         struct Env: Decodable {
-            struct E: Decodable { let requestId: String }
-            let error: E?
+            struct Entry: Decodable { let requestId: String }
+            let error: Entry?
         }
         let body = try JSONDecoder().decode(Env.self, from: rewritten.body)
         #expect(body.error?.requestId == "new-id",
@@ -189,9 +189,9 @@ struct HTTPHardeningTests {
     }
 
     // Note: AgentHTTPParser strictness (duplicate CL, LF-only, non-ASCII,
-    // missing colon) is implemented in Sources/spooktacular-agent/AgentHTTPParser.swift.
-    // Those tests live in the agent's own test lane because executable targets
-    // cannot be @testable-imported from a library test target.
+    // missing colon) is implemented in
+    // Sources/SpooktacularGuestAgentCore/AgentHTTPParser.swift; its tests
+    // live alongside that module.
 
     // MARK: - X-Forwarded-For trust
 
@@ -204,7 +204,7 @@ struct HTTPHardeningTests {
             vmDirectory: tmpDir.url,
             insecureMode: true
         )
-        // Server defaults to SPOOK_TRUST_FORWARDED_FOR=0.
+        // Server defaults to SPOOKTACULAR_TRUST_FORWARDED_FOR=0.
         // A caller who sends two distinct X-Forwarded-For values
         // should NOT bypass the shared rate-limit bucket.
         let ip1 = "direct-caller"

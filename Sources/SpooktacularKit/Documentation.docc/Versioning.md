@@ -61,14 +61,16 @@ Feature branch → PR → CI (360+ tests) → Review → Merge
 
 ### Pinning Versions
 
-For CI pipelines and infrastructure-as-code:
+Signed releases (Homebrew cask, GitHub Release downloads) aren't
+published yet — see the root [README](https://github.com/Spooky-Labs/spooktacular#quick-start)
+for the current build-from-source install. For CI pipelines and
+infrastructure-as-code, pin a commit or tag and build it:
 
 ```bash
-# Homebrew
-brew install --cask spooktacular@1.0
-
-# Direct download (specific version)
-curl -L https://github.com/Spooky-Labs/spooktacular/releases/download/v1.0.0/Spooktacular.app.zip
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular
+git checkout v1.0.1   # or a specific commit SHA
+./build-app.sh release
 ```
 
 ## Topics

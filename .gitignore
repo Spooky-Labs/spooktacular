@@ -43,3 +43,4 @@ fastlane/.env.local
 
 # Installer package (built artifact)
 *.pkg
+.superpowers/

@@ -64,9 +64,8 @@ public enum WebhookKeychain {
 
     /// Keychain service name. Follows the `com.spooktacular.*`
     /// convention used by the GitHub PAT resolver
-    /// (`com.spooktacular.github`), the audit signing key
-    /// (`com.spooktacular.merkle-audit`), and the break-glass
-    /// operator key (`com.spooktacular.break-glass`).
+    /// (`com.spooktacular.github`) and the break-glass operator
+    /// key (`com.spooktacular.break-glass`).
     public static let service = "com.spooktacular.webhook"
 
     /// Returns the secret stored under `account`, or `nil` if the

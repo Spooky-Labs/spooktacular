@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spooktacular — Double Your Mac Capacity. Same Hardware.</title>
-<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Ephemeral runner pools, warm-pool scrub validation, Kubernetes orchestration. 424 tests, 15+ CLI commands. MIT licensed, $0 forever.">
-<meta name="keywords" content="macOS virtualization, Apple Silicon VM, CI/CD runners, GitHub Actions, runner pools, ephemeral runners, mTLS, Kubernetes, EC2 Mac, open source">
+<meta name="description" content="Open-source macOS VM manager for Apple Silicon. Zero-touch GitHub Actions runners, remote desktop, APFS clones. 800 tests, 28 CLI commands. MIT licensed, $0 forever.">
+<meta name="keywords" content="macOS virtualization, Apple Silicon VM, CI/CD runners, GitHub Actions, runner pools, ephemeral runners, mTLS, EC2 Mac, open source">
 <meta property="og:title" content="Spooktacular — Double Your Mac Capacity">
-<meta property="og:description" content="Run 2 macOS VMs per Mac. Guest agent for clipboard, exec, apps. APFS cloning, HTTP API, Kubernetes operator. MIT licensed, $0 forever.">
+<meta property="og:description" content="Run 2 macOS VMs per Mac. APFS cloning, HTTP API, ephemeral runner pools. MIT licensed, $0 forever.">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://spooktacular.app/">
 <style>
@@ -228,7 +228,7 @@ Spooktacular
 </div>
 
 <h1 id="hero-heading">Double your Mac capacity. <span class="gradient">Same hardware.</span></h1>
-<p class="lead">Run 2 macOS VMs per Mac with APFS cloning, ephemeral runner pools, warm-pool scrub validation, and Kubernetes orchestration. Open source, $0 forever.</p>
+<p class="lead">Run 2 macOS VMs per Mac with APFS cloning, ephemeral runner pools, and warm-pool scrub validation. Open source, $0 forever.</p>
 <div class="cta">
 <a href="get-started.html" class="btn-primary">Get Started</a>
 <a href="download.html" class="btn-secondary">Download</a>
@@ -241,9 +241,9 @@ Spooktacular
 <div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">spooktacular</span></div>
 <div class="terminal-body">
 <div><span class="cmt"># Create ephemeral GitHub runners on your Mac fleet</span></div>
-<div><span class="dim">$</span> <span class="cmd">kubectl get rp</span></div>
-<div>NAME              READY  BUSY  MIN  MAX  MODE       PHASE</div>
-<div><span class="ok">ios-ci-runners    2      0     2    4    ephemeral  Healthy</span></div>
+<div><span class="dim">$</span> <span class="cmd">spook list</span></div>
+<div>NAME              STATUS   CPU  MEM   IP</div>
+<div><span class="ok">runner-01         running   8   16G   192.168.64.3</span></div>
 <div>&nbsp;</div>
 <div><span class="cmt"># Verify host readiness</span></div>
 <div><span class="dim">$</span> <span class="cmd">spook doctor</span></div>
@@ -262,9 +262,9 @@ Spooktacular
 <!-- Stats -->
 <div class="container">
 <div class="stats-bar" role="figure" aria-label="Project statistics">
-<div class="stat-item"><div class="num">424</div><div class="label">Tests in 53 suites</div></div>
-<div class="stat-item"><div class="num">15+</div><div class="label">CLI commands</div></div>
-<div class="stat-item"><div class="num">~15K</div><div class="label">Lines of Swift</div></div>
+<div class="stat-item"><div class="num">800</div><div class="label">Tests</div></div>
+<div class="stat-item"><div class="num">28</div><div class="label">CLI commands</div></div>
+<div class="stat-item"><div class="num">~47K</div><div class="label">Lines of Swift</div></div>
 <div class="stat-item"><div class="num">$0</div><div class="label">Forever</div></div>
 </div>
 </div>
@@ -283,7 +283,7 @@ Spooktacular
 <div class="use-case-card">
 <div class="uc-icon" aria-hidden="true">&#129302;</div>
 <h3>AI Agents</h3>
-<p>Give computer-using agents a full macOS desktop. Guest agent provides clipboard, exec, and app control over VirtIO.</p>
+<p>Give computer-using agents a full macOS desktop. SPICE clipboard bridge syncs the pasteboard between host and guest.</p>
 </div>
 <div class="use-case-card">
 <div class="uc-icon" aria-hidden="true">&#128424;</div>
@@ -293,60 +293,7 @@ Spooktacular
 <div class="use-case-card">
 <div class="uc-icon" aria-hidden="true">&#128295;</div>
 <h3>DevOps</h3>
-<p>HTTP API with Bearer auth. Kubernetes operator for declarative VM management. Templates and snapshots.</p>
-</div>
-</div>
-</div>
-</section>
-
-<!-- Guest Agent (NEW) -->
-<section id="guest-agent">
-<div class="container">
-<div class="section-label">New</div>
-<h2>Rich Guest Agent</h2>
-<p class="subtitle">12 HTTP API endpoints running inside the guest VM over VirtIO socket. No SSH, no network configuration, no open ports.</p>
-<div class="features-grid">
-<div class="feature-card">
-<span class="icon" aria-hidden="true">&#128203;</span>
-<div class="tag tag-new">New</div>
-<h3>Clipboard Sync</h3>
-<p>Get and set the guest clipboard from the host. Works over VirtIO -- no SSH, no VNC, no screen scraping required.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
-</div>
-<div class="feature-card">
-<span class="icon" aria-hidden="true">&#9654;</span>
-<div class="tag tag-new">New</div>
-<h3>Remote Exec</h3>
-<p>Run commands inside the guest and stream output back. Full GUI session access via LaunchAgent. No SSH keys to manage.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spook/Commands/Remote.swift" class="source-link" target="_blank">View source &rarr;</a>
-</div>
-<div class="feature-card">
-<span class="icon" aria-hidden="true">&#128187;</span>
-<div class="tag tag-new">New</div>
-<h3>App Control</h3>
-<p>List, launch, and quit macOS apps by bundle ID. Perfect for AI agents that need to interact with GUI applications.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/HTTPAPIServer.swift" class="source-link" target="_blank">View source &rarr;</a>
-</div>
-<div class="feature-card">
-<span class="icon" aria-hidden="true">&#128268;</span>
-<div class="tag tag-new">New</div>
-<h3>Port Discovery</h3>
-<p>List all listening TCP ports inside the guest with process names. Know exactly what services are running without guessing.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
-</div>
-<div class="feature-card">
-<span class="icon" aria-hidden="true">&#128193;</span>
-<div class="tag tag-new">New</div>
-<h3>File Transfer</h3>
-<p>Push files to the guest and pull files from the guest. Transfer build artifacts, configs, and data without shared folders.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
-</div>
-<div class="feature-card">
-<span class="icon" aria-hidden="true">&#128154;</span>
-<div class="tag tag-new">New</div>
-<h3>Health Monitoring</h3>
-<p>Connection status with uptime tracking. Know instantly if the guest agent is responsive and how long it has been running.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/GuestAgentClient.swift" class="source-link" target="_blank">View source &rarr;</a>
+<p>HTTP API with Bearer auth. LaunchDaemon services, templates, and disk-level snapshots.</p>
 </div>
 </div>
 </div>
@@ -370,10 +317,9 @@ Spooktacular
 </thead>
 <tbody>
 <tr><td>License</td><td class="highlight-col"><strong>MIT (free)</strong></td><td>Proprietary</td><td>Fair Source</td><td>Proprietary</td></tr>
-<tr><td>Guest agent (clipboard, exec, apps)</td><td class="yes highlight-col">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="partial">Partial</td></tr>
+<tr><td>Clipboard sync (SPICE)</td><td class="yes highlight-col">Yes</td><td class="yes">Yes</td><td class="no">No</td><td class="partial">Partial</td></tr>
 <tr><td>APFS clone</td><td class="yes highlight-col">Yes (48ms)</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
 <tr><td>HTTP API</td><td class="yes highlight-col">Yes + Bearer auth</td><td class="partial">Basic</td><td class="no">No</td><td class="yes">Yes</td></tr>
-<tr><td>Kubernetes operator</td><td class="yes highlight-col">Yes</td><td class="no">No</td><td class="partial">Orchard</td><td class="yes">Yes</td></tr>
 <tr><td>Templates</td><td class="yes highlight-col">4 built-in</td><td class="no">No</td><td class="no">No</td><td class="partial">Paid</td></tr>
 <tr><td>Setup Assistant automation</td><td class="yes highlight-col">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="yes">Yes</td></tr>
 <tr><td>SwiftUI GUI</td><td class="yes highlight-col">Liquid Glass</td><td class="no">No</td><td class="no">No</td><td class="yes">Yes</td></tr>
@@ -396,7 +342,7 @@ Spooktacular
 <div><div style="font-size: 2rem; font-weight: 800; color: var(--green);">+2x</div><div style="color: var(--dim); font-size: 0.85rem;">macOS VMs</div></div>
 <div><div style="font-size: 2rem; font-weight: 800; color: var(--accent);">3x</div><div style="color: var(--dim); font-size: 0.85rem;">Total capacity</div></div>
 </div>
-<p class="capacity-note">Spooktacular enforces this limit via <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularKit/CapacityCheck.swift" target="_blank">CapacityCheck.swift</a>. Apple's EULA Section 2B(iii) explicitly permits virtualization on Apple Silicon. No additional licenses required.</p>
+<p class="capacity-note">Spooktacular enforces this limit via <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/CapacityCheck.swift" target="_blank">CapacityCheck.swift</a>. Apple's EULA Section 2B(iii) explicitly permits virtualization on Apple Silicon. No additional licenses required.</p>
 </div>
 </div>
 </section>
@@ -409,7 +355,7 @@ Spooktacular
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
 <div style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px;">
 <h3 style="margin-bottom: 0.5rem;">Security Model</h3>
-<p style="color: var(--dim); font-size: 0.9rem; margin: 0;">Mandatory mTLS for controller-to-node traffic. Three-tier guest agent authorization (read / runner / break-glass). Keychain-backed secrets. TLS certificate hot reload.</p>
+<p style="color: var(--dim); font-size: 0.9rem; margin: 0;">Mandatory mTLS in production. RBAC with break-glass emergency access. Keychain-backed secrets. TLS certificate hot reload.</p>
 </div>
 <div style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px;">
 <h3 style="margin-bottom: 0.5rem;">Isolation Semantics</h3>
@@ -420,8 +366,8 @@ Spooktacular
 <p style="color: var(--dim); font-size: 0.9rem; margin: 0;">One Dedicated Host &rarr; one Spooktacular node &rarr; two VM slots. Ephemeral mode = your Replace Root Volume equivalent, but faster. SSM for fleet operations.</p>
 </div>
 <div style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px;">
-<h3 style="margin-bottom: 0.5rem;">Runner Scale Sets</h3>
-<p style="color: var(--dim); font-size: 0.9rem; margin: 0;">RunnerPool CRD maps to GitHub ARC runner scale sets. Ephemeral runners with auto-registration, job detection via webhooks, and automatic deregistration.</p>
+<h3 style="margin-bottom: 0.5rem;">Runner Pools</h3>
+<p style="color: var(--dim); font-size: 0.9rem; margin: 0;">Ephemeral GitHub Actions runners with auto-registration and automatic cleanup after each job — clone, register, run, destroy.</p>
 </div>
 </div>
 
@@ -433,7 +379,7 @@ Spooktacular
 <section class="bottom-cta">
 <div class="container">
 <h2>Ready to double your Mac capacity?</h2>
-<p>424 tests. 15+ CLI commands. $0. Install and create your first VM in under 20 minutes.</p>
+<p>800 tests. 28 CLI commands. $0. Install and create your first VM in under 20 minutes.</p>
 <div class="buttons">
 <a href="get-started.html" class="btn-primary">Get Started</a>
 <a href="download.html" class="btn-secondary">Download</a>
@@ -475,7 +421,7 @@ Spooktacular
 </div>
 </div>
 <div class="foot-bottom">
-<p>&copy; 2026 <a href="https://github.com/Spooky-Labs">Spooky Labs</a>. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
 <p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
 </div>
 </div>

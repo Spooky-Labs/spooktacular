@@ -9,7 +9,7 @@
 #
 #   1. Cordon itself (write /etc/spooktacular/drain).
 #   2. Stop all running VMs gracefully.
-#   3. Flush pending audit events to S3 Object Lock.
+#   3. Sync the local append-only audit log (OSLog + JSONL, UF_APPEND).
 #   4. Signal CONTINUE to let the ASG proceed.
 #
 # The SSM automation wired below handles steps 1–4 by invoking the

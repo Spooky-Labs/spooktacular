@@ -124,19 +124,24 @@ struct DocConsistencyTests {
     /// These layers must depend only on Foundation (or have no imports at all).
     private static let allowedImports: Set<String> = ["Foundation"]
 
-    @Test("SpookCore files import only Foundation")
+    @Test("SpooktacularCore files import only Foundation")
     func coreLayerCompliance() throws {
-        try assertLayerImports(layer: "Sources/SpookCore")
+        try assertLayerImports(layer: "Sources/SpooktacularCore")
     }
 
-    @Test("SpookApplication files import only Foundation, SpookCore, or CryptoKit")
+    @Test("SpooktacularApplication files import only Foundation, SpooktacularCore, CryptoKit, or os")
     func applicationLayerCompliance() throws {
-        // CryptoKit is allowed in SpookApplication because the shared
+        // CryptoKit is allowed in SpooktacularApplication because the shared
         // SignedRequestVerifier + per-request signing primitive need
         // P-256 ECDSA verification. CryptoKit is a system framework
         // (Apple-native, FIPS-validated) so it doesn't violate the
         // "no third-party deps" rule this layer is otherwise protecting.
-        try assertLayerImports(layer: "Sources/SpookApplication", allowed: ["Foundation", "SpookCore", "CryptoKit"])
+        //
+        // `os` is allowed for the same reason: it's the system `os.Logger`
+        // facade, equally Apple-native and equally lightweight (no
+        // architecture coupling). Application-layer actors emit
+        // structured diagnostic logs through it for unified-log filtering.
+        try assertLayerImports(layer: "Sources/SpooktacularApplication", allowed: ["Foundation", "SpooktacularCore", "CryptoKit", "os"])
     }
 
     /// Scans all `.swift` files in the given layer directory and verifies that
@@ -189,15 +194,14 @@ struct DocConsistencyTests {
 
     @Test("README CI trigger matches workflow file")
     func ciTriggerConsistency() throws {
-        let readme: String
-        let ci: String
-        do {
-            readme = try readProjectFile("README.md")
-            ci = try readProjectFile(".github/workflows/ci.yml")
-        } catch {
-            // CI file layout may differ in some environments; skip gracefully.
-            return
-        }
+        // README.md and .github/workflows/ci.yml are repo-level
+        // fixtures — both must exist for this test to be
+        // meaningful. Let any read failure propagate as a test
+        // failure rather than silently no-op'ing, which would
+        // mask a real regression (file renamed, CI workflow
+        // deleted, etc.).
+        let readme = try readProjectFile("README.md")
+        let ci = try readProjectFile(".github/workflows/ci.yml")
 
         // README says "Pull request to main" for the CI workflow.
         if readme.contains("Pull request to main") {
@@ -267,16 +271,14 @@ struct DocConsistencyTests {
             }
         }
 
-        guard !claimedCounts.isEmpty else {
-            // No test count claims found -- nothing to validate.
-            return
-        }
-
         // All claimed counts should be consistent with each other (within 20%).
         // We can't know the exact count at compile time, but the badge count
         // and prose count should not wildly disagree.
-        let minClaimed = claimedCounts.min()!
-        let maxClaimed = claimedCounts.max()!
+        guard let minClaimed = claimedCounts.min(),
+              let maxClaimed = claimedCounts.max() else {
+            // No test count claims found — nothing to validate.
+            return
+        }
 
         // The README badge and prose should not differ by more than a factor of 2.
         #expect(
@@ -294,60 +296,4 @@ struct DocConsistencyTests {
         }
     }
 
-    // MARK: - 6. Helm TLS default matches NodeManager default scheme
-
-    @Test("Helm TLS default matches NodeManager default scheme")
-    func tlsDefaultConsistency() throws {
-        let values: String
-        let nodeManager: String
-        do {
-            values = try readProjectFile("deploy/kubernetes/helm/spooktacular/values.yaml")
-            nodeManager = try readProjectFile("Sources/spook-controller/NodeManager.swift")
-        } catch {
-            // Helm chart or controller may not exist in all checkouts; skip gracefully.
-            return
-        }
-
-        // Determine TLS setting from values.yaml.
-        // Look for the tls.enabled field. The YAML structure is:
-        //   tls:
-        //     enabled: true
-        let tlsPattern = try NSRegularExpression(
-            pattern: #"tls:\s*\n\s*(?:#[^\n]*\n\s*)*enabled:\s*(true|false)"#,
-            options: .dotMatchesLineSeparators
-        )
-        let tlsMatch = tlsPattern.firstMatch(
-            in: values,
-            range: NSRange(values.startIndex..., in: values)
-        )
-
-        // Determine default scheme from NodeManager.swift.
-        // Look for the scheme parameter default, e.g.:
-        //   scheme: String = ... ?? "https"
-        let schemePattern = try NSRegularExpression(
-            pattern: #"\?\?\s*"(https?)""#
-        )
-        let schemeMatch = schemePattern.firstMatch(
-            in: nodeManager,
-            range: NSRange(nodeManager.startIndex..., in: nodeManager)
-        )
-
-        if let tlsRange = tlsMatch.flatMap({ Range($0.range(at: 1), in: values) }),
-           let schemeRange = schemeMatch.flatMap({ Range($0.range(at: 1), in: nodeManager) }) {
-            let tlsEnabled = String(values[tlsRange]) == "true"
-            let defaultScheme = String(nodeManager[schemeRange])
-
-            if tlsEnabled {
-                #expect(
-                    defaultScheme == "https",
-                    "Helm values.yaml has tls.enabled=true but NodeManager defaults to \"\(defaultScheme)\" instead of \"https\""
-                )
-            } else {
-                #expect(
-                    defaultScheme == "http",
-                    "Helm values.yaml has tls.enabled=false but NodeManager defaults to \"\(defaultScheme)\" instead of \"http\""
-                )
-            }
-        }
-    }
 }

@@ -1,6 +1,7 @@
 import SwiftUI
 import SpooktacularKit
 import UniformTypeIdentifiers
+import Virtualization
 import Darwin
 
 /// Entry for a shared folder in the create form.
@@ -25,6 +26,12 @@ struct CreateVMSheet: View {
     // MARK: - State
 
     @State private var name = ""
+    /// Guest operating system.  Branches the create flow
+    /// between the macOS installer (IPSW → `VZMacOSInstaller`)
+    /// and the Linux installer (ISO → `VZEFIBootLoader` +
+    /// `VZUSBMassStorageDeviceConfiguration`).  Mirrors the
+    /// CLI's `--os macos|linux` flag on `spooktacular create`.
+    @State private var guestOS: GuestOS = .macOS
     /// Source of the macOS install media. `.latest` asks Apple's
     /// signing service for the newest IPSW compatible with this
     /// host (the default, ~12 GB download); `.local` points at an
@@ -32,6 +39,20 @@ struct CreateVMSheet: View {
     /// workflows live entirely in `.local`.
     @State private var ipswSource: IPSWSource = .latest
     @State private var localIpswPath: String = ""
+    /// Path to the Linux installer ISO when
+    /// ``guestOS`` is ``GuestOS/linux``.  Copied into the
+    /// bundle at create time so the install flow owns its
+    /// own media (no dangling references to the source file
+    /// if the user later moves it).  Mirrors the CLI's
+    /// `--installer-iso` flag.
+    @State private var installerISOPath: String = ""
+
+    /// Expose Rosetta 2 to the Linux guest as a virtio-fs
+    /// share.  Only shown when ``guestOS`` is
+    /// ``GuestOS/linux``; disabled when Rosetta is not
+    /// available on the host.  Mirrors the CLI's
+    /// `--rosetta` flag.
+    @State private var rosettaEnabled: Bool = false
     @State private var cpuCount: Double = 4
     @State private var memorySizeInGigabytes: Double = 8
     @State private var diskSizeInGigabytes: Double = 64
@@ -44,6 +65,13 @@ struct CreateVMSheet: View {
     @State private var audioEnabled = true
     @State private var microphoneEnabled = false
     @State private var clipboardSharingEnabled = true
+    /// Three-way control for installing Spooktacular Guest
+    /// Tools into the guest's `/Applications/`. Default
+    /// matches the zero-friction "just works" semantics —
+    /// clipboard + guest-agent API come online at first login
+    /// without the user having to click anything. Only shown
+    /// in the UI for macOS guests; Linux guests ignore it.
+    @State private var guestToolsInstall: GuestToolsInstallMode = .installed
     @State private var sharedFolders: [SharedFolderEntry] = []
     @State private var userDataPath = ""
     @State private var provisioningMode = ProvisioningMode.diskInject
@@ -67,17 +95,12 @@ struct CreateVMSheet: View {
     /// ephemeral CI pools that reclone a clean VM per run.
     @State private var ephemeralRunner: Bool = false
 
-    @State private var isCreating = false
-    @State private var statusMessage = ""
-    @State private var progress: Double = 0
-    @State private var bytesReceived: Int64 = 0
-    @State private var bytesTotal: Int64 = 0
+    /// Surface for pre-dispatch validation errors — Keychain
+    /// miss on the GitHub-runner template, missing user-data
+    /// script, etc. Once the request ships to AppState the
+    /// sheet dismisses immediately; any post-dispatch failure
+    /// lands on the sidebar's `PendingVMRow`, not here.
     @State private var errorMessage: String?
-
-    /// In-flight creation task, used by the Cancel button to
-    /// interrupt the download / install loop and clean up the
-    /// partial bundle.
-    @State private var creationTask: Task<Void, Never>?
 
     /// Network selector modes. Separating ``NetworkMode`` (the
     /// domain value) from the picker's selection avoids leaking
@@ -167,56 +190,228 @@ struct CreateVMSheet: View {
             .padding(.horizontal, 24)
             .padding(.top, 20)
             .padding(.bottom, 12)
+            // Runs once when the sheet appears. Two mutually-
+            // exclusive pre-seed paths set by "Create VM from
+            // image" in the image detail view — one for macOS
+            // IPSWs, one for Linux ISOs — so the sheet lands
+            // on the right guest-OS pane + prefilled path and
+            // the user doesn't have to re-browse for the same
+            // file they just selected. Both are consumed on
+            // read so a subsequent "New VM" open starts clean.
+            .onAppear {
+                if let ipsw = appState.pendingCreateIpswPath {
+                    guestOS = .macOS
+                    ipswSource = .local
+                    localIpswPath = ipsw
+                    appState.pendingCreateIpswPath = nil
+                } else if let iso = appState.pendingCreateISOPath {
+                    guestOS = .linux
+                    installerISOPath = iso
+                    appState.pendingCreateISOPath = nil
+                }
+            }
 
             Divider()
 
-            // Two-column scrollable content
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    nameRow
-                    sourceRow
-                    hardwareRow
-                    displayRow
-                    networkRow
-                    audioRow
-                    sharedFoldersRow
-                    provisioningRow
+            // `Form(formStyle: .grouped)` on macOS 26 renders
+            // Liquid Glass-backed section cards + places Section
+            // footers BELOW the content (like Apple's System
+            // Settings). Input controls — Picker, Stepper,
+            // Slider, Toggle, TextField — auto-adopt the
+            // Liquid Glass chrome inside a grouped Form.
+            //
+            // Previously this sheet rolled its own two-column
+            // layout with glass-chip headers + side
+            // explanations, which:
+            //   1. overrode the system Form styling, losing
+            //      auto-glass on pickers / steppers / sliders;
+            //   2. pushed long descriptions into a 200pt side
+            //      column that truncated awkwardly;
+            //   3. diverged from every other macOS app's
+            //      expected "new VM / new …" sheet layout.
+            // Converting to Form eliminates all three issues
+            // and removes ~100 lines of layout plumbing.
+            Form {
+                Section {
+                    TextField("my-vm", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier(AccessibilityID.vmNameField)
+                } header: {
+                    Text("Name")
+                } footer: {
+                    Text("A unique name for this virtual machine. Used in the CLI as 'spook start <name>' and shown in Kubernetes as the resource name.")
                 }
-                .padding(24)
-            }
 
-            // Status bar
-            if isCreating || errorMessage != nil {
+                Section {
+                    Picker("Guest OS", selection: $guestOS) {
+                        Text("macOS").tag(GuestOS.macOS)
+                        Text("Linux").tag(GuestOS.linux)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .help("macOS uses Apple's IPSW installer; Linux boots an installer ISO via EFI.")
+                } header: {
+                    Text("Guest OS")
+                } footer: {
+                    Text(guestOSExplanation)
+                }
+
+                switch guestOS {
+                case .macOS:
+                    Section {
+                        sourceControl
+                    } header: {
+                        Text("macOS Source")
+                    } footer: {
+                        Text("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
+                    }
+                case .linux:
+                    Section {
+                        HStack {
+                            TextField(
+                                "~/Downloads/Fedora-Workstation-Live-43.aarch64.iso",
+                                text: $installerISOPath
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            Button("Browse…") { browseForInstallerISO() }
+                        }
+                    } header: {
+                        Text("Installer ISO")
+                    } footer: {
+                        Text("Path to a UEFI-bootable ARM64 installer ISO. Copied into the VM bundle at create time, then exposed to the guest firmware as a USB mass storage device so EFI's boot manager finds it first. Remove the ISO from the bundle after the guest OS is installed.")
+                    }
+                    rosettaSection
+                }
+
+                Section {
+                    hardwareControls
+                } header: {
+                    Text("Hardware")
+                } footer: {
+                    Text("macOS VMs require at least 4 CPU cores. Memory is allocated from your Mac's unified RAM. The disk uses APFS sparse storage — it only consumes host disk space as the guest writes data.")
+                }
+
+                Section {
+                    Picker("Monitors", selection: $displayCount) {
+                        Text("1 Display").tag(1)
+                        Text("2 Displays").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityIdentifier(AccessibilityID.displayPicker)
+                    .help("Number of virtual monitors attached to the guest. Each uses a Metal-accelerated GPU.")
+                    Toggle("Auto-resize display", isOn: $autoResizeDisplay)
+                        .help("Adjust the guest resolution automatically when you resize the window. Recommended for remote desktop.")
+                } header: {
+                    Text("Display")
+                } footer: {
+                    Text("Each display is backed by a Metal-accelerated GPU. Auto-resize adjusts the guest resolution when you resize the window — essential for remote desktop use.")
+                }
+
+                Section {
+                    networkControls
+                } header: {
+                    Text("Network")
+                } footer: {
+                    Text(networkExplanation)
+                }
+
+                Section {
+                    Toggle("Speaker output", isOn: $audioEnabled)
+                    Toggle("Microphone input", isOn: $microphoneEnabled)
+                    Toggle("Clipboard sharing", isOn: $clipboardSharingEnabled)
+                } header: {
+                    Text("Audio & Sharing")
+                } footer: {
+                    Text("Audio uses VirtIO sound devices. Clipboard sharing enables the SPICE virtio-serial port; enabling Guest Tools below activates the guest side of the bridge.")
+                }
+
+                if guestOS == .macOS {
+                    Section {
+                        Picker("Guest Tools", selection: $guestToolsInstall) {
+                            ForEach(GuestToolsInstallMode.allCases, id: \.self) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                    } header: {
+                        Text("Guest Tools")
+                    } footer: {
+                        Text(guestToolsInstall.helpText)
+                    }
+                }
+
+                Section {
+                    sharedFoldersControls
+                } header: {
+                    Text("Shared Folders")
+                } footer: {
+                    Text("Shared folders appear in the guest at /Volumes/My Shared Files/. Use them to pass build artifacts, training data, or configuration files between host and guest without networking.")
+                }
+
+                if guestOS == .macOS {
+                    Section {
+                        provisioningControls
+                    } header: {
+                        Text("Provisioning")
+                    } footer: {
+                        Text(template.explanation)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            // Inline error — pre-dispatch validation failures
+            // only (Keychain miss, missing user-data script).
+            // Post-dispatch progress lives on the sidebar's
+            // pending row.
+            if errorMessage != nil {
                 Divider()
-                statusBar
+                errorBar
             }
 
-            // Button bar
+            // Button bar. Cancel just dismisses; Create builds
+            // the request, hands it to AppState, and dismisses
+            // immediately — the actual long-running pipeline
+            // (IPSW download, install, disk inject) runs on the
+            // AppState-owned Task and publishes progress to the
+            // `pendingCreations` dict. The sidebar renders a
+            // row per entry with progress + status, so the
+            // user keeps the library available throughout.
             Divider()
-            HStack {
-                Button("Cancel") { cancelOrDismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .help("Close the sheet and cancel the in-flight download")
-                    .accessibilityIdentifier(AccessibilityID.cancelButton)
-                Spacer()
-                if isCreating {
-                    ProgressView().controlSize(.small)
+            GlassEffectContainer(spacing: 8) {
+                HStack {
+                    Button("Cancel") { dismiss() }
+                        .glassButton()
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityIdentifier(AccessibilityID.cancelButton)
+                    Spacer()
+                    // `submitCreate()` dismisses the sheet on
+                    // successful dispatch and leaves it open
+                    // (with `errorMessage` set) on validation
+                    // failure so the user can fix Keychain /
+                    // path issues without losing the form
+                    // state they just typed.
+                    Button("Create") {
+                        submitCreate()
+                    }
+                    .glassProminentButton()
+                    .disabled(!canCreate)
+                    .keyboardShortcut(.defaultAction)
+                    .help("Create the VM. Download + install run in the background; progress shows in the sidebar.")
+                    .accessibilityIdentifier(AccessibilityID.createConfirmButton)
                 }
-                Button("Create") {
-                    let task = Task { await createVM() }
-                    creationTask = task
-                }
-                .glassButton()
-                .disabled(isCreating || !canCreate)
-                .keyboardShortcut(.defaultAction)
-                .help("Download the IPSW, install macOS, and register the bundle")
-                .accessibilityIdentifier(AccessibilityID.createConfirmButton)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
         .frame(width: 680, height: 640)
         .accessibilityIdentifier(AccessibilityID.createSheet)
+        // Propagate the `.switch` style to every `Toggle` in the
+        // sheet via environment inheritance — checkboxes read as
+        // old-style Mac form controls; switches match the
+        // Liquid-Glass sliding-thumb idiom and the app's other
+        // boolean surfaces.
+        .toggleStyle(.switch)
     }
 
     /// Whether the Create button is eligible to fire. A non-blank
@@ -229,78 +424,62 @@ struct CreateVMSheet: View {
     /// by transient filesystem state while typing.
     private var canCreate: Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
-        if ipswSource == .local,
-           localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty {
-            return false
-        }
-        switch template {
-        case .githubRunner:
-            return !githubRepo.trimmingCharacters(in: .whitespaces).isEmpty
-                && !githubKeychainAccount.trimmingCharacters(in: .whitespaces).isEmpty
-        default:
-            return true
-        }
-    }
-
-    // MARK: - Cancel / Dismiss
-
-    /// Cancels the in-flight creation task if running, otherwise
-    /// dismisses the sheet. Partial bundle cleanup happens in the
-    /// `catch` branch of ``createVM()``.
-    private func cancelOrDismiss() {
-        if let task = creationTask {
-            task.cancel()
-            creationTask = nil
-        } else {
-            dismiss()
+        switch guestOS {
+        case .macOS:
+            if ipswSource == .local,
+               localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty {
+                return false
+            }
+            switch template {
+            case .githubRunner:
+                return !githubRepo.trimmingCharacters(in: .whitespaces).isEmpty
+                    && !githubKeychainAccount.trimmingCharacters(in: .whitespaces).isEmpty
+            default:
+                return true
+            }
+        case .linux:
+            return !installerISOPath.trimmingCharacters(in: .whitespaces).isEmpty
         }
     }
 
-    // MARK: - Rows (two-column: control | explanation)
+    // MARK: - Section controls (plain — Form wraps)
 
-    private var nameRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Name").font(.headline).glassSectionHeader()
-                    TextField("my-vm", text: $name)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityIdentifier(AccessibilityID.vmNameField)
-                }
-            },
-            explanation: """
-                A unique name for this virtual machine. Used in the \
-                CLI as 'spook start <name>' and shown in Kubernetes \
-                as the resource name.
+    private var guestOSExplanation: String {
+        switch guestOS {
+        case .macOS:
+            return """
+                Installs a macOS guest from an Apple IPSW. \
+                Uses VZMacOSInstaller under the hood and \
+                produces a Mac-style VM bundle with hardware \
+                model, aux storage, and NVRAM.
                 """
-        )
+        case .linux:
+            return """
+                Boots a Linux installer ISO via EFI firmware \
+                (VZEFIBootLoader) and installs onto a fresh \
+                sparse disk. Supports any UEFI-bootable ARM64 \
+                distribution (Fedora, Ubuntu, Debian, …).
+                """
+        }
     }
 
-    private var sourceRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("macOS Source").font(.headline).glassSectionHeader()
+    @ViewBuilder
+    private var sourceControl: some View {
+        Picker("Source", selection: $ipswSource) {
+            Text("Latest compatible").tag(IPSWSource.latest)
+            Text("Local IPSW file").tag(IPSWSource.local)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .help("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
 
-                    Picker("Source", selection: $ipswSource) {
-                        Text("Latest compatible").tag(IPSWSource.latest)
-                        Text("Local IPSW file").tag(IPSWSource.local)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .help("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
-
-                    if ipswSource == .local {
-                        HStack {
-                            TextField("~/Downloads/macOS.ipsw", text: $localIpswPath)
-                                .textFieldStyle(.roundedBorder)
-                            Button("Browse…") { browseForIPSW() }
-                        }
-                    }
-                }
-            },
-            explanation: ipswSourceExplanation
-        )
+        if ipswSource == .local {
+            HStack {
+                TextField("~/Downloads/macOS.ipsw", text: $localIpswPath)
+                    .textFieldStyle(.roundedBorder)
+                Button("Browse…") { browseForIPSW() }
+            }
+        }
     }
 
     private var ipswSourceExplanation: String {
@@ -322,123 +501,68 @@ struct CreateVMSheet: View {
         }
     }
 
-    private var hardwareRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Hardware").font(.headline).glassSectionHeader()
-
-                    HStack {
-                        Text("CPU")
-                            .frame(width: 70, alignment: .leading)
-                        Stepper(
-                            value: $cpuCount,
-                            in: 4...Double(ProcessInfo.processInfo.processorCount),
-                            step: 1
-                        ) {
-                            Text("\(Int(cpuCount)) cores")
-                                .monospacedDigit()
-                        }
-                        .accessibilityIdentifier(AccessibilityID.cpuStepper)
-                        .help("Number of virtual CPU cores. Minimum 4, maximum is this Mac's logical core count.")
-                        .accessibilityValue("\(Int(cpuCount)) CPU cores")
-                    }
-
-                    HStack {
-                        Text("Memory")
-                            .frame(width: 70, alignment: .leading)
-                        Slider(value: $memorySizeInGigabytes, in: 4...64, step: 4)
-                            .accessibilityIdentifier(AccessibilityID.memorySlider)
-                            .help("Guest RAM in gigabytes. Allocated from your Mac's unified memory.")
-                            .accessibilityValue("\(Int(memorySizeInGigabytes)) gigabytes RAM")
-                        Text("\(Int(memorySizeInGigabytes)) GB")
-                            .monospacedDigit()
-                            .frame(width: 45, alignment: .trailing)
-                    }
-
-                    HStack {
-                        Text("Disk")
-                            .frame(width: 70, alignment: .leading)
-                        Slider(value: $diskSizeInGigabytes, in: 32...500, step: 32)
-                            .accessibilityIdentifier(AccessibilityID.diskSlider)
-                            .help("Virtual disk size. APFS sparse — only host space the guest actually writes is consumed.")
-                            .accessibilityValue("\(Int(diskSizeInGigabytes)) gigabytes disk")
-                        Text("\(Int(diskSizeInGigabytes)) GB")
-                            .monospacedDigit()
-                            .frame(width: 45, alignment: .trailing)
-                    }
-                }
-            },
-            explanation: """
-                macOS VMs require at least 4 CPU cores. Memory is \
-                allocated from your Mac's unified RAM. The disk uses \
-                APFS sparse storage — it only consumes host disk \
-                space as the guest writes data.
-                """
-        )
+    @ViewBuilder
+    private var hardwareControls: some View {
+        HStack {
+            Text("CPU").frame(width: 70, alignment: .leading)
+            Stepper(
+                value: $cpuCount,
+                in: 4...Double(ProcessInfo.processInfo.processorCount),
+                step: 1
+            ) {
+                Text("\(Int(cpuCount)) cores").monospacedDigit()
+            }
+            .accessibilityIdentifier(AccessibilityID.cpuStepper)
+            .help("Number of virtual CPU cores. Minimum 4, maximum is this Mac's logical core count.")
+            .accessibilityValue("\(Int(cpuCount)) CPU cores")
+        }
+        HStack {
+            Text("Memory").frame(width: 70, alignment: .leading)
+            Slider(value: $memorySizeInGigabytes, in: 4...64, step: 4)
+                .accessibilityIdentifier(AccessibilityID.memorySlider)
+                .help("Guest RAM in gigabytes. Allocated from your Mac's unified memory.")
+                .accessibilityValue("\(Int(memorySizeInGigabytes)) gigabytes RAM")
+            Text("\(Int(memorySizeInGigabytes)) GB")
+                .monospacedDigit()
+                .frame(width: 45, alignment: .trailing)
+        }
+        HStack {
+            Text("Disk").frame(width: 70, alignment: .leading)
+            Slider(value: $diskSizeInGigabytes, in: 32...500, step: 32)
+                .accessibilityIdentifier(AccessibilityID.diskSlider)
+                .help("Virtual disk size. APFS sparse — only host space the guest actually writes is consumed.")
+                .accessibilityValue("\(Int(diskSizeInGigabytes)) gigabytes disk")
+            Text("\(Int(diskSizeInGigabytes)) GB")
+                .monospacedDigit()
+                .frame(width: 45, alignment: .trailing)
+        }
     }
 
-    private var displayRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Display").font(.headline).glassSectionHeader()
+    @ViewBuilder
+    private var networkControls: some View {
+        Picker("Mode", selection: $networkKind) {
+            Text("NAT (shared)").tag(NetworkKind.nat)
+            Text("Bridged (own IP)").tag(NetworkKind.bridged)
+            Text("Isolated (no network)").tag(NetworkKind.isolated)
+        }
+        .labelsHidden()
+        .accessibilityIdentifier(AccessibilityID.networkPicker)
+        .help("Networking mode. Bridged requires the com.apple.vm.networking entitlement.")
 
-                    Picker("Monitors", selection: $displayCount) {
-                        Text("1 Display").tag(1)
-                        Text("2 Displays").tag(2)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .accessibilityIdentifier(AccessibilityID.displayPicker)
-                    .help("Number of virtual monitors attached to the guest. Each uses a Metal-accelerated GPU.")
-
-                    Toggle("Auto-resize display", isOn: $autoResizeDisplay)
-                        .help("Adjust the guest resolution automatically when you resize the window. Recommended for remote desktop.")
+        if networkKind == .bridged {
+            Picker("Interface", selection: $bridgedInterface) {
+                ForEach(availableBridgedInterfaces(), id: \.self) { iface in
+                    Text(iface).tag(iface)
                 }
-            },
-            explanation: """
-                Each display is backed by a Metal-accelerated GPU. \
-                Auto-resize adjusts the guest resolution when you \
-                resize the window — essential for remote desktop use.
-                """
-        )
-    }
-
-    private var networkRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Network").font(.headline).glassSectionHeader()
-
-                    Picker("Mode", selection: $networkKind) {
-                        Text("NAT (shared)").tag(NetworkKind.nat)
-                        Text("Bridged (own IP)").tag(NetworkKind.bridged)
-                        Text("Isolated (no network)").tag(NetworkKind.isolated)
-                    }
-                    .labelsHidden()
-                    .accessibilityIdentifier(AccessibilityID.networkPicker)
-                    .help("Networking mode. Bridged requires the com.apple.vm.networking entitlement.")
-
-                    if networkKind == .bridged {
-                        Picker("Interface", selection: $bridgedInterface) {
-                            ForEach(availableBridgedInterfaces(), id: \.self) { iface in
-                                Text(iface).tag(iface)
-                            }
-                        }
-                        .help("Host network interface to bridge onto. Typically en0 for Wi-Fi, en1 for Ethernet.")
-                        .onAppear {
-                            // Preselect the first interface if none chosen.
-                            if bridgedInterface.isEmpty,
-                               let first = availableBridgedInterfaces().first {
-                                bridgedInterface = first
-                            }
-                        }
-                    }
+            }
+            .help("Host network interface to bridge onto. Typically en0 for Wi-Fi, en1 for Ethernet.")
+            .onAppear {
+                if bridgedInterface.isEmpty,
+                   let first = availableBridgedInterfaces().first {
+                    bridgedInterface = first
                 }
-            },
-            explanation: networkExplanation
-        )
+            }
+        }
     }
 
     /// Enumerates host network interface names via `getifaddrs`
@@ -466,95 +590,50 @@ struct CreateVMSheet: View {
         return result.sorted()
     }
 
-    private var audioRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Audio & Sharing").font(.headline).glassSectionHeader()
-
-                    Toggle("Speaker output", isOn: $audioEnabled)
-                    Toggle("Microphone input", isOn: $microphoneEnabled)
-                    Toggle("Clipboard sharing", isOn: $clipboardSharingEnabled)
+    @ViewBuilder
+    private var sharedFoldersControls: some View {
+        ForEach($sharedFolders) { $folder in
+            HStack {
+                Image(systemName: "folder").foregroundStyle(.secondary)
+                Text(folder.hostPath).lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Text(folder.readOnly ? "ro" : "rw")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button(role: .destructive) {
+                    sharedFolders.removeAll { $0.id == folder.id }
+                } label: {
+                    Image(systemName: "minus.circle")
                 }
-            },
-            explanation: """
-                Audio uses VirtIO sound devices. Clipboard sharing \
-                is only supported for Linux guests; macOS guests \
-                do not support clipboard synchronization through \
-                the Virtualization framework.
-                """
-        )
+                .buttonStyle(.plain)
+            }
+        }
+        Button {
+            addSharedFolder()
+        } label: {
+            Label("Add Folder…", systemImage: "plus")
+        }
     }
 
-    private var sharedFoldersRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Shared Folders").font(.headline).glassSectionHeader()
+    @ViewBuilder
+    private var provisioningControls: some View {
+        Picker("Template", selection: $template) {
+            ForEach(ProvisioningTemplate.allCases, id: \.self) { kind in
+                Text(kind.label).tag(kind)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .help("Pick a built-in first-boot template or provide a custom script.")
 
-                    ForEach($sharedFolders) { $folder in
-                        HStack {
-                            Image(systemName: "folder")
-                                .foregroundStyle(.secondary)
-                            Text(folder.hostPath)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer()
-                            Text(folder.readOnly ? "ro" : "rw")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Button(role: .destructive) {
-                                sharedFolders.removeAll { $0.id == folder.id }
-                            } label: {
-                                Image(systemName: "minus.circle")
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    Button {
-                        addSharedFolder()
-                    } label: {
-                        Label("Add Folder…", systemImage: "plus")
-                    }
-                }
-            },
-            explanation: """
-                Shared folders appear in the guest at \
-                /Volumes/My Shared Files/. Use them to pass \
-                build artifacts, training data, or configuration \
-                files between host and guest without networking.
-                """
-        )
-    }
-
-    private var provisioningRow: some View {
-        row(
-            control: {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Provisioning").font(.headline).glassSectionHeader()
-
-                    Picker("Template", selection: $template) {
-                        ForEach(ProvisioningTemplate.allCases, id: \.self) { kind in
-                            Text(kind.label).tag(kind)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .help("Pick a built-in first-boot template or provide a custom script.")
-
-                    switch template {
-                    case .none, .openclaw, .remoteDesktop:
-                        EmptyView()
-                    case .githubRunner:
-                        githubRunnerFields
-                    case .custom:
-                        customScriptFields
-                    }
-                }
-            },
-            explanation: template.explanation
-        )
+        switch template {
+        case .none, .openclaw, .remoteDesktop:
+            EmptyView()
+        case .githubRunner:
+            githubRunnerFields
+        case .custom:
+            customScriptFields
+        }
     }
 
     @ViewBuilder
@@ -596,24 +675,6 @@ struct CreateVMSheet: View {
         }
     }
 
-    // MARK: - Two-Column Row Builder
-
-    private func row<C: View>(
-        @ViewBuilder control: () -> C,
-        explanation: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 24) {
-            control()
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(explanation)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(width: 200, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     // MARK: - Network Explanation
 
     private var networkExplanation: String {
@@ -643,42 +704,19 @@ struct CreateVMSheet: View {
         }
     }
 
-    // MARK: - Status Bar
+    // MARK: - Error Bar
 
     @ViewBuilder
-    private var statusBar: some View {
-        VStack(spacing: 6) {
-            if isCreating {
-                ProgressView(value: progress)
-                    .tint(.accentColor)
-                    .accessibilityIdentifier(AccessibilityID.progressIndicator)
-                    .accessibilityValue("\(Int(progress * 100)) percent")
-                HStack {
-                    Text(statusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier(AccessibilityID.statusMessage)
-                    Spacer()
-                    if bytesTotal > 0 {
-                        Text("\(byteString(bytesReceived)) / \(byteString(bytesTotal))")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            if let error = errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
+    private var errorBar: some View {
+        if let error = errorMessage {
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassCard(cornerRadius: 10)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 10)
-        .glassCard(cornerRadius: 10)
-    }
-
-    private func byteString(_ count: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
     }
 
     // MARK: - Actions
@@ -716,6 +754,66 @@ struct CreateVMSheet: View {
     /// treats IPSWs by signature internally.
     ///
     /// Docs: https://developer.apple.com/documentation/uniformtypeidentifiers/uttype/init(filenameextension:conformingto:)
+    /// Rosetta toggle + availability hint.  Disables the
+    /// toggle (and forces it off) when the host reports
+    /// Rosetta as unavailable, so the user can't arm a
+    /// flag that'll silently no-op at VM start.  The
+    /// availability check hits the framework directly
+    /// rather than caching a value — Rosetta can transition
+    /// from uninstalled to installed if the user runs
+    /// `softwareupdate --install-rosetta` while this sheet
+    /// is open.
+    @ViewBuilder
+    private var rosettaSection: some View {
+        let available = VZLinuxRosettaDirectoryShare.availability == .installed
+        Section {
+            Toggle("Enable Rosetta in guest", isOn: $rosettaEnabled)
+                .disabled(!available)
+                .onChange(of: available) { _, newValue in
+                    if !newValue { rosettaEnabled = false }
+                }
+            if !available {
+                Text("Rosetta is not installed on this Mac. Run `softwareupdate --install-rosetta` in Terminal, then reopen this sheet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Rosetta 2")
+        } footer: {
+            Text("Exposes Apple's Rosetta 2 translator to the Linux guest via a virtio-fs share. After install, x86_64 ELF binaries run natively in the guest without QEMU — great for Docker cross-arch builds, CI runners handling legacy binaries, or running x86-only tools on Apple silicon.")
+        }
+    }
+
+    /// Opens an `NSOpenPanel` restricted to disk-image files.
+    /// `UTType.diskImage` (`public.disk-image`) is the system
+    /// UTI that covers ISO, DMG, IMG, and related mountable
+    /// formats; its subtype hierarchy includes
+    /// `public.iso-image` so `.iso` files pass the filter.
+    /// We also synthesize an explicit `.iso` UTType from the
+    /// filename extension so distros that ship ISOs without
+    /// the expected UTI metadata still appear enabled in the
+    /// picker.
+    ///
+    /// Docs:
+    /// - [UTType.diskImage](https://developer.apple.com/documentation/uniformtypeidentifiers/uttype-swift.struct/diskimage)
+    /// - [UTType(filenameExtension:conformingTo:)](https://developer.apple.com/documentation/uniformtypeidentifiers/uttype/init(filenameextension:conformingto:))
+    private func browseForInstallerISO() {
+        let panel = NSOpenPanel()
+        panel.title = "Select Linux Installer ISO"
+        panel.prompt = "Select"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        var allowed: [UTType] = [.diskImage]
+        if let isoType = UTType(filenameExtension: "iso", conformingTo: .diskImage) {
+            allowed.append(isoType)
+        }
+        panel.allowedContentTypes = allowed
+        if panel.runModal() == .OK, let url = panel.url {
+            installerISOPath = url.path
+        }
+    }
+
     private func browseForIPSW() {
         let panel = NSOpenPanel()
         panel.title = "Select IPSW File"
@@ -726,61 +824,24 @@ struct CreateVMSheet: View {
         }
     }
 
-    /// Generates the provisioning script (if any) and injects it
-    /// into the bundle via ``DiskInjector``. For template-backed
-    /// scripts we always use `disk-inject` — the guest hasn't
-    /// booted yet, so SSH isn't reachable. Custom scripts honour
-    /// the user's `provisioningMode` selection.
-    ///
-    /// Script cleanup policy matches
-    /// `Sources/spook/Commands/Create.swift`: template-generated
-    /// scripts live under `~/Library/Caches/com.spooktacular/`
-    /// and are removed post-injection to shrink the on-disk
-    /// window for the GitHub registration token.
-    @MainActor
-    private func provisionBundle(_ bundle: VirtualMachineBundle) async throws {
-        let scriptURL: URL?
-        let ownsScript: Bool
-        (scriptURL, ownsScript) = try resolveProvisionScript()
-
-        guard let script = scriptURL else { return }
-
-        statusMessage = "Injecting first-boot script…"
-        progress = 1.0
-
-        // `hdiutil attach/detach` + APFS mount is synchronous and
-        // takes ~2-3s. Move it off the main actor so the progress
-        // bar keeps animating.
-        try await Task.detached(priority: .userInitiated) {
-            try DiskInjector.inject(script: script, into: bundle)
-        }.value
-
-        if ownsScript {
-            // `ScriptFile.cleanup` is best-effort — failures are
-            // logged by the shared path and don't abort the flow.
-            try? ScriptFile.cleanup(scriptURL: script)
-        }
-    }
-
     /// Resolves the provisioning script for the selected template
     /// and returns `(url, ownsScript)` — the second tuple member
     /// tells the caller whether to delete the file after use.
     /// Templates we generate live in a cache directory and should
     /// be cleaned; user-supplied scripts are left alone.
+    ///
+    /// The GitHub-runner template does **not** produce a script
+    /// here — see ``resolveRunnerRequest()``. Resolving its
+    /// Keychain token and rendering the runner script at
+    /// sheet-submit time would mint a registration token up to
+    /// hours before the VM finishes installing macOS; GitHub
+    /// registration tokens expire after one hour. AppState's
+    /// create pipeline mints the token late instead, mirroring
+    /// `spook create --github-runner`.
     private func resolveProvisionScript() throws -> (URL?, Bool) {
         switch template {
-        case .none:
+        case .none, .githubRunner:
             return (nil, false)
-        case .githubRunner:
-            let repo = githubRepo.trimmingCharacters(in: .whitespaces)
-            let account = githubKeychainAccount.trimmingCharacters(in: .whitespaces)
-            let token = try GitHubTokenResolver.resolve(keychainAccount: account)
-            let url = try GitHubRunnerTemplate.generate(
-                repo: repo,
-                token: token,
-                ephemeral: ephemeralRunner
-            )
-            return (url, true)
         case .openclaw:
             return (try OpenClawTemplate.generate(), true)
         case .remoteDesktop:
@@ -796,15 +857,45 @@ struct CreateVMSheet: View {
         }
     }
 
-    @MainActor
-    private func createVM() async {
+    /// Validates and builds the ``RunnerRequest`` carried in the
+    /// creation request when ``template`` is ``ProvisioningTemplate/githubRunner``.
+    ///
+    /// Only validates shape (non-blank fields, `owner/repo` form
+    /// via ``RunnerRequest``'s initializer) — the Keychain lookup
+    /// and registration-token mint happen later, in
+    /// `AppState.runMacOSCreate`, seconds before the VM boots.
+    ///
+    /// - Returns: `nil` for every template other than
+    ///   ``ProvisioningTemplate/githubRunner``.
+    private func resolveRunnerRequest() throws -> RunnerRequest? {
+        guard template == .githubRunner else { return nil }
+        return try RunnerRequest(
+            repo: githubRepo,
+            keychainAccount: githubKeychainAccount,
+            ephemeral: ephemeralRunner
+        )
+    }
+
+    // MARK: - Submit
+
+    /// Builds the `VirtualMachineSpecification` from the sheet's
+    /// bindings, hands off the request to ``AppState``, and
+    /// dismisses. The long-running pipeline (IPSW download,
+    /// install, disk inject — or Linux disk + ISO copy) runs on
+    /// AppState's Task and publishes progress to
+    /// ``AppState/pendingCreations``; the sidebar renders a row
+    /// per entry so the user can keep working with other VMs
+    /// while this one builds.
+    ///
+    /// Pre-dispatch validation errors (Keychain miss on the
+    /// GitHub-runner template, missing user-data script, etc.)
+    /// keep the sheet open with ``errorMessage`` populated.
+    /// Everything after successful dispatch is AppState's
+    /// problem.
+    private func submitCreate() {
+        errorMessage = nil
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
         guard !trimmedName.isEmpty else { return }
-
-        isCreating = true
-        errorMessage = nil
-        bytesReceived = 0
-        bytesTotal = 0
 
         let spec = VirtualMachineSpecification(
             cpuCount: Int(cpuCount),
@@ -818,121 +909,45 @@ struct CreateVMSheet: View {
                 SharedFolder(hostPath: $0.hostPath, tag: $0.tag, readOnly: $0.readOnly)
             },
             autoResizeDisplay: autoResizeDisplay,
-            clipboardSharingEnabled: clipboardSharingEnabled
+            clipboardSharingEnabled: clipboardSharingEnabled,
+            guestOS: guestOS,
+            rosettaEnabled: guestOS == .linux ? rosettaEnabled : false,
+            guestToolsInstall: guestOS == .macOS ? guestToolsInstall : .disabled
         )
 
-        let manager = RestoreImageManager(cacheDirectory: appState.ipswCacheDirectory)
-        let bundleURL = (try? SpooktacularPaths.bundleURL(for: trimmedName))
-
-        do {
-            statusMessage = "Fetching restore image info…"
-            progress = 0
-            let restoreImage = try await manager.fetchLatestSupported()
-            try Task.checkCancellation()
-            let version = restoreImage.operatingSystemVersion
-            statusMessage = "Found macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-            progress = 0.05
-
-            let ipswURL: URL
-            if ipswSource == .local {
-                // Apple's VZ framework needs the hardware model
-                // from `fetchLatestSupported()` for bundle
-                // creation even when the user supplies their
-                // own IPSW, so we keep that call above and only
-                // skip the download here. Mirrors the CLI's
-                // branching in `Sources/spook/Commands/Create.swift`.
-                let trimmedPath = localIpswPath.trimmingCharacters(in: .whitespaces)
-                let expanded = (trimmedPath as NSString).expandingTildeInPath
-                let candidate = URL(filePath: expanded)
-                guard FileManager.default.fileExists(atPath: candidate.path) else {
-                    errorMessage = "IPSW file not found at '\(expanded)'."
-                    isCreating = false
-                    creationTask = nil
-                    return
-                }
-                ipswURL = candidate
-                statusMessage = "Using local IPSW at \(candidate.lastPathComponent)…"
-                progress = 0.5
-            } else {
-                statusMessage = "Downloading kernel and firmware…"
-                ipswURL = try await manager.downloadIPSW(from: restoreImage) { snapshot in
-                    Task { @MainActor in
-                        bytesReceived = snapshot.bytesReceived
-                        bytesTotal = snapshot.bytesTotal
-                        progress = 0.05 + snapshot.fraction * 0.45
-                        let pct = Int(snapshot.fraction * 100)
-                        statusMessage = snapshot.resumed
-                            ? "Resuming IPSW download (\(pct)%)…"
-                            : "Downloading IPSW (\(pct)%)…"
-                    }
-                }
-            }
-            try Task.checkCancellation()
-
-            statusMessage = "Writing base disk…"
-            progress = 0.5
-            let bundle = try manager.createBundle(
-                named: trimmedName, in: appState.vmsDirectory,
-                from: restoreImage, spec: spec
+        switch guestOS {
+        case .linux:
+            let request = AppState.LinuxCreationRequest(
+                name: trimmedName,
+                spec: spec,
+                installerISOPath: installerISOPath
             )
-            try Task.checkCancellation()
-
-            statusMessage = "Installing macOS…"
-            progress = 0.55
-            try await manager.install(bundle: bundle, from: ipswURL) { fractionCompleted in
-                Task { @MainActor in
-                    progress = 0.55 + fractionCompleted * 0.45
-                    statusMessage = "Installing macOS (\(Int(fractionCompleted * 100))%)…"
+            appState.beginCreateLinuxVM(request)
+            dismiss()
+        case .macOS:
+            do {
+                let (userScriptURL, ownsUserScript) = try resolveProvisionScript()
+                let runnerSpec = try resolveRunnerRequest()
+                let request = AppState.MacOSCreationRequest(
+                    name: trimmedName,
+                    spec: spec,
+                    ipswSource: ipswSource == .local ? .local : .latest,
+                    localIpswPath: localIpswPath,
+                    userScriptURL: userScriptURL,
+                    ownsUserScript: ownsUserScript,
+                    runnerSpec: runnerSpec
+                )
+                appState.beginCreateMacOSVM(request)
+                dismiss()
+            } catch {
+                if let localized = error as? LocalizedError,
+                   let description = localized.errorDescription {
+                    let suggestion = localized.recoverySuggestion.map { " \($0)" } ?? ""
+                    errorMessage = description + suggestion
+                } else {
+                    errorMessage = error.localizedDescription
                 }
             }
-
-            // Provisioning phase — generate the template script
-            // (or resolve the user-supplied one) and inject it via
-            // the same code path the CLI uses. Executed after
-            // install so the guest's data volume exists; disk
-            // injection mounts the freshly-populated APFS
-            // container and drops a LaunchDaemon that fires on
-            // first boot.
-            try Task.checkCancellation()
-            try await provisionBundle(bundle)
-
-            appState.loadVMs()
-            appState.selectedVM = trimmedName
-            isCreating = false
-            creationTask = nil
-            dismiss()
-        } catch is CancellationError {
-            // User hit Cancel — remove any partial bundle so a
-            // subsequent retry doesn't trip over it.
-            if let url = bundleURL {
-                try? FileManager.default.removeItem(at: url)
-            }
-            isCreating = false
-            creationTask = nil
-            progress = 0
-            statusMessage = "Cancelled."
-            dismiss()
-        } catch {
-            if let url = bundleURL {
-                try? FileManager.default.removeItem(at: url)
-            }
-            // Keychain misses and user-data lookup failures carry
-            // their own recoverySuggestion — render both lines so
-            // the user gets the copy-paste-ready `security add-
-            // generic-password` fix verbatim from
-            // `GitHubTokenError`. Other errors still route through
-            // SpooktacularError's classifier for consistent tone.
-            if let localized = error as? LocalizedError,
-               let description = localized.errorDescription {
-                let suggestion = localized.recoverySuggestion.map { " \($0)" } ?? ""
-                errorMessage = description + suggestion
-            } else {
-                let categorized = SpooktacularError.classify(error)
-                errorMessage = "\(categorized.errorDescription ?? error.localizedDescription) \(categorized.suggestedAction)"
-            }
-            isCreating = false
-            creationTask = nil
-            progress = 0
         }
     }
 }
@@ -943,11 +958,14 @@ struct CreateVMSheet: View {
 /// we can't attribute elsewhere.
 private enum CreateVMSheetError: LocalizedError {
     case userDataNotFound(path: String)
+    case diskAllocationFailed(path: String, reason: String)
 
     var errorDescription: String? {
         switch self {
         case .userDataNotFound(let path):
             return "User-data script not found at '\(path)'."
+        case .diskAllocationFailed(let path, let reason):
+            return "Failed to allocate sparse disk image at '\(path)': \(reason)."
         }
     }
 
@@ -955,6 +973,8 @@ private enum CreateVMSheetError: LocalizedError {
         switch self {
         case .userDataNotFound:
             return "Pick an existing shell script with the Browse… button, or remove the template selection."
+        case .diskAllocationFailed:
+            return "Check free disk space and that the bundles directory is writable, then try again."
         }
     }
 }

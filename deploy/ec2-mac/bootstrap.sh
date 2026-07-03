@@ -80,8 +80,8 @@ trap 'log_error "bootstrap interrupted"; exit 130' INT TERM
 # ------------------------------------------------------------------------------
 #
 # --drain  : Write a drain marker so spook serve stops accepting new VMs.
-#            Existing VMs are allowed to finish. When all VMs stop, the host
-#            reports "drained" to the controller.
+#            Existing VMs are allowed to finish. When all VMs stop, the
+#            host's status becomes queryable as "drained" via the HTTP API.
 # --undrain: Remove the drain marker so the host resumes accepting new VMs.
 
 handle_drain() {
@@ -475,9 +475,4 @@ log "  Clone a VM:    spook clone base runner-01"
 log "  Start a VM:    spook start runner-01 --headless"
 log "  Health check:  spook doctor"
 log "  Server logs:   tail -f /var/log/spooktacular-serve.log"
-log ""
-log "  For Kubernetes integration, point the controller at:"
-log "    https://${INSTANCE_IP}:${SPOOK_PORT}"
-log ""
-log "  See: deploy/kubernetes/README.md"
 log ""

@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 import CryptoKit
-@testable import SpookCore
-@testable import SpookApplication
-@testable import SpookInfrastructureApple
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 /// Adversarial tests for the Fortune-20 crypto-hardening pass.
 ///
@@ -13,172 +13,6 @@ import CryptoKit
 /// hardened implementation must refuse.
 @Suite("Crypto hardening pass", .tags(.security, .cryptography))
 struct CryptoHardeningTests {
-
-    // MARK: - 1. SAML: missing Conditions → reject
-
-    @Suite("SAML Conditions fail-closed")
-    struct SAMLConditionsFailClosed {
-
-        /// Documented shape: the error case `.missingConditions`
-        /// exists and is distinct from other SAML failures. Full
-        /// round-trip requires a signed assertion; here we pin
-        /// the surface.
-        @Test("SAMLError.missingConditions is distinct from other cases")
-        func missingConditionsDistinct() {
-            let a = SAMLError.missingConditions
-            let b = SAMLError.assertionExpired
-            let c = SAMLError.conditionNotYetValid
-            #expect(a != b)
-            #expect(a != c)
-        }
-
-        @Test("missingConditions error message mentions Conditions / NotBefore / NotOnOrAfter")
-        func missingConditionsMessage() {
-            let desc = SAMLError.missingConditions.errorDescription ?? ""
-            #expect(desc.contains("Conditions"))
-            #expect(desc.contains("NotBefore") || desc.contains("NotOnOrAfter"))
-        }
-    }
-
-    // MARK: - 2. XML: billion-laughs defense
-
-    @Suite("XML entity-expansion defense")
-    struct XMLEntityExpansion {
-
-        /// Billion-laughs style input: ten levels of nested
-        /// entity definitions, each referencing the one below.
-        /// A naïve parser with unbounded expansion would
-        /// materialize 10^10 characters. We refuse before the
-        /// first expansion goes anywhere.
-        @Test("Billion-laughs input is rejected")
-        func billionLaughsRejected() {
-            let laughs = """
-            <?xml version="1.0"?>
-            <!DOCTYPE lolz [
-              <!ENTITY lol "lol">
-              <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
-              <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">
-              <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
-              <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">
-              <!ENTITY lol5 "&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;">
-              <!ENTITY lol6 "&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;&lol5;">
-              <!ENTITY lol7 "&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;&lol6;">
-              <!ENTITY lol8 "&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;&lol7;">
-              <!ENTITY lol9 "&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;&lol8;">
-            ]>
-            <lolz>&lol9;</lolz>
-            """
-            // Either the entity-expansion guard fires (expected
-            // hardened behavior), or Foundation's XMLParser
-            // rejects the input at the DTD stage. Either way
-            // counts as refusal; the contract is "does not
-            // succeed in expanding the payload".
-            let data = Data(laughs.utf8)
-            let result = Result { try XMLCanonicalization.parse(data) }
-            switch result {
-            case .success:
-                Issue.record("Billion-laughs payload was not rejected")
-            case .failure:
-                break  // expected
-            }
-        }
-
-        @Test("Well-formed small document parses cleanly")
-        func wellFormedSmallOK() throws {
-            let data = Data("<root><child>ok</child></root>".utf8)
-            let root = try XMLCanonicalization.parse(data)
-            #expect(root.localName == "root")
-        }
-
-        @Test("Over-deep nesting is rejected")
-        func tooDeepNestingRejected() {
-            // `XMLCanonicalization.maxElementDepth` defaults to
-            // 10. Build 15 levels of nesting and expect refusal.
-            var doc = ""
-            for i in 0..<15 { doc += "<l\(i)>" }
-            for i in (0..<15).reversed() { doc += "</l\(i)>" }
-            let data = Data(doc.utf8)
-            let result = Result { try XMLCanonicalization.parse(data) }
-            switch result {
-            case .success:
-                Issue.record("Over-deep nesting was not rejected")
-            case .failure(let err):
-                // Expected: `.elementDepthExceeded` from our
-                // typed surface, OR a generic parseFailed
-                // (XMLParser may reject before our delegate
-                // sees all 15 levels, depending on path).
-                let hardenedErr = err as? XMLCanonicalizationError
-                #expect(hardenedErr != nil)
-            }
-        }
-    }
-
-    // MARK: - 3. CDATA fidelity
-
-    @Suite("XML CDATA handling")
-    struct XMLCDATA {
-
-        @Test("CDATA content is preserved and correctly escaped")
-        func cdataRoundTrip() throws {
-            let xml = "<e><![CDATA[foo<bar>&baz]]></e>"
-            let data = Data(xml.utf8)
-            let root = try XMLCanonicalization.parse(data)
-            let canonical = XMLCanonicalization.canonicalize(root)
-            let out = String(data: canonical, encoding: .utf8) ?? ""
-            // C14N §2.3 replaces CDATA with its character
-            // content and escapes `<`, `>`, `&` per the element-
-            // text rules. The content "foo<bar>&baz" must
-            // appear in canonical form as "foo&lt;bar&gt;&amp;baz".
-            #expect(out.contains("foo&lt;bar&gt;&amp;baz"))
-        }
-    }
-
-    // MARK: - 4. OIDC iss-before-key (shape / documentation gate)
-
-    @Suite("OIDC iss-before-key")
-    struct OIDCIssBeforeKey {
-
-        /// A structurally-malformed token with a spoofed `iss`
-        /// should never pass audience validation — the
-        /// verifier short-circuits on issuer mismatch before
-        /// fetching any JWKS.
-        @Test("Malformed token with wrong iss is rejected as malformed")
-        func malformedTokenRejected() async {
-            let config = OIDCProviderConfig(
-                issuerURL: "https://idp-a.example.com",
-                clientID: "client-a",
-                audience: "client-a"
-            )
-            let verifier = OIDCTokenVerifier(
-                config: config, http: StaticHTTPClient()
-            )
-            await #expect(throws: OIDCError.self) {
-                _ = try await verifier.verify(token: "not.a.jwt")
-            }
-        }
-    }
-
-    // MARK: - 5. FederatedIdentity.isExpired(now:)
-
-    @Suite("FederatedIdentity.isExpired(now:)")
-    struct FederatedIsExpired {
-
-        @Test("isExpired(now:) is a method, not a property, accepts injected now")
-        func injectedNow() {
-            let id = FederatedIdentity(
-                issuer: "i", subject: "s",
-                expiresAt: Date(timeIntervalSince1970: 1_700_000_000)
-            )
-            #expect(id.isExpired(now: Date(timeIntervalSince1970: 1_700_000_001)))
-            #expect(!id.isExpired(now: Date(timeIntervalSince1970: 1_699_999_999)))
-        }
-
-        @Test("isExpired is false when expiresAt is nil")
-        func nilExpiryNeverExpires() {
-            let id = FederatedIdentity(issuer: "i", subject: "s", expiresAt: nil)
-            #expect(!id.isExpired(now: Date()))
-        }
-    }
 
     // MARK: - 6. HMAC empty secret
 
@@ -286,10 +120,13 @@ struct CryptoHardeningTests {
             let cache = UsedTicketCache()
             let jti = "ticket-flood"
             let exp = Date().addingTimeInterval(600)
-            var successes = 0
-            for _ in 0..<500 {
+            // Map each attempt to a Bool via `reduce` — filter
+            // discipline SwiftLint's `for_where` rule wants, but
+            // counting the side-effecting call's `true` results
+            // without the for/if shape the rule rejects.
+            let successes = (0..<500).reduce(into: 0) { count, _ in
                 if cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 5) {
-                    successes += 1
+                    count += 1
                 }
             }
             #expect(successes == 5)
@@ -401,16 +238,5 @@ struct CryptoHardeningTests {
             // this closure signature no longer type-checks.
             let _: (any PinnedTLSIdentityProvider) -> Void = { p in acceptsBase(p) }
         }
-    }
-}
-
-// MARK: - Test doubles
-
-/// Minimal HTTPClient that returns empty data for every request —
-/// enough to exercise the malformed-token reject path without
-/// any real network I/O.
-private struct StaticHTTPClient: HTTPClient {
-    func execute(_ request: DomainHTTPRequest) async throws -> DomainHTTPResponse {
-        DomainHTTPResponse(statusCode: 200, headers: [:], body: Data())
     }
 }

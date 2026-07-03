@@ -1,50 +1,76 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 
 import PackageDescription
 
 let package = Package(
     name: "Spooktacular",
     platforms: [
-        .macOS(.v14)
+        // Target macOS 26 (Tahoe). Spooktacular is a pre-1.0
+        // reference architecture for Apple's Virtualization
+        // framework — we hold the deployment target at the
+        // current release so every new API (Liquid Glass,
+        // VZLinuxRosettaDirectoryShare availability tightening,
+        // save-state lifecycle) is available unconditionally.
+        // Dropping `if #available(macOS 14, *)` / `@available`
+        // scaffolding keeps the codebase legible and matches
+        // the user's "pre-1.0, no compat hedges" direction.
+        .macOS("26.0")
     ],
     products: [
         // Umbrella — re-exports Core + Application + InfrastructureApple
         .library(name: "SpooktacularKit", targets: ["SpooktacularKit"]),
         // Granular targets for consumers that want narrow dependencies
-        .library(name: "SpookCore", targets: ["SpookCore"]),
-        .library(name: "SpookApplication", targets: ["SpookApplication"]),
-        .library(name: "SpookInfrastructureApple", targets: ["SpookInfrastructureApple"]),
+        .library(name: "SpooktacularCore", targets: ["SpooktacularCore"]),
+        .library(name: "SpooktacularApplication", targets: ["SpooktacularApplication"]),
+        .library(name: "SpooktacularInfrastructureApple", targets: ["SpooktacularInfrastructureApple"]),
         // Executables
-        .executable(name: "spook", targets: ["spook"]),
+        .executable(name: "spooktacular-cli", targets: ["spooktacular-cli"]),
         .executable(name: "Spooktacular", targets: ["Spooktacular"]),
+        // Out-of-process VM lifecycle helper (Track J). A
+        // crash in VZVirtualMachine inside the helper shows
+        // up to the main app as a dropped XPC connection
+        // rather than a crashed GUI. `build-app.sh` wraps
+        // the binary in a `.xpc` bundle under
+        // `Contents/XPCServices/`; `launchd` launches one
+        // process per connecting parent and reaps it when
+        // the parent exits.
+        .executable(name: "SpooktacularVMHelper", targets: ["SpooktacularVMHelper"]),
+        // Spooktacular Guest Tools — the in-guest companion
+        // app. Ships as a sandboxed `.app` in /Applications
+        // inside every Spooktacular macOS VM. Runs the SPICE
+        // clipboard bridge AND (once Phase 2 lands) the
+        // HTTP/vsock guest-agent API. MenuBarExtra UI so the
+        // user can open/restart/quit it from the menu bar.
+        .executable(name: "SpooktacularGuestTools", targets: ["SpooktacularGuestTools"]),
     ],
     dependencies: [
         .package(
             url: "https://github.com/apple/swift-argument-parser",
             from: "1.5.0"
         ),
-        .package(
-            url: "https://github.com/swiftlang/swift-docc-plugin",
-            from: "1.4.0"
-        ),
+        // Clean-room Swift implementation of the SPICE vd_agent
+        // protocol. Standalone MIT-licensed package (will be
+        // extracted to its own public repo post-launch — see
+        // Packages/SpiceProtocol/docs/SPEC_ATTRIBUTION.md).
+        .package(path: "Packages/SpiceGuestAgent"),
     ],
     targets: [
         // ──────────────────────────────────────────────
         // Domain layer — Foundation only. No frameworks.
         // ──────────────────────────────────────────────
         .target(
-            name: "SpookCore",
-            path: "Sources/SpookCore"
+            name: "SpooktacularCore",
+            path: "Sources/SpooktacularCore"
         ),
 
         // ──────────────────────────────────────────────
         // Application layer — use cases and orchestration.
-        // Depends on SpookCore only.
+        // Depends on SpooktacularCore only.
         // ──────────────────────────────────────────────
         .target(
-            name: "SpookApplication",
-            dependencies: ["SpookCore"],
-            path: "Sources/SpookApplication"
+            name: "SpooktacularApplication",
+            dependencies: ["SpooktacularCore"],
+            path: "Sources/SpooktacularApplication"
         ),
 
         // ──────────────────────────────────────────────
@@ -52,12 +78,12 @@ let package = Package(
         // Virtualization, Network, Security, CryptoKit, os.
         // ──────────────────────────────────────────────
         .target(
-            name: "SpookInfrastructureApple",
+            name: "SpooktacularInfrastructureApple",
             dependencies: [
-                "SpookCore",
-                "SpookApplication",
+                "SpooktacularCore",
+                "SpooktacularApplication",
             ],
-            path: "Sources/SpookInfrastructureApple"
+            path: "Sources/SpooktacularInfrastructureApple"
         ),
 
         // ──────────────────────────────────────────────
@@ -68,7 +94,7 @@ let package = Package(
         // ──────────────────────────────────────────────
         .target(
             name: "SpooktacularKit",
-            dependencies: ["SpookCore", "SpookApplication", "SpookInfrastructureApple"],
+            dependencies: ["SpooktacularCore", "SpooktacularApplication", "SpooktacularInfrastructureApple"],
             path: "Sources/SpooktacularKit"
         ),
 
@@ -76,29 +102,65 @@ let package = Package(
         // Executables — thin composition roots.
         // ──────────────────────────────────────────────
         .executableTarget(
-            name: "spook",
+            name: "spooktacular-cli",
             dependencies: [
                 "SpooktacularKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
-            path: "Sources/spook"
+            path: "Sources/spooktacular-cli"
         ),
         .executableTarget(
             name: "Spooktacular",
             dependencies: ["SpooktacularKit"],
             path: "Sources/Spooktacular"
         ),
+        // VM lifecycle helper (Track J). Depends on
+        // `SpooktacularCore` for `VMHelperProtocol` — the
+        // protocol must be visible on both sides of the XPC
+        // wire. Later commits add
+        // `SpooktacularInfrastructureApple` here when real
+        // VM ops move behind the boundary.
         .executableTarget(
-            name: "spooktacular-agent",
-            dependencies: ["SpookCore", "SpookApplication"],
-            path: "Sources/spooktacular-agent"
+            name: "SpooktacularVMHelper",
+            dependencies: ["SpooktacularCore"],
+            path: "Sources/SpooktacularVMHelper"
         ),
+        // ──────────────────────────────────────────────
+        // Spooktacular Guest Tools — the `.app` that lives
+        // inside every macOS guest VM under /Applications.
+        //
+        // Combines:
+        //   - SPICE clipboard bridge (SpiceClipboardAgent lib)
+        //   - Menu-bar status + user controls (MenuBarExtra)
+        //   - HTTP/vsock guest-agent API (Phase 2)
+        //
+        // Auto-installed by DiskInjector at VM first boot (no
+        // DMG drag, no installer). Registers itself as a
+        // login item on first launch via SMAppService so it
+        // persists across reboots.
+        //
+        // Runs SANDBOXED. See SpooktacularGuestTools.entitlements
+        // for the narrow entitlements it needs (virtio-serial
+        // tty access via `com.apple.security.device.serial`,
+        // NSPasteboard access via the stock sandbox). Does NOT
+        // use AF_VSOCK — that socket family has no sandbox
+        // entitlement on macOS, so the Phase-2 HTTP/vsock
+        // guest-agent API was removed from this bundle. If
+        // host→guest RPC returns, it'll land as a Track-J XPC
+        // helper that's un-sandboxed and talks to this bundle
+        // over `NSXPCConnection`.
+        // ──────────────────────────────────────────────
         .executableTarget(
-            name: "spook-controller",
-            dependencies: ["SpooktacularKit"],
-            path: "Sources/spook-controller"
+            name: "SpooktacularGuestTools",
+            dependencies: [
+                "SpooktacularCore",
+                .product(
+                    name: "SpiceClipboardAgent",
+                    package: "SpiceGuestAgent"
+                ),
+            ],
+            path: "Sources/SpooktacularGuestTools"
         ),
-
         // ──────────────────────────────────────────────
         // Examples — minimum-viable embedding programs that
         // demonstrate the library API. Engineers reading the
@@ -106,13 +168,8 @@ let package = Package(
         // ──────────────────────────────────────────────
         .executableTarget(
             name: "VMLifecycle",
-            dependencies: ["SpookCore", "SpookApplication", "SpookInfrastructureApple"],
+            dependencies: ["SpooktacularCore", "SpooktacularApplication", "SpooktacularInfrastructureApple"],
             path: "Examples/VMLifecycle"
-        ),
-        .executableTarget(
-            name: "GuestAgentRPC",
-            dependencies: ["SpookCore", "SpookInfrastructureApple"],
-            path: "Examples/GuestAgentRPC"
         ),
 
         // ──────────────────────────────────────────────
@@ -120,7 +177,9 @@ let package = Package(
         // ──────────────────────────────────────────────
         .testTarget(
             name: "SpooktacularKitTests",
-            dependencies: ["SpooktacularKit"],
+            dependencies: [
+                "SpooktacularKit",
+            ],
             path: "Tests/SpooktacularKitTests"
         ),
         // UI tests — XCUITest-based, capture App Store

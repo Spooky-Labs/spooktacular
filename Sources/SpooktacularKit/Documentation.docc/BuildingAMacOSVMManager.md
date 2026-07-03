@@ -10,21 +10,21 @@ without repeating the architectural decisions we already settled.
 
 The app target depends on three Swift packages in this repo:
 
-- **`SpookCore`** — pure Swift domain types. No AppKit, no
+- **`SpooktacularCore`** — pure Swift domain types. No AppKit, no
   `Virtualization`, no networking. Use it for models, enums,
   and protocol "ports" that describe what the app needs without
   committing to a concrete transport.
-- **`SpookApplication`** — use cases and services that combine
+- **`SpooktacularApplication`** — use cases and services that combine
   domain types into workflows (RBAC evaluation, tenant
   isolation, runner-pool orchestration).
-- **`SpookInfrastructureApple`** — Apple-framework adapters.
+- **`SpooktacularInfrastructureApple`** — Apple-framework adapters.
   Wraps `VZVirtualMachine`, `NSPasteboard`, `NSWorkspace`,
   `Security.framework`, `Network.framework`, `Foundation Models`.
 
 Views stay thin: they observe `@Observable` state objects and
 call through to these libraries. Keeping logic out of views is
-what makes the same codebase ship a CLI, a Kubernetes
-controller, and an App Store binary from one package.
+what makes the same codebase ship a CLI and an App Store binary
+from one package.
 
 ## Topics
 
@@ -64,7 +64,7 @@ framebuffer inside `WorkspaceWindow`.
 
 ### Per-workspace icons
 
-`IconSpec` (in `SpookCore`) is a `Codable`, `Sendable`,
+`IconSpec` (in `SpooktacularCore`) is a `Codable`, `Sendable`,
 `Hashable` enum with four modes:
 
 - `.cloneApp(bundleID:)` — borrow an installed app's icon
@@ -73,7 +73,7 @@ framebuffer inside `WorkspaceWindow`.
   squircle with a tinted SF Symbol
 - `.preset(name:)` — bundled PNG
 
-`WorkspaceIconRenderer` (in `SpookInfrastructureApple`) is the
+`WorkspaceIconRenderer` (in `SpooktacularInfrastructureApple`) is the
 only place that bridges the domain spec to `NSImage`. Views
 upstream consume a ready-to-use image; the renderer is
 `@MainActor`-isolated because AppKit demands it.
@@ -107,14 +107,14 @@ copy-error-to-clipboard.
 
 ### Host integration
 
-Four channels turn a running VM into a proper desktop citizen:
+Three channels turn a running VM into a proper desktop citizen:
 
 - **Clipboard** — `ClipboardBridge` observes
   `NSPasteboard.changeCount` at 500 ms and prompts per-copy
   for sync permission (glass sheet, 15-minute approval cache).
-- **Ports** — `PortForwardingMonitor` polls
-  `GuestAgentClient.listeningPorts()` every 5 s. Surface them
-  in a toolbar popover with "open in browser" / "copy URL".
+  The guest side is a SPICE clipboard bridge; status pushes to
+  the host as a ``GuestEvent/spiceStatus(_:)`` frame over the
+  vsock event channel.
 - **Snapshots** — `SnapshotInspector` is pure UI over
   `SnapshotManager.save/restore/list/delete`.
 - **Hardware** — `HardwareEditor` retunes CPU/RAM/disk via
@@ -137,16 +137,17 @@ title + subtitle. Enter runs the top match; Esc dismisses.
 ### Charts
 
 `WorkspaceStatsSidebar` uses Swift Charts (system framework,
-no dependency) to plot a 60-second rolling window of agent
-round-trip latency and listening-port count. Pollers bind to
-the guest agent via the existing `GuestAgentClient`.
+no dependency) to plot a 60-second rolling window of CPU,
+memory, disk I/O, energy, and paging. Samples arrive as
+server-pushed NDJSON frames on a single vsock connection to
+`/api/v1/stats/stream` — the guest owns the cadence and pushes
+one frame per second, so the host never polls.
 
 ## See Also
 
 - ``IconSpec``
 - ``VirtualMachineBundle``
 - ``VirtualMachine``
-- ``GuestAgentClient``
 - ``SnapshotManager``
 - <doc:Provisioning>
 - <doc:GettingStarted>

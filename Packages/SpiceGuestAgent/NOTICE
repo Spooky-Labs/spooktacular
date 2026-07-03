@@ -1,0 +1,17 @@
+SpiceGuestAgent
+Copyright 2026 Spooky Labs
+Licensed under the MIT License (see LICENSE).
+
+Guest-side clipboard agent for macOS virtual machines hosted by
+Apple's Virtualization framework. Bridges the guest's NSPasteboard
+to the host's clipboard by speaking the SPICE vd_agent protocol over
+the virtio-serial port exposed by VZSpiceAgentPortAttachment.
+
+Depends on:
+  - SpiceProtocol       (MIT, Spooky Labs) — wire format
+  - SpiceSerialTransport (MIT, Spooky Labs) — async tty I/O
+
+No source code from SPICE reference implementations (spice-vdagent,
+spice-gtk, utmapp/vd_agent) was copied or derived. See
+../SpiceProtocol/docs/SPEC_ATTRIBUTION.md for the full chain of
+custody from the public SPICE specification to this implementation.

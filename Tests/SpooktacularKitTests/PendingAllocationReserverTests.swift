@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import SpookCore
-@testable import SpookApplication
+@testable import SpooktacularCore
+@testable import SpooktacularApplication
 
 /// Tests for the reserver actor that serializes the read-check-
 /// write window around tenant-quota admission.

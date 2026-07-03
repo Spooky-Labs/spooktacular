@@ -14,7 +14,6 @@ keywords:
   - virtualization
   - apple-silicon
   - ci-cd
-  - kubernetes
   - virtual-machine
   - github-actions
   - swift

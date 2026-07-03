@@ -1,0 +1,10 @@
+name: selfhosted-smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: [self-hosted]
+    steps:
+      - run: echo "hello from $(hostname) via $(sw_vers -productVersion)"

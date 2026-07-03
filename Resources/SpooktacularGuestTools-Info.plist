@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.spooktacular.GuestTools</string>
+
+    <key>CFBundleName</key>
+    <string>Spooktacular Guest Tools</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>Spooktacular Guest Tools</string>
+
+    <key>CFBundleExecutable</key>
+    <string>SpooktacularGuestTools</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.1</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 Spooky Labs. All rights reserved.</string>
+
+    <!--
+        Menu-bar only — no Dock tile, no main window.
+        Everything the user interacts with is the MenuBarExtra
+        dropdown. Setting this also suppresses the default
+        app-menu bar across the top of the screen, so the
+        guest-tools app doesn't flash app-switcher focus when
+        it launches at login.
+    -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+</dict>
+</plist>

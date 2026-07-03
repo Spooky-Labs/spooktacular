@@ -5,12 +5,11 @@ The app works only on Apple Silicon Macs. It cannot create VMs on Intel hardware
 What the app does:
 - Creates macOS VMs from IPSW restore images (downloaded automatically)
 - Automates the Setup Assistant so VMs reach a usable desktop unattended
-- Provisions VMs via SSH, disk-inject, VirtIO socket, or shared-folder
-- Provides templates for GitHub Actions runners, remote desktop, and OpenClaw
-- Exposes an HTTP API (9 REST endpoints) for automation
-- Includes a Kubernetes operator for orchestrating VMs at scale
+- Provisions VMs via SSH (scripted, real-time output) or disk-inject (files written directly into the VM disk image before first boot)
+- Provides first-boot templates for GitHub Actions runners, remote desktop (Screen Sharing/VNC), and the OpenClaw AI agent
+- Exposes a REST HTTP API for automation, covering VM lifecycle, snapshots, IAM, and RBAC
 - Saves and restores disk-level snapshots
 
-The app ships both a SwiftUI GUI and a bundled CLI tool called "spook" (installed to /usr/local/bin). The CLI exposes 14 commands for scripting and headless server management. A per-VM LaunchDaemon service keeps VMs running unattended on headless servers.
+The app ships both a SwiftUI GUI and a bundled CLI tool called "spook" (embedded in the app bundle at Contents/MacOS/spook). The CLI covers the same VM lifecycle, snapshot, and security-control surface for scripting and headless server management. A per-VM LaunchDaemon service keeps VMs running unattended on headless servers.
 
-No account login or network service is required. All VM operations are local to the Mac. The app does not collect user data.
+No account login is required to create or run VMs. The GitHub Actions runner template needs a user-supplied personal access token, stored in the Keychain. All VM operations are local to the Mac. The app does not collect user data.

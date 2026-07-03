@@ -11,12 +11,11 @@ framework, it provides a Swift API for VM lifecycle management,
 IPSW installation, instant APFS cloning, and enterprise provisioning.
 
 Use SpooktacularKit directly in your Swift project, or interact with it
-through the `spook` CLI, the Spooktacular GUI app, or the Kubernetes
-operator. All interfaces share the same library and produce identical
-behavior.
+through the `spook` CLI or the Spooktacular GUI app. Both interfaces
+share the same library and produce identical behavior.
 
 > Important: SpooktacularKit requires an Apple Silicon Mac (M1 or later)
-> running macOS 14.0 (Sonoma) or later.
+> running macOS 26.0 or later.
 
 ### Design Principles
 
@@ -59,7 +58,6 @@ try VirtualMachineConfiguration.applySpec(spec, to: config)
 - <doc:GitHubActionsGuide>
 - <doc:JenkinsGuide>
 - <doc:EC2MacDeployment>
-- <doc:KubernetesGuide>
 - <doc:MLWorkloads>
 - <doc:RemoteDesktop>
 - <doc:OpenClawGuide>

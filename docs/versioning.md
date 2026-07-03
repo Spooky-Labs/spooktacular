@@ -67,7 +67,7 @@ their staging environment before the stable release ships.**
 | 0.2.0 | Development | 2026-04-12 | Enterprise blockers: stop, capacity, IP, SSH |
 | 0.3.0 | Development | 2026-04-12 | Feature complete: service, snapshots, templates |
 | 0.4.0 | Development | 2026-04-12 | Code quality: naming, errors, logging, Fastlane |
-| 1.0.0 | Stable | 2026-04-19 | Initial public release (App Store + Homebrew + GitHub Release) |
+| 1.0.0 | Stable | 2026-04-19 | Initial public release — build from source today; signed App Store, Homebrew, and GitHub Release channels are coming |
 
 **0.x.x versions** are development releases. The API may change between
 minor versions. Use in production at your own discretion.
@@ -149,19 +149,15 @@ major bump with migration.
 
 ## How to Pin Versions
 
-**Homebrew:**
-```bash
-brew install --cask spooktacular@1.0
-```
+Signed releases (Homebrew cask, a `setup-spooktacular` GitHub Action,
+direct `.app.zip` downloads) aren't published yet. Until they ship,
+build from source pinned to a tag or commit:
 
-**GitHub Actions:**
-```yaml
-- uses: spooky-labs/setup-spooktacular@v1
-```
-
-**Direct download:**
 ```bash
-curl -L https://github.com/Spooky-Labs/spooktacular/releases/download/v1.0.0/Spooktacular.app.zip
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular
+git checkout v1.0.1   # or a specific commit SHA
+./build-app.sh release
 ```
 
 ## Reporting Issues

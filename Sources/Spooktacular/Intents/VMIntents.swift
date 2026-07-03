@@ -172,30 +172,6 @@ struct CloneVMIntent: AppIntent {
     }
 }
 
-/// Runs a shell command inside a VM via the guest agent.
-struct RunCommandInVMIntent: AppIntent {
-    static let title: LocalizedStringResource = "Run Command in Virtual Machine"
-    static let description = IntentDescription(
-        "Execute a shell command inside a running workspace and return stdout."
-    )
-
-    @Parameter(title: "Virtual Machine")
-    var vm: VMEntity
-
-    @Parameter(title: "Command")
-    var command: String
-
-    static var parameterSummary: some ParameterSummary {
-        Summary("Run \(\.$command) in \(\.$vm)")
-    }
-
-    @MainActor
-    func perform() async throws -> some IntentResult & ReturnsValue<String> {
-        let output = try await IntentAppState.shared.runCommand(command, in: vm.id)
-        return .result(value: output)
-    }
-}
-
 // MARK: - App Shortcuts
 
 /// Registers natural-language phrases for each intent so users

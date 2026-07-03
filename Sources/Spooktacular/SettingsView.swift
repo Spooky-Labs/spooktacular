@@ -1,5 +1,5 @@
 import SwiftUI
-import SpookInfrastructureApple
+import SpooktacularInfrastructureApple
 
 /// The application settings view.
 struct SettingsView: View {
@@ -10,8 +10,11 @@ struct SettingsView: View {
 
             SecuritySettingsView()
                 .tabItem { Label("Security", systemImage: "lock.shield") }
+
+            VMHelperSettingsView()
+                .tabItem { Label("VM Helper", systemImage: "cpu") }
         }
-        .frame(width: 520, height: 340)
+        .frame(width: 520, height: 380)
     }
 }
 
@@ -55,10 +58,11 @@ struct SecuritySettingsView: View {
 
     /// Three-way policy choice: `"auto"` defers to form-factor
     /// detection; `"cufua"` forces CUFUA everywhere; `"none"`
-    /// disables the protection. `SPOOK_BUNDLE_PROTECTION`
+    /// disables the protection. `SPOOKTACULAR_BUNDLE_PROTECTION`
     /// env var, when set, overrides this setting at runtime —
-    /// operators who configure via MDM / launchd plist don't
-    /// get silently overridden by a per-user GUI toggle.
+    /// operators who configure via a device-management profile
+    /// or launchd plist don't get silently overridden by a
+    /// per-user GUI toggle.
     @AppStorage(BundleProtection.userDefaultsKey)
     private var policy: String = "auto"
 
@@ -96,7 +100,7 @@ struct SecuritySettingsView: View {
                 }
                 if envOverrideActive {
                     Label(
-                        "SPOOK_BUNDLE_PROTECTION is set — it overrides this setting until unset.",
+                        "SPOOKTACULAR_BUNDLE_PROTECTION is set — it overrides this setting until unset.",
                         systemImage: "exclamationmark.triangle"
                     )
                     .foregroundStyle(.orange)
@@ -105,16 +109,26 @@ struct SecuritySettingsView: View {
             }
 
             Section("Learn more") {
-                Link(
-                    "docs/DATA_AT_REST.md — OWASP ASVS mapping, threat model, verification",
-                    destination: URL(string: "https://github.com/Spooky-Labs/spooktacular/blob/main/docs/DATA_AT_REST.md")!
-                )
-                .font(.caption)
+                if let dataAtRestURL {
+                    Link(
+                        "docs/DATA_AT_REST.md — OWASP ASVS mapping, threat model, verification",
+                        destination: dataAtRestURL
+                    )
+                    .font(.caption)
+                }
             }
         }
         .formStyle(.grouped)
         .onAppear(perform: refreshEffective)
         .onChange(of: policy) { _, _ in refreshEffective() }
+    }
+
+    /// `URL(string:)` only fails for malformed input, which this
+    /// literal is not — but we still route through an `Optional`
+    /// rather than force-unwrapping, so a future typo degrades to
+    /// a missing link instead of a crash.
+    private var dataAtRestURL: URL? {
+        URL(string: "https://github.com/Spooky-Labs/spooktacular/blob/main/docs/DATA_AT_REST.md")
     }
 
     @ViewBuilder
@@ -149,13 +163,112 @@ struct SecuritySettingsView: View {
     }
 
     private var envOverrideActive: Bool {
-        ProcessInfo.processInfo.environment["SPOOK_BUNDLE_PROTECTION"] != nil
+        ProcessInfo.processInfo.environment["SPOOKTACULAR_BUNDLE_PROTECTION"] != nil
     }
 
     private func refreshEffective() {
         let (cls, pol) = BundleProtection.recommendedPolicy()
         effectiveClass = cls
         effectivePolicy = pol
+    }
+}
+
+// MARK: - VM Helper
+
+/// Track J diagnostics. Pings the bundled
+/// ``SpooktacularInfrastructureApple/VMHelperClient`` and
+/// reports the helper's PID + version, proving the main
+/// app ↔ helper XPC boundary is live.
+///
+/// This panel exists so session 1's "shared helper
+/// boundary" is visibly working without needing to wait
+/// for real VM ops to move behind it. When later commits
+/// route start/stop/pause/resume through the helper, this
+/// view stays as a diagnostic backstop.
+struct VMHelperSettingsView: View {
+
+    enum Status: Equatable {
+        case idle
+        case pinging
+        case ready(pid: Int32, version: String)
+        case failed(String)
+    }
+
+    @State private var status: Status = .idle
+
+    var body: some View {
+        Form {
+            Section {
+                statusRow
+                Button(action: ping) {
+                    Label("Ping Helper", systemImage: "bolt.horizontal")
+                }
+                .disabled(status == .pinging)
+            } header: {
+                Text("Helper Process")
+            } footer: {
+                Text(
+                    "The VM Helper is a bundled XPC service that runs Virtualization.framework "
+                    + "in a separate process. A crash in the helper shows up here as a failed "
+                    + "ping instead of taking down the main app."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private var statusRow: some View {
+        switch status {
+        case .idle:
+            Label("Not probed", systemImage: "circle")
+                .foregroundStyle(.secondary)
+        case .pinging:
+            Label {
+                Text("Pinging…")
+            } icon: {
+                ProgressView().controlSize(.small)
+            }
+        case .ready(let pid, let version):
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Helper responding").bold()
+                    Text("pid \(pid) · version \(version)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "checkmark.circle.fill")
+            }
+            .foregroundStyle(.green)
+        case .failed(let message):
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ping failed").bold()
+                    Text(message)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+            }
+            .foregroundStyle(.red)
+        }
+    }
+
+    private func ping() {
+        status = .pinging
+        Task { @MainActor in
+            let client = VMHelperClient()
+            do {
+                let result = try await client.ping()
+                status = .ready(pid: result.pid, version: result.version)
+            } catch {
+                status = .failed(error.localizedDescription)
+            }
+        }
     }
 }
 

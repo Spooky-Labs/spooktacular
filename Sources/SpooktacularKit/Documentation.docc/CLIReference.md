@@ -6,23 +6,25 @@ Manage macOS virtual machines from the terminal with the `spook` CLI.
 
 The `spook` CLI creates, starts, stops, clones, and configures macOS
 virtual machines on Apple Silicon. It uses the same ``SpooktacularKit``
-library as the GUI app and Kubernetes operator, so behavior is
-identical across all interfaces.
+library as the GUI app, so behavior is identical across both
+interfaces.
 
 > Important: The `spook` CLI requires an Apple Silicon Mac running
-> macOS 14.0 or later. Apple Silicon supports a maximum of 2
+> macOS 26.0 or later. Apple Silicon supports a maximum of 2
 > concurrent VMs per host.
 
 ### Installation
 
-#### Homebrew (Recommended)
+Signed releases aren't published yet — build from source today:
 
 ```bash
-brew install --cask spooktacular
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular
+./build-app.sh release
 
 # Verify
 spook --version
-# spook 1.0.0
+# spook 1.0.1
 ```
 
 #### From the .app Bundle
@@ -72,10 +74,14 @@ USAGE: spook create <name> [options]
 | `--enable-auto-resize` / `--disable-auto-resize` | enabled | Auto-resize display |
 | `--github-runner` | false | Configure as a GitHub Actions runner |
 | `--github-repo <org/repo>` | - | GitHub repository for `--github-runner` |
-| `--github-token <token>` | - | Runner registration token for `--github-runner` |
+| `--github-token-keychain <account>` | - | Keychain account (service `com.spooktacular.github`) holding the GitHub PAT for `--github-runner` |
 | `--openclaw` | false | Configure as an OpenClaw AI agent |
 | `--remote-desktop` | false | Enable Screen Sharing (VNC) |
 | `--ephemeral` | false | Destroy and recreate after each job |
+| `--guest-tools <mode>` | installed | Install Spooktacular Guest Tools inside the guest: `disabled` or `installed` |
+| `--no-start` | false | Skip auto-starting the VM after provisioning (`--github-runner` only — every other template already leaves the VM stopped) |
+| `--skip-setup` | false | Skip automatic Setup Assistant automation |
+| `--json` | false | Print a machine-readable JSON result on success |
 
 **Examples:**
 
@@ -94,9 +100,10 @@ spook create ci --from-ipsw latest \
 # From a local IPSW file
 spook create dev --from-ipsw ~/Downloads/macOS15.4.ipsw
 
-# As a GitHub Actions runner
+# As a GitHub Actions runner (PAT stored once via
+# `security add-generic-password -s com.spooktacular.github -a org-acme -w <PAT> -U`)
 spook create runner --from-ipsw latest \
-    --github-runner --github-repo myorg/myrepo --github-token ghp_xxx
+    --github-runner --github-repo myorg/myrepo --github-token-keychain org-acme
 
 # With shared folder
 spook create ml --cpu 8 --memory 16 \
@@ -656,18 +663,19 @@ spook service status
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NO_COLOR` | - | When set (to any value), disables colored output |
-| `SPOOK_API_TOKEN` | - | Bearer token for the control API |
-| `SPOOK_API_URL` | `https://127.0.0.1:8484` | Control API base URL |
-| `SPOOK_HOME` | `~/.spooktacular` | Data directory path |
+| `SPOOKTACULAR_API_TOKEN` | - | Bearer token for the control API |
+
+The data directory is always `~/.spooktacular/`. The CLI targets
+the local Spooktacular instance; remote targeting is per-command
+(e.g. `spook serve --host 0.0.0.0`) rather than via a global URL
+override.
 
 ```bash
 # Disable colors (respects the NO_COLOR standard)
 NO_COLOR=1 spook list
 
-# Use a remote Spooktacular host
-SPOOK_API_URL=https://10.0.1.50:8484 \
-SPOOK_API_TOKEN=my-secret-token \
-spook list
+# Authenticate against the control API
+SPOOKTACULAR_API_TOKEN=my-secret-token spook list
 ```
 
 ## JSON Output for Automation
@@ -846,17 +854,6 @@ spook list --json | jq '[.[].memoryGB] | add'
 
 # Get VMs that are ready
 spook list --json | jq '[.[] | select(.setupCompleted)] | length'
-```
-
-### kubectl (Kubernetes)
-
-```bash
-# Get Spooktacular-managed K8s VMs and local VMs side by side
-echo "=== Kubernetes VMs ==="
-kubectl get macosvm -A
-echo ""
-echo "=== Local VMs ==="
-spook list
 ```
 
 ### gh (GitHub CLI)

@@ -1,12 +1,12 @@
 import Testing
 import Foundation
-@testable import SpookCore
+@testable import SpooktacularCore
 
-/// Covers the max-min fair allocator that sits above the runner
-/// pool reconciler. These are algorithm-level tests — the wiring
-/// into `RunnerPoolReconciler` is a separate plug-in point an
-/// operator adopts when they hit the "one tenant took everything"
-/// failure mode on a busy fleet.
+/// Covers the max-min fair allocator that sits above runner pool
+/// orchestration. These are algorithm-level tests — wiring the
+/// allocator into a pool orchestrator is a separate plug-in point
+/// an operator adopts when they hit the "one tenant took
+/// everything" failure mode on a busy fleet.
 @Suite("Fair scheduler", .tags(.scheduler))
 struct FairSchedulerTests {
 
@@ -41,7 +41,7 @@ struct FairSchedulerTests {
     }
 
     @Test("minGuaranteed prevents starvation of low-weight tenants")
-    func minGuaranteedHonored() {
+    func minGuaranteedHonored() throws {
         let s = FairScheduler(policies: [
             .init(tenant: TenantID("hog"), weight: 10),
             .init(tenant: TenantID("security"), weight: 1, minGuaranteed: 2),
@@ -52,7 +52,8 @@ struct FairSchedulerTests {
         )
         // security gets at least its minimum even though its
         // weight would otherwise yield ~1 slot out of 10.
-        #expect(alloc[TenantID("security")]! >= 2)
+        let securityAllocation = try #require(alloc[TenantID("security")])
+        #expect(securityAllocation >= 2)
     }
 
     @Test("maxCap caps a tenant even when weight would give them more")
@@ -217,7 +218,7 @@ struct FairSchedulerTests {
         #expect(policy.weight == 1)
     }
 
-    // MARK: - Pool-level allocation (wired from RunnerPoolReconciler)
+    // MARK: - Pool-level allocation (wired from a pool orchestrator)
 
     @Test("allocatePools splits a tenant's share across their pools by demand")
     func poolAllocationSplitsByDemand() {

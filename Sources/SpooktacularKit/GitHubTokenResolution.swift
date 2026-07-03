@@ -1,13 +1,21 @@
 import Foundation
 import Security
 
-/// Resolves a GitHub runner registration token from the **macOS
+/// Resolves a GitHub personal access token (PAT) from the **macOS
 /// Keychain only**.
+///
+/// The Keychain item is a long-lived PAT with repo admin scope
+/// (fine-grained "Administration" read/write, or classic `repo`),
+/// not a runner registration token. Registration tokens are
+/// single-use and expire after one hour — shorter than a macOS VM
+/// install — so the host keeps the PAT and mints a fresh
+/// registration token seconds before each runner boots
+/// (`GitHubRunnerService.issueRegistrationToken`).
 ///
 /// ## Design: single protected path
 ///
-/// Earlier revisions of this resolver accepted the token via an
-/// environment variable (`SPOOK_GITHUB_TOKEN`), a CLI flag
+/// Earlier revisions of this resolver accepted the credential via an
+/// environment variable (`SPOOKTACULAR_GITHUB_TOKEN`), a CLI flag
 /// (`--github-token`), and a file path (`--github-token-file`).
 /// Each of those is reachable by malware running as the
 /// logged-in user:
@@ -20,20 +28,20 @@ import Security
 ///   backup archives + crash reports.
 ///
 /// Pre-1.0 we ship the clean design as the only design:
-/// Keychain-only. The token stays behind `SecItemCopyMatching`,
+/// Keychain-only. The PAT stays behind `SecItemCopyMatching`,
 /// which requires an unlocked Keychain bound to this device
 /// (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`). Sibling
 /// processes reading `ps` or `/etc/**` see nothing.
 ///
 /// ## Populating the Keychain
 ///
-/// One-time setup per host, per token:
+/// One-time setup per host, per PAT:
 ///
 /// ```bash
 /// security add-generic-password \
 ///     -s com.spooktacular.github \
 ///     -a <account-name> \
-///     -w "$(read-token-from-wherever)" \
+///     -w "$(read-pat-from-wherever)" \
 ///     -U
 /// ```
 ///
@@ -45,24 +53,24 @@ import Security
 /// ## API
 ///
 /// ``resolve(keychainAccount:)`` takes the account name and
-/// returns the token on success, throwing ``GitHubTokenError``
+/// returns the PAT on success, throwing ``GitHubTokenError``
 /// otherwise. No flag-value, file-path, or environment
 /// parameters — those paths were removed to honor the
 /// single-path principle.
 public enum GitHubTokenResolver {
 
-    /// Resolves the GitHub runner registration token from the
-    /// macOS Keychain at service `com.spooktacular.github` and
-    /// the supplied account. The item must already exist — this
-    /// type never writes. Secret-manager tooling (Vault,
-    /// 1Password, SSM) is expected to populate the Keychain
-    /// out-of-band via `security add-generic-password`.
+    /// Resolves the GitHub PAT from the macOS Keychain at
+    /// service `com.spooktacular.github` and the supplied
+    /// account. The item must already exist — this type never
+    /// writes. Secret-manager tooling (Vault, 1Password, SSM)
+    /// is expected to populate the Keychain out-of-band via
+    /// `security add-generic-password`.
     ///
     /// - Parameter keychainAccount: account name under service
     ///   `com.spooktacular.github`. Usually a scope-identifier
     ///   like `org-acme`, `personal-sandbox`, or
     ///   `ci-runner-pool-a`.
-    /// - Returns: the trimmed, non-empty token.
+    /// - Returns: the trimmed, non-empty PAT.
     /// - Throws: ``GitHubTokenError`` on every failure mode.
     public static func resolve(keychainAccount: String) throws -> String {
         guard let token = GitHubKeychain.load(account: keychainAccount) else {
@@ -74,12 +82,12 @@ public enum GitHubTokenResolver {
 
 // MARK: - GitHub Keychain
 
-/// Reads GitHub registration tokens from the macOS Keychain under
-/// a dedicated service name. Writes are intentionally not
-/// provided here — the operator populates the Keychain via the
-/// `security` CLI (or a Vault / 1Password inject hook that wraps
-/// it), keeping plaintext PAT material out of Swift's memory
-/// except during the brief `SecItemCopyMatching` window.
+/// Reads GitHub PATs from the macOS Keychain under a dedicated
+/// service name. Writes are intentionally not provided here —
+/// the operator populates the Keychain via the `security` CLI
+/// (or a Vault / 1Password inject hook that wraps it), keeping
+/// plaintext PAT material out of Swift's memory except during
+/// the brief `SecItemCopyMatching` window.
 public enum GitHubKeychain {
 
     /// Keychain service name. Matches the pattern used by the
@@ -87,7 +95,7 @@ public enum GitHubKeychain {
     /// (`com.spooktacular.api`).
     public static let service = "com.spooktacular.github"
 
-    /// Returns the token stored under `account`, or `nil` if the
+    /// Returns the PAT stored under `account`, or `nil` if the
     /// Keychain has no matching item.
     public static func load(account: String) -> String? {
         let query: [String: Any] = [
@@ -127,9 +135,9 @@ public enum GitHubTokenError: Error, LocalizedError, Sendable {
     public var recoverySuggestion: String? {
         switch self {
         case .keychainMiss(let account):
-            "Add the token with: " +
+            "Add the PAT with: " +
             "`security add-generic-password -s com.spooktacular.github " +
-            "-a \(account) -w <token> -U`. " +
+            "-a \(account) -w <PAT with repo admin scope> -U`. " +
             "Confirm it's stored: " +
             "`security find-generic-password -s com.spooktacular.github " +
             "-a \(account)`."

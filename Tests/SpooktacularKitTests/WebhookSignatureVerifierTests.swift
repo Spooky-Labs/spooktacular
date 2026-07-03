@@ -1,9 +1,9 @@
 import Testing
 import Foundation
 @testable import SpooktacularKit
-@testable import SpookInfrastructureApple
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularInfrastructureApple
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 @Suite("Webhook Signature Verifier", .tags(.security, .cryptography))
 struct WebhookSignatureVerifierTests {

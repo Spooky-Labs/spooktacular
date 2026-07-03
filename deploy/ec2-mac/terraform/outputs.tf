@@ -28,7 +28,7 @@ output "ssh_command" {
 }
 
 output "api_endpoint" {
-  description = "Spooktacular API endpoint (TLS). Use this when configuring the K8s controller."
+  description = "Spooktacular API endpoint (TLS). Use this to reach spook serve on the instance."
   value       = "https://${coalesce(aws_instance.mac.public_ip, aws_instance.mac.private_ip)}:8484"
 }
 

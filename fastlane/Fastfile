@@ -108,11 +108,74 @@ platform :mac do
         )
       end
     end
+
+    # The root package's `swift test` above only builds/runs the
+    # root package's own test targets — SwiftPM never reaches into
+    # a local `.package(path:)` dependency's OWN test targets, only
+    # its library products. The three clean-room SPICE packages
+    # under `Packages/` (added on this branch, vendored into the
+    # guest-tools clipboard bridge via `SpiceProtocol` /
+    # `SpiceSerialTransport` / `SpiceGuestAgent`) therefore had 36
+    # tests that compiled and passed locally but never ran in any
+    # CI lane — a regression in the wire protocol's framing or
+    # header encoding could ship inside every guest VM's clipboard
+    # bridge with CI fully green. Run each package's own suite
+    # explicitly, with the same false-green guard as the root run
+    # above, so a compile crash in any one of them fails the lane
+    # instead of silently reporting zero tests.
+    spice_packages = %w[SpiceProtocol SpiceSerialTransport SpiceGuestAgent]
+    spice_packages.each do |package|
+      package_path = File.join(PROJECT_ROOT, "Packages", package)
+      output = sh(
+        "swift", "test", "--package-path", package_path,
+        log: true
+      )
+      unless output.include?("Test run with") || output.include?("Executed ")
+        UI.user_error!(
+          "swift test --package-path Packages/#{package} produced no " \
+          "test-run summary — this is the false-green pattern where a " \
+          "compile crash silently yields exit 0 and zero tests. " \
+          "Inspect the log above for the real failure."
+        )
+      end
+    end
   end
 
   # ──────────────────────────────────────────────────
   # Build
   # ──────────────────────────────────────────────────
+
+  desc "Build the .app bundle for local development"
+  #
+  # Wraps `./build-app.sh` (default debug mode) with the
+  # **development** profile + cert match just installed locally.
+  # `build-app.sh` embeds the matching provisioning profile and
+  # signs every bundled component with it when one is found, and
+  # strips restricted entitlements when it isn't — see
+  # `build-app.sh`'s own comments near `PROVISIONING_PROFILE`.
+  #
+  # Prefer this lane (or `signing_dev && ./build-app.sh`) over
+  # building in Xcode for local iteration.
+  lane :build_dev do
+    # Ensure profiles are installed & sigh env vars populated.
+    # `signing_dev` is idempotent, so re-running on a machine
+    # that already has the profile is a ~1s no-op.
+    signing_dev
+
+    identity = ENV["sigh_#{APP_IDENTIFIER}_development_macos_certificate-name"] || ""
+    profile  = ENV["sigh_#{APP_IDENTIFIER}_development_macos_profile-path"] || ""
+
+    Dir.chdir(PROJECT_ROOT) do
+      sh(
+        {
+          "CODESIGN_IDENTITY" => identity,
+          "PROVISIONING_PROFILE" => profile
+        },
+        "./build-app.sh"
+      )
+    end
+    UI.success("Built Spooktacular.app — launch with `open Spooktacular.app`.")
+  end
 
   desc "Build the .app bundle (release)"
   lane :build do
@@ -182,6 +245,108 @@ platform :mac do
       type: "appstore",
       additional_cert_types: ["mac_installer_distribution"],
       readonly: is_ci
+    )
+  end
+
+  desc "Sync Developer ID certs (app + installer) for notarized direct distribution"
+  #
+  # Developer ID distribution is the correct channel for
+  # Spooktacular's shape: a system-level tool that installs a
+  # LaunchDaemon via an embedded `.pkg`, which App Store Review
+  # 2.5.2 forbids ("apps may not download, install, or execute
+  # code which introduces or changes features or functionality").
+  # Keeping the App Store-oriented `signing` lane for TestFlight
+  # internal beta, this lane powers the public release flow.
+  #
+  # Pulls two certs in one match call, the idiomatic pattern:
+  #
+  # - `type: developer_id` — Developer ID Application, used by
+  #   `codesign` on the outer `.app` and every nested Mach-O.
+  # - `additional_cert_types: ["developer_id_installer"]` — the
+  #   pkg-signing counterpart used by `productsign` on the
+  #   embedded `Spooktacular Provisioner.pkg`.
+  #
+  # After this lane runs, `build-app.sh` auto-detects the
+  # installer cert in the keychain and signs the nested pkg.
+  # The outer `.app` + the nested pkg should subsequently be
+  # notarized via the `notarize_app` lane (outer) + `xcrun
+  # notarytool submit` on the pkg (inner — wired into
+  # build-app.sh directly).
+  lane :signing_dev_id do
+    api_key = get_api_key
+    match(
+      api_key: api_key,
+      type: "developer_id",
+      additional_cert_types: ["developer_id_installer"],
+      readonly: is_ci
+    )
+  end
+
+  desc "Sync development cert + profile for local builds"
+  #
+  # Local builds need a *development* provisioning profile
+  # matching the app's restricted entitlements (currently just
+  # `com.apple.security.virtualization`). `bundle exec fastlane
+  # signing_dev` downloads the profile and installs it under
+  # `~/Library/MobileDevice/Provisioning Profiles/`, where
+  # `build-app.sh` auto-discovers it by app-identifier.
+  #
+  # Auth: prefers App Store Connect API key env vars when set
+  # (matches CI's non-interactive flow); otherwise falls through
+  # to fastlane's default Apple-ID auth chain (interactive
+  # keychain / `fastlane-session`). This is the canonical local-
+  # dev shape — a developer on their own Mac should not need the
+  # API key secret just to install a profile.
+  lane :signing_dev do
+    # Empty-string env vars are treated as unset. GitHub Actions
+    # `env:` blocks export an empty string when the secret is
+    # unresolved, and `ENV[..] || ""` treats "" as truthy in Ruby —
+    # so we check `.empty?` explicitly to gate API-key use.
+    args = {
+      type: "development",
+      readonly: is_ci
+    }
+    if !(ENV["APPLE_API_KEY_ID"] || "").empty? &&
+       !(ENV["APPLE_API_ISSUER_ID"] || "").empty? &&
+       !(ENV["APPLE_API_KEY_P8"] || "").empty?
+      args[:api_key] = get_api_key
+    else
+      # No API creds → fall through to Apple-ID interactive auth
+      # (the local-dev flow; reads from Keychain or prompts).
+      args[:username] = APPLE_ID
+    end
+    match(**args)
+  end
+
+  desc "Force-regenerate development profiles (revokes old, creates new)"
+  #
+  # Rescue lane for when provisioning profiles drift out of sync
+  # with the bundle ID's capabilities — e.g. after enabling a new
+  # capability on an already-provisioned bundle ID, you need the
+  # *profile* regenerated so it inherits the new entitlement.
+  # `match` without `force:` would re-use the existing (stale)
+  # profile.
+  #
+  # Destructive: revokes the current macOS development profiles
+  # at Apple, creates new ones, and force-pushes the encrypted
+  # blobs to the match repo. Other machines on this team that
+  # rely on match will silently re-sync on their next run.
+  #
+  # AppStore / distribution profiles are untouched; this lane
+  # only regenerates `type: development`.
+  lane :signing_dev_force do
+    UI.important(
+      "Force-regenerating development profiles — existing ones " \
+      "will be revoked at Apple. Run this only when profile " \
+      "drift is blocking a build."
+    )
+    api_key = get_api_key
+    match(
+      type: "development",
+      platform: "macos",
+      force: true,
+      readonly: false,
+      api_key: api_key
     )
   end
 
@@ -452,25 +617,12 @@ platform :mac do
       sh("xcodegen", "generate")
     end
 
-    # No code signing. `project.yml` configures the `Debug` build
-    # config for the `SpooktacularApp` target with:
-    #   - `CODE_SIGNING_ALLOWED: NO`
-    #   - `CODE_SIGN_ENTITLEMENTS: Spooktacular.debug.entitlements`
-    #     (an entitlements file that OMITS
-    #     `com.apple.security.app-sandbox`)
-    #
-    # Without the sandbox entitlement, taskgated lets the app
-    # launch unsigned. Without signing, we don't need a Mac
-    # Development provisioning profile — which would otherwise
-    # require registering each ephemeral CI runner's hardware
-    # UUID with Apple Developer, burning through Apple's 100-
-    # device/year cap.
-    #
-    # This only affects Debug builds inside Spooktacular.xcodeproj.
-    # Production builds go through `build-app.sh` → `swift build
-    # -c release` → `codesign --entitlements
-    # Spooktacular.entitlements` (the real sandboxed one). The
-    # release pipeline is unchanged.
+    # Debug config uses real Apple Development signing via
+    # `match` — the same cert developers install locally.
+    # `setup_ci` (ran in `before_all`) provisions an
+    # ephemeral keychain on CI runners so `match` can import
+    # the cert without prompting; locally, the cert is
+    # already in the login keychain.
     scan(
       project: "Spooktacular.xcodeproj",
       scheme: "SpooktacularApp",
@@ -520,17 +672,6 @@ platform :mac do
     )
 
     UI.success("Screenshots captured, processed, and framed.")
-  end
-
-  # ──────────────────────────────────────────────────
-  # DocC — Generate documentation
-  # ──────────────────────────────────────────────────
-
-  desc "Generate DocC documentation"
-  lane :generate_docs do
-    Dir.chdir(PROJECT_ROOT) do
-      sh("./scripts/build-docs.sh", "--static")
-    end
   end
 
   # ──────────────────────────────────────────────────
@@ -621,16 +762,37 @@ platform :mac do
   # ──────────────────────────────────────────────────
 
   desc "Register app identifier in Apple Developer Portal"
+  # Registers every bundle identifier the project needs on the
+  # Apple Developer Portal — idempotent, API-key-authed,
+  # zero-2FA-prompt.
+  #
+  # Why not `produce`? The built-in `produce` / `create_app_online`
+  # action only accepts `username` for auth (legacy Apple-ID +
+  # 2FA), which is exactly what the API-key flow exists to avoid.
+  # Our custom `register_bundle_id` action (in
+  # `fastlane/actions/`) wraps `Spaceship::ConnectAPI::BundleId`
+  # — the same Spaceship gem bundler already pins through
+  # fastlane — with the ASC-API token path, so registration
+  # runs headless everywhere.
+  #
+  # The App Store Connect app record (the `produce` output for
+  # TestFlight + App Store submission) is deferred until the
+  # first `beta` / `release` lane run, which uses `pilot` /
+  # `deliver` — both of those accept API keys and create the
+  # record on demand.
   lane :register_app do
+    # `app_store_connect_api_key` (wrapped by `get_api_key`)
+    # defaults `set_spaceship_token: true`, so a single call
+    # authorizes every subsequent `Spaceship::ConnectAPI` request
+    # in this lane — including the ones our
+    # `register_bundle_id` action makes. No need to pass the
+    # key explicitly.
     get_api_key
 
-    produce(
-      app_identifier: APP_IDENTIFIER,
-      app_name: "Spooktacular",
-      language: "English",
-      app_version: "1.0.0",
-      platform: "osx",
-      sku: "com.spooktacular.app.macos"
+    register_bundle_id(
+      identifier: APP_IDENTIFIER,
+      name: "Spooktacular",
+      capabilities: []
     )
   end
 

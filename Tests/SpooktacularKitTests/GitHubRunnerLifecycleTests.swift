@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-@testable import SpookApplication
-@testable import SpookCore
+@testable import SpooktacularApplication
+@testable import SpooktacularCore
 
 // MARK: - Scope validation
 
@@ -212,6 +212,196 @@ struct GitHubRunnerServiceLifecycleTests {
                 pollInterval: 0,
                 clock: { state.now() },
                 sleep: { _ in state.advance(by: 2) }
+            )
+        }
+    }
+
+    // MARK: - List / find by name
+
+    @Test("listRunners decodes the collection endpoint")
+    func listRunnersDecodes() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"""
+            {"total_count":2,"runners":[
+                {"id":1,"name":"other","status":"online","busy":false},
+                {"id":2,"name":"runner-01","status":"offline","busy":false}
+            ]}
+            """#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let runners = try await service.listRunners(scope: scope)
+        #expect(runners.count == 2)
+        #expect(runners.map(\.name) == ["other", "runner-01"])
+    }
+
+    @Test("findRunner returns the exact name match")
+    func findRunnerMatch() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"""
+            {"total_count":2,"runners":[
+                {"id":1,"name":"other","status":"online","busy":false},
+                {"id":2,"name":"runner-01","status":"online","busy":false}
+            ]}
+            """#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let found = try await service.findRunner(named: "runner-01", scope: scope)
+        #expect(found?.id == 2)
+    }
+
+    @Test("findRunner returns nil when no runner has that name")
+    func findRunnerNoMatch() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"{"total_count":0,"runners":[]}"#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let found = try await service.findRunner(named: "runner-01", scope: scope)
+        #expect(found == nil)
+    }
+
+    // MARK: - Pagination
+
+    /// Builds a `{total_count, runners}` page payload with `count`
+    /// generated runner records named `r<id>`, optionally appending
+    /// one extra literal record.
+    private static func pageJSON(
+        totalCount: Int,
+        startID: Int,
+        count: Int,
+        extraRunner: String? = nil
+    ) -> Data {
+        var records: [String] = (0..<count).map { offset in
+            let id = startID + offset
+            return #"{"id":\#(id),"name":"r\#(id)","status":"online","busy":false}"#
+        }
+        if let extraRunner {
+            records.append(extraRunner)
+        }
+        let json = #"{"total_count":\#(totalCount),"runners":[\#(records.joined(separator: ","))]}"#
+        return Data(json.utf8)
+    }
+
+    @Test("listRunners paginates — a runner on page 2 is found")
+    func listRunnersPaginates() async throws {
+        let http = RecordingHTTPClient()
+        // Page 1: a full page of 100 uninteresting runners.
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Self.pageJSON(totalCount: 150, startID: 0, count: 100)
+        ))
+        // Page 2: 49 more + the one we're looking for.
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Self.pageJSON(
+                totalCount: 150,
+                startID: 100,
+                count: 49,
+                extraRunner: #"{"id":999,"name":"runner-01","status":"online","busy":false}"#
+            )
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let found = try await service.findRunner(named: "runner-01", scope: scope)
+        #expect(found?.id == 999)
+        let requests = await http.requests
+        #expect(requests.count == 2)
+        #expect(requests[0].url.absoluteString.contains("per_page=100"))
+        #expect(requests[0].url.absoluteString.contains("page=1"))
+        #expect(requests[1].url.absoluteString.contains("page=2"))
+    }
+
+    @Test("listRunners pagination is bounded — terminates even if GitHub keeps reporting more")
+    func listRunnersPaginationBounded() async throws {
+        let http = RecordingHTTPClient()
+        // Every page claims 10,000 total and returns a full page —
+        // a pathological server must not spin the client forever.
+        for page in 0..<20 {
+            await http.queue(DomainHTTPResponse(
+                statusCode: 200,
+                body: Self.pageJSON(totalCount: 10_000, startID: page * 100, count: 100)
+            ))
+        }
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let runners = try await service.listRunners(scope: scope)
+        #expect(runners.count == 1000)
+        #expect(await http.requests.count == 10)
+    }
+
+    // MARK: - Wait for online
+
+    @Test("waitForOnline returns once the named runner reports online")
+    func waitForOnlineSucceeds() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"{"total_count":1,"runners":[{"id":1,"name":"runner-01","status":"offline","busy":false}]}"#.utf8)
+        ))
+        await http.queue(DomainHTTPResponse(
+            statusCode: 200,
+            body: Data(#"{"total_count":1,"runners":[{"id":1,"name":"runner-01","status":"online","busy":false}]}"#.utf8)
+        ))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let runner = try await service.waitForOnline(
+            named: "runner-01",
+            scope: scope,
+            deadline: Date().addingTimeInterval(60),
+            pollInterval: 0,
+            clock: { Date() },
+            sleep: { _ in }
+        )
+        #expect(runner.status == "online")
+    }
+
+    @Test("waitForOnline throws at deadline when the runner never appears")
+    func waitForOnlineDeadline() async throws {
+        let http = RecordingHTTPClient()
+        for _ in 0..<5 {
+            await http.queue(DomainHTTPResponse(
+                statusCode: 200,
+                body: Data(#"{"total_count":0,"runners":[]}"#.utf8)
+            ))
+        }
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        let state = ManualClock(start: Date(timeIntervalSince1970: 0))
+        let deadline = Date(timeIntervalSince1970: 5)
+        await #expect(throws: GitHubServiceError.self) {
+            try await service.waitForOnline(
+                named: "runner-01",
+                scope: scope,
+                deadline: deadline,
+                pollInterval: 0,
+                clock: { state.now() },
+                sleep: { _ in state.advance(by: 2) }
+            )
+        }
+    }
+
+    @Test("waitForOnline propagates HTTP errors instead of swallowing them")
+    func waitForOnlinePropagatesErrors() async throws {
+        let http = RecordingHTTPClient()
+        await http.queue(DomainHTTPResponse(statusCode: 401, body: Data("{}".utf8)))
+        let service = Self.makeService(http: http)
+        let scope = try GitHubRunnerScope("repos/a/b")
+        await #expect(throws: GitHubServiceError.self) {
+            try await service.waitForOnline(
+                named: "runner-01",
+                scope: scope,
+                deadline: Date().addingTimeInterval(60),
+                pollInterval: 0,
+                clock: { Date() },
+                sleep: { _ in }
             )
         }
     }

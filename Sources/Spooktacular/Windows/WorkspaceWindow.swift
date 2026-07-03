@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 @preconcurrency import Virtualization
-import SpookInfrastructureApple
+import SpooktacularInfrastructureApple
 import SpooktacularKit
 
 /// A window dedicated to a single VM workspace.
@@ -30,7 +30,6 @@ struct WorkspaceWindow: View {
 
     @State private var showSnapshots: Bool = false
     @State private var showHardware: Bool = false
-    @State private var showPorts: Bool = false
 
     /// Holds the most-recently-resolved IP for two seconds so the
     /// toolbar "Copy IP" button can briefly flip to a checkmark
@@ -50,7 +49,7 @@ struct WorkspaceWindow: View {
             }
         }
         .frame(minWidth: 720, minHeight: 460)
-        .navigationTitle(vmName)
+        .navigationTitle(appState.vms[vmName]?.displayName ?? vmName)
         .task(id: vmName) {
             await appState.workspaceDidOpen(vmName)
         }
@@ -82,8 +81,21 @@ struct WorkspaceWindow: View {
             // display below the chrome.
             //
             // Docs: https://developer.apple.com/documentation/swiftui/view/ignoressafearea(_:edges:)
-            VMDisplayView(name: vmName, virtualMachine: vm)
-                .toolbar { runningToolbar }
+            VMDisplayView(
+                name: vmName,
+                virtualMachine: vm,
+                // Pass the pre-created NSView explicitly. Reading
+                // from `@Environment(AppState.self)` inside
+                // `NSViewRepresentable.makeNSView` has been
+                // unreliable — Environment hydration can return
+                // a fresh instance whose dict is empty, silently
+                // falling through to the late-attach fallback.
+                // Resolving `appState` here (where Environment
+                // injection is reliable) and passing the value
+                // down sidesteps the whole class of issue.
+                cachedView: appState.graphicsViews[vmName]
+            )
+            .toolbar { runningToolbar }
         } else {
             WorkspaceLaunchView(name: vmName, bundle: bundle)
                 .toolbar { stoppedToolbar }
@@ -95,7 +107,7 @@ struct WorkspaceWindow: View {
         ContentUnavailableView(
             "Workspace Unavailable",
             systemImage: "questionmark.folder",
-            description: Text("The VM '\(vmName)' was removed or is not loaded.")
+            description: Text("The VM was removed or is not loaded.")
         )
         .padding()
     }
@@ -105,6 +117,25 @@ struct WorkspaceWindow: View {
     @ToolbarContentBuilder
     private var runningToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
+            // Leading indicator, not a button — just reports
+            // clipboard-bridge health. Placed first so users
+            // glance at the color without their eyes having to
+            // skip past the action buttons. State is pushed by
+            // the guest via `GuestEvent.spiceStatus` on every
+            // SPICE-bridge transition; no polling.
+            ClipboardStatusPill(
+                snapshot: appState.clipboardStatuses[vmName]
+                    ?? .init(state: .notStarted)
+            )
+
+            Button {
+                Task { await appState.suspendVM(vmName) }
+            } label: {
+                Label("Suspend", systemImage: "pause.fill")
+            }
+            .glassButton()
+            .help("Save VM state and quit — next start picks up where you left off")
+
             Button {
                 Task { await appState.stopVM(vmName) }
             } label: {
@@ -123,25 +154,13 @@ struct WorkspaceWindow: View {
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
 
-            Button {
-                showPorts.toggle()
-            } label: {
-                Label("Ports", systemImage: "network")
-            }
-            .glassButton()
-            .help("See listening ports inside the workspace (⇧⌘P)")
-            .keyboardShortcut("p", modifiers: [.command, .shift])
-            .popover(isPresented: $showPorts, arrowEdge: .bottom) {
-                PortPanel(monitor: appState.portMonitor(for: vmName))
-            }
-
             // Network actions grouped under a Menu: primary tap
             // copies the IP (the most frequent action); the
             // chevron exposes `SSH in Terminal…` (mirrors
             // `spook ssh <vm>`). Packaging both behind a single
             // toolbar slot keeps the chrome tight — the toolbar
-            // already has Stop / Snapshots / Ports alongside —
-            // and matches Apple's own "split-button" pattern.
+            // already has Stop / Snapshots alongside — and
+            // matches Apple's own "split-button" pattern.
             // Docs: https://developer.apple.com/documentation/swiftui/menu
             Menu {
                 Button {
@@ -312,7 +331,7 @@ struct WorkspaceLaunchView: View {
             WorkspaceIconView(spec: bundle.metadata.iconSpec ?? .defaultSpec, size: 140)
 
             VStack(spacing: 6) {
-                Text(name)
+                Text(bundle.displayName)
                     .font(.system(.largeTitle, design: .rounded, weight: .semibold))
                 Text(specSummary)
                     .font(.callout)
