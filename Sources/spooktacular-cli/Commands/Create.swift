@@ -406,6 +406,9 @@ extension Spooktacular {
                     try RunnerCreateFlowPlan.validateProvisionMode(
                         isDiskInject: provision == .diskInject
                     )
+                    try RunnerCreateFlowPlan.validateNoProvisionCompatibility(
+                        noProvision: noProvision
+                    )
                     runnerAutoStart = try RunnerCreateFlowPlan.autoStartDecision(
                         skipSetup: skipSetup,
                         noStart: noStart

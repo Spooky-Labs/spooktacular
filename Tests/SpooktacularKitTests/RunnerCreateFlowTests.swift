@@ -101,6 +101,28 @@ struct RunnerCreateFlowPlanTests {
         #expect(error.recoverySuggestion != nil)
     }
 
+    // MARK: - --no-provision compatibility
+
+    @Test("--no-provision absent passes")
+    func noProvisionAbsentPasses() throws {
+        try RunnerCreateFlowPlan.validateNoProvisionCompatibility(noProvision: false)
+    }
+
+    @Test("--no-provision with --github-runner is a hard error")
+    func noProvisionBlocked() {
+        #expect(throws: RunnerCreateFlowError.noProvisionIncompatible) {
+            try RunnerCreateFlowPlan.validateNoProvisionCompatibility(noProvision: true)
+        }
+    }
+
+    @Test("noProvisionIncompatible error names --github-runner and --no-provision, has recovery text")
+    func noProvisionErrorText() {
+        let error = RunnerCreateFlowError.noProvisionIncompatible
+        #expect(error.errorDescription?.contains("--no-provision") == true)
+        #expect(error.errorDescription?.contains("--github-runner") == true)
+        #expect(error.recoverySuggestion != nil)
+    }
+
     // MARK: - Setup automation failure fatality
 
     @Test("--github-runner: a Setup Assistant automation failure is fatal")

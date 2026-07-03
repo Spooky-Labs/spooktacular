@@ -104,6 +104,33 @@ public enum RunnerCreateFlowPlan {
         }
     }
 
+    /// Rejects `--github-runner` combined with `--no-provision`.
+    ///
+    /// `--no-provision` promises the generated first-boot script is
+    /// left on disk, unexecuted, for the operator to run later by
+    /// hand (see `Create.swift`'s `noProvision` help text). But the
+    /// runner flow's zero-touch registration has no "run it later by
+    /// hand" mode: `provisionGitHubRunner` unconditionally mints a
+    /// one-hour registration token, disk-injects the runner script,
+    /// and (unless `--no-start`) boots the VM and polls GitHub for
+    /// the runner coming online — `noProvision` is never consulted
+    /// on that path. Letting the combination through would silently
+    /// ignore the flag while a live, single-use registration token
+    /// gets minted and burned into a script that either executes
+    /// anyway (contradicting "not executed") or — if the operator
+    /// expected the documented skip and boots much later by hand —
+    /// executes against an already-expired token. Failing fast here
+    /// is strictly more honest than either outcome.
+    ///
+    /// - Parameter noProvision: Whether `--no-provision` was passed.
+    /// - Throws: ``RunnerCreateFlowError/noProvisionIncompatible``
+    ///   when `--no-provision` is combined with `--github-runner`.
+    public static func validateNoProvisionCompatibility(noProvision: Bool) throws {
+        guard !noProvision else {
+            throw RunnerCreateFlowError.noProvisionIncompatible
+        }
+    }
+
     /// Rejects `--github-runner` when the resolved restore image's
     /// macOS major version has no ``SetupAutomation`` sequence.
     ///
@@ -267,6 +294,12 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
     /// the runner script only consumes disk-injected scripts.
     case unsupportedProvisionMode
 
+    /// `--github-runner` was combined with `--no-provision` — the
+    /// runner script must execute on first boot for zero-touch
+    /// registration to work, so "generated but not executed" is
+    /// never a valid outcome for this flow.
+    case noProvisionIncompatible
+
     /// `--github-runner` was combined with a restore image whose
     /// macOS major version has no ``SetupAutomation`` sequence —
     /// there is nothing to install the provisioner LaunchDaemon,
@@ -285,6 +318,9 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
             return "--github-runner only supports --provision disk-inject: the runner script is "
                 + "executed by the provisioner LaunchDaemon on first boot, which only consumes "
                 + "disk-injected scripts."
+        case .noProvisionIncompatible:
+            return "--no-provision is incompatible with --github-runner because the runner "
+                + "requires the injected first-boot script to execute."
         case .unsupportedMacOSVersion(let macOSMajorVersion, let supportedVersions):
             let supported = supportedVersions.sorted().map(String.init).joined(separator: ", ")
             return "--github-runner requires a macOS version with a Setup Assistant automation "
@@ -303,6 +339,10 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
         case .unsupportedProvisionMode:
             return "Drop the --provision flag — disk-inject is the default and the only mode "
                 + "the runner flow supports."
+        case .noProvisionIncompatible:
+            return "Drop --no-provision. If you need manual control over provisioning, drop "
+                + "--github-runner too and inject the runner script yourself later via "
+                + "spook start --user-data <path>."
         case .unsupportedMacOSVersion(_, let supportedVersions):
             let supported = supportedVersions.sorted().map { "macOS \($0)" }.joined(separator: " or ")
             return "Use --from-ipsw with a \(supported) restore image, or drop --github-runner "
