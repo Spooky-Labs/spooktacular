@@ -5,12 +5,6 @@ PROJECT_ROOT = File.expand_path("..", __dir__)
 APP_BUNDLE = File.join(PROJECT_ROOT, "Spooktacular.app")
 PKG_FILE = File.join(PROJECT_ROOT, "Spooktacular.pkg")
 APP_IDENTIFIER = "com.spooktacular.app"
-# Bundle ID for the network-filter system extension.  Must
-# match `CFBundleIdentifier` in
-# `Resources/SpooktacularNetworkFilter-Info.plist` and the
-# `com.apple.application-identifier` value (minus the Team-ID
-# prefix) in `SpooktacularNetworkFilter.entitlements`.
-APP_IDENTIFIER_NETWORK_FILTER = "com.spooktacular.app.NetworkFilter"
 
 # Developer contact fields — sourced from .env so forks can override
 # without editing the Fastfile. Defaults keep Spooktacular's canonical
@@ -154,16 +148,11 @@ platform :mac do
   desc "Build the .app bundle for local development"
   #
   # Wraps `./build-app.sh` (default debug mode) with the
-  # **development** profile paths + cert match just installed
-  # locally. Xcode's direct build (⌘B in the IDE) enforces a
-  # strict profile ↔ entitlements match and rejects the
-  # project's `content-filter-provider-systemextension` key,
-  # which Apple gates behind a separate team approval that
-  # isn't granted by the standard `NETWORK_EXTENSIONS`
-  # capability. `build-app.sh` sidesteps that by stripping
-  # restricted entitlements when no matching profile is found
-  # *and* by embedding them when one is — which is exactly
-  # what a correctly-provisioned dev machine has.
+  # **development** profile + cert match just installed locally.
+  # `build-app.sh` embeds the matching provisioning profile and
+  # signs every bundled component with it when one is found, and
+  # strips restricted entitlements when it isn't — see
+  # `build-app.sh`'s own comments near `PROVISIONING_PROFILE`.
   #
   # Prefer this lane (or `signing_dev && ./build-app.sh`) over
   # building in Xcode for local iteration.
@@ -175,14 +164,12 @@ platform :mac do
 
     identity = ENV["sigh_#{APP_IDENTIFIER}_development_macos_certificate-name"] || ""
     profile  = ENV["sigh_#{APP_IDENTIFIER}_development_macos_profile-path"] || ""
-    sysex_profile = ENV["sigh_#{APP_IDENTIFIER_NETWORK_FILTER}_development_macos_profile-path"] || ""
 
     Dir.chdir(PROJECT_ROOT) do
       sh(
         {
           "CODESIGN_IDENTITY" => identity,
-          "PROVISIONING_PROFILE" => profile,
-          "SYSEX_PROVISIONING_PROFILE" => sysex_profile
+          "PROVISIONING_PROFILE" => profile
         },
         "./build-app.sh"
       )
@@ -295,14 +282,12 @@ platform :mac do
     )
   end
 
-  desc "Sync development cert + profile for local builds (NEFilter included)"
+  desc "Sync development cert + profile for local builds"
   #
-  # Local builds need a *development* provisioning profile whose
-  # allowlist includes `com.apple.developer.networking.networkextension`
-  # for NEFilter. Without it, amfid rejects launch with
-  # "No matching profile found" (AMFIError -413) because those are
-  # restricted entitlements. `bundle exec fastlane signing_dev`
-  # downloads the profile and installs it under
+  # Local builds need a *development* provisioning profile
+  # matching the app's restricted entitlements (currently just
+  # `com.apple.security.virtualization`). `bundle exec fastlane
+  # signing_dev` downloads the profile and installs it under
   # `~/Library/MobileDevice/Provisioning Profiles/`, where
   # `build-app.sh` auto-discovers it by app-identifier.
   #
@@ -336,11 +321,11 @@ platform :mac do
   desc "Force-regenerate development profiles (revokes old, creates new)"
   #
   # Rescue lane for when provisioning profiles drift out of sync
-  # with the bundle IDs' capabilities — e.g. after enabling
-  # `NETWORK_EXTENSIONS` on an already-provisioned bundle ID,
-  # you need the *profile* regenerated so it inherits the new
-  # entitlement. `match` without `force:` would re-use the
-  # existing (stale) profile.
+  # with the bundle ID's capabilities — e.g. after enabling a new
+  # capability on an already-provisioned bundle ID, you need the
+  # *profile* regenerated so it inherits the new entitlement.
+  # `match` without `force:` would re-use the existing (stale)
+  # profile.
   #
   # Destructive: revokes the current macOS development profiles
   # at Apple, creates new ones, and force-pushes the encrypted
@@ -804,25 +789,10 @@ platform :mac do
     # key explicitly.
     get_api_key
 
-    # Host app declares `com.apple.developer.networking.networkextension`
-    # (`content-filter-provider` + `content-filter-provider-systemextension`)
-    # so it can install the NEFilter system extension. Apple's
-    # portal gates that entitlement behind the
-    # `NETWORK_EXTENSIONS` bundle-ID capability.
     register_bundle_id(
       identifier: APP_IDENTIFIER,
       name: "Spooktacular",
-      capabilities: ["NETWORK_EXTENSIONS"]
-    )
-    # NEFilter system extension — also needs
-    # NETWORK_EXTENSIONS (same reason, different target) and
-    # APP_GROUPS for the
-    # `4AM5US9G8B.com.spooktacular.app` group the extension
-    # declares in its entitlements file.
-    register_bundle_id(
-      identifier: APP_IDENTIFIER_NETWORK_FILTER,
-      name: "Spooktacular Network Filter",
-      capabilities: ["NETWORK_EXTENSIONS", "APP_GROUPS"]
+      capabilities: []
     )
   end
 

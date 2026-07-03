@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1430"
-   version = "1.3">
+   version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
-      buildImplicitDependencies = "YES">
+      buildImplicitDependencies = "YES"
+      runPostActionsOnFailure = "NO">
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -15,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "0F0EE855B5DEDE88D2D88AA3"
-               BuildableName = "Spooktacular.app"
+               BuildableName = "SpooktacularApp.app"
                BlueprintName = "SpooktacularApp"
                ReferencedContainer = "container:Spooktacular.xcodeproj">
             </BuildableReference>
@@ -40,19 +41,21 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      onlyGenerateCoverageForSpecifiedTargets = "NO">
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0F0EE855B5DEDE88D2D88AA3"
-            BuildableName = "Spooktacular.app"
+            BuildableName = "SpooktacularApp.app"
             BlueprintName = "SpooktacularApp"
             ReferencedContainer = "container:Spooktacular.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
          <TestableReference
-            skipped = "NO">
+            skipped = "NO"
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "531A09E6D441AF69D7E14330"
@@ -62,6 +65,8 @@
             </BuildableReference>
          </TestableReference>
       </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -78,11 +83,13 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0F0EE855B5DEDE88D2D88AA3"
-            BuildableName = "Spooktacular.app"
+            BuildableName = "SpooktacularApp.app"
             BlueprintName = "SpooktacularApp"
             ReferencedContainer = "container:Spooktacular.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -95,7 +102,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "0F0EE855B5DEDE88D2D88AA3"
-            BuildableName = "Spooktacular.app"
+            BuildableName = "SpooktacularApp.app"
             BlueprintName = "SpooktacularApp"
             ReferencedContainer = "container:Spooktacular.xcodeproj">
          </BuildableReference>

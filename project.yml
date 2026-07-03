@@ -125,25 +125,6 @@ targets:
     dependencies:
       - package: SpooktacularPackage
         product: SpooktacularKit
-      # Embed the network-filter system extension inside the
-      # .app bundle.  Per Apple's
-      # [System Extensions — Configure the system extension
-      # and the host app](https://developer.apple.com/documentation/systemextensions#Configure-the-system-extension-and-the-host-app):
-      # the extension filename must equal its CFBundleIdentifier
-      # plus `.systemextension`, and both app + extension must
-      # share a Team ID.  Xcodegen's `embed: true` routes the
-      # `.systemextension` product into the app's "Copy System
-      # Extensions" build phase at
-      # `Contents/Library/SystemExtensions/`, which is where
-      # `OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier:)`
-      # looks for it at runtime.
-      #
-      # `codeSign: true` tells Xcode to re-sign the embedded
-      # extension at copy time with the app's signing identity,
-      # matching Apple's same-Team-ID rule.
-      - target: SpooktacularNetworkFilter
-        embed: true
-        codeSign: true
     # NOTE: intentionally no `info:` or `entitlements:` keys.
     # Those directives tell xcodegen to GENERATE (and overwrite!)
     # the file — wiping our hand-authored `Resources/Info.plist`
@@ -185,54 +166,6 @@ targets:
           CODE_SIGN_IDENTITY: Apple Development
         Release:
           PROVISIONING_PROFILE_SPECIFIER: match AppStore com.spooktacular.app macos
-          CODE_SIGN_IDENTITY: Apple Distribution
-
-  # Network content filter system extension (Track F'').
-  #
-  # Apple's TN3134 specifies that macOS content filters ship as
-  # a `.systemextension` bundle (NOT `.appex`), minimum OS 10.15.
-  # The host app requests activation at runtime via
-  # `OSSystemExtensionRequest`; the system validates the
-  # extension is code-signed with the same Team ID as the host.
-  #
-  # Reference:
-  # - https://developer.apple.com/documentation/Technotes/tn3134-network-extension-provider-deployment
-  # - https://developer.apple.com/documentation/NetworkExtension/NEFilterDataProvider
-  # - https://developer.apple.com/documentation/SystemExtensions#Configure-the-system-extension-and-the-host-app
-  SpooktacularNetworkFilter:
-    type: system-extension
-    platform: macOS
-    sources:
-      - path: Sources/SpooktacularNetworkFilter
-    dependencies:
-      # The `NEFilterDataProvider` subclass lives in the Apple
-      # infrastructure layer; the extension's `main.swift` only
-      # calls `NEProvider.startSystemExtensionMode()` and links
-      # against this product so the Obj-C runtime can resolve the
-      # Swift-mangled principal class name from `Info.plist`.
-      - package: SpooktacularPackage
-        product: SpooktacularInfrastructureApple
-    settings:
-      base:
-        PRODUCT_NAME: com.spooktacular.app.NetworkFilter
-        # Per Apple's System Extensions rules:
-        # "The extension must match your bundle identifier,
-        # excluding file extension."  So the .systemextension
-        # filename is `<CFBundleIdentifier>.systemextension`,
-        # which means `PRODUCT_NAME` must equal the bundle ID.
-        PRODUCT_BUNDLE_IDENTIFIER: com.spooktacular.app.NetworkFilter
-        INFOPLIST_FILE: Resources/SpooktacularNetworkFilter-Info.plist
-        GENERATE_INFOPLIST_FILE: NO
-        CODE_SIGN_ENTITLEMENTS: SpooktacularNetworkFilter.entitlements
-        # Apple rule: same Team ID as the host app.
-        DEVELOPMENT_TEAM: 4AM5US9G8B
-        SKIP_INSTALL: YES
-      configs:
-        Debug:
-          PROVISIONING_PROFILE_SPECIFIER: match Development com.spooktacular.app.NetworkFilter macos
-          CODE_SIGN_IDENTITY: Apple Development
-        Release:
-          PROVISIONING_PROFILE_SPECIFIER: match AppStore com.spooktacular.app.NetworkFilter macos
           CODE_SIGN_IDENTITY: Apple Distribution
 
   SpooktacularUITests:
