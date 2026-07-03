@@ -205,12 +205,12 @@ public enum SecurityControlInventory {
             notes: "Every command token POSIX-escaped before joining for SSH transmission."
         ),
         SecurityControl(
-            name: "VM name regex validation everywhere",
+            name: "VM display-name validation (control chars + path separators rejected)",
             category: "Injection & Path Safety",
             standard: "OWASP input validation",
-            implementation: "Sources/SpooktacularInfrastructureApple/SpooktacularPaths.swift (vmNamePattern, validateVMName)",
+            implementation: "Sources/SpooktacularInfrastructureApple/SpooktacularPaths.swift (validateDisplayName, isValidDisplayName)",
             test: "Tests/SpooktacularKitTests/VMBundleTests.swift",
-            notes: "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,62}$ applied at CLI + HTTP API."
+            notes: "1–128 Unicode characters after trimming, no ASCII control characters, no forward or backward slashes; applied at CLI (Create, Clone) + HTTP API (HTTPAPIServer). Deliberately looser than the pre-UUID-keying regex: bundle directories are now named by the VM's stable UUID, so the display name is presentation-only and no longer a filesystem path component."
         ),
 
         // MARK: Supply Chain
