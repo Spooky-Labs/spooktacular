@@ -144,6 +144,7 @@ public enum IPResolver {
     ///   record, or `nil` if not found.
     public static func parseLeases(_ content: String, macAddress: String) -> String? {
         var lastMatchIP: String?
+        let normalizedTarget = normalizeMACAddress(macAddress) ?? macAddress
 
         for record in content.components(separatedBy: "}") {
             var ip: String?
@@ -155,15 +156,17 @@ public enum IPResolver {
                     ip = String(trimmed.dropFirst("ip_address=".count))
                 } else if trimmed.hasPrefix("hw_address=") {
                     let value = String(trimmed.dropFirst("hw_address=".count))
+                    let rawMAC: Substring
                     if let commaIndex = value.firstIndex(of: ",") {
-                        mac = String(value[value.index(after: commaIndex)...]).lowercased()
+                        rawMAC = value[value.index(after: commaIndex)...]
                     } else {
-                        mac = value.lowercased()
+                        rawMAC = value[...]
                     }
+                    mac = normalizeMACAddress(String(rawMAC))
                 }
             }
 
-            if mac == macAddress, let foundIP = ip {
+            if let mac, mac == normalizedTarget, let foundIP = ip {
                 lastMatchIP = foundIP
             }
         }
@@ -200,8 +203,17 @@ public enum IPResolver {
     /// - Returns: The IP address from the matching ARP entry, or
     ///   `nil` if not found.
     public static func parseARPOutput(_ output: String, macAddress: String) -> String? {
+        let normalizedTarget = normalizeMACAddress(macAddress) ?? macAddress
+
         for line in output.components(separatedBy: .newlines) {
-            guard line.lowercased().contains(macAddress),
+            let lowered = line.lowercased()
+            guard let atRange = lowered.range(of: " at "),
+                  let onRange = lowered.range(of: " on ", range: atRange.upperBound..<lowered.endIndex)
+            else { continue }
+
+            let rawMAC = String(lowered[atRange.upperBound..<onRange.lowerBound])
+            guard let normalizedMAC = normalizeMACAddress(rawMAC),
+                  normalizedMAC == normalizedTarget,
                   let openParen = line.firstIndex(of: "("),
                   let closeParen = line.firstIndex(of: ")"),
                   openParen < closeParen
@@ -210,6 +222,53 @@ public enum IPResolver {
             return String(line[line.index(after: openParen)..<closeParen])
         }
         return nil
+    }
+
+    // MARK: - MAC Address Normalization
+
+    /// Normalizes a colon-separated MAC address string to canonical,
+    /// lowercase, zero-padded two-digit hex octets.
+    ///
+    /// Both of macOS's own MAC-address text sources —
+    /// `/var/db/dhcpd_leases`'s `hw_address=`/`identifier=` fields
+    /// (written by `bootpd`) and `arp -an`'s `at <mac>` field — format
+    /// each octet with a bare `%x`, not `%02x`: a byte below `0x10`
+    /// prints as a single hex digit (`"1"`, `"a"`), not two (`"01"`,
+    /// `"0a"`). Confirmed empirically on-host: e.g. `arp -an` printing
+    /// `"1:0:5e:0:0:fb"` for the well-known `01:00:5e:00:00:fb`
+    /// multicast address, and a live guest's DHCP lease recorded as
+    /// `hw_address=1,de:2a:2d:f3:1:b8` for MAC `de:2a:2d:f3:01:b8`.
+    ///
+    /// ``SpooktacularCore/MACAddress/rawValue`` is always fully
+    /// zero-padded (enforced by its validating regex), so comparing
+    /// it directly against either raw source with `==` or
+    /// `.contains(_:)` silently fails whenever the VM's MAC has any
+    /// octet below `0x10` — roughly two-thirds of randomly generated
+    /// addresses. Both ``parseLeases(_:macAddress:)`` and
+    /// ``parseARPOutput(_:macAddress:)`` funnel their extracted MAC
+    /// text through this normalizer before comparing, so the
+    /// comparison is between two canonical forms regardless of which
+    /// side omitted padding.
+    ///
+    /// - Parameter raw: A colon-separated MAC address string, with
+    ///   each octet one or two lowercase/uppercase hex digits.
+    /// - Returns: The canonical `xx:xx:xx:xx:xx:xx` lowercase form,
+    ///   or `nil` if `raw` isn't a 6-octet hex address.
+    static func normalizeMACAddress(_ raw: String) -> String? {
+        let components = raw.split(separator: ":", omittingEmptySubsequences: false)
+        guard components.count == 6 else { return nil }
+
+        var octets: [String] = []
+        octets.reserveCapacity(6)
+        for component in components {
+            let lowered = component.lowercased()
+            guard (1...2).contains(lowered.count),
+                  lowered.allSatisfy(\.isHexDigit)
+            else { return nil }
+            octets.append(lowered.count == 1 ? "0" + lowered : lowered)
+        }
+
+        return octets.joined(separator: ":")
     }
 
 }
