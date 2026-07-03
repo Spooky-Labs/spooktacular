@@ -711,19 +711,26 @@ final class AppState {
                     do {
                         for try await event in listener.events() {
                             guard !Task.isCancelled else { return }
-                            // First event of any kind proves
-                            // Guest Tools are installed and
-                            // running — self-register so the
-                            // button reflects "Guest Tools
-                            // Installed ✓" even for VMs that
-                            // got them via CLI or another
-                            // out-of-band path.
-                            if let self,
-                               !self.guestToolsInstalled.contains(name) {
-                                await MainActor.run {
-                                    self.guestToolsInstalled.insert(name)
-                                }
-                            }
+                            // Deliberately NOT touching
+                            // `guestToolsInstalled` here. This
+                            // subscriber sees every event on the
+                            // bus — real guest-originated frames
+                            // AND the synthetic `.stats` frame the
+                            // host-metrics sampler above injects
+                            // once per second for every started
+                            // VM (`AgentEventListener.inject`).
+                            // Treating "any event arrived" as
+                            // proof Guest Tools are running
+                            // therefore false-positives within
+                            // ~1s of starting ANY macOS VM,
+                            // including ones created with Guest
+                            // Tools explicitly disabled. The only
+                            // honest signal is a completed
+                            // install: `installGuestTools(_:)` and
+                            // `provisionBundleForCreate` both mark
+                            // `guestToolsInstalled` themselves,
+                            // right after `DiskInjector.installGuestTools`
+                            // actually succeeds.
                             switch event {
                             case .stats(let stats):
                                 let snapshot = VMMetricsSnapshot(
@@ -1293,6 +1300,14 @@ final class AppState {
                         into: bundle
                     )
                 }.value
+                // Verified signal, not a guess: the ditto copy
+                // above just returned successfully. Matches
+                // `installGuestTools(_:)`'s own post-install
+                // bookkeeping so a VM created with Guest Tools
+                // enabled shows "Guest Tools Installed ✓"
+                // immediately, without needing a guest-originated
+                // event to arrive first.
+                guestToolsInstalled.insert(bundle.id.uuidString)
             } else {
                 Log.provision.warning(
                     "Guest Tools bundle not found — skipping install (user chose \(install.rawValue, privacy: .public)). Run build-app.sh to produce Contents/Applications/Spooktacular Guest Tools.app."
