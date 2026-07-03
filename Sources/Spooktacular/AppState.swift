@@ -140,13 +140,33 @@ final class AppState {
 
     // MARK: - VM Management
 
-    /// All known VM bundles, keyed by name.
+    /// All known VM bundles, keyed by the bundle's UUID string —
+    /// matching the on-disk `<uuid>.vm` directory basename
+    /// (``VirtualMachineBundle/id``). This is NOT the display
+    /// name: two VMs may share a display name (see
+    /// ``VirtualMachineBundle/displayName``'s doc comment), so a
+    /// display name is never a safe dictionary key.
+    ///
+    /// Every other per-VM dictionary in this class
+    /// (`runningVMs`, `transitioningVMs`, `graphicsViews`,
+    /// `guestToolsInstalled`, `selectedVM`, `clipboardStatuses`,
+    /// `openWorkspaceWindows`, `focusedWorkspace`, …) shares this
+    /// same key space. Any code path that only has a display name
+    /// — a freshly-typed Clone destination, a runner's
+    /// display name before its bundle key is threaded through —
+    /// must resolve to the matching `vms` key first, via
+    /// `Dictionary.key(forDisplayName:)`, before touching any of
+    /// those dictionaries. `pendingCreations` is the one
+    /// deliberate exception: it's keyed by display name because a
+    /// creation in flight has no bundle (and therefore no UUID)
+    /// yet.
     var vms: [String: VirtualMachineBundle] = [:]
 
-    /// The currently selected VM name in the sidebar.
+    /// The currently selected VM's `vms` dictionary key (its
+    /// bundle UUID string) in the sidebar.
     var selectedVM: String?
 
-    /// Running VM instances, keyed by name.
+    /// Running VM instances, keyed by the same `vms` dictionary key.
     var runningVMs: [String: VirtualMachine] = [:]
 
     /// Latest SPICE clipboard-bridge snapshot per running VM,
@@ -469,9 +489,9 @@ final class AppState {
                 intoDirectory: vmsDirectory
             )
             loadVMs()
-            selectedVM = bundle.url.deletingPathExtension().lastPathComponent
+            selectedVM = bundle.id.uuidString
             AccessibilityNotification.Announcement(
-                "Imported virtual machine \(selectedVM ?? "")"
+                "Imported virtual machine \(bundle.displayName)"
             ).post()
         } catch {
             presentError(error)
@@ -526,7 +546,7 @@ final class AppState {
                 view.virtualMachine = vzVM
                 view.capturesSystemKeys = true
                 view.automaticallyReconfiguresDisplay = true
-                view.setAccessibilityLabel("Virtual machine display for \(name)")
+                view.setAccessibilityLabel("Virtual machine display for \(bundle.displayName)")
                 view.setAccessibilityRole(.group)
                 graphicsViews[name] = view
             }
@@ -579,11 +599,11 @@ final class AppState {
             await startStreamingServices(for: name, vm: vm)
 
             AccessibilityNotification.Announcement(
-                "Virtual machine \(name) started"
+                "Virtual machine \(bundle.displayName) started"
             ).post()
-            notifications.notifyStarted(name)
+            notifications.notifyStarted(name, displayName: bundle.displayName)
         } catch {
-            notifications.notifyFailed(name, error: error.localizedDescription)
+            notifications.notifyFailed(name, displayName: bundle.displayName, error: error.localizedDescription)
             presentError(error)
         }
     }
@@ -800,6 +820,7 @@ final class AppState {
     func suspendVM(_ name: String) async {
         guard let vm = runningVMs[name] else { return }
         guard !transitioningVMs.contains(name) else { return }
+        let displayName = vms[name]?.displayName ?? name
 
         transitioningVMs.insert(name)
         defer { transitioningVMs.remove(name) }
@@ -816,9 +837,9 @@ final class AppState {
             await stopStreamingServices(for: name)
 
             AccessibilityNotification.Announcement(
-                "Virtual machine \(name) suspended"
+                "Virtual machine \(displayName) suspended"
             ).post()
-            notifications.notifyStopped(name)
+            notifications.notifyStopped(name, displayName: displayName)
         } catch {
             presentError(error)
         }
@@ -868,6 +889,7 @@ final class AppState {
     func stopVM(_ name: String) async {
         guard let vm = runningVMs[name] else { return }
         guard !transitioningVMs.contains(name) else { return }
+        let displayName = vms[name]?.displayName ?? name
 
         transitioningVMs.insert(name)
         defer { transitioningVMs.remove(name) }
@@ -884,9 +906,9 @@ final class AppState {
             await stopStreamingServices(for: name)
 
             AccessibilityNotification.Announcement(
-                "Virtual machine \(name) stopped"
+                "Virtual machine \(displayName) stopped"
             ).post()
-            notifications.notifyStopped(name)
+            notifications.notifyStopped(name, displayName: displayName)
         } catch {
             presentError(error)
         }
@@ -1129,7 +1151,13 @@ final class AppState {
             createdBundle = bundle
             pendingCreations.removeValue(forKey: name)
             loadVMs()
-            selectedVM = name
+            // `selectedVM` indexes `vms` (keyed by UUID), never
+            // the display name the user typed — see `vms`'s doc
+            // comment. `bundle.id` is minted upfront in this
+            // method as `bundleID`, so it's already known to
+            // match the directory `RestoreImageManager.createBundle`
+            // just wrote and the key `loadVMs()` just populated.
+            selectedVM = bundle.id.uuidString
             // Fire-and-forget accessibility announcement; the
             // VM now shows up as a VMRow in the sidebar via
             // loadVMs(), which is the real confirmation.
@@ -1209,7 +1237,9 @@ final class AppState {
 
             pendingCreations.removeValue(forKey: name)
             loadVMs()
-            selectedVM = name
+            // See the matching comment in `runMacOSCreate` —
+            // `selectedVM` indexes `vms` by UUID, not display name.
+            selectedVM = bundle.id.uuidString
             // Fire-and-forget accessibility announcement; the
             // VM now shows up as a VMRow in the sidebar via
             // loadVMs(), which is the real confirmation.
@@ -1344,12 +1374,21 @@ final class AppState {
         cancellationTask: Task<Void, Never>?
     ) async {
         let name = displayName
+        // `vms` (and therefore `transitioningVMs` / `runningVMs`)
+        // is keyed by UUID, not display name — see `vms`'s doc
+        // comment. `bundle` was just created by `runMacOSCreate`,
+        // so its `id` is the authoritative key `loadVMs()` already
+        // populated into `vms` before this method was called.
+        // `pendingCreations` is the deliberate exception: it stays
+        // keyed by `name` (display name) throughout the whole
+        // creation pipeline, bundle or no bundle.
+        let key = bundle.id.uuidString
         pendingCreations[name] = PendingCreation(
             name: name,
             guestOSLabel: "GitHub Actions Runner"
         )
         pendingCreations[name]?.cancellationTask = cancellationTask
-        transitioningVMs.insert(name)
+        transitioningVMs.insert(key)
 
         do {
             // 1. Seed the provisioner pkg into the bundle's
@@ -1446,83 +1485,105 @@ final class AppState {
             let service = GitHubRunnerService(auth: GitHubPATAuth(token: pat), http: URLSessionHTTPClient())
             updateCreation(name: name, progress: 0.65, status: "Minting registration token…")
             let issued = try await service.issueRegistrationToken(scope: scope)
-            try Task.checkCancellation()
 
-            // 4. Render + inject the runner script. Named after
-            //    the VM's display name, matching `config.sh
-            //    --name` so `waitForOnline(named:)` below finds
-            //    the right runner record.
-            updateCreation(name: name, progress: 0.7, status: "Injecting runner setup script…")
-            let scriptURL = try GitHubRunnerTemplate.generate(
-                repo: runnerSpec.repo,
-                token: issued.token,
-                labels: runnerSpec.labels,
-                ephemeral: runnerSpec.ephemeral,
-                runnerName: name
-            )
+            // From here on, a live registration token exists at
+            // GitHub. Any failure below — including cancellation —
+            // must revoke it before propagating: an unspent token
+            // stays valid for its full ~1h TTL, which is exactly
+            // the "on-host attacker races registration and
+            // substitutes their own runner" window the token's
+            // 0700 on-disk hardening defends against. Wrapping the
+            // remaining steps in one do/catch guarantees the
+            // revoke fires on every exit path (script generation,
+            // injection, cancellation, the VM failing to start,
+            // and cancellation while waiting to come online), not
+            // just the two spots a prior revision remembered to
+            // call it from by hand.
             do {
-                try DiskInjector.inject(script: scriptURL, into: bundle)
+                try Task.checkCancellation()
+
+                // 4. Render + inject the runner script. Named
+                //    after the VM's display name, matching
+                //    `config.sh --name` so `waitForOnline(named:)`
+                //    below finds the right runner record.
+                updateCreation(name: name, progress: 0.7, status: "Injecting runner setup script…")
+                let scriptURL = try GitHubRunnerTemplate.generate(
+                    repo: runnerSpec.repo,
+                    token: issued.token,
+                    labels: runnerSpec.labels,
+                    ephemeral: runnerSpec.ephemeral,
+                    runnerName: name
+                )
+                do {
+                    try DiskInjector.inject(script: scriptURL, into: bundle)
+                } catch {
+                    try? ScriptFile.cleanup(scriptURL: scriptURL)
+                    throw error
+                }
+                do {
+                    try ScriptFile.cleanup(scriptURL: scriptURL)
+                } catch {
+                    Log.provision.error("Runner script cleanup failed: \(error.localizedDescription, privacy: .public)")
+                }
+
+                // The raw setup-automation VM is stopped and
+                // dropped; hand off to the existing GUI start
+                // path, which manages its own `transitioningVMs`
+                // insert/remove keyed the same way (bundle UUID).
+                // Removing our hold here first avoids self-
+                // blocking `startVM`'s own re-entrancy guard.
+                transitioningVMs.remove(key)
+                try Task.checkCancellation()
+
+                // 5. Start via the existing GUI start path — same
+                //    method every other VM in the sidebar uses,
+                //    keyed by the bundle's UUID, so the VM becomes
+                //    a normal running instance in `runningVMs`
+                //    with streaming services, graphics view, and
+                //    lifecycle notifications wired up.
+                updateCreation(name: name, progress: 0.85, status: "Starting VM…")
+                await startVM(key)
+                guard runningVMs[key] != nil else {
+                    throw RunnerProvisioningError.startFailed
+                }
+
+                // 6. Poll GitHub until the runner reports online. A
+                //    timeout here is non-fatal — mirrors the CLI's
+                //    `bootRunnerAndAwaitOnline`, which leaves the
+                //    VM running and warns rather than tearing
+                //    anything down, since the runner may still
+                //    come online.
+                updateCreation(name: name, progress: 0.9, status: "Waiting for runner to come online…")
+                do {
+                    let runner = try await service.waitForOnline(
+                        named: name,
+                        scope: scope,
+                        deadline: Date().addingTimeInterval(600),
+                        pollInterval: 10
+                    )
+                    updateCreation(name: name, progress: 1.0, status: "Runner online (GitHub runner id \(runner.id)).")
+                } catch {
+                    Log.provision.warning(
+                        "Runner '\(name, privacy: .public)' not confirmed online: \(error.localizedDescription, privacy: .public)"
+                    )
+                    updateCreation(
+                        name: name,
+                        progress: 1.0,
+                        status: "VM running — runner not yet confirmed online. Check its provisioning logs."
+                    )
+                }
             } catch {
-                try? ScriptFile.cleanup(scriptURL: scriptURL)
+                await service.revokeRegistrationToken(handle: issued.handle)
                 throw error
-            }
-            do {
-                try ScriptFile.cleanup(scriptURL: scriptURL)
-            } catch {
-                Log.provision.error("Runner script cleanup failed: \(error.localizedDescription, privacy: .public)")
-            }
-
-            // The raw setup-automation VM is stopped and dropped;
-            // hand off to the existing GUI start path, which
-            // manages its own `transitioningVMs` insert/remove.
-            // Removing our hold here first avoids self-blocking
-            // `startVM`'s own re-entrancy guard.
-            transitioningVMs.remove(name)
-            try Task.checkCancellation()
-
-            // 5. Start via the existing GUI start path — same
-            //    method every other VM in the sidebar uses, so
-            //    the VM becomes a normal running instance in
-            //    `runningVMs` with streaming services, graphics
-            //    view, and lifecycle notifications wired up.
-            updateCreation(name: name, progress: 0.85, status: "Starting VM…")
-            await startVM(name)
-            guard runningVMs[name] != nil else {
-                throw RunnerProvisioningError.startFailed
-            }
-
-            // 6. Poll GitHub until the runner reports online. A
-            //    timeout here is non-fatal — mirrors the CLI's
-            //    `bootRunnerAndAwaitOnline`, which leaves the VM
-            //    running and warns rather than tearing anything
-            //    down, since the runner may still come online.
-            updateCreation(name: name, progress: 0.9, status: "Waiting for runner to come online…")
-            do {
-                let runner = try await service.waitForOnline(
-                    named: name,
-                    scope: scope,
-                    deadline: Date().addingTimeInterval(600),
-                    pollInterval: 10
-                )
-                updateCreation(name: name, progress: 1.0, status: "Runner online (GitHub runner id \(runner.id)).")
-            } catch {
-                Log.provision.warning(
-                    "Runner '\(name, privacy: .public)' not confirmed online: \(error.localizedDescription, privacy: .public)"
-                )
-                updateCreation(
-                    name: name,
-                    progress: 1.0,
-                    status: "VM running — runner not yet confirmed online. Check its provisioning logs."
-                )
             }
             await service.revokeRegistrationToken(handle: issued.handle)
 
             pendingCreations.removeValue(forKey: name)
         } catch is CancellationError {
-            transitioningVMs.remove(name)
+            transitioningVMs.remove(key)
             pendingCreations.removeValue(forKey: name)
         } catch {
-            transitioningVMs.remove(name)
+            transitioningVMs.remove(key)
             let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             failCreation(name: name, message: msg)
         }
@@ -1594,7 +1655,7 @@ final class AppState {
                 }
 
                 AccessibilityNotification.Announcement(
-                    "Virtual machine \(name) deleted"
+                    "Virtual machine \(bundle.displayName) deleted"
                 ).post()
             } catch {
                 Log.vm.error("Delete failed for '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
@@ -1608,25 +1669,37 @@ final class AppState {
 
     /// Clones a VM.
     ///
-    /// Marks the destination name as transitioning for the
+    /// - Parameters:
+    ///   - source: The `vms` dictionary key (bundle UUID string)
+    ///     of the VM to clone.
+    ///   - destination: The clone's user-facing display name —
+    ///     NOT a `vms` key. The clone gets its own freshly-minted
+    ///     UUID key, matching every other VM in `vms`.
+    ///
+    /// Marks the destination's UUID key as transitioning for the
     /// duration so the menu-bar icon reflects that a clone is
     /// in progress.
     func cloneVM(_ source: String, to destination: String) {
         do {
             guard let sourceBundle = vms[source] else { return }
-            transitioningVMs.insert(destination)
-            defer { transitioningVMs.remove(destination) }
             let destinationID = UUID()
+            let destinationKey = destinationID.uuidString
+            transitioningVMs.insert(destinationKey)
+            defer { transitioningVMs.remove(destinationKey) }
             let destinationURL = SpooktacularPaths.bundleURL(for: destinationID)
             let clone = try CloneManager.clone(
                 source: sourceBundle,
                 to: destinationURL,
                 displayName: destination
             )
-            vms[destination] = clone
+            // Keyed by the clone's own UUID — never by
+            // `destination` (a display name). Inserting under a
+            // display-name key would plant a second, incoherent
+            // key space inside the same dictionary.
+            vms[clone.id.uuidString] = clone
 
             AccessibilityNotification.Announcement(
-                "Virtual machine \(source) cloned to \(destination)"
+                "Virtual machine \(sourceBundle.displayName) cloned to \(destination)"
             ).post()
         } catch {
             presentError(error)
@@ -1664,7 +1737,7 @@ final class AppState {
             return
         }
         guard runningVMs[name] == nil else {
-            presentError(GuestToolsInstallError.vmRunning(name))
+            presentError(GuestToolsInstallError.vmRunning(bundle.displayName))
             return
         }
         guard !transitioningVMs.contains(name) else { return }
@@ -1681,7 +1754,7 @@ final class AppState {
         // clear "try again in a moment" rather than a raw
         // POSIX error.
         if isDiskInUse(bundle: bundle) {
-            presentError(GuestToolsInstallError.diskInUse(name))
+            presentError(GuestToolsInstallError.diskInUse(bundle.displayName))
             return
         }
 
@@ -1702,11 +1775,11 @@ final class AppState {
                 // wondering whether to click again.
                 guestToolsInstalled.insert(name)
 
-                infoMessage = "Spooktacular Guest Tools installed in '\(name)'. Start the VM, open Spooktacular Guest Tools from /Applications/, and flip the menu-bar 'Launch at Login' toggle to have it start automatically next time."
+                infoMessage = "Spooktacular Guest Tools installed in '\(bundle.displayName)'. Start the VM, open Spooktacular Guest Tools from /Applications/, and flip the menu-bar 'Launch at Login' toggle to have it start automatically next time."
                 infoPresented = true
 
                 AccessibilityNotification.Announcement(
-                    "Guest Tools installed in \(name)"
+                    "Guest Tools installed in \(bundle.displayName)"
                 ).post()
             } catch {
                 presentError(error)

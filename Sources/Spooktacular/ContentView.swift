@@ -204,11 +204,20 @@ struct ContentView: View {
 
     // MARK: - Filtering
 
+    /// `vms` dictionary keys (bundle UUID strings), sorted and
+    /// filtered by each bundle's ``VirtualMachineBundle/displayName``
+    /// — never by the raw key — so the sidebar order and search
+    /// match what the user actually sees in each `VMRow`.
     private var filteredVMs: [String] {
-        let all = appState.vms.keys.sorted()
+        func displayName(_ key: String) -> String {
+            appState.vms[key]?.displayName ?? key
+        }
+        let all = appState.vms.keys.sorted {
+            displayName($0).localizedCaseInsensitiveCompare(displayName($1)) == .orderedAscending
+        }
         return searchText.isEmpty
             ? all
-            : all.filter { $0.localizedCaseInsensitiveContains(searchText) }
+            : all.filter { displayName($0).localizedCaseInsensitiveContains(searchText) }
     }
 
     /// Live list of in-flight creations for the sidebar, filtered

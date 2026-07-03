@@ -634,3 +634,31 @@ public struct VirtualMachineBundle: Sendable {
         }
     }
 }
+
+// MARK: - Display-name resolution
+
+extension Dictionary where Key == String, Value == VirtualMachineBundle {
+    /// Resolves the dictionary key — the bundle's UUID string,
+    /// matching its on-disk `<uuid>.vm` directory basename — for
+    /// the bundle whose ``VirtualMachineBundle/displayName``
+    /// equals `displayName` exactly.
+    ///
+    /// `AppState.vms` (and every other per-VM dictionary derived
+    /// from it) is keyed by UUID, never by display name: two VMs
+    /// may share a display name, so a caller holding only a
+    /// user-facing label — a freshly-created runner VM before its
+    /// UUID key is threaded through, a Clone sheet's destination
+    /// field, a Command Palette action — needs a lookup that goes
+    /// the other direction.
+    ///
+    /// Mirrors ``SpooktacularPaths/resolveBundle(selector:)``'s
+    /// on-disk scan semantics in memory: exactly one match
+    /// resolves; zero or multiple matches return `nil` rather than
+    /// guessing, since silently picking a bundle out of an
+    /// ambiguous set is worse than a clear "not found."
+    public func key(forDisplayName displayName: String) -> String? {
+        let matches = filter { $0.value.displayName == displayName }
+        guard matches.count == 1, let match = matches.first else { return nil }
+        return match.key
+    }
+}

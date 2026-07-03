@@ -17,7 +17,9 @@ import SpooktacularKit
 /// identifier.
 struct CloneVMSheet: View {
 
-    /// Name of the source VM we're cloning from.
+    /// The `vms` dictionary key (bundle UUID string) of the VM
+    /// we're cloning from — matches what ``AppState/cloneVM(_:to:)``
+    /// expects as its `source` argument.
     let source: String
 
     @Environment(AppState.self) private var appState
@@ -68,7 +70,7 @@ struct CloneVMSheet: View {
 
     private var sourceRow: some View {
         LabeledContent("Source") {
-            Text(source)
+            Text(appState.vms[source]?.displayName ?? source)
                 .font(.body.monospaced())
                 .foregroundStyle(.secondary)
         }
@@ -85,9 +87,9 @@ struct CloneVMSheet: View {
     private var infoRow: some View {
         Text(
             "APFS copy-on-write — the clone shares disk blocks with " +
-            "'\(source)' and takes milliseconds. Each clone gets a " +
-            "unique machine identifier so both VMs can run at the " +
-            "same time without conflict."
+            "'\(appState.vms[source]?.displayName ?? source)' and takes " +
+            "milliseconds. Each clone gets a unique machine identifier " +
+            "so both VMs can run at the same time without conflict."
         )
         .font(.callout)
         .foregroundStyle(.secondary)
@@ -116,9 +118,14 @@ struct CloneVMSheet: View {
 
     // MARK: - Logic
 
+    // `appState.vms` is keyed by bundle UUID, not display name —
+    // see its doc comment — so every collision check below goes
+    // through `Dictionary.key(forDisplayName:)` rather than
+    // subscripting `vms` directly with a user-typed name.
+
     private var canClone: Bool {
         let trimmed = destination.trimmingCharacters(in: .whitespaces)
-        return !trimmed.isEmpty && appState.vms[trimmed] == nil
+        return !trimmed.isEmpty && appState.vms.key(forDisplayName: trimmed) == nil
     }
 
     /// Picks a default destination name that doesn't collide with
@@ -126,13 +133,14 @@ struct CloneVMSheet: View {
     /// `-clone-2`, `-clone-3`, … until a free slot is found.
     /// Runs once when the sheet appears for a given source.
     private func preseedDestinationName() {
-        let base = "\(source)-clone"
-        if appState.vms[base] == nil {
+        let sourceDisplayName = appState.vms[source]?.displayName ?? source
+        let base = "\(sourceDisplayName)-clone"
+        if appState.vms.key(forDisplayName: base) == nil {
             destination = base
             return
         }
         var suffix = 2
-        while appState.vms["\(base)-\(suffix)"] != nil {
+        while appState.vms.key(forDisplayName: "\(base)-\(suffix)") != nil {
             suffix += 1
         }
         destination = "\(base)-\(suffix)"
@@ -140,7 +148,7 @@ struct CloneVMSheet: View {
 
     private func performClone() {
         let trimmed = destination.trimmingCharacters(in: .whitespaces)
-        guard appState.vms[trimmed] == nil else {
+        guard appState.vms.key(forDisplayName: trimmed) == nil else {
             errorMessage = "A VM named '\(trimmed)' already exists."
             return
         }
@@ -148,9 +156,10 @@ struct CloneVMSheet: View {
         errorMessage = nil
         appState.cloneVM(source, to: trimmed)
         // `cloneVM` routes errors through `presentError`; a
-        // successful clone adds the destination to `appState.vms`,
-        // which is our cue to dismiss.
-        if appState.vms[trimmed] != nil {
+        // successful clone registers the destination display name
+        // under a freshly-minted key in `appState.vms`, which is
+        // our cue to dismiss.
+        if appState.vms.key(forDisplayName: trimmed) != nil {
             dismiss()
         } else {
             isCloning = false

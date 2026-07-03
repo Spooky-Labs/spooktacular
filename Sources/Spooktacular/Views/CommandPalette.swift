@@ -42,16 +42,21 @@ struct CommandPalette: View {
             action: { appState.showAddImage = true }
         ))
         for name in vms {
+            // `name` is the `vms` dictionary key (bundle UUID
+            // string) — every action below keeps using it, since
+            // that's the key `startVM`/`stopVM`/`cloneVM` expect.
+            // Only the rendered text resolves to the display name.
+            let displayName = appState.vms[name]?.displayName ?? name
             result.append(PaletteCommand(
-                title: "Open Workspace · \(name)",
-                subtitle: "Open '\(name)' in its own window",
+                title: "Open Workspace · \(displayName)",
+                subtitle: "Open '\(displayName)' in its own window",
                 systemImage: "macwindow",
                 shortcut: nil,
                 action: { openWindow(id: "workspace", value: name) }
             ))
             if appState.isRunning(name) {
                 result.append(PaletteCommand(
-                    title: "Stop · \(name)",
+                    title: "Stop · \(displayName)",
                     subtitle: "Stop the running workspace",
                     systemImage: "stop.fill",
                     shortcut: nil,
@@ -59,7 +64,7 @@ struct CommandPalette: View {
                 ))
             } else {
                 result.append(PaletteCommand(
-                    title: "Start · \(name)",
+                    title: "Start · \(displayName)",
                     subtitle: "Boot the workspace",
                     systemImage: "play.fill",
                     shortcut: nil,
@@ -67,11 +72,11 @@ struct CommandPalette: View {
                 ))
             }
             result.append(PaletteCommand(
-                title: "Clone · \(name)",
-                subtitle: "APFS clone under '\(name)-clone'",
+                title: "Clone · \(displayName)",
+                subtitle: "APFS clone under '\(displayName)-clone'",
                 systemImage: "doc.on.doc",
                 shortcut: nil,
-                action: { appState.cloneVM(name, to: "\(name)-clone") }
+                action: { appState.cloneVM(name, to: "\(displayName)-clone") }
             ))
         }
         return result

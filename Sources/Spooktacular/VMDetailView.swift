@@ -27,7 +27,7 @@ struct VMDetailView: View {
             .padding(24)
             .frame(maxWidth: .infinity)
         }
-        .navigationTitle(name)
+        .navigationTitle(bundle.displayName)
         .task(id: "\(name)-\(isRunning)") {
             // Route stats through the Apple-native
             // `VZVirtioSocketListener` the VM exposes via
@@ -114,7 +114,7 @@ struct VMDetailView: View {
 
     private var titleBlock: some View {
         VStack(spacing: 6) {
-            Text(name)
+            Text(bundle.displayName)
                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 .multilineTextAlignment(.center)
             Text(guestOSLabel)
@@ -650,11 +650,17 @@ struct ImageDetailView: View {
 }
 
 /// Sidebar row for one VM — name, specs, running dot.
+///
+/// `name` is the `vms` dictionary key (the bundle's UUID string),
+/// not a label — it's only used to look up the bundle and to
+/// drive lifecycle actions. Everything actually rendered comes
+/// from ``VirtualMachineBundle/displayName``.
 struct VMRow: View {
 
     let name: String
     @Environment(AppState.self) private var appState
 
+    private var bundle: VirtualMachineBundle? { appState.vms[name] }
     private var isRunning: Bool { appState.isRunning(name) }
 
     var body: some View {
@@ -665,8 +671,8 @@ struct VMRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.body)
-                if let bundle = appState.vms[name] {
+                Text(bundle?.displayName ?? name).font(.body)
+                if let bundle {
                     Text("\(bundle.spec.cpuCount) CPU · \(bundle.spec.memorySizeInGigabytes) GB")
                         .font(.caption)
                         .foregroundStyle(.secondary)

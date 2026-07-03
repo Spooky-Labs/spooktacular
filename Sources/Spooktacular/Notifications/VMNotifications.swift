@@ -17,30 +17,42 @@ final class VMNotifications {
     private var didRequestAuthorization: Bool = false
 
     /// Post a "workspace started" notification.
-    func notifyStarted(_ name: String) {
+    ///
+    /// - Parameters:
+    ///   - key: The VM's stable `vms` dictionary key (bundle
+    ///     UUID string) — used only for the notification
+    ///     identifier, never shown to the user. Display names
+    ///     aren't guaranteed unique, so the identifier must stay
+    ///     keyed by something that is.
+    ///   - displayName: The user-facing label shown as the
+    ///     notification's title.
+    func notifyStarted(_ key: String, displayName: String) {
         post(
-            identifier: "started-\(name)",
-            title: name,
+            identifier: "started-\(key)",
+            title: displayName,
             body: "Workspace is running.",
             category: .info
         )
     }
 
-    /// Post a "workspace stopped" notification.
-    func notifyStopped(_ name: String) {
+    /// Post a "workspace stopped" notification. See
+    /// ``notifyStarted(_:displayName:)`` for the parameter split.
+    func notifyStopped(_ key: String, displayName: String) {
         post(
-            identifier: "stopped-\(name)",
-            title: name,
+            identifier: "stopped-\(key)",
+            title: displayName,
             body: "Workspace stopped.",
             category: .info
         )
     }
 
-    /// Post a "workspace failed" notification with the error text.
-    func notifyFailed(_ name: String, error: String) {
+    /// Post a "workspace failed" notification with the error
+    /// text. See ``notifyStarted(_:displayName:)`` for the
+    /// parameter split.
+    func notifyFailed(_ key: String, displayName: String, error: String) {
         post(
-            identifier: "failed-\(name)",
-            title: "\(name) failed",
+            identifier: "failed-\(key)",
+            title: "\(displayName) failed",
             body: error,
             category: .critical
         )

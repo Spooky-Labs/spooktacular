@@ -49,7 +49,7 @@ struct WorkspaceWindow: View {
             }
         }
         .frame(minWidth: 720, minHeight: 460)
-        .navigationTitle(vmName)
+        .navigationTitle(appState.vms[vmName]?.displayName ?? vmName)
         .task(id: vmName) {
             await appState.workspaceDidOpen(vmName)
         }
@@ -107,7 +107,7 @@ struct WorkspaceWindow: View {
         ContentUnavailableView(
             "Workspace Unavailable",
             systemImage: "questionmark.folder",
-            description: Text("The VM '\(vmName)' was removed or is not loaded.")
+            description: Text("The VM was removed or is not loaded.")
         )
         .padding()
     }
@@ -331,7 +331,7 @@ struct WorkspaceLaunchView: View {
             WorkspaceIconView(spec: bundle.metadata.iconSpec ?? .defaultSpec, size: 140)
 
             VStack(spacing: 6) {
-                Text(name)
+                Text(bundle.displayName)
                     .font(.system(.largeTitle, design: .rounded, weight: .semibold))
                 Text(specSummary)
                     .font(.callout)

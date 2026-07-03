@@ -508,4 +508,65 @@ struct VirtualMachineBundleTests {
             }
         }
     }
+
+    // MARK: - Display-name key resolution
+
+    /// Covers `Dictionary.key(forDisplayName:)` — the helper
+    /// `AppState.vms` (keyed by bundle UUID) uses to go from a
+    /// user-facing label back to the dictionary key. Exercises
+    /// the exact semantics described in its doc comment: exactly
+    /// one match resolves, zero or multiple matches return `nil`.
+    @Suite("Display-name key resolution", .tags(.lifecycle))
+    struct DisplayNameKeyResolutionTests {
+
+        /// Builds a `vms`-shaped dictionary — keyed by bundle
+        /// UUID string, matching `AppState.loadVMs()` — out of
+        /// bundles created with the given display names.
+        private func makeVMs(_ displayNames: [String]) throws -> [String: VirtualMachineBundle] {
+            let tmp = TempDirectory()
+            var vms: [String: VirtualMachineBundle] = [:]
+            for displayName in displayNames {
+                let id = UUID()
+                let bundle = try VirtualMachineBundle.create(
+                    at: tmp.file("\(id.uuidString).vm"),
+                    spec: VirtualMachineSpecification(),
+                    displayName: displayName
+                )
+                vms[bundle.id.uuidString] = bundle
+            }
+            return vms
+        }
+
+        @Test("Resolves the key for a unique display name", .timeLimit(.minutes(1)))
+        func resolvesUniqueMatch() throws {
+            let vms = try makeVMs(["runner-01", "runner-02"])
+            let key = try #require(vms.key(forDisplayName: "runner-01"))
+            #expect(vms[key]?.displayName == "runner-01")
+        }
+
+        @Test("Returns nil for a display name with no matches", .timeLimit(.minutes(1)))
+        func noMatchReturnsNil() throws {
+            let vms = try makeVMs(["runner-01"])
+            #expect(vms.key(forDisplayName: "does-not-exist") == nil)
+        }
+
+        @Test("Returns nil when multiple VMs share the display name", .timeLimit(.minutes(1)))
+        func ambiguousMatchReturnsNil() throws {
+            let vms = try makeVMs(["runner-01", "runner-01"])
+            #expect(vms.key(forDisplayName: "runner-01") == nil)
+        }
+
+        @Test("Match is case-sensitive, mirroring SpooktacularPaths.resolveBundle", .timeLimit(.minutes(1)))
+        func matchIsCaseSensitive() throws {
+            let vms = try makeVMs(["Runner-01"])
+            #expect(vms.key(forDisplayName: "runner-01") == nil)
+            #expect(vms.key(forDisplayName: "Runner-01") != nil)
+        }
+
+        @Test("Empty dictionary returns nil", .timeLimit(.minutes(1)))
+        func emptyDictionaryReturnsNil() {
+            let vms: [String: VirtualMachineBundle] = [:]
+            #expect(vms.key(forDisplayName: "anything") == nil)
+        }
+    }
 }

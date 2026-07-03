@@ -75,6 +75,7 @@ struct MenuBarView: View {
 
     @ViewBuilder
     private func vmMenuItem(name: String) -> some View {
+        let displayName = appState.vms[name]?.displayName ?? name
         let isRunning = appState.isRunning(name)
         let isTransitioning = appState.transitioningVMs.contains(name)
 
@@ -83,7 +84,7 @@ struct MenuBarView: View {
             // gives immediate feedback that the click registered.
             Label {
                 HStack(spacing: 4) {
-                    Text(name)
+                    Text(displayName)
                     Text("…").foregroundStyle(.secondary)
                 }
             } icon: {
@@ -103,7 +104,7 @@ struct MenuBarView: View {
             } label: {
                 Label {
                     HStack(spacing: 4) {
-                        Text(name)
+                        Text(displayName)
                         Text("Running").foregroundStyle(.green)
                     }
                 } icon: {
@@ -123,12 +124,17 @@ struct MenuBarView: View {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
             } label: {
-                Label(name, systemImage: "stop.circle")
+                Label(displayName, systemImage: "stop.circle")
             }
         }
     }
 
+    /// `vms` keys sorted by each bundle's display name — never by
+    /// the raw UUID key.
     private var sortedNames: [String] {
-        appState.vms.keys.sorted()
+        appState.vms.keys.sorted {
+            (appState.vms[$0]?.displayName ?? $0)
+                .localizedCaseInsensitiveCompare(appState.vms[$1]?.displayName ?? $1) == .orderedAscending
+        }
     }
 }
