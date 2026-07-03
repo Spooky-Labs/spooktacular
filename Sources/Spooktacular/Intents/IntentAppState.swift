@@ -18,27 +18,44 @@ final class IntentAppState {
     /// Process-global shared instance.
     static let shared = IntentAppState()
 
-    /// Current directory listing; refreshed each `allVMs` call so
-    /// users see VMs created while the intent extension was alive.
+    /// Current directory listing, keyed by bundle UUID string (see
+    /// ``refresh()``) — never by display name. Refreshed each
+    /// `allVMs` call so users see VMs created while the intent
+    /// extension was alive.
     private var cache: [String: VirtualMachineBundle] = [:]
 
     private init() {}
 
     // MARK: - Queries
 
-    /// All VMs currently on disk, sorted by name.
+    /// All VMs currently on disk, sorted by display name.
+    ///
+    /// `cache` is keyed by the bundle's UUID string (matching its
+    /// on-disk `<uuid>.vm` directory basename — see ``refresh()``),
+    /// never by display name, so ``VMEntity/id`` must come from the
+    /// dictionary key while ``VMEntity/displayName`` comes from
+    /// ``VirtualMachineBundle/displayName``. Mirrors the same
+    /// UUID-key / display-name split ``AppState/vms`` and
+    /// `Dictionary.key(forDisplayName:)` resolve for the GUI (see
+    /// that extension's doc comment) — Shortcuts users pick VMs by
+    /// the label they typed at create time, not by a raw UUID.
     func allVMs() -> [VMEntity] {
         refresh()
-        return cache.keys.sorted().map {
-            VMEntity(id: $0, displayName: $0)
-        }
+        return cache
+            .map { key, bundle in VMEntity(id: key, displayName: bundle.displayName) }
+            .sorted { $0.displayName < $1.displayName }
     }
 
     /// Resolve VM entities by ID for the intents system.
+    ///
+    /// `ids` are ``VMEntity/id`` values Shortcuts already holds —
+    /// i.e. `cache` keys (bundle UUID strings) — round-tripped back
+    /// from a previously-run ``allVMs()``/``vms(named:)`` call. See
+    /// ``allVMs()``'s doc comment for the key/display-name split.
     func vms(named ids: [String]) -> [VMEntity] {
         refresh()
         return ids.compactMap { id in
-            cache[id].map { _ in VMEntity(id: id, displayName: id) }
+            cache[id].map { bundle in VMEntity(id: id, displayName: bundle.displayName) }
         }
     }
 
@@ -116,6 +133,13 @@ final class IntentAppState {
 
     // MARK: - Helpers
 
+    /// Rebuilds ``cache`` from every `.vm` bundle on disk, keyed by
+    /// the bundle's UUID string — `VirtualMachineBundle.load(from:)`
+    /// migrates any legacy display-name-keyed directory to
+    /// `<uuid>.vm` before returning, so the basename here is always
+    /// the UUID, never the user-facing label (that lives at
+    /// `bundle.displayName`). Matches `AppState.loadVMs()`'s
+    /// identical on-disk scan for the GUI's `vms` dictionary.
     private func refresh() {
         do {
             try SpooktacularPaths.ensureDirectories()
@@ -125,9 +149,9 @@ final class IntentAppState {
             )
             var loaded: [String: VirtualMachineBundle] = [:]
             for url in contents where url.pathExtension == "vm" {
-                let name = url.deletingPathExtension().lastPathComponent
+                let key = url.deletingPathExtension().lastPathComponent
                 if let bundle = try? VirtualMachineBundle.load(from: url) {
-                    loaded[name] = bundle
+                    loaded[key] = bundle
                 }
             }
             cache = loaded
