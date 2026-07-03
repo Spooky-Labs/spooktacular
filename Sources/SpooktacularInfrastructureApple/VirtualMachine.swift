@@ -823,7 +823,7 @@ public final class VirtualMachine: NSObject {
     }
 }
 
-// MARK: - Post-Install Construction
+// MARK: - Post-Release Construction
 
 extension VirtualMachine {
 
@@ -832,26 +832,40 @@ extension VirtualMachine {
     /// service backing a just-torn-down `VZVirtualMachine` on the
     /// SAME bundle hasn't yet released its file lock.
     ///
+    /// Use this — instead of raw `VirtualMachine(bundle:)` — at any
+    /// construction site where the calling flow itself JUST released
+    /// a prior VM on the same bundle: right after
+    /// `RestoreImageManager.install()` (the installer's VM), or
+    /// right after `stop()`-ping a VM this flow booted (the XPC
+    /// service lingers 5–30s past a stop too — see
+    /// `AppState.isDiskInUse`, commit 30413e5e1). A cold start with
+    /// no just-released predecessor needs no retry and should stay
+    /// on the plain initializer so genuine configuration errors
+    /// surface immediately.
+    ///
     /// `RestoreImageManager.install(bundle:from:progress:)` already
     /// waits — by polling `lsof`, see that method's doc comment for
     /// the empirical evidence that the lock is held by a separate OS
     /// process (`com.apple.Virtualization.VirtualMachine.xpc`), not
     /// by anything in our own object graph — for that lock to clear
-    /// before returning. This retry exists ONLY to cover the gap
-    /// between that best-effort wait and this construction call: a
-    /// few hundred milliseconds of TOCTOU, or the rare case where
-    /// the manager's 30s ceiling was hit. It does not, and cannot,
-    /// compensate for the underlying XPC teardown itself — that has
-    /// no faster path from our side. Bounded deliberately small (3
-    /// attempts, ~3s worst-case cumulative backoff): if construction
-    /// is still failing after that, the lock genuinely isn't
-    /// clearing and a longer wait wouldn't help either — better to
-    /// surface the real error than spin.
+    /// before returning. For post-install call sites this retry
+    /// therefore exists ONLY to cover the gap between that
+    /// best-effort wait and this construction call: a few hundred
+    /// milliseconds of TOCTOU, or the rare case where the manager's
+    /// 30s ceiling was hit. For post-stop call sites (no manager
+    /// wait ran) it absorbs the head of the same XPC-teardown
+    /// window. It does not, and cannot, compensate for the
+    /// underlying XPC teardown itself — that has no faster path
+    /// from our side. Bounded deliberately small (3 attempts, ~3s
+    /// worst-case cumulative backoff): if construction is still
+    /// failing after that, the lock genuinely isn't clearing and a
+    /// longer wait wouldn't help either — better to surface the
+    /// real error than spin.
     ///
     /// - Parameters:
     ///   - bundle: The VM bundle to construct against, immediately
-    ///     after ``RestoreImageManager/install(bundle:from:progress:)``
-    ///     completed for it.
+    ///     after this flow released a prior `VZVirtualMachine` on it
+    ///     (post-install or post-stop).
     ///   - onRetry: Invoked before each retry sleep with the attempt
     ///     number and the total attempt budget, so callers can
     ///     surface progress to the user.

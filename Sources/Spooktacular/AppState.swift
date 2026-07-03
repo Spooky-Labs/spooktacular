@@ -496,7 +496,17 @@ final class AppState {
         defer { transitioningVMs.remove(name) }
 
         do {
-            let vm = try VirtualMachine(bundle: bundle)
+            // Post-release-tolerant construction: this method is
+            // called by `provisionGitHubRunnerForCreate` immediately
+            // after it stopped its own Setup Assistant VM on this
+            // same bundle, and by the user right after a manual Stop
+            // — in both cases the stopped VM's XPC service can still
+            // hold the bundle's file lock for a few seconds (the
+            // same documented 5-30s window `isDiskInUse` pre-flights
+            // for agent install). On a cold start the first attempt
+            // succeeds and the retry never engages. See
+            // `VirtualMachine.makeAfterInstall(bundle:onRetry:)`.
+            let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle)
 
             // Pre-create the VZVirtualMachineView and wire it
             // to the VM BEFORE start(). Apple's VZ framework

@@ -1047,7 +1047,16 @@ extension Spooktacular {
 
             logger.info("Creating VM instance from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
             print(Style.info("Booting VM for provisioning..."))
-            let vm = try VirtualMachine(bundle: bundle)
+            // Post-release construction: this runs either right
+            // after `RestoreImageManager.install()` (when Setup
+            // Assistant automation was skipped or unsupported) or
+            // right after `automateSetupAssistant` stopped its VM —
+            // in both cases a prior VZVirtualMachine on this same
+            // bundle was just released and its XPC service may still
+            // hold the file lock. See `VirtualMachine.makeAfterInstall`.
+            let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle) { attempt, maxAttempts in
+                print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))..."))
+            }
             try await vm.start()
             logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' started for provisioning")
             print(Style.success("✓ VM is running."))
@@ -1474,7 +1483,14 @@ extension Spooktacular {
             }
 
             if !json { print(Style.info("Starting VM '\(name)' headless for runner registration...")) }
-            let vm = try VirtualMachine(bundle: bundle)
+            // Post-release construction: `automateSetupAssistant`
+            // stopped its VM on this same bundle just before this
+            // runs (token mint + script injection in between are
+            // fast), so the stopped VM's XPC service may still hold
+            // the file lock. See `VirtualMachine.makeAfterInstall`.
+            let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle) { attempt, maxAttempts in
+                if !json { print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))...")) }
+            }
             guard vm.vzVM != nil else {
                 throw NSError(
                     domain: "com.spooktacular",

@@ -547,22 +547,25 @@ public final class RestoreImageManager: Sendable {
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws {
         Log.ipsw.info("Starting macOS installation into '\(bundle.url.lastPathComponent, privacy: .public)' from \(ipswURL.lastPathComponent, privacy: .public)")
-        let config = VZVirtualMachineConfiguration()
-        try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
-        try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
-        try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
-        try config.validate()
 
-        // Scoped to its own method so the installer's `VZVirtualMachine`
-        // / `VZMacOSInstaller` / KVO observation are released by ARC
-        // the instant `runInstaller` returns — deterministically, and
-        // before `waitForPlatformArtifactsReleased` below starts
+        // Scoped to its own method so the installer's configuration
+        // (aux-storage + disk attachments), `VZVirtualMachine`,
+        // `VZMacOSInstaller`, and KVO observation are ALL released by
+        // ARC the instant `runInstaller` returns — deterministically,
+        // and before `waitForPlatformArtifactsReleased` below starts
         // polling. See that method's doc comment: releasing our
-        // reference promptly is necessary but NOT sufficient on its
+        // references promptly is necessary but NOT sufficient on its
         // own — the actual file lock is held by a separate OS
-        // process, not by this Swift object.
+        // process, not by any of these Swift objects. (Verified with
+        // a scratch probe: `lsof -F p` on `auxiliary.bin`/`disk.img`
+        // shows zero in-process holders even while a
+        // `VZMacAuxiliaryStorage` + `VZDiskImageStorageDeviceAttachment`
+        // are live — they wrap the URL; the fds only ever exist in
+        // the XPC service. Scoping `config` here is therefore
+        // defense-in-depth against that ever changing, not a load-
+        // bearing part of the fix.)
         try await Self.runInstaller(
-            configuration: config,
+            bundle: bundle,
             ipswURL: ipswURL,
             progress: progress
         )
@@ -571,20 +574,31 @@ public final class RestoreImageManager: Sendable {
         await Self.waitForPlatformArtifactsReleased(bundle: bundle)
     }
 
-    /// Runs `VZMacOSInstaller` to completion in its own scope.
+    /// Builds the installer configuration and runs `VZMacOSInstaller`
+    /// to completion, all in its own scope.
     ///
-    /// Extracted out of ``install(bundle:from:progress:)`` so its
-    /// `VZVirtualMachine` / `VZMacOSInstaller` / KVO observation are
-    /// local to THIS method — nothing outside references them, so
-    /// ARC releases all three the moment this method returns, before
-    /// the caller goes on to wait for the framework's own teardown.
+    /// Extracted out of ``install(bundle:from:progress:)`` so the
+    /// `VZVirtualMachineConfiguration` (which retains the
+    /// `VZMacAuxiliaryStorage` and disk-image attachments for the
+    /// same files the caller is about to wait on), the
+    /// `VZVirtualMachine`, the `VZMacOSInstaller`, and the KVO
+    /// observation are all local to THIS method — nothing outside
+    /// references any of them, so ARC releases everything the moment
+    /// this method returns, before the caller goes on to wait for
+    /// the framework's own teardown.
     @MainActor
     private static func runInstaller(
-        configuration: VZVirtualMachineConfiguration,
+        bundle: VirtualMachineBundle,
         ipswURL: URL,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws {
-        let vm = VZVirtualMachine(configuration: configuration)
+        let config = VZVirtualMachineConfiguration()
+        try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
+        try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
+        try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
+        try config.validate()
+
+        let vm = VZVirtualMachine(configuration: config)
         let installer = VZMacOSInstaller(
             virtualMachine: vm,
             restoringFromImageAt: ipswURL
@@ -681,10 +695,18 @@ public final class RestoreImageManager: Sendable {
         )
     }
 
-    /// Returns `true` if `lsof` reports any process holding `path`
-    /// open. Mirrors the GUI's `AppState.isDiskInUse` pre-flight
-    /// (commit 30413e5e1), hoisted here so the CLI and GUI post-
-    /// install paths share one implementation instead of two.
+    /// Returns `true` if `lsof` reports any process OTHER than this
+    /// one holding `path` open. Same job as the GUI's
+    /// `AppState.isDiskInUse` pre-flight (commit 30413e5e1), hoisted
+    /// here so the CLI and GUI post-install paths share one
+    /// implementation — but PID-aware: a handle held by OUR OWN
+    /// process is not the XPC lock this probe exists to detect (the
+    /// XPC service is a separate process; a same-process handle
+    /// wouldn't block `VirtualMachine` construction the same way, and
+    /// counting it would silently degrade every install to the full
+    /// wait ceiling). `lsof -F p` emits one `p<PID>` line per holding
+    /// process, which is machine-parseable — no header-line
+    /// heuristics against localized column output.
     ///
     /// `internal` rather than `private` — unlike the VZ-framework
     /// calls elsewhere in this file, this is a plain `lsof` wrapper
@@ -697,7 +719,10 @@ public final class RestoreImageManager: Sendable {
         guard FileManager.default.fileExists(atPath: path) else { return false }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        process.arguments = [path]
+        // -F p: field output, one "p<PID>" line per process holding
+        // the file open. Exits non-zero with empty output when no
+        // process holds it.
+        process.arguments = ["-F", "p", path]
         let outPipe = Pipe()
         process.standardOutput = outPipe
         process.standardError = Pipe()
@@ -705,11 +730,12 @@ public final class RestoreImageManager: Sendable {
             try process.run()
             process.waitUntilExit()
             let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-            // lsof prints a header line plus one line per holder;
-            // more than one line means at least one process has an
-            // open handle.
-            return !data.isEmpty
-                && (String(data: data, encoding: .utf8) ?? "").split(separator: "\n").count > 1
+            guard let output = String(data: data, encoding: .utf8) else { return false }
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            return output.split(separator: "\n").contains { line in
+                guard line.first == "p", let pid = Int32(line.dropFirst()) else { return false }
+                return pid != ownPID
+            }
         } catch {
             // lsof unavailable — skip the check and let the actual
             // construction attempt surface the real error, if any.

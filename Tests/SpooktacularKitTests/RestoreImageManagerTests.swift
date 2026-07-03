@@ -76,6 +76,29 @@ struct RestoreImageManagerTests {
         #expect(RestoreImageManager.isHeldOpenByAnotherProcess(path: missing.path) == false)
     }
 
+    @Test("isHeldOpenByAnotherProcess ignores handles held by our own process")
+    func isHeldOpenByAnotherProcessIgnoresOwnPID() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lock-probe-\(UUID().uuidString).bin")
+        try Data("probe".utf8).write(to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        // Hold the file open from THIS process. The probe exists to
+        // detect the separate VZ XPC process's lock — a same-process
+        // handle must not register, otherwise a caller whose own
+        // process has the file open (e.g. an unrelated FileHandle,
+        // mid-hash read, or a future framework change that opens fds
+        // in-process) would silently degrade the post-install wait
+        // to its full 30s ceiling on every install.
+        let handle = try FileHandle(forReadingFrom: tmp)
+        defer { try? handle.close() }
+
+        #expect(
+            RestoreImageManager.isHeldOpenByAnotherProcess(path: tmp.path) == false,
+            "a handle held by our own PID must not count as another process's lock"
+        )
+    }
+
     @Test("isHeldOpenByAnotherProcess detects an externally-open file and clears once the holder exits")
     func isHeldOpenByAnotherProcessDetectsExternalHolder() async throws {
         let tmp = FileManager.default.temporaryDirectory
