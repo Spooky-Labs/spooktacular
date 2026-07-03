@@ -6,6 +6,16 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — zero-touch GitHub Actions runner pipeline
+
+`spook create --github-runner --github-repo <org/repo> --github-token-keychain <account>` is now a single, complete flow: resolve the Keychain-stored PAT, mint a fresh one-hour runner registration token right before boot, disk-inject the runner script, boot the VM headless, and poll GitHub every 10 seconds (up to 10 minutes) until the runner reports online — no separate `spook start`, no plaintext token on a flag/env-var/file (7de6933b3).
+
+Real end-to-end testing against physical hardware (`test(e2e): live self-hosted runner verification evidence`, d206530e0) surfaced three bugs in this flow, all fixed:
+
+- Setup Assistant automation failures under `--github-runner` now fail fast with an actionable error instead of silently proceeding to mint a token, inject the script, and boot into a guaranteed ~10-minute online-poll timeout (ce34308ca).
+- `--github-runner` fails fast — before the 10–20 minute install — on macOS versions with no Setup Assistant automation sequence; Guest Tools install now waits out the same VZ XPC-service disk lock `RestoreImageManager.install` already handles; `--json` stdout is exactly one JSON document (63ce07805).
+- The runner registration token is redacted (`TOKEN='[REDACTED]'`) in the guest-side archived provisioning script, and the bundle's provisioning share is now `0700` instead of `0755` — closing two host-visible token-at-rest gaps (fa5b061af).
+
 ### Checkpoint — Guest Tools replatform (in progress)
 
 The in-guest companion is being rebuilt around a SPICE serial-channel

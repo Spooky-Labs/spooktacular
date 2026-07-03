@@ -233,7 +233,7 @@ Spooktacular
 <div class="use-case" id="api">
 <div class="section-label">&#127760; Use Case</div>
 <h2>HTTP API</h2>
-<p class="sub">Control everything over REST. 9 endpoints for VM lifecycle, 15+ CLI commands, and a native SwiftUI GUI.</p>
+<p class="sub">Control everything over REST. Endpoints for VM lifecycle, IAM, and RBAC; 28 CLI commands; a native SwiftUI GUI.</p>
 <div class="terminal" role="figure" aria-label="API usage example">
 <div class="terminal-header"><span class="terminal-dot red" aria-hidden="true"></span><span class="terminal-dot yellow" aria-hidden="true"></span><span class="terminal-dot green" aria-hidden="true"></span><span class="terminal-title">api-examples.sh</span></div>
 <div class="terminal-body">
@@ -248,8 +248,8 @@ Spooktacular
 </div>
 </div>
 <div class="feat-grid">
-<div class="feature-card"><span class="icon" aria-hidden="true">&#127760;</span><div class="tag tag-shipped">Shipped</div><h3>HTTP REST API</h3><p>9 REST endpoints built on Network.framework with Codable request/response types. Control VM lifecycle from any language or CI system.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift" class="source-link" target="_blank">View source &rarr;</a></div>
-<div class="feature-card"><span class="icon" aria-hidden="true">&#128187;</span><div class="tag tag-shipped">Shipped</div><h3>15+ CLI Commands</h3><p>Create, clone, start, stop, delete, list, get, set, ip, ssh, exec, snapshot, service, share, and serve. 25+ including subcommands.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-cli/Commands" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#127760;</span><div class="tag tag-shipped">Shipped</div><h3>HTTP REST API</h3><p>REST endpoints built on Network.framework with Codable request/response types, covering VM lifecycle, IAM, and RBAC. Control VMs from any language or CI system.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift" class="source-link" target="_blank">View source &rarr;</a></div>
+<div class="feature-card"><span class="icon" aria-hidden="true">&#128187;</span><div class="tag tag-shipped">Shipped</div><h3>28 CLI Commands</h3><p>Create, clone, start, stop, delete, list, get, set, ip, ssh, exec, snapshot, service, share, serve, and more.</p><a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-cli/Commands" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128421;</span><div class="tag tag-shipped">Shipped</div><h3>SwiftUI GUI</h3><p>Native macOS app with NavigationSplitView, inspector panel, and VM creation sheet. Liquid Glass support on macOS 26+.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#9776;</span><div class="tag tag-shipped">Shipped</div><h3>Menu Bar Extra</h3><p>Persistent menu bar icon for quick VM status checks and actions without opening the full app.</p><a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift" class="source-link" target="_blank">View source &rarr;</a></div>
 <div class="feature-card"><span class="icon" aria-hidden="true">&#128218;</span><div class="tag tag-shipped">Shipped</div><h3>Full DocC API Reference</h3><p>Complete API documentation generated from source. Browse types, methods, and articles in the hosted DocC archive.</p><a href="api/documentation/spooktacularkit/" class="source-link">View API Docs &rarr;</a></div>
@@ -260,7 +260,7 @@ Spooktacular
 
 <div style="text-align: center; padding: 4rem 0 5rem; position: relative; z-index: 1;">
 <div class="container">
-<h2 style="font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.75rem;">424 tests across 53 suites</h2>
+<h2 style="font-size: 2rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.75rem;">800 tests</h2>
 <p style="color: var(--dim); font-size: 1.1rem; margin-bottom: 2rem; max-width: 500px; margin-left: auto; margin-right: auto;">Every feature is tested. Every claim is backed by code. Audit the source yourself.</p>
 <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
 <a href="get-started.html" style="padding: 0.85rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; transition: opacity 0.2s;">Get Started</a>

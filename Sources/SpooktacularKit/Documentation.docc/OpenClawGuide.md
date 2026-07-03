@@ -19,8 +19,9 @@ in macOS VMs with Spooktacular gives you:
 ### Prerequisites
 
 - Apple Silicon Mac (M1 or later)
-- macOS 14+ on the host
-- Spooktacular installed (`brew install --cask spooktacular`)
+- macOS 26+ on the host
+- Spooktacular installed — build from source (signed releases aren't
+  published yet; see <doc:GettingStarted>)
 - API key from Anthropic, OpenAI, or Google
 
 ## Quick Start: Two OpenClaw Instances

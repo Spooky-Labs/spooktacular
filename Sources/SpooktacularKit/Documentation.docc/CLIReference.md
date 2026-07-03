@@ -10,19 +10,21 @@ library as the GUI app, so behavior is identical across both
 interfaces.
 
 > Important: The `spook` CLI requires an Apple Silicon Mac running
-> macOS 14.0 or later. Apple Silicon supports a maximum of 2
+> macOS 26.0 or later. Apple Silicon supports a maximum of 2
 > concurrent VMs per host.
 
 ### Installation
 
-#### Homebrew (Recommended)
+Signed releases aren't published yet — build from source today:
 
 ```bash
-brew install --cask spooktacular
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular
+./build-app.sh release
 
 # Verify
 spook --version
-# spook 1.0.0
+# spook 1.0.1
 ```
 
 #### From the .app Bundle
@@ -76,6 +78,10 @@ USAGE: spook create <name> [options]
 | `--openclaw` | false | Configure as an OpenClaw AI agent |
 | `--remote-desktop` | false | Enable Screen Sharing (VNC) |
 | `--ephemeral` | false | Destroy and recreate after each job |
+| `--guest-tools <mode>` | installed | Install Spooktacular Guest Tools inside the guest: `disabled` or `installed` |
+| `--no-start` | false | Skip auto-starting the VM after provisioning (`--github-runner` only — every other template already leaves the VM stopped) |
+| `--skip-setup` | false | Skip automatic Setup Assistant automation |
+| `--json` | false | Print a machine-readable JSON result on success |
 
 **Examples:**
 

@@ -19,7 +19,7 @@ The rest of this document is organized as:
 
 Every item is **required for production**. A cell marked "dev-only" means the code will accept it, but your change-control board should not.
 
-The **Doctor** column indicates how `spook doctor --strict` surfaces each row — `Y` (fully automated) or `manual` (printed with a `?` marker because the CLI cannot introspect an external system, e.g. build-time dependency tooling). Every strict-mode output line is prefixed `[##]` with the item number below, so the table is a literal row-by-row projection of the command's output. Item numbers are **not** contiguous — 7, 8, 11, 12, 13, and 19 were controls for subsystems (federated SAML/OIDC login, Merkle-signed audit, S3 Object Lock, DynamoDB distributed locking) that have since been removed from the product; the remaining numbers were left as-is rather than renumbered, so this table and the CLI output stay a 1:1 match.
+The **Doctor** column indicates how `spook doctor --strict` surfaces each row — `Y` (fully automated) or `manual` (printed with a `?` marker because the CLI cannot introspect an external system, e.g. build-time dependency tooling). Every strict-mode output line is prefixed `[##]` with the item number below, so the table is a literal row-by-row projection of the command's output. Item numbers are **not** contiguous — 5, 7, 8, 11, 12, 13, and 19 were controls for subsystems (guest-agent HTTP/vsock RPC, federated SAML/OIDC login, Merkle-signed audit, S3 Object Lock, DynamoDB distributed locking) that have since been removed from the product; the remaining numbers were left as-is rather than renumbered, so this table and the CLI output stay a 1:1 match.
 
 | # | Control | How to verify | Doctor (`spook doctor --strict`) |
 |---|---------|---------------|----------------------------------|
@@ -27,7 +27,6 @@ The **Doctor** column indicates how `spook doctor --strict` surfaces each row �
 | 2 | mTLS (client cert required) | `SPOOKTACULAR_TLS_CA_PATH` set and readable — server presents cert, client cert is required on every request | Y — `SPOOKTACULAR_TLS_CA_PATH` readable |
 | 3 | TLS 1.3 floor | No explicit config needed — enforced in code, hot-reload preserves it | Y — TLS-1.3 handshake probed on port 8484 (warn when serve is offline) |
 | 4 | API bearer token in Keychain | `security find-generic-password -a spook-api -s com.spooktacular.api` returns a value | Y — Keychain probe via `SecItemCopyMatching`; env-var fallback is flagged as warning |
-| 5 | Guest-agent tokens present | `SPOOKTACULAR_AGENT_TOKEN` / `SPOOKTACULAR_AGENT_RUNNER_TOKEN` / `SPOOKTACULAR_AGENT_READONLY_TOKEN` set, or a Keychain entry at `com.spooktacular.agent` | Y — env presence OR Keychain entry |
 | 6 | RBAC active | `SPOOKTACULAR_RBAC_CONFIG` points at a readable JSON file, or `SPOOKTACULAR_MACOS_GROUP_MAPPING` is set | Y — file readable OR group mapping set |
 | 9 | Audit JSONL enabled | `SPOOKTACULAR_AUDIT_FILE` set, path is writable, tail the file to confirm records flow | Y — env set + parent directory writable |
 | 10 | Append-only audit backing | `SPOOKTACULAR_AUDIT_IMMUTABLE_PATH` set; after first write, `ls -lO` shows `uappnd` on the file | Y — `stat(2)` on the path checks `UF_APPEND` |
@@ -84,11 +83,6 @@ export SPOOKTACULAR_IAM_BINDINGS_CONFIG=/etc/spooktacular/iam-bindings.json
 
 # ─── Signed-request trust store ──────────────────────────────────
 export SPOOKTACULAR_API_PUBLIC_KEYS_DIR=/etc/spooktacular/api-keys/
-
-# ─── Guest-agent tokens ──────────────────────────────────────────
-# Injected into the VM at provision time, NEVER stored plaintext on
-# the host — live in the Keychain and are copied into the guest via
-# an ephemeral shared-folder file that's unlinked after first read.
 ```
 
 Do **not** set:
@@ -268,7 +262,6 @@ If any of these fails, the deployment is **not** hardened — stop traffic.
 | TLS server cert | 90 days | Replace `server.crt`/`server.key` on disk; file watcher hot-reloads with TLS 1.3 preserved |
 | TLS client certs (mTLS callers) | 180 days | Rotate via CA; old cert expires automatically |
 | API bearer token | 180 days | `security delete-generic-password -s com.spooktacular.api -a spook-api`; re-add new |
-| Guest-agent tokens | 90 days | Re-provision affected VMs with new token |
 
 ### Incident drill — quarterly
 

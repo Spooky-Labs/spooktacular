@@ -15,7 +15,7 @@ through the `spook` CLI or the Spooktacular GUI app. Both interfaces
 share the same library and produce identical behavior.
 
 > Important: SpooktacularKit requires an Apple Silicon Mac (M1 or later)
-> running macOS 14.0 (Sonoma) or later.
+> running macOS 26.0 or later.
 
 ### Design Principles
 

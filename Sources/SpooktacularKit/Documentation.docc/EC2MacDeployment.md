@@ -36,8 +36,11 @@ SSH into your EC2 Mac instance, install Spooktacular, create VMs,
 and start runners with SSH provisioning:
 
 ```bash
-# Install Spooktacular
-brew install --cask spooktacular
+# Install Spooktacular (build from source — signed releases aren't
+# published yet)
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular && ./build-app.sh release
+sudo ln -sf "$PWD/Spooktacular.app/Contents/MacOS/spook" /usr/local/bin/spook
 
 # Install the LaunchDaemon for headless operation
 spook service install
@@ -63,23 +66,24 @@ If you prefer to configure each step yourself, follow this procedure.
 
 ### Step 1: Install Spooktacular
 
-SSH into your EC2 Mac instance and install via Homebrew:
+SSH into your EC2 Mac instance and build Spooktacular from source
+(signed releases aren't published yet):
 
 ```bash
 ssh -i ~/.ssh/my-key.pem ec2-user@<ec2-public-ip>
 
-# Install Homebrew if not already present
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install Spooktacular
-brew install --cask spooktacular
+# Build from source
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular
+./build-app.sh release
+sudo ln -sf "$PWD/Spooktacular.app/Contents/MacOS/spook" /usr/local/bin/spook
 ```
 
 Verify the installation:
 
 ```bash
 spook --version
-# spook 1.0.0
+# spook 1.0.1
 ```
 
 ### Step 2: Install the LaunchDaemon
@@ -306,10 +310,12 @@ aws ec2 create-launch-template \
 #!/bin/bash
 set -euo pipefail
 
-# Install Spooktacular
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/opt/homebrew/bin/brew shellenv)"
-brew install --cask spooktacular
+# Install Spooktacular (build from source — signed releases aren't
+# published yet)
+git clone https://github.com/Spooky-Labs/spooktacular.git /tmp/spooktacular
+cd /tmp/spooktacular
+./build-app.sh release
+sudo ln -sf "$PWD/Spooktacular.app/Contents/MacOS/spook" /usr/local/bin/spook
 
 # Install the LaunchDaemon
 sudo spook service install

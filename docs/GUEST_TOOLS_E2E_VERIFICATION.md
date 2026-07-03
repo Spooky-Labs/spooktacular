@@ -4,7 +4,7 @@ Step-by-step checklist for verifying the Spooktacular Guest Tools install + SPIC
 
 ## Prereqs
 
-- Apple Silicon Mac (SIP + FileVault fine) running macOS 14 or later
+- Apple Silicon Mac (SIP + FileVault fine) running macOS 26 or later
 - Apple Developer ID identity + valid provisioning profile (see `scripts/find-provisioning-profile.sh`)
 - Enough disk for a ~64 GiB macOS VM data volume
 
@@ -46,16 +46,25 @@ Expected: GUI opens, no Dock-tile-rendering weirdness from the nested bundle.
 
 ### 3. Create via CLI
 
+`GuestToolsInstallMode` only has two cases today — `disabled` and
+`installed`; there is no auto-launch install mode. Launch-at-login is
+owned entirely by the Guest Tools app itself (`SMAppService.mainApp`
+from its own menu-bar UI), never by the host installer — the host
+never writes to `/Library/LaunchAgents/` and never prompts for an
+admin password during install (`DiskInjector.installGuestTools`).
+
 ```bash
-./Spooktacular.app/Contents/MacOS/spook create clipboard-test --guest-tools auto-launch
+./Spooktacular.app/Contents/MacOS/spook create clipboard-test --guest-tools installed
 ```
 
 Expected output lines:
 
 - `Installing Spooktacular Guest Tools into guest...`
-- `✓ Guest Tools installed (Install and auto-launch at login).`
+- `✓ Guest Tools installed (Install Guest Tools).`
 
-Admin password prompt appears ONCE (the `osascript ... with administrator privileges` step that `chownToRoot` uses for the LaunchAgent plist).
+No admin password prompt during this step — `ditto`-ing the `.app`
+into the guest's mounted data volume needs no elevated privileges on
+the host side.
 
 ### 4. Start the VM
 
@@ -67,7 +76,7 @@ Expected boot sequence (visible in the GUI workspace window):
 
 1. Apple logo + progress bar during initial install (this is the IPSW flow, ~15 min)
 2. Setup Assistant — walk through country/language/user creation
-3. **After completing Setup Assistant:** the Guest Tools LaunchAgent fires and the menu bar gains a `clipboard` icon
+3. **After completing Setup Assistant:** `Spooktacular Guest Tools.app` is present in `/Applications/` but not yet running — open it manually once inside the guest. The menu bar gains a `clipboard` icon only after this manual launch.
 
 ## Verify the Pieces
 
@@ -78,14 +87,16 @@ Open Terminal inside the guest:
 ```bash
 ls /Applications/ | grep -i spooktacular
 # → Spooktacular Guest Tools.app
-
-ls /Library/LaunchAgents/
-# → com.spooktacular.GuestTools.autoopen.plist
 ```
 
-Both must exist. Permissions should show `-rw-r--r--  root  wheel` on the plist.
+The app must exist. `DiskInjector.installGuestTools` never writes to
+`/Library/LaunchAgents/` for any install mode — there is no
+LaunchAgent plist to check.
 
 ### 6. Inside the VM — menu-bar app running
+
+Open `Spooktacular Guest Tools.app` manually once (Finder or
+Spotlight) — nothing launches it automatically. After that:
 
 Menu bar must show a clipboard SF Symbol with status tint:
 - Gray clipboard + "Clipboard bridge: not running" — briefly at startup
@@ -125,18 +136,17 @@ Host Terminal: `pbpaste` must print `Hello from guest`.
 
 ### 11. Event stream health (optional deep probe)
 
-From the host CLI:
-
-```bash
-./Spooktacular.app/Contents/MacOS/spook remote spice-status clipboard-test
-# or: ./Spooktacular.app/Contents/MacOS/spook remote health clipboard-test
-```
-
-Returns the current `SpiceStatusSnapshot` JSON (one-shot pull via `GET /api/v1/spice/status`). Independent of the push event stream — confirms the HTTP endpoint works.
+`spook remote` and the guest-agent HTTP/vsock RPC surface it talked
+to (`GuestAgentClient`, `GET /api/v1/spice/status`) were removed in
+the descope — there is no CLI equivalent today. `spook stream`'s
+topics (`metrics`, `lifecycle`, `ports`, `health`, `log`) do not
+include clipboard/SPICE status, so it isn't a substitute either.
+Verify event-stream health via the GUI workspace pill (steps 7–8)
+instead.
 
 ## Negative checks
 
-### 12. Three-way picker: `.disabled`
+### 12. Two-way picker: `.disabled`
 
 ```bash
 ./Spooktacular.app/Contents/MacOS/spook create bare-vm --guest-tools disabled
@@ -153,7 +163,7 @@ ls /Library/LaunchAgents/ | grep -i spooktacular
 
 Host workspace pill renders gray "Clipboard: not active" with the install-guide tooltip.
 
-### 13. Three-way picker: `.installed` (no auto-launch)
+### 13. Two-way picker: `.installed` (no auto-launch)
 
 ```bash
 ./Spooktacular.app/Contents/MacOS/spook create manual-vm --guest-tools installed
@@ -178,9 +188,8 @@ On the `bare-vm` created in step 12:
 
 ## Known issues / intentional quirks
 
-- **macOS Setup Assistant blocks at clipboard-sharing step.** FileVault's initial setup sequence can prevent the LaunchDaemon-based drop — work around by completing Setup Assistant first. The LaunchAgent fires at first Aqua session regardless.
-- **The menu-bar app uses `SMAppService.mainApp`.** First-time users see macOS's "X wants to run in the background" dialog. Approving makes future logins fully automatic.
-- **Admin password prompt.** `DiskInjector.chownToRoot` uses `osascript ... with administrator privileges` to set root:wheel on the dropped LaunchAgent plist (launchd refuses to load plists not owned by root). One prompt per VM create / retroactive install.
+- **The menu-bar app uses `SMAppService.mainApp`.** First-time users see macOS's "X wants to run in the background" dialog. Approving makes future logins fully automatic. There is no automatic first-launch — the user must open `Spooktacular Guest Tools.app` manually once.
+- **No admin password prompt on install.** `DiskInjector.installGuestTools` only `ditto`s the `.app` onto the guest's mounted data volume — it never writes to `/Library/LaunchAgents/` and never shells out to `osascript`, for either `disabled` or `installed` mode.
 - **`spook stop` latency on clipboard status.** When a VM stops, `AppState.clipboardStatuses[name]` is cleared. The pill in any still-open workspace window then falls back to gray "not active" until the VM restarts.
 
 ## Regression ownership
@@ -188,8 +197,15 @@ On the `bare-vm` created in step 12:
 Any failure in steps 5–10 implicates:
 - `Sources/SpooktacularInfrastructureApple/DiskInjector.swift` (install path)
 - `Sources/SpooktacularGuestTools/*` (in-guest app lifecycle)
-- `Sources/SpooktacularGuestAgentCore/HostEventDialer.swift` (push events)
+- `Sources/SpooktacularInfrastructureApple/AgentEventListener.swift` (host-side vsock event listener)
 - `Sources/Spooktacular/AppState.swift` `.spiceStatus` dispatch case
 - `Sources/Spooktacular/ClipboardStatusPill.swift` (rendering)
+
+> Note: the guest-side event *producer* that used to dial the host
+> listener (`spooktacular-agent`'s `HostEventDialer`) was deleted in
+> the descope and has not been replaced yet — see CHANGELOG
+> `[Unreleased]`'s Guest Tools replatform checkpoint. Until a producer
+> exists again, `GuestEvent.spiceStatus` has no sender and the
+> workspace pill in steps 7–8 will not transition off "not active."
 
 Capture the specific step that failed plus the guest-side Console app output for `com.spooktacular.agent` and `com.spooktacular.app.clipboard` subsystems.

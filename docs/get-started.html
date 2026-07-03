@@ -182,12 +182,21 @@ Spooktacular
 <h2 id="step1-heading">Download &amp; Install</h2>
 <p class="sub">Install Spooktacular on your Mac. Takes about 30 seconds.</p>
 
-<a href="https://github.com/Spooky-Labs/spooktacular/releases/latest/download/Spooktacular.app.zip" class="guide-download">
-  Download Spooktacular v1.0.0
-  <span class="download-sub">macOS 14+ &middot; Apple Silicon &middot; 25 MB</span>
+<a href="https://github.com/Spooky-Labs/spooktacular#quick-start" class="guide-download">
+  Build Spooktacular from Source
+  <span class="download-sub">macOS 26+ &middot; Apple Silicon &middot; signed releases coming</span>
 </a>
 
-<p style="color: var(--dim); font-size: 0.95rem; margin-bottom: 0.75rem;">Drag <strong style="color: var(--fg);">Spooktacular.app</strong> to your Applications folder and launch it.</p>
+<div class="code-example">
+<div class="code-header">
+<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
+<span class="title">Terminal</span>
+</div>
+<pre><span class="dim">$</span> <span class="cmd">git clone https://github.com/Spooky-Labs/spooktacular.git</span>
+<span class="dim">$</span> <span class="cmd">cd spooktacular &amp;&amp; ./build-app.sh release</span></pre>
+</div>
+
+<p style="color: var(--dim); font-size: 0.95rem; margin-bottom: 0.75rem;">Drag the built <strong style="color: var(--fg);">Spooktacular.app</strong> to your Applications folder and launch it.</p>
 
 <div class="alt-note">
 <strong>Prefer the CLI?</strong> Install just the <code>spook</code> command-line tool:<br>
@@ -250,26 +259,31 @@ Spooktacular
 <section class="step-section" id="step-4" aria-labelledby="step4-heading">
 <div class="step-label">Step 4</div>
 <h2 id="step4-heading">Run Your CI Pipeline</h2>
-<p class="sub">Turn your clone into a GitHub Actions runner with a single command. It registers, connects, and starts polling for jobs.</p>
+<p class="sub">Create a GitHub Actions runner VM with a single command. Store a personal access token (PAT) in the Keychain first -- Spooktacular mints a short-lived runner registration token from it automatically, seconds before the VM boots.</p>
 
 <div class="code-example">
 <div class="code-header">
 <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
 <span class="title">Terminal</span>
 </div>
-<pre><span class="dim">$</span> <span class="cmd">spook start runner-01 --headless --github-runner \</span>
-<span class="cmd">    --github-repo your-org/your-repo \</span>
-<span class="cmd">    --github-token ghp_xxx</span>
+<pre><span class="dim">$</span> <span class="cmd">security add-generic-password -s com.spooktacular.github \</span>
+<span class="cmd">    -a your-org -w &lt;PAT&gt; -U</span>
 
-<span class="ok">&#10003;</span> Starting "runner-01" in headless mode...
-<span class="ok">&#10003;</span> GitHub Actions runner provisioned
-<span class="ok">&#10003;</span> Connected to your-org/your-repo
-<span class="ok">&#10003;</span> Polling for jobs...</pre>
+<span class="dim">$</span> <span class="cmd">spook create runner-01 --github-runner \</span>
+<span class="cmd">    --github-repo your-org/your-repo \</span>
+<span class="cmd">    --github-token-keychain your-org --ephemeral</span>
+
+<span class="ok">&#10003;</span> Installing macOS (10-20 minutes)...
+<span class="ok">&#10003;</span> VM "runner-01" created successfully
+<span class="ok">&#10003;</span> Minting GitHub Actions runner registration token...
+<span class="ok">&#10003;</span> Script injected. The provisioner runs it automatically on first boot.
+<span class="ok">&#10003;</span> Starting "runner-01" headless for runner registration...
+<span class="ok">&#10003;</span> Runner "runner-01" is online</pre>
 </div>
 
 <div class="explain">
 <h4>What's happening inside?</h4>
-<p>Spooktacular boots the VM without a display, installs the GitHub Actions runner agent via SSH provisioning, registers it with your repository using the provided token, and starts polling for workflow jobs. Your runner is now connected to your CI pipeline -- jobs will be picked up automatically.</p>
+<p>One command creates the VM, installs macOS, injects the runner setup script, boots the VM without a display, and polls GitHub every 10 seconds (up to 10 minutes) until the runner reports online -- no separate registration step. The PAT never touches a CLI flag, environment variable, or file; only the Keychain.</p>
 </div>
 </section>
 
@@ -277,28 +291,25 @@ Spooktacular
 <section class="step-section" id="step-5" aria-labelledby="step5-heading">
 <div class="step-label">Step 5</div>
 <h2 id="step5-heading">Double Your Capacity</h2>
-<p class="sub">Apple Silicon supports 2 VMs per Mac. Clone another runner and run both simultaneously. Ephemeral mode auto-destroys after each job for a clean slate.</p>
+<p class="sub">Apple Silicon supports 2 VMs per Mac. Create a second runner and run both simultaneously. Ephemeral mode auto-destroys after each job for a clean slate.</p>
 
 <div class="code-example">
 <div class="code-header">
 <div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
 <span class="title">Terminal</span>
 </div>
-<pre><span class="dim">$</span> <span class="cmd">spook clone my-first-vm runner-02</span>
-<span class="ok">&#10003;</span> Cloned "my-first-vm" &#8594; "runner-02" <span class="warn">(48ms)</span>
-
-<span class="dim">$</span> <span class="cmd">spook start runner-02 --ephemeral --github-runner \</span>
+<pre><span class="dim">$</span> <span class="cmd">spook create runner-02 --github-runner \</span>
 <span class="cmd">    --github-repo your-org/your-repo \</span>
-<span class="cmd">    --github-token ghp_xxx</span>
+<span class="cmd">    --github-token-keychain your-org --ephemeral</span>
 
-<span class="ok">&#10003;</span> Starting "runner-02" in ephemeral mode...
-<span class="ok">&#10003;</span> Runner will self-destruct after one job
-<span class="ok">&#10003;</span> Connected and polling...</pre>
+<span class="ok">&#10003;</span> VM "runner-02" created successfully
+<span class="ok">&#10003;</span> Starting "runner-02" headless for runner registration...
+<span class="ok">&#10003;</span> Runner "runner-02" is online</pre>
 </div>
 
 <div class="explain">
 <h4>Why ephemeral?</h4>
-<p>Ephemeral runners auto-destroy after completing a single job. This guarantees a pristine environment for every CI run -- no leftover state, no cache poisoning, no stale artifacts from previous builds. Spooktacular re-clones from your base image before the next job.</p>
+<p>Ephemeral runners auto-destroy the moment they stop, after completing a single job -- no leftover state, no cache poisoning, no stale artifacts from previous builds. Cloning doesn't yet carry forward the <code>--github-runner</code> template, so each new runner today is its own <code>spook create --github-runner --ephemeral</code> rather than a clone of an earlier runner.</p>
 </div>
 </section>
 

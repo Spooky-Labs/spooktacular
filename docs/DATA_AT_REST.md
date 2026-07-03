@@ -90,7 +90,7 @@ spook bundle protect <name> --none    # opt out explicitly
 ### What we intentionally don't do
 
 - **Don't apply CUFUA to `~/.spooktacular/vms/` at the root** — the CLI and GUI list VMs by iterating the directory, which would fail at boot before the user logs in. CUFUA is applied per-bundle, never to the parent.
-- **Don't apply CUFUA to audit logs** — audit logs must be writable by pre-login LaunchDaemons (`spook serve` running before user login on hybrid laptops). Kernel `UF_APPEND` + Merkle + S3 Object Lock remain the audit layer.
+- **Don't apply CUFUA to audit logs** — audit logs must be writable by pre-login LaunchDaemons (`spook serve` running before user login on hybrid laptops). OSLog + a local append-only JSONL file with kernel `UF_APPEND` remain the audit layer.
 - **Don't apply CUFUA to the Keychain** — the Keychain already has its own protection model (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) that we use.
 - **Don't apply CUFUA on desktops** — desktop Macs and EC2 Mac hosts run headless LaunchDaemons that must boot before any user login. CUFUA would fail them closed.
 - **Don't enforce FileVault from the app** — that's an MDM concern. We log a `spook doctor` warning when FileVault is off, because without FileVault, CUFUA is ineffective.

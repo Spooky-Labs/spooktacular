@@ -10,7 +10,7 @@ GUI app or the `spook` CLI --- both backed by the same
 ``SpooktacularKit`` library.
 
 > Important: You need an Apple Silicon Mac (M1 or later) running
-> macOS 14.0 (Sonoma) or later. Each VM requires at least 20 GB of
+> macOS 26.0 or later. Each VM requires at least 20 GB of
 > free disk space and 4 CPU cores (see
 > ``VirtualMachineSpecification/minimumCPUCount``).
 
@@ -19,8 +19,10 @@ GUI app or the `spook` CLI --- both backed by the same
 Install Spooktacular and create a VM from the latest compatible IPSW:
 
 ```bash
-# Install via Homebrew
-brew install --cask spooktacular
+# Build from source — signed releases aren't published yet
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular
+./build-app.sh release
 
 # Create from the latest compatible IPSW
 spook create my-vm --from-ipsw latest
@@ -84,8 +86,10 @@ spook start runner --headless \
 
 The `ssh` mode waits for the VM to boot, discovers its IP, connects
 via SSH, and executes your script with real-time output streaming.
-Disk-inject provisioning (zero-touch, no SSH required) is in
-progress. See ``ProvisioningMode`` for provisioning strategies and
+`--provision disk-inject` (the default) is zero-touch and needs no
+SSH — it injects the script into the VM's disk image before first
+boot via a LaunchDaemon. `--provision shared-folder` is not yet
+available. See ``ProvisioningMode`` for provisioning strategies and
 <doc:Provisioning> for detailed guidance.
 
 ### EC2 Mac Setup

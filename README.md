@@ -51,10 +51,10 @@
 
 ```
 $ spook list
-NAME        STATUS   CPU  MEM   IP
-base        stopped   8   16G   —
-runner-01   running   8   16G   192.168.64.3
-runner-02   running   8   16G   192.168.64.4
+NAME        STATE       CPU      MEM    DISK    NET   ♪   STATUS
+base        ○ stopped   8 cores  16 GB  100 GB  nat       ✓ ready
+runner-01   ● running   8 cores  16 GB  100 GB  nat   ♪   ✓ ready
+runner-02   ● running   8 cores  16 GB  100 GB  nat   ♪   ✓ ready
 ```
 
 </td>
@@ -71,26 +71,27 @@ git clone https://github.com/Spooky-Labs/spooktacular.git
 cd spooktacular
 ./build-app.sh release
 
-# Store the runner registration token in the Keychain — the only
-# accepted way to supply it (never a flag, env var, or file path)
+# Store a GitHub personal access token (PAT) with repo admin scope in the
+# Keychain — the only accepted way to supply it (never a flag, env var, or
+# file path). This is a PAT, NOT a runner registration token — `create`
+# mints a short-lived registration token from it automatically, seconds
+# before the VM boots.
 security add-generic-password -s com.spooktacular.github \
-  -a your-org -w ghp_xxx -U
+  -a your-org -w <PAT> -U
 
 # Create a macOS VM configured as an ephemeral GitHub Actions runner.
-# --from-ipsw latest (the default) downloads the newest compatible
-# macOS restore image; `create` only stages the runner-registration
-# script — `start` boots the VM and runs it. `--ephemeral` is needed
-# on BOTH: on `create` it registers the runner as ephemeral with
-# GitHub, on `start` it auto-destroys the VM bundle once it stops.
+# --from-ipsw latest (the default) downloads the newest compatible macOS
+# restore image. One command creates the VM, installs macOS, injects the
+# runner script, boots headless, and polls GitHub every 10s (up to 10 min)
+# until the runner reports online — no separate `start` step needed.
 spook create runner-01 --github-runner --github-repo your-org/repo \
   --github-token-keychain your-org --ephemeral
-spook start runner-01 --headless --ephemeral
 ```
 
 `spook clone` (APFS copy-on-write, ~48ms) duplicates any existing VM bundle
 for other workloads — see [Features](#features) below. Cloning doesn't yet
 carry forward `--github-runner` template state, so a second runner today
-means a second `create --github-runner` + `start`.
+means a second `create --github-runner`.
 
 ## Architecture
 

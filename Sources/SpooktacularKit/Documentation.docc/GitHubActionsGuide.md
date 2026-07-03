@@ -32,8 +32,11 @@ with the clean-environment guarantees of GitHub-hosted runners.
 Create two working GitHub Actions runners from zero:
 
 ```bash
-# 1. Install Spooktacular
-brew install --cask spooktacular
+# 1. Install Spooktacular (build from source — signed releases aren't
+#    published yet)
+git clone https://github.com/Spooky-Labs/spooktacular.git
+cd spooktacular && ./build-app.sh release
+sudo ln -sf "$PWD/Spooktacular.app/Contents/MacOS/spook" /usr/local/bin/spook
 
 # 2. Create two runner VMs
 spook create runner-01 --from-ipsw latest --cpu 4 --memory 8 --disk 64
@@ -77,38 +80,46 @@ tar xzf actions-runner.tar.gz
 ```
 
 > Note: SSH provisioning requires Remote Login enabled in the guest.
-> Disk-inject provisioning (zero-touch, no SSH required) is in
-> progress. See <doc:Provisioning> for details on provisioning modes.
+> `--provision disk-inject` (the default) is zero-touch and needs no
+> SSH — it injects the script into the VM's disk image before first
+> boot. See <doc:Provisioning> for details on provisioning modes.
 
 ## The --github-runner Template
 
 Spooktacular includes a built-in template (``GitHubRunnerTemplate``)
-that **generates** a provisioning script for GitHub Actions runner
-setup. The template does not auto-execute during `spook create` ---
-you apply the generated script using the 2-step flow:
+that generates and injects a provisioning script for GitHub Actions
+runner setup — in one command. Store a GitHub personal access token
+(PAT) with repo admin scope in the Keychain first; `spook create`
+mints a short-lived runner registration token from it automatically,
+seconds before the VM boots, then boots the VM headless and polls
+GitHub until the runner reports online:
 
 ```bash
-# Step 1: Create VM with the template flag to generate a setup script
+# Store the PAT once
+security add-generic-password -s com.spooktacular.github \
+    -a myorg -w <PAT> -U
+
+# Create, provision, boot, and register — one command
 spook create runner-01 --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
-    --github-runner --github-repo myorg/myrepo --github-token ghp_xxxx
-
-# Step 2: Start the VM with the generated script via SSH provisioning
-spook start runner-01 --headless \
-    --user-data ~/.spooktacular/vms/runner-01/user-data.sh \
-    --provision ssh --ssh-user admin
+    --github-runner --github-repo myorg/myrepo --github-token-keychain myorg
 ```
 
-The `--github-runner` flag generates a script that:
+The `--github-runner` flag drives a flow that:
 
-1. Downloads the latest GitHub Actions runner binary
-2. Registers the runner with your repository (or organization)
-3. Configures labels for workflow targeting
-4. Installs the runner as a LaunchDaemon for automatic startup
-5. Optionally configures ephemeral mode for single-use VMs
+1. Mints a short-lived GitHub Actions runner registration token from
+   the Keychain-stored PAT
+2. Injects a setup script that downloads the runner binary, registers
+   with your repository (or organization), and configures labels
+3. Installs the runner as a LaunchDaemon for automatic startup
+4. Boots the VM headless and polls GitHub every 10 seconds (up to 10
+   minutes) until the runner reports online — no separate `spook
+   start` needed
+5. Optionally configures ephemeral mode for single-use VMs with
+   `--ephemeral`
 
-You then apply this script by starting the VM with `--user-data`
-and `--provision ssh`.
+Pass `--no-start` to skip the auto-boot/poll step and register the
+runner by hand later.
 
 ### GitHub Runner Options
 
@@ -138,20 +149,18 @@ eliminating "works on my runner" issues.
 ### CLI Setup
 
 ```bash
-# Create an ephemeral runner
+# Create an ephemeral runner — one command creates, provisions, boots
+# headless, and registers with GitHub
 spook create runner-01 --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64 \
-    --github-runner --github-repo myorg/myrepo --github-token ghp_xxxx \
+    --github-runner --github-repo myorg/myrepo --github-token-keychain myorg \
     --ephemeral
-
-# Start with provisioning
-spook start runner-01 --headless \
-    --user-data ~/.spooktacular/vms/runner-01/user-data.sh \
-    --provision ssh --ssh-user admin
 ```
 
-> Note: Automatic VM replacement after job completion is not yet
-> implemented. Use the pool-manager script below for auto-replacement.
+> Note: `--ephemeral` destroys the VM bundle the moment it stops, but
+> does not automatically re-create it. Automatic VM replacement after
+> job completion is not yet implemented. Use the pool-manager script
+> below for auto-replacement.
 
 ## Runner Pool with Auto-Replacement
 
@@ -190,21 +199,18 @@ decreases after the idle timeout.
 
 ### Personal Access Token (PAT)
 
-Simpler to set up, but less secure for organizations:
+Simpler to set up, but less secure for organizations. `spook create`
+only accepts the PAT from the Keychain — never a flag, env var, or
+file — so store it once, then reference the Keychain account:
 
 ```bash
 # Fine-grained PAT with "Administration" repository permission (read/write)
 # Or classic PAT with "repo" scope
-TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+security add-generic-password -s com.spooktacular.github \
+    -a myorg -w <PAT> -U
 
-# Generate the runner setup script
 spook create runner --from-ipsw latest \
-    --github-runner --github-repo myorg/myrepo --github-token "$TOKEN"
-
-# Apply via SSH provisioning
-spook start runner --headless \
-    --user-data ~/.spooktacular/vms/runner/user-data.sh \
-    --provision ssh --ssh-user admin
+    --github-runner --github-repo myorg/myrepo --github-token-keychain myorg
 ```
 
 > Important: Classic PATs with `repo` scope grant broad access.
@@ -212,7 +218,12 @@ spook start runner --headless \
 
 ### GitHub App (Recommended for Organizations)
 
-More secure --- the app generates short-lived tokens:
+More secure --- the app generates short-lived installation tokens.
+`--github-token-keychain` doesn't care whether the Keychain item
+holds a long-lived PAT or a short-lived GitHub App installation
+token — both authenticate the same GitHub REST API call. The
+installation token expires in about an hour, so generate it
+immediately before creating the VM:
 
 ```bash
 # 1. Create a GitHub App with "Self-hosted runners" organization permission
@@ -230,20 +241,17 @@ payload = {'iat': int(time.time()), 'exp': int(time.time()) + 600, 'iss': '$APP_
 print(jwt.encode(payload, open('$PRIVATE_KEY_PATH').read(), algorithm='RS256'))
 ")
 
-# Exchange for an installation token
+# Exchange for an installation token and store it in the Keychain
 TOKEN=$(curl -s -X POST \
     -H "Authorization: Bearer $JWT" \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com/app/installations/$INSTALLATION_ID/access_tokens" \
     | jq -r .token)
+security add-generic-password -s com.spooktacular.github \
+    -a myorg-app -w "$TOKEN" -U
 
 spook create runner --from-ipsw latest \
-    --github-runner --github-repo myorg/myrepo --github-token "$TOKEN"
-
-# Apply the generated script
-spook start runner --headless \
-    --user-data ~/.spooktacular/vms/runner/user-data.sh \
-    --provision ssh --ssh-user admin
+    --github-runner --github-repo myorg/myrepo --github-token-keychain myorg-app
 ```
 
 ## Xcode Version Management
@@ -301,7 +309,7 @@ See <doc:EC2MacDeployment> for the full EC2 Mac setup guide. The
 basic flow is:
 
 1. Provision EC2 Mac dedicated hosts
-2. SSH in and install Spooktacular via Homebrew
+2. SSH in and build Spooktacular from source (see <doc:EC2MacDeployment>)
 3. `spook service install` to create the LaunchDaemon
 4. Create VMs from IPSW, clone configured bases
 5. Start runners with SSH provisioning
@@ -416,16 +424,16 @@ curl -s -H "Authorization: token ghp_xxxx" \
 **Solution:**
 
 ```bash
-# For PATs: generate a new token in GitHub Settings > Developer settings
+# For PATs: generate a new token in GitHub Settings > Developer settings,
+# then overwrite the Keychain entry
+security add-generic-password -s com.spooktacular.github \
+    -a myorg -w <NEW_PAT> -U
 # For GitHub Apps: tokens auto-refresh, but check the app installation
 
-# Recreate the runner VM with a new token
+# Recreate the runner VM
 spook delete runner-01 --force
 spook create runner-01 --from-ipsw latest \
-    --github-runner --github-repo myorg/myrepo --github-token ghp_NEW_TOKEN
-spook start runner-01 --headless \
-    --user-data ~/.spooktacular/vms/runner-01/user-data.sh \
-    --provision ssh --ssh-user admin
+    --github-runner --github-repo myorg/myrepo --github-token-keychain myorg
 ```
 
 ### Disk Full
