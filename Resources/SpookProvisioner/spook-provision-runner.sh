@@ -58,8 +58,20 @@ log "running first-boot script"
 EXIT=$?
 
 # Preserve the script body for audit, then remove the trigger
-# so `RunAtLoad` on the next boot no-ops.
-cp "${SCRIPT_PATH}" "${ARCHIVE_PATH}"
+# so `RunAtLoad` on the next boot no-ops. The archive is written
+# back through the read-write provisioning share to the HOST —
+# never copy the script verbatim: GitHubRunnerTemplate embeds the
+# live GitHub Actions registration token as a single `TOKEN='...'`
+# line (Sources/SpooktacularApplication/GitHubRunnerTemplate.swift),
+# and this archive has no host-side cleanup path, so a verbatim
+# copy would leave a valid, unspent, still-registerable token
+# sitting on host disk indefinitely for any local user who can
+# read the bundle. `sed` blanks the value on any line starting
+# with `TOKEN=` — keeping the rest of the script byte-for-byte for
+# debugging — and is a harmless no-op for every other template
+# (RemoteDesktopTemplate, OpenClawTemplate, custom --user-data
+# scripts), none of which emit a `TOKEN=` line.
+sed "s/^TOKEN=.*/TOKEN='[REDACTED]'/" "${SCRIPT_PATH}" > "${ARCHIVE_PATH}"
 echo "${EXIT}" > "${EXIT_FILE}"
 rm -f "${SCRIPT_PATH}"
 log "first-boot completed exit=${EXIT}"

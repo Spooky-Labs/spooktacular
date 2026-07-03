@@ -413,9 +413,17 @@ public struct VirtualMachineBundle: Sendable {
         // both): Linux doesn't use this path yet, but the
         // empty directory costs nothing and keeps the bundle
         // layout consistent.
+        // 0700: this directory can hold a GitHub Actions runner
+        // registration token verbatim (`GitHubRunnerTemplate`'s
+        // `first-boot.sh`, and its archived `first-boot.ran.sh`
+        // copy — see `Resources/SpookProvisioner/spook-provision-runner.sh`).
+        // World-traversable (the previous default, 0755) let any
+        // local user on the host read a live, unspent token
+        // straight off disk.
         try fileManager.createDirectory(
             at: url.appendingPathComponent(provisionDirectoryName),
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
         )
 
         // For Linux guests, provision an empty EFI NVRAM

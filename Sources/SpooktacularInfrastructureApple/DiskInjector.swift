@@ -153,9 +153,17 @@ public enum DiskInjector {
         }
 
         let fm = FileManager.default
+        // 0700 — this share can hold a live secret verbatim (a
+        // GitHub Actions runner registration token via
+        // `GitHubRunnerTemplate`). Defensive re-creation for
+        // legacy bundles that predate the share; `VirtualMachineBundle.create`
+        // already sets this at bundle-create time for every new
+        // bundle, and `createDirectory` no-ops (attributes
+        // included) when the directory already exists.
         try fm.createDirectory(
             at: bundle.provisionDirectoryURL,
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
         )
         let destination = bundle.provisionScriptURL
         try? fm.removeItem(at: destination)
@@ -172,9 +180,12 @@ public enum DiskInjector {
     /// than read from a file.
     public static func inject(scriptBytes: Data, into bundle: VirtualMachineBundle) throws {
         let fm = FileManager.default
+        // See the matching comment in `inject(script:into:)` — 0700
+        // because this share can hold a live secret verbatim.
         try fm.createDirectory(
             at: bundle.provisionDirectoryURL,
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
         )
         let destination = bundle.provisionScriptURL
         try? fm.removeItem(at: destination)

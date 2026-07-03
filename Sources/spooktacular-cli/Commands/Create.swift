@@ -608,9 +608,15 @@ extension Spooktacular {
 
                     if installProvisioner {
                         if let pkgURL = AppBundleBootstrapTemplate.locateProvisionerPkg() {
+                            // 0700 — this share can hold a live
+                            // GitHub Actions runner registration
+                            // token verbatim once the runner script
+                            // is injected below; see the matching
+                            // comment on `VirtualMachineBundle.create`.
                             try FileManager.default.createDirectory(
                                 at: bundle.provisionDirectoryURL,
-                                withIntermediateDirectories: true
+                                withIntermediateDirectories: true,
+                                attributes: [.posixPermissions: 0o700]
                             )
                             let destination = bundle.provisionDirectoryURL
                                 .appendingPathComponent(pkgURL.lastPathComponent)

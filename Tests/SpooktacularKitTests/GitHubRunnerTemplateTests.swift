@@ -192,4 +192,109 @@ struct GitHubRunnerTemplateTests {
         let s = GitHubRunnerTemplate.scriptContent(repo: "o/r", token: "t")
         #expect(s.contains("failed to resolve runner tarball URL"), "Script should diagnose empty TARBALL_URL")
     }
+
+    // MARK: - Token-at-rest: guest-side archive redaction
+    //
+    // End-to-end token trace: this template embeds the live GitHub
+    // registration token verbatim as a `TOKEN='...'` line (the
+    // config.sh invocation needs it in-shell). The guest-side
+    // provisioner LaunchDaemon (Resources/SpookProvisioner/spook-provision-runner.sh)
+    // archives the script body to `first-boot.ran.sh` on the
+    // read-write provisioning share for operator debugging — with
+    // no host-side cleanup path, so a verbatim archive would leave
+    // a live, unspent token sitting on host disk indefinitely. This
+    // is a cross-file contract test: it reads the ACTUAL sed
+    // pattern out of the runner script (not a hand-copied
+    // duplicate) and runs the REAL `/usr/bin/sed` against a
+    // template-generated script, so it fails if either side of the
+    // contract drifts — the template changes the TOKEN= line shape,
+    // or the runner script's redaction pattern regresses to a
+    // verbatim `cp`.
+
+    private func provisionerScriptSource() throws -> String {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let repoRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let scriptURL = repoRoot
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("SpookProvisioner")
+            .appendingPathComponent("spook-provision-runner.sh")
+        return try String(contentsOf: scriptURL, encoding: .utf8)
+    }
+
+    @Test("spook-provision-runner.sh archives via sed, not a verbatim cp")
+    func provisionerArchivesViaRedactingSed() throws {
+        let source = try provisionerScriptSource()
+        #expect(
+            !source.contains(#"cp "${SCRIPT_PATH}" "${ARCHIVE_PATH}""#),
+            "The archive step must not be a verbatim `cp` — that copies the live TOKEN= line straight to host-visible disk with no cleanup path."
+        )
+        #expect(
+            source.contains(#"sed "s/^TOKEN=.*/TOKEN='[REDACTED]'/" "${SCRIPT_PATH}" > "${ARCHIVE_PATH}""#),
+            "Expected spook-provision-runner.sh's archive step to redact the TOKEN= line via sed while writing ${ARCHIVE_PATH}."
+        )
+    }
+
+    @Test("the runner script's actual sed pattern redacts a real generated TOKEN line")
+    func sedPatternRedactsGeneratedToken() throws {
+        let source = try provisionerScriptSource()
+        guard let sedLine = source
+            .components(separatedBy: "\n")
+            .first(where: { $0.contains("sed") && $0.contains("ARCHIVE_PATH") })
+        else {
+            Issue.record("No sed-based archive line found in spook-provision-runner.sh.")
+            return
+        }
+        // Extract the pattern between the first pair of double
+        // quotes — the literal sed program text — so this test
+        // exercises the SAME pattern the guest runs, not a
+        // hand-copied duplicate that could silently drift from it.
+        guard let firstQuote = sedLine.firstIndex(of: "\""),
+              let secondQuote = sedLine[sedLine.index(after: firstQuote)...].firstIndex(of: "\"")
+        else {
+            Issue.record("Could not parse the sed pattern out of: \(sedLine)")
+            return
+        }
+        let sedPattern = String(sedLine[sedLine.index(after: firstQuote)..<secondQuote])
+
+        let token = "ghs_LIVETOKENVALUE1234567890abcdef"
+        let generated = GitHubRunnerTemplate.scriptContent(repo: "acme/widgets", token: token)
+        try #require(
+            generated.contains("TOKEN='\(token)'"),
+            "Precondition: the generated script must actually embed the live token, or this test proves nothing."
+        )
+
+        let tmp = TempDirectory()
+        let scriptPath = tmp.file("first-boot.sh")
+        try generated.write(to: scriptPath, atomically: true, encoding: .utf8)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sed")
+        process.arguments = [sedPattern, scriptPath.path]
+        let outPipe = Pipe()
+        process.standardOutput = outPipe
+        try process.run()
+        process.waitUntilExit()
+        let archived = String(
+            data: outPipe.fileHandleForReading.readDataToEndOfFile(),
+            encoding: .utf8
+        ) ?? ""
+
+        #expect(process.terminationStatus == 0)
+        #expect(
+            !archived.contains(token),
+            "The live registration token must never survive into the archived copy."
+        )
+        #expect(
+            archived.contains("TOKEN='[REDACTED]'"),
+            "The archived copy should keep a redacted TOKEN line so its structure still reads like the original for debugging."
+        )
+        // Everything else survives byte-for-byte — only the TOKEN
+        // line changes.
+        #expect(archived.contains("REPO='acme/widgets'"))
+        #expect(archived.contains(#"sudo -u "$RUNNER_USER" ./config.sh"#))
+        #expect(archived.contains("launchctl bootstrap system"))
+    }
 }

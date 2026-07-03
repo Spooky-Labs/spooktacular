@@ -290,6 +290,22 @@ struct VirtualMachineBundleTests {
             #expect(bundle.spec.cpuCount == 4)
         }
 
+        @Test("provision/ share is created 0700 — it can hold a live registration token", .timeLimit(.minutes(1)))
+        func provisionDirectoryIsOwnerOnly() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("test.vm")
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "test")
+
+            let attributes = try FileManager.default.attributesOfItem(
+                atPath: bundle.provisionDirectoryURL.path
+            )
+            let posixPermissions = try #require(attributes[.posixPermissions] as? NSNumber)
+            #expect(
+                posixPermissions.uint16Value & 0o777 == 0o700,
+                "provision/ must be 0700 (owner rwx only) — it can hold GitHubRunnerTemplate's live registration token verbatim in first-boot.sh, and any other local host user could read a world-traversable directory."
+            )
+        }
+
         @Test("Writes config.json readable by decoder", .timeLimit(.minutes(1)))
         func writesValidConfig() throws {
             let tmp = TempDirectory()
