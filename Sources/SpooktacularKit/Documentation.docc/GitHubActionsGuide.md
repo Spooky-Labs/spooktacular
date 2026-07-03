@@ -56,7 +56,7 @@ Where `github-runner-setup.sh` contains:
 set -euo pipefail
 
 REPO="myorg/myrepo"
-TOKEN="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+TOKEN="<YOUR_GITHUB_PAT>"
 LABELS="macos,arm64,xcode16"
 
 # Download the runner
@@ -357,7 +357,7 @@ spook list
 spook get runner-01
 
 # Check if runners are connected to GitHub
-curl -s -H "Authorization: token ghp_xxxx" \
+curl -s -H "Authorization: token <YOUR_GITHUB_PAT>" \
     "https://api.github.com/repos/myorg/myrepo/actions/runners" | \
     jq '.runners[] | {name, status, busy}'
 ```
@@ -369,7 +369,7 @@ curl -s -H "Authorization: token ghp_xxxx" \
 # check-runners.sh --- verify runners are healthy
 
 REPO="myorg/myrepo"
-TOKEN="ghp_xxxx"
+TOKEN="<YOUR_GITHUB_PAT>"
 
 runners=$(curl -s -H "Authorization: token $TOKEN" \
     "https://api.github.com/repos/$REPO/actions/runners" | \
@@ -405,7 +405,7 @@ runner's configured labels.
 
 ```bash
 # Check runner labels in GitHub
-curl -s -H "Authorization: token ghp_xxxx" \
+curl -s -H "Authorization: token <YOUR_GITHUB_PAT>" \
     "https://api.github.com/repos/myorg/myrepo/actions/runners" | \
     jq '.runners[] | {name, labels: [.labels[].name]}'
 
