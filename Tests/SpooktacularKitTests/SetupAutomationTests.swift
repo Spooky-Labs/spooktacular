@@ -167,6 +167,96 @@ struct SetupAutomationTests {
             }
             #expect(label == "Continue")
         }
+
+        @Test(
+            "Transfer Data screen selects 'Set up as new' via clickText, not a fixed Tab count",
+            arguments: [15, 26]
+        )
+        func transferDataScreenConfirmsViaClickText(version: Int) throws {
+            // Regression test for live e2e gate 25/102
+            // (`plans/e2e-notes-2026-07.md`, ATTEMPT 5): a hard-coded
+            // `tab, tab, tab, space` assumed a 3-row radio list and,
+            // once macOS 26 grew a 4th row ("Set up with iPhone or
+            // iPad" inserted above "Set up as new"), landed on and
+            // selected the wrong row. The fix reads the actual screen
+            // and clicks the labeled row instead of counting Tabs
+            // through a list whose length Apple can change between OS
+            // versions — same pattern as the country screen's
+            // `clickText("Continue")` fix.
+            let steps = try SetupAutomation.sequence(for: version)
+            let transferGateIndex = try #require(steps.firstIndex { step in
+                if case .expectScreen(let markers, _) = step.action {
+                    return markers.contains("Migration Assistant") || markers.contains("Transfer Your Data")
+                }
+                return false
+            })
+            let selectAction = steps[transferGateIndex + 1].action
+            guard case .clickText(let selectLabel, _) = selectAction else {
+                Issue.record("Expected the Transfer Data row selection to use clickText, got \(selectAction)")
+                return
+            }
+            #expect(selectLabel == "Set up as new")
+
+            let confirmAction = steps[transferGateIndex + 2].action
+            guard case .clickText(let confirmLabel, _) = confirmAction else {
+                Issue.record("Expected the Transfer Data confirm to use clickText, got \(confirmAction)")
+                return
+            }
+            #expect(confirmLabel == "Continue")
+        }
+
+        @Test(
+            "No hard-coded multi-Tab radio navigation remains anywhere in the sequence",
+            arguments: [15, 26]
+        )
+        func noHardCodedMultiTabRadioNavigationRemains(version: Int) throws {
+            // Regression guard against reintroducing the exact defect
+            // class behind both the country-screen (gate 12/100) and
+            // Transfer Data (gate 25/102) live e2e failures: three or
+            // more consecutive same-direction Tab presses immediately
+            // followed by Space, blindly counting keystrokes to reach
+            // the Nth item in a list whose length Apple can change
+            // between OS versions. Every current call site that
+            // selects a specific item from a list now either uses
+            // `.clickText` (a verified on-screen label) or, where no
+            // label has been verified, a *single* Tab/Shift-Tab hop
+            // documented `// UNVERIFIED macOS-26 label — blind
+            // fallback` — lower risk than a multi-Tab count because it
+            // doesn't assume how many rows precede the target.
+            let steps = try SetupAutomation.sequence(for: version)
+            // `BootAction` is `Equatable` but not `Hashable`, so this
+            // stays an array checked with `contains` rather than a `Set`.
+            let tabLikeActions: [BootAction] = [
+                .key(.tab),
+                .shortcut(.tab, modifiers: [.shift]),
+            ]
+
+            var runAction: BootAction?
+            var runLength = 0
+            for step in steps {
+                if let runAction, step.action == runAction {
+                    runLength += 1
+                    continue
+                }
+                if runLength >= 3, step.action == .key(.space) {
+                    Issue.record(
+                        """
+                        Found a hard-coded run of \(runLength) consecutive \(String(describing: runAction)) \
+                        presses immediately followed by Space — this is the blind multi-Tab radio-navigation \
+                        anti-pattern fixed in transferDataSteps(); convert it to clickText(<verified label>) \
+                        or reduce it to a single documented Tab hop.
+                        """
+                    )
+                }
+                if tabLikeActions.contains(step.action) {
+                    runAction = step.action
+                    runLength = 1
+                } else {
+                    runAction = nil
+                    runLength = 0
+                }
+            }
+        }
     }
 
     // MARK: - Username and Password Customization

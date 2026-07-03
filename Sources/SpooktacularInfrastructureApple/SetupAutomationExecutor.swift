@@ -14,7 +14,19 @@ public enum SetupAutomationExecutorError: Error, Sendable, LocalizedError {
     case unmappableCharacter(Character)
 
     /// An `.expectScreen` gate never found any of its expected
-    /// markers before timing out.
+    /// markers before timing out, **or** a `.clickText` action never
+    /// found its click target before timing out.
+    ///
+    /// Both actions share this case because they share a failure
+    /// shape: each polls the screen for specific text and gives up
+    /// after a timeout. `.clickText` reports a single-element
+    /// `expectedMarkers` array (its one target string) rather than a
+    /// dedicated case, so both failure modes get the same diagnostic
+    /// treatment — see ``SetupAutomationExecutor``'s `.clickText`
+    /// dispatch, which saves artifacts exactly like
+    /// ``SetupAutomationExecutor``'s `expectScreen` gate does, instead
+    /// of surfacing a bare ``SpooktacularCore/ScreenReaderError`` with
+    /// no screenshot or OCR dump attached.
     ///
     /// Carries everything needed to diagnose a desynchronized
     /// automation run without re-running it: which step failed, what
@@ -31,7 +43,8 @@ public enum SetupAutomationExecutorError: Error, Sendable, LocalizedError {
     ///   - totalSteps: Total step count, for a human-readable
     ///     "step X/Y" message.
     ///   - expectedMarkers: The candidate substrings the gate was
-    ///     waiting for (`expectScreen`'s `containsAny`).
+    ///     waiting for (`expectScreen`'s `containsAny`), or the single
+    ///     target string wrapped in an array for `.clickText`.
     ///   - actualTextExcerpt: A truncated join of every OCR text
     ///     region observed on the final poll before timeout.
     ///   - timeout: The gate's configured timeout, in seconds.
@@ -290,7 +303,47 @@ public enum SetupAutomationExecutor {
             Log.provision.debug(
                 "Step \(stepIndex + 1)/\(totalSteps): clicking text '\(text, privacy: .public)'"
             )
-            let match = try await reader.waitForText(text, timeout: timeout)
+            let match: RecognizedText
+            do {
+                match = try await reader.waitForText(text, timeout: timeout)
+            } catch {
+                // `waitForText` already throws on a missing target —
+                // this is not a silent failure. But its thrown
+                // `ScreenReaderError.textNotFound` carries no
+                // screenshot or OCR dump the way `expectScreen`'s
+                // timeout does, so a clickText miss used to be a
+                // *quieter* failure than a gate miss for the exact
+                // same underlying problem (a stale/guessed label).
+                // Bring it up to parity: save the same diagnostic
+                // artifacts and surface the same
+                // ``SetupAutomationExecutorError/screenGateTimedOut(stepIndex:totalSteps:expectedMarkers:actualTextExcerpt:timeout:artifactDirectory:)``
+                // case `expectScreen` uses, with the single click
+                // target as its one-element `expectedMarkers`.
+                Log.provision.error(
+                    "Step \(stepIndex + 1)/\(totalSteps): clickText target '\(text, privacy: .public)' not found — \(error.localizedDescription, privacy: .public)"
+                )
+                // Best-effort: `waitForText` doesn't hand back what it
+                // last observed on failure, so re-poll once for the
+                // diagnostic dump. A throw here would mask the real
+                // (textNotFound) error, so failures fall back to an
+                // empty observation rather than propagating.
+                let observed = (try? await reader.recognizeText()) ?? []
+                let artifactDirectory = await saveDiagnosticArtifacts(
+                    to: diagnosticsDirectory,
+                    stepIndex: stepIndex,
+                    expectedMarkers: [text],
+                    observed: observed,
+                    screenReader: reader
+                )
+                throw SetupAutomationExecutorError.screenGateTimedOut(
+                    stepIndex: stepIndex,
+                    totalSteps: totalSteps,
+                    expectedMarkers: [text],
+                    actualTextExcerpt: excerpt(from: observed),
+                    timeout: timeout,
+                    artifactDirectory: artifactDirectory
+                )
+            }
             // Convert Vision bounding box (bottom-left origin, 0-1) to
             // view click coordinates (top-left origin, 0-1).
             let clickX = match.boundingBox.midX

@@ -145,6 +145,138 @@ struct SetupAutomationExecutorTests {
         #expect(driver.actions == [.text("hello")])
     }
 
+    // MARK: - clickText
+
+    /// Tests for the `.clickText` action introduced to replace blind
+    /// Tab/Space radio and button navigation (see
+    /// `SetupAutomationTests`'s `countryScreenConfirmsViaClickText`
+    /// and `transferDataScreenConfirmsViaClickText` for the sequence-
+    /// level regression tests these two live-e2e bugs produced). These
+    /// tests cover the executor's dispatch of the action itself: the
+    /// OCR-rect-to-click-point conversion on a hit, and — since a
+    /// `.clickText` miss used to throw a bare `ScreenReaderError` with
+    /// no screenshot/OCR dump, unlike an `expectScreen` gate timeout —
+    /// that a miss now produces the same diagnostic artifacts.
+    @Test("clickText converts the matched text's Vision bounding box (bottom-left origin) into a top-left-origin click point")
+    func clickTextClicksTheCenterOfTheMatchedBoundingBox() async throws {
+        let driver = RecordingKeyboardDriver()
+        // Chosen as exact binary fractions (powers of two) so the
+        // computed center survives floating-point arithmetic without
+        // rounding — avoids a flaky equality assertion below. Vision's
+        // bottom-left-origin box (x:0.125, y:0.5, w:0.25, h:0.125) has
+        // center (0.25, 0.5625); flipping y for a top-left-origin
+        // click point gives (0.25, 0.4375).
+        let match = RecognizedText(
+            text: "Continue",
+            boundingBox: NormalizedRect(x: 0.125, y: 0.5, width: 0.25, height: 0.125),
+            confidence: 0.95
+        )
+        let reader = ScriptedScreenReader(frames: [[match]])
+        let steps = [
+            BootStep(delay: 0, action: .clickText("Continue")),
+        ]
+
+        try await SetupAutomationExecutor.run(steps: steps, using: driver, screenReader: reader)
+
+        #expect(driver.actions == [.click(x: 0.25, y: 0.4375)])
+    }
+
+    @Test("Without a screen reader, clickText is skipped rather than clicking blindly or throwing")
+    func clickTextSkippedWithoutScreenReader() async throws {
+        let driver = RecordingKeyboardDriver()
+        let steps = [
+            BootStep(delay: 0, action: .clickText("Continue")),
+            BootStep(delay: 0, action: .text("after")),
+        ]
+
+        try await SetupAutomationExecutor.run(steps: steps, using: driver, screenReader: nil)
+
+        #expect(driver.actions == [.text("after")])
+    }
+
+    @Test("clickText throws a diagnostic error and saves an OCR dump when its target is never found, matching expectScreen's timeout behavior")
+    func clickTextNotFoundSavesDiagnosticArtifacts() async throws {
+        let tempDir = TempDirectory()
+        let driver = RecordingKeyboardDriver()
+        let reader = ScriptedScreenReader(frames: [[recognized("Set up as new")]])
+        let steps = [
+            BootStep(delay: 0, action: .clickText("Continue", timeout: 0.02)),
+        ]
+
+        await #expect(throws: SetupAutomationExecutorError.self) {
+            try await SetupAutomationExecutor.run(
+                steps: steps,
+                using: driver,
+                screenReader: reader,
+                diagnosticsDirectory: tempDir.url
+            )
+        }
+
+        // No click was ever sent for a target that was never found.
+        #expect(driver.actions.isEmpty)
+
+        let textURL = tempDir.file("automation-failure-step1.txt")
+        #expect(FileManager.default.fileExists(atPath: textURL.path))
+        let dump = try String(contentsOf: textURL, encoding: .utf8)
+        #expect(dump.contains("Set up as new"))
+        #expect(dump.contains("Continue"))
+    }
+
+    @Test("clickText not-found throws the same diagnostic case expectScreen uses, naming the single target as its one-element marker list")
+    func clickTextNotFoundThrowsScreenGateTimedOut() async throws {
+        let driver = RecordingKeyboardDriver()
+        let reader = ScriptedScreenReader(frames: [[recognized("Unrelated Screen Text")]])
+        let steps = [
+            BootStep(delay: 0, action: .text("before")),
+            BootStep(delay: 0, action: .clickText("Set up as new", timeout: 0.02)),
+            BootStep(delay: 0, action: .text("after")),
+        ]
+
+        do {
+            try await SetupAutomationExecutor.run(steps: steps, using: driver, screenReader: reader)
+            Issue.record("Expected clickText to throw when its target is never found")
+        } catch let error as SetupAutomationExecutorError {
+            guard case .screenGateTimedOut(
+                let stepIndex, let totalSteps, let expectedMarkers, let actualTextExcerpt, let timeout, _
+            ) = error else {
+                Issue.record("Expected .screenGateTimedOut, got \(error)")
+                return
+            }
+            #expect(stepIndex == 1)
+            #expect(totalSteps == 3)
+            #expect(expectedMarkers == ["Set up as new"])
+            #expect(actualTextExcerpt.contains("Unrelated Screen Text"))
+            #expect(timeout == 0.02)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+
+        // The gate must block the "after" step from ever being sent.
+        #expect(driver.actions == [.text("before")])
+    }
+
+    @Test("clickText not-found without a diagnostics directory still throws but reports no artifact directory")
+    func clickTextNotFoundWithoutDiagnosticsDirectoryStillThrows() async throws {
+        let driver = RecordingKeyboardDriver()
+        let reader = ScriptedScreenReader(frames: [[recognized("Wrong Screen")]])
+        let steps = [
+            BootStep(delay: 0, action: .clickText("Right Target", timeout: 0.02)),
+        ]
+
+        do {
+            try await SetupAutomationExecutor.run(steps: steps, using: driver, screenReader: reader)
+            Issue.record("Expected clickText to throw when its target is never found")
+        } catch let error as SetupAutomationExecutorError {
+            guard case .screenGateTimedOut(_, _, _, _, _, let artifactDirectory) = error else {
+                Issue.record("Expected .screenGateTimedOut, got \(error)")
+                return
+            }
+            #expect(artifactDirectory == nil)
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
     // MARK: - Diagnostic Artifacts
 
     @Test("On timeout, the full OCR dump is saved to the diagnostics directory even without screenshot support")

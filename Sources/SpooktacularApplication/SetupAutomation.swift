@@ -423,20 +423,39 @@ public enum SetupAutomation {
         ]
     }
 
-    /// Skip Transfer Data (Not Now).
+    /// Skip Transfer Data by selecting "Set up as new".
+    ///
+    /// Was a hard-coded `tab, tab, tab, space` — three forward Tabs
+    /// from first-focus, then Space — meant to walk down a radio list
+    /// and press the fourth (last) row. Live e2e evidence
+    /// (`plans/e2e-notes-2026-07.md`, ATTEMPT 5, gate 25/102) captured
+    /// a screenshot + OCR dump proving that on macOS 26.4.1 this
+    /// screen has *four* radio rows top-to-bottom — "From a Mac, Time
+    /// Machine, or startup disk" / "From a Windows PC" / "Set up with
+    /// iPhone or iPad" / "Set up as new" — one more than the macOS 15
+    /// layout this Tab count was tuned against (see
+    /// ``sequoiaSequence()``'s doc comment). Three Tabs from
+    /// first-focus lands on row three ("Set up with iPhone or iPad")
+    /// and selects it — confirmed both by the screenshot (that row's
+    /// radio filled blue, not the fourth) and the OCR dump saved to
+    /// `automation-failure-step25.txt`, which lists all four row
+    /// labels plus a "Continue" button in that exact order. The
+    /// follow-on `tab, tab, space` meant to press Continue never got a
+    /// chance to matter — the wrong row being selected was the defect.
+    ///
+    /// Same fix pattern as the country screen's `.clickText("Continue")`
+    /// (see ``languageAndCountrySteps()``'s doc comment): read the
+    /// actual screen and click the verified label instead of counting
+    /// keystrokes through a list whose length Apple can silently
+    /// change between OS versions.
     private static func transferDataSteps() -> [BootStep] {
         [
             BootStep(delay: 0, action: .expectScreen(
                 containsAny: ["Migration Assistant", "Transfer Your Data"],
                 timeout: 60
             )),
-            BootStep(delay: 0, action: tab),
-            BootStep(delay: 0, action: tab),
-            BootStep(delay: 0, action: tab),
-            BootStep(delay: 0, action: space),
-            BootStep(delay: 0, action: tab),
-            BootStep(delay: 0, action: tab),
-            BootStep(delay: 0, action: space),
+            BootStep(delay: 0, action: .clickText("Set up as new")),
+            BootStep(delay: 0, action: .clickText("Continue")),
         ]
     }
 
@@ -454,6 +473,23 @@ public enum SetupAutomation {
     /// migration, account creation, Apple ID, terms, location, time
     /// zone) plus the Terminal/SSH and provisioner-install gates were
     /// chosen because their marker text is well established.
+    ///
+    /// // UNVERIFIED macOS-26 label — blind fallback: the confirm
+    /// button each screen presses is assumed to be "Continue" (per
+    /// the inline comment below) but that has never been confirmed
+    /// against a live macOS 26 screenshot the way the country and
+    /// Transfer Data screens' labels were — see
+    /// ``languageAndCountrySteps()`` and ``transferDataSteps()``. This
+    /// is the same failure *class* as both of those confirmed bugs (a
+    /// blind Shift-Tab count assuming a fixed control layout), just
+    /// without evidence yet pinpointing whether it has actually
+    /// broken. Left blind rather than converted to a guessed
+    /// `clickText("Continue")` per this file's ground rule: a wrong
+    /// guess on a screen with more than one plausible button (e.g. a
+    /// "Skip"/"Not Now" alternative) could silently click the wrong
+    /// control instead of failing loudly. If a future e2e run's gate
+    /// diagnostics show a stall here, capture the exact button label
+    /// before converting.
     private static func skipScreenSteps() -> [BootStep] {
         // Each screen: Shift-Tab to focus Continue, Space to press.
         (0..<3).flatMap { _ -> [BootStep] in
@@ -470,6 +506,15 @@ public enum SetupAutomation {
     /// `expectScreen` gate immediately before it — generously bounded
     /// at 120s, same tier as first-boot — so the voiceover action
     /// itself carries no additional delay.
+    ///
+    /// The interleaved `.text(username/password)` + `tab` steps
+    /// submit a fixed four-field form (name, account name, password,
+    /// verify) whose field count is not the kind of Apple-controlled
+    /// list that grew between macOS 15 and 26 in the country/Transfer
+    /// Data bugs, so they're lower risk than those confirmed cases —
+    /// but the two trailing `tab, tab, space` pairs (skip the optional
+    /// hint field, then toggle/press an unnamed control) are still
+    /// blind Tab-counted navigation with no confirmed macOS 26 label.
     private static func accountCreationSteps(
         username: String,
         password: String
@@ -486,9 +531,11 @@ public enum SetupAutomation {
             BootStep(delay: 0, action: .text(password)),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: .text(password)),
+            // UNVERIFIED macOS-26 label — blind fallback (skip hint field, toggle unnamed control)
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback (presumed "Continue")
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: space),
@@ -510,32 +557,64 @@ public enum SetupAutomation {
     /// "Agree" confirm dialogs) layered on the *same* screen, not a
     /// full transition — so they stay as small fixed delays per the
     /// gate design (gates replace transition waits, not every pause).
+    ///
+    /// Every button label named in the inline comments below (`Set Up
+    /// Later`/`Skip`, `Agree`, `Not Now`, and each screen's confirm
+    /// dialog) is this file's best-guess *intent*, inherited from the
+    /// macOS 15 Tart mapping — none of it has been confirmed against a
+    /// live macOS 26 screenshot the way "Continue" was for the country
+    /// and Transfer Data screens (``languageAndCountrySteps()``,
+    /// ``transferDataSteps()``). Each of these screens offers more
+    /// than one plausible button (e.g. Apple ID's real choice is
+    /// between signing in and skipping), so guessing a `clickText`
+    /// label here risks silently clicking the *wrong* one instead of
+    /// failing loudly — worse than the status quo. Left as blind
+    /// keystrokes, marked per step below.
     private static func postAccountSteps() -> [BootStep] {
         [
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 0, action: shiftTab),  // Skip Apple ID
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: tab),        // Confirm Skip
             BootStep(delay: 0, action: space),
             BootStep(delay: 0, action: .expectScreen(
                 containsAny: ["Terms and Conditions", "Terms of Use"],
                 timeout: 60
             )),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 0, action: shiftTab),  // Terms (Agree)
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: tab),        // Confirm Terms
             BootStep(delay: 0, action: space),
             BootStep(delay: 0, action: .expectScreen(
                 containsAny: ["Enable Location Services", "Location Services"],
                 timeout: 60
             )),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 0, action: shiftTab),  // Skip Location
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: tab),        // Confirm Skip
             BootStep(delay: 0, action: space),
         ]
     }
 
     /// Set timezone to UTC.
+    ///
+    /// The `tab, tab` before typing `"UTC"` reaches a type-ahead
+    /// search field (same semantics as the language/Terminal fields
+    /// documented in ``languageAndCountrySteps()``/``enableSSHSteps(password:)``),
+    /// so `enter` is the correct confirm there. The trailing
+    /// `shiftTab, shiftTab, space` is presumed to press this screen's
+    /// "Continue" button — plausible since, unlike Apple ID/Terms/
+    /// Location, there's no alternate "skip" action on a time zone
+    /// picker — but that has not been confirmed against a live macOS
+    /// 26 screenshot, so it stays blind rather than guessed.
+    // UNVERIFIED macOS-26 label — blind fallback: two Shift-Tabs
+    // counted to reach the presumed "Continue" button, the same
+    // failure class as the confirmed country/Transfer Data bugs.
     private static func timezoneSteps() -> [BootStep] {
         [
             BootStep(delay: 0, action: .expectScreen(
@@ -563,20 +642,33 @@ public enum SetupAutomation {
     /// confirms Setup Assistant is fully dismissed and the Desktop
     /// responded to Option+Space *before* "Terminal" gets typed
     /// into whatever has focus.
+    ///
+    /// As with ``skipScreenSteps()`` and ``postAccountSteps()``, none
+    /// of these six screens' button labels have been confirmed
+    /// against a live macOS 26 screenshot, so every Tab/Shift-Tab
+    /// count below is a best-guess inherited from the macOS 15 Tart
+    /// mapping and stays blind rather than becoming a guessed
+    /// `clickText` call.
     private static func finalScreensSteps() -> [BootStep] {
         [
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: shiftTab),  // Analytics
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: tab),        // Screen Time
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: tab),        // Siri (two-step)
             BootStep(delay: 0, action: space),
             BootStep(delay: 0, action: shiftTab),
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: shiftTab),  // Choose Look
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: tab),        // Auto Update
             BootStep(delay: 0, action: space),
+            // UNVERIFIED macOS-26 label — blind fallback
             BootStep(delay: 10, action: space),      // Welcome to Mac
             BootStep(delay: 0, action: voiceover),   // Disable VoiceOver
         ]
