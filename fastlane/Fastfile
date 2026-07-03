@@ -114,6 +114,37 @@ platform :mac do
         )
       end
     end
+
+    # The root package's `swift test` above only builds/runs the
+    # root package's own test targets — SwiftPM never reaches into
+    # a local `.package(path:)` dependency's OWN test targets, only
+    # its library products. The three clean-room SPICE packages
+    # under `Packages/` (added on this branch, vendored into the
+    # guest-tools clipboard bridge via `SpiceProtocol` /
+    # `SpiceSerialTransport` / `SpiceGuestAgent`) therefore had 36
+    # tests that compiled and passed locally but never ran in any
+    # CI lane — a regression in the wire protocol's framing or
+    # header encoding could ship inside every guest VM's clipboard
+    # bridge with CI fully green. Run each package's own suite
+    # explicitly, with the same false-green guard as the root run
+    # above, so a compile crash in any one of them fails the lane
+    # instead of silently reporting zero tests.
+    spice_packages = %w[SpiceProtocol SpiceSerialTransport SpiceGuestAgent]
+    spice_packages.each do |package|
+      package_path = File.join(PROJECT_ROOT, "Packages", package)
+      output = sh(
+        "swift", "test", "--package-path", package_path,
+        log: true
+      )
+      unless output.include?("Test run with") || output.include?("Executed ")
+        UI.user_error!(
+          "swift test --package-path Packages/#{package} produced no " \
+          "test-run summary — this is the false-green pattern where a " \
+          "compile crash silently yields exit 0 and zero tests. " \
+          "Inspect the log above for the real failure."
+        )
+      end
+    end
   end
 
   # ──────────────────────────────────────────────────
