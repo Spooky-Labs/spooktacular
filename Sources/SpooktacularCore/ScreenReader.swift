@@ -136,6 +136,32 @@ public struct RecognizedText: Sendable {
     }
 }
 
+/// A ``ScreenReader`` that can additionally capture a raw image of
+/// what it just OCR'd.
+///
+/// Conformance is optional and separate from ``ScreenReader``
+/// itself: the protocol lives here (Foundation-only, no AppKit) so
+/// callers in any module can test for it with `as?`, but only a
+/// screen reader backed by an actual framebuffer — ``VZScreenReader``
+/// in `SpooktacularInfrastructureApple` — can produce pixels. A test
+/// double that only fabricates OCR text has no image to hand back
+/// and simply doesn't conform.
+///
+/// Used by `SetupAutomationExecutor` to save a screenshot alongside
+/// the OCR dump when a screen gate (``ScreenReader/waitForText(_:timeout:)``
+/// or the executor's `expectScreen` action) times out, so a failed
+/// automation run leaves behind exactly what the VM display showed.
+public protocol ScreenshotCapturing: Sendable {
+
+    /// Captures the current screen as PNG-encoded image data.
+    ///
+    /// - Returns: PNG data, or `nil` if the view couldn't be
+    ///   captured (mirrors ``ScreenReader/recognizeText()``'s
+    ///   empty-array-on-failure convention rather than throwing for
+    ///   a capture that simply produced nothing).
+    @MainActor func capturePNG() async throws -> Data?
+}
+
 /// Errors that can occur during screen reading operations.
 public enum ScreenReaderError: Error, Sendable, LocalizedError {
 

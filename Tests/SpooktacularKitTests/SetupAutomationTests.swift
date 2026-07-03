@@ -359,6 +359,145 @@ struct SetupAutomationTests {
             let shortcutC = BootAction.shortcut(.f5, modifiers: [.command])
             #expect(shortcutA == shortcutB)
             #expect(shortcutA != shortcutC)
+
+            let gateA = BootAction.expectScreen(containsAny: ["Continue"], timeout: 60)
+            let gateB = BootAction.expectScreen(containsAny: ["Continue"], timeout: 60)
+            let gateDifferentMarkers = BootAction.expectScreen(containsAny: ["Skip"], timeout: 60)
+            let gateDifferentTimeout = BootAction.expectScreen(containsAny: ["Continue"], timeout: 30)
+            #expect(gateA == gateB)
+            #expect(gateA != gateDifferentMarkers)
+            #expect(gateA != gateDifferentTimeout)
+        }
+    }
+
+    // MARK: - Screen Gates
+
+    /// Tests for the `expectScreen` gates that replaced blind
+    /// fixed-delay waits at Setup Assistant screen transitions (bug
+    /// #4: keystroke automation reported success while the guest
+    /// never actually completed setup — see
+    /// `plans/e2e-notes-2026-07.md`, ATTEMPT 3).
+    ///
+    /// These tests check the *sequence structure* — that gates exist
+    /// at the right places with sane timeouts. ``SetupAutomationExecutor``'s
+    /// own polling/timeout/diagnostic-capture behavior is covered
+    /// separately in `SetupAutomationExecutorTests`, against a mock
+    /// screen reader.
+    @Suite("Screen gates", .tags(.configuration))
+    struct ScreenGateTests {
+
+        /// Every `expectScreen` step in `steps`, in order, with its
+        /// index preserved for ordering assertions.
+        private static func expectScreenSteps(
+            _ steps: [BootStep]
+        ) -> [(index: Int, markers: [String], timeout: TimeInterval)] {
+            steps.enumerated().compactMap { index, step in
+                guard case .expectScreen(let markers, let timeout) = step.action else { return nil }
+                return (index, markers, timeout)
+            }
+        }
+
+        @Test(
+            "Sequoia sequence gates every named Setup Assistant screen transition",
+            arguments: [15, 26]
+        )
+        func gatesCoverNamedTransitions(version: Int) throws {
+            let steps = try SetupAutomation.sequence(for: version)
+            let gates = Self.expectScreenSteps(steps)
+            let allMarkers = gates.flatMap(\.markers).map { $0.lowercased() }
+            let expectedSubstrings = [
+                "english",           // language screen
+                "country",           // country screen
+                "migration",         // Migration Assistant / Transfer Data
+                "account",           // account creation
+                "apple id",          // Apple ID / Sign In
+                "terms",             // Terms and Conditions
+                "location",          // Location Services
+                "time zone",         // time zone
+                "spotlight",         // before opening Terminal
+                "last login",        // Terminal shell ready, before SSH-enable sudo
+            ]
+            for expected in expectedSubstrings {
+                #expect(
+                    allMarkers.contains { $0.contains(expected) },
+                    "No gate marker contains '\(expected)'"
+                )
+            }
+        }
+
+        @Test("Sequence still starts with a blind wait for VM boot — no marker is safe pre-language-selection")
+        func firstStepIsNotAGate() throws {
+            let steps = try SetupAutomation.sequence(for: 15)
+            let first = try #require(steps.first)
+            if case .expectScreen = first.action {
+                Issue.record("First step must not be a screen gate — no locale-invariant marker exists before English is selected")
+            }
+            #expect(first.delay >= 30)
+        }
+
+        @Test(
+            "Every screen gate uses a generous timeout (>= 60s)",
+            arguments: [15, 26]
+        )
+        func gateTimeoutsAreGenerous(version: Int) throws {
+            let steps = try SetupAutomation.sequence(for: version)
+            let gates = Self.expectScreenSteps(steps)
+            #expect(!gates.isEmpty)
+            for gate in gates {
+                #expect(gate.timeout >= 60, "Gate at step index \(gate.index) has too tight a timeout: \(gate.timeout)")
+            }
+        }
+
+        @Test(
+            "Screen gates replace the fixed pre-delay they guard — their own BootStep carries no additional delay",
+            arguments: [15, 26]
+        )
+        func gateStepsCarryNoAdditionalFixedDelay(version: Int) throws {
+            let steps = try SetupAutomation.sequence(for: version)
+            for step in steps where isExpectScreen(step.action) {
+                #expect(step.delay == 0, "expectScreen already polls adaptively; a nonzero BootStep delay would double-wait")
+            }
+        }
+
+        private func isExpectScreen(_ action: BootAction) -> Bool {
+            if case .expectScreen = action { return true }
+            return false
+        }
+
+        @Test("installProvisioner: true gates the provisioner phase on the shell prompt returning, before the first sudo command")
+        func provisionerPhaseIsGatedOnShellPrompt() throws {
+            let steps = try SetupAutomation.sequence(for: 15, username: "runner", installProvisioner: true)
+            let gates = Self.expectScreenSteps(steps)
+            let mkdirIndex = try #require(steps.firstIndex { step in
+                if case .text(let text) = step.action { return text.hasPrefix("sudo mkdir -p") }
+                return false
+            })
+            let precedingGate = try #require(
+                gates.last { $0.index < mkdirIndex },
+                "The provisioner phase must be gated before its first sudo command"
+            )
+            #expect(
+                precedingGate.markers.contains("runner"),
+                "The provisioner-phase gate should use the created account's own username as its marker"
+            )
+        }
+
+        @Test("Terminal/SSH phase gates Spotlight opening before Terminal is typed, and a shell prompt before the sudo command")
+        func terminalPhaseGatesBothSpotlightAndShellReady() throws {
+            let steps = try SetupAutomation.sequence(for: 15)
+            let gates = Self.expectScreenSteps(steps)
+            let terminalTextIndex = try #require(steps.firstIndex { step in
+                if case .text(let text) = step.action { return text == "Terminal" }
+                return false
+            })
+            let sudoIndex = try #require(steps.firstIndex { step in
+                if case .text(let text) = step.action { return text.contains("setremotelogin") }
+                return false
+            })
+            let spotlightGate = gates.last { $0.index < terminalTextIndex }
+            let terminalReadyGate = gates.last { $0.index < sudoIndex && $0.index > terminalTextIndex }
+            #expect(spotlightGate != nil, "Must gate on Spotlight being open before typing 'Terminal'")
+            #expect(terminalReadyGate != nil, "Must gate on the shell prompt being ready before typing the sudo command")
         }
     }
 }

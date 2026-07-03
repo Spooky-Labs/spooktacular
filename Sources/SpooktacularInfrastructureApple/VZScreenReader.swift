@@ -22,6 +22,11 @@ import Vision
 /// 4. Results are mapped to ``SpooktacularCore.RecognizedText`` values with bounding
 ///    boxes and confidence scores.
 ///
+/// It also conforms to ``ScreenshotCapturing``, reusing the same
+/// bitmap capture to hand back PNG data — `SetupAutomationExecutor`
+/// uses this to save a screenshot alongside the OCR dump when a
+/// screen gate times out.
+///
 /// ## Polling Strategy
 ///
 /// ``waitForText(_:timeout:)`` polls every 2 seconds, which balances
@@ -34,7 +39,7 @@ import Vision
 /// All methods are `@MainActor` because `VZVirtualMachineView` and
 /// `NSBitmapImageRep` must be accessed on the main thread.
 @MainActor
-public final class VZScreenReader: ScreenReader {
+public final class VZScreenReader: ScreenReader, ScreenshotCapturing {
 
     /// The VM view to capture.
     private let vmView: VZVirtualMachineView
@@ -53,6 +58,27 @@ public final class VZScreenReader: ScreenReader {
         self.pollInterval = pollInterval
     }
 
+    // MARK: - Shared Capture
+
+    /// Renders the VM view into a fresh `NSBitmapImageRep`.
+    ///
+    /// Shared by ``recognizeText()`` (which needs a `CGImage` for
+    /// Vision) and ``capturePNG()`` (which needs PNG-encodable
+    /// bitmap data) so both draw from the exact same capture call
+    /// rather than duplicating the `bitmapImageRepForCachingDisplay` /
+    /// `cacheDisplay` pair.
+    ///
+    /// - Returns: The rendered bitmap, or `nil` if the view couldn't
+    ///   be captured.
+    private func captureBitmap() -> NSBitmapImageRep? {
+        guard let bitmap = vmView.bitmapImageRepForCachingDisplay(in: vmView.bounds) else {
+            Log.provision.warning("VZScreenReader: bitmapImageRepForCachingDisplay returned nil")
+            return nil
+        }
+        vmView.cacheDisplay(in: vmView.bounds, to: bitmap)
+        return bitmap
+    }
+
     // MARK: - ScreenReader
 
     /// Captures the VM's current display and recognizes every
@@ -62,12 +88,10 @@ public final class VZScreenReader: ScreenReader {
     ///   confidence scores, or an empty array if the view couldn't
     ///   be captured.
     public func recognizeText() async throws -> [SpooktacularCore.RecognizedText] {
-        // Capture the view as a CGImage.
-        guard let bitmap = vmView.bitmapImageRepForCachingDisplay(in: vmView.bounds) else {
-            Log.provision.warning("VZScreenReader: bitmapImageRepForCachingDisplay returned nil")
+        guard let bitmap = captureBitmap() else {
+            // captureBitmap() already logged the specific reason.
             return []
         }
-        vmView.cacheDisplay(in: vmView.bounds, to: bitmap)
         guard let cgImage = bitmap.cgImage else {
             Log.provision.warning("VZScreenReader: bitmap has no CGImage")
             return []
@@ -139,5 +163,23 @@ public final class VZScreenReader: ScreenReader {
             "VZScreenReader: '\(text, privacy: .public)' not found within \(Int(timeout))s"
         )
         throw ScreenReaderError.textNotFound(text, timeout: timeout)
+    }
+
+    // MARK: - ScreenshotCapturing
+
+    /// Captures the VM's current display as PNG data.
+    ///
+    /// Reuses the same `bitmapImageRepForCachingDisplay` /
+    /// `cacheDisplay` capture ``recognizeText()`` performs (via
+    /// ``captureBitmap()``), then asks `NSBitmapImageRep` for a PNG
+    /// representation — no separate rendering pass.
+    ///
+    /// - Returns: PNG-encoded image data, or `nil` if the view
+    ///   couldn't be captured or PNG encoding failed.
+    public func capturePNG() async throws -> Data? {
+        guard let bitmap = captureBitmap() else {
+            return nil
+        }
+        return bitmap.representation(using: .png, properties: [:])
     }
 }

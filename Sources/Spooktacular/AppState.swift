@@ -1413,7 +1413,21 @@ final class AppState {
                     installProvisioner: installProvisioner
                 )
                 updateCreation(name: name, progress: 0.2, status: "Running Setup Assistant automation…")
-                try await SetupAutomationExecutor.run(steps: steps, using: driver, screenReader: screenReader)
+                // Diagnostics land in the same `provision/` directory
+                // first-boot provisioning evidence already uses, so a
+                // failed run and a failed gate show up side by side.
+                try await SetupAutomationExecutor.run(
+                    steps: steps,
+                    using: driver,
+                    screenReader: screenReader,
+                    diagnosticsDirectory: bundle.provisionDirectoryURL
+                )
+                // NOT "succeeded": the keystroke sequence finished and
+                // every screen gate along the way was satisfied, but
+                // that doesn't confirm Setup Assistant actually
+                // finished on the guest — the runner coming online
+                // later is this flow's real success gate.
+                updateCreation(name: name, progress: 0.5, status: "Keystroke sequence completed — verifying guest state…")
             } catch {
                 try? await setupVM.stop(graceful: false)
                 throw error

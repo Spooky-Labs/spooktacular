@@ -147,6 +147,43 @@ public enum BootAction: Sendable, Equatable {
     ///   - text: The text to find and click (case-insensitive).
     ///   - timeout: Maximum seconds to wait for the text. Defaults to 60.
     case clickText(String, timeout: TimeInterval = 60)
+
+    /// Block until the VM screen shows one of several candidate
+    /// marker strings, confirming a Setup Assistant screen
+    /// transition actually happened before any further keystroke is
+    /// sent.
+    ///
+    /// This is the gate primitive that replaces blind fixed-delay
+    /// waits at screen transitions (see ``SetupAutomation``'s
+    /// `sequoiaSequence` segment functions). Where ``waitForText(_:timeout:)``
+    /// matches a single string, `expectScreen` accepts several
+    /// candidates joined by OR — useful both because a screen may be
+    /// identifiable by more than one stable phrase, and as a hedge
+    /// against uncertainty about the *exact* wording of Setup
+    /// Assistant copy (which Apple does not publish as a documented
+    /// API surface, and which this project has not been able to
+    /// verify empirically against a live VM at authoring time — see
+    /// the per-call-site comments in `sequoiaSequence` for the
+    /// reasoning behind each marker choice).
+    ///
+    /// When a ``ScreenReader`` is available, the executor polls the
+    /// screen (bounded cadence, ~2s by default) until any marker is
+    /// found as a case-insensitive substring of some recognized text
+    /// region, or `timeout` elapses. On timeout the executor saves a
+    /// screenshot (when the reader also conforms to
+    /// ``SpooktacularCore/ScreenshotCapturing``) and the full OCR
+    /// dump to disk, then throws a diagnostic error naming the step,
+    /// the expected markers, and an excerpt of what was actually on
+    /// screen. Without a screen reader, this action falls back to a
+    /// fixed delay of `timeout` seconds and never fails — matching
+    /// ``waitForText(_:timeout:)``'s no-reader fallback.
+    ///
+    /// - Parameters:
+    ///   - markers: Candidate substrings — any one appearing on
+    ///     screen satisfies the gate. Case-insensitive.
+    ///   - timeout: Maximum seconds to wait before failing with a
+    ///     diagnostic error.
+    case expectScreen(containsAny: [String], timeout: TimeInterval)
 }
 
 // KeyCode and Modifier are defined in SpooktacularCore/KeyCode.swift
@@ -319,7 +356,7 @@ public enum SetupAutomation {
         // Terminal, so the session it opened is still the
         // foreground app and still has a live shell prompt when
         // these steps begin.
-        return steps + installProvisionerSteps(password: password)
+        return steps + installProvisionerSteps(username: username, password: password)
     }
 
     // MARK: - Sequoia Sequence Segments
@@ -331,15 +368,35 @@ public enum SetupAutomation {
     private static let voiceover = BootAction.shortcut(.f5, modifiers: [.option])
 
     /// Wait for boot, dismiss Hello, select language and country.
+    ///
+    /// The very first `wait(0)` step keeps its blind 60s delay
+    /// rather than becoming a screen gate: the screen it's waiting
+    /// on (the multi-language "Hello" welcome animation) cycles
+    /// through greeting text in dozens of languages with no single
+    /// substring guaranteed present at any given poll, and no
+    /// language has been selected yet to make an English marker
+    /// safe. Every gate from here on can rely on English text
+    /// because ``sequoiaSequence`` sets the language to English
+    /// before any later screen renders.
     private static func languageAndCountrySteps() -> [BootStep] {
         [
             BootStep(delay: 60, action: .wait(0)),
             BootStep(delay: 0, action: space),
-            BootStep(delay: 30, action: .text("italiano")),
+            // "English" is the language's own autonym — spelled
+            // "English" in every locale's language-name list, not
+            // translated — so it's a safe marker even though the
+            // system's default language is still unknown at this
+            // point in the flow.
+            BootStep(delay: 0, action: .expectScreen(containsAny: ["English"], timeout: 120)),
+            BootStep(delay: 0, action: .text("italiano")),
             BootStep(delay: 0, action: .key(.escape)),
             BootStep(delay: 0, action: .text("english")),
             BootStep(delay: 0, action: enter),
-            BootStep(delay: 30, action: .text("united states")),
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Select Your Country", "Country or Region"],
+                timeout: 60
+            )),
+            BootStep(delay: 0, action: .text("united states")),
             BootStep(delay: 0, action: shiftTab),
             BootStep(delay: 0, action: space),
         ]
@@ -348,7 +405,11 @@ public enum SetupAutomation {
     /// Skip Transfer Data (Not Now).
     private static func transferDataSteps() -> [BootStep] {
         [
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Migration Assistant", "Transfer Your Data"],
+                timeout: 60
+            )),
+            BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: space),
@@ -359,6 +420,19 @@ public enum SetupAutomation {
     }
 
     /// Skip Additional Languages, Accessibility, Data & Privacy.
+    ///
+    /// Left as blind per-screen delays rather than gated: this
+    /// project has no verified marker text for these three specific
+    /// screens (their consolidated titles have shifted across recent
+    /// macOS Setup Assistant redesigns), and Apple does not document
+    /// OOBE screen copy as an API surface to check against. Guessing
+    /// a marker here risks a *false-negative* gate — one that never
+    /// matches and turns a working blind wait into a hard failure —
+    /// which is worse than the status quo. The eight transitions
+    /// gated elsewhere in this sequence (language, country,
+    /// migration, account creation, Apple ID, terms, location, time
+    /// zone) plus the Terminal/SSH and provisioner-install gates were
+    /// chosen because their marker text is well established.
     private static func skipScreenSteps() -> [BootStep] {
         // Each screen: Shift-Tab to focus Continue, Space to press.
         (0..<3).flatMap { _ -> [BootStep] in
@@ -367,12 +441,24 @@ public enum SetupAutomation {
     }
 
     /// Fill account creation form.
+    ///
+    /// The trailing `voiceover` toggle's old `delay: 120` blind wait
+    /// covered account creation actually being processed (it can be
+    /// noticeably slower than a plain screen transition) before the
+    /// Apple ID screen appears. That role now belongs to the
+    /// `expectScreen` gate immediately before it — generously bounded
+    /// at 120s, same tier as first-boot — so the voiceover action
+    /// itself carries no additional delay.
     private static func accountCreationSteps(
         username: String,
         password: String
     ) -> [BootStep] {
         [
-            BootStep(delay: 10, action: .text(username)),
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Create a Computer Account", "Account Name"],
+                timeout: 60
+            )),
+            BootStep(delay: 0, action: .text(username)),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: .text(username)),
             BootStep(delay: 0, action: tab),
@@ -385,22 +471,43 @@ public enum SetupAutomation {
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: space),
-            BootStep(delay: 120, action: voiceover),
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Sign In with Your Apple ID", "Apple ID"],
+                timeout: 120
+            )),
+            BootStep(delay: 0, action: voiceover),
         ]
     }
 
     /// Apple ID, Terms, Location screens.
+    ///
+    /// The leading Apple ID step no longer carries its own delay:
+    /// ``accountCreationSteps(username:password:)`` already gated on
+    /// the Apple ID screen being visible immediately before this
+    /// function runs. The `delay: 10` steps that remain are
+    /// within-screen — waiting for a confirmation popover ("Skip" /
+    /// "Agree" confirm dialogs) layered on the *same* screen, not a
+    /// full transition — so they stay as small fixed delays per the
+    /// gate design (gates replace transition waits, not every pause).
     private static func postAccountSteps() -> [BootStep] {
         [
-            BootStep(delay: 10, action: shiftTab),  // Skip Apple ID
+            BootStep(delay: 0, action: shiftTab),  // Skip Apple ID
             BootStep(delay: 0, action: space),
             BootStep(delay: 10, action: tab),        // Confirm Skip
             BootStep(delay: 0, action: space),
-            BootStep(delay: 10, action: shiftTab),  // Terms (Agree)
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Terms and Conditions", "Terms of Use"],
+                timeout: 60
+            )),
+            BootStep(delay: 0, action: shiftTab),  // Terms (Agree)
             BootStep(delay: 0, action: space),
             BootStep(delay: 10, action: tab),        // Confirm Terms
             BootStep(delay: 0, action: space),
-            BootStep(delay: 10, action: shiftTab),  // Skip Location
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Enable Location Services", "Location Services"],
+                timeout: 60
+            )),
+            BootStep(delay: 0, action: shiftTab),  // Skip Location
             BootStep(delay: 0, action: space),
             BootStep(delay: 10, action: tab),        // Confirm Skip
             BootStep(delay: 0, action: space),
@@ -410,7 +517,11 @@ public enum SetupAutomation {
     /// Set timezone to UTC.
     private static func timezoneSteps() -> [BootStep] {
         [
-            BootStep(delay: 10, action: tab),
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Select Your Time Zone", "Time Zone"],
+                timeout: 60
+            )),
+            BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: tab),
             BootStep(delay: 0, action: .text("UTC")),
             BootStep(delay: 0, action: enter),
@@ -421,6 +532,16 @@ public enum SetupAutomation {
     }
 
     /// Analytics, Screen Time, Siri, Choose Look, Auto Update, Welcome.
+    ///
+    /// Same rationale as ``skipScreenSteps()``: no verified marker
+    /// text for these six screens, so they stay blind delays rather
+    /// than risk a false-negative gate. The next gate after this
+    /// function's steps run is `expectScreen(containsAny: ["Spotlight
+    /// Search", "Spotlight"])` in ``enableSSHSteps(password:)`` —
+    /// which is the one that actually matters for bug #4: it
+    /// confirms Setup Assistant is fully dismissed and the Desktop
+    /// responded to Option+Space *before* "Terminal" gets typed
+    /// into whatever has focus.
     private static func finalScreensSteps() -> [BootStep] {
         [
             BootStep(delay: 10, action: shiftTab),  // Analytics
@@ -441,12 +562,37 @@ public enum SetupAutomation {
     }
 
     /// Open Terminal via Spotlight and enable SSH.
+    ///
+    /// This is where bug #4 (blind automation reporting success
+    /// while `sshd` was never actually enabled) traced back to: a
+    /// desynchronized Option+Space or a "Terminal" that never
+    /// actually landed in a Spotlight search field means every
+    /// keystroke after it — including the `systemsetup` call this
+    /// function exists to run — types into the void. Two gates fix
+    /// that: `expectScreen` on Spotlight's own search-field text
+    /// confirms the shortcut actually opened Spotlight before
+    /// "Terminal" is typed, and `expectScreen` on Terminal.app's
+    /// "Last login" startup banner (printed on every new shell
+    /// session — stable across macOS versions and independent of
+    /// system locale, since it's generated by `login(1)`, not
+    /// Setup-Assistant UI copy) confirms a real shell prompt exists
+    /// before the `sudo` command is typed.
+    ///
+    /// Option+Space itself keeps no pre-delay: it's a global
+    /// shortcut, not text typed into a specific field, so it's safe
+    /// to send immediately — what matters is gating on its *effect*
+    /// before proceeding.
     private static func enableSSHSteps(password: String) -> [BootStep] {
         [
-            BootStep(delay: 10, action: .shortcut(.space, modifiers: [.option])),
+            BootStep(delay: 0, action: .shortcut(.space, modifiers: [.option])),
+            BootStep(delay: 0, action: .expectScreen(
+                containsAny: ["Spotlight Search", "Spotlight"],
+                timeout: 60
+            )),
             BootStep(delay: 0, action: .text("Terminal")),
             BootStep(delay: 0, action: enter),
-            BootStep(delay: 10, action: .text("sudo systemsetup -setremotelogin on")),
+            BootStep(delay: 0, action: .expectScreen(containsAny: ["Last login"], timeout: 60)),
+            BootStep(delay: 0, action: .text("sudo systemsetup -setremotelogin on")),
             BootStep(delay: 0, action: enter),
             BootStep(delay: 5, action: .text(password)),
             BootStep(delay: 0, action: enter),
@@ -529,7 +675,18 @@ public enum SetupAutomation {
     /// synchronous postinstall — time to finish before the caller
     /// (`Create.swift`'s `automateSetupAssistant`) starts polling
     /// for SSH.
-    private static func installProvisionerSteps(password: String) -> [BootStep] {
+    ///
+    /// A screen gate opens this function, confirming the shell
+    /// prompt from the `systemsetup` call in
+    /// ``enableSSHSteps(password:)`` actually returned — i.e. the
+    /// terminal is idle and ready for the next command — before
+    /// `sudo mkdir` is typed. macOS's default shell prompt includes
+    /// the logged-in account name (`zsh`'s default `PS1`; see
+    /// `/etc/zshrc` and `man zshmisc` PROMPT EXPANSION), so the
+    /// account's own `username` — already known and unique to this
+    /// automation run, not a guess at Setup Assistant UI copy — is a
+    /// reliable, locale-independent marker for "the prompt is back."
+    private static func installProvisionerSteps(username: String, password: String) -> [BootStep] {
         let pkgPath = "\(provisionMountPoint)/\(AppBundleBootstrapTemplate.provisionerPkgFileName)"
 
         func sudoStep(_ command: String) -> [BootStep] {
@@ -541,7 +698,8 @@ public enum SetupAutomation {
             ]
         }
 
-        return sudoStep("sudo mkdir -p '\(provisionMountPoint)'")
+        return [BootStep(delay: 0, action: .expectScreen(containsAny: [username], timeout: 60))]
+            + sudoStep("sudo mkdir -p '\(provisionMountPoint)'")
             + sudoStep("sudo mount_virtiofs \(provisionShareTag) '\(provisionMountPoint)'")
             + sudoStep("sudo installer -pkg '\(pkgPath)' -target /")
             + [BootStep(delay: 20, action: .wait(0))]

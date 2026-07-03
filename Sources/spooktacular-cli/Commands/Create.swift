@@ -1205,13 +1205,24 @@ extension Spooktacular {
                 )
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
                 print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
+                // Diagnostics land in the same `provision/` directory
+                // first-boot provisioning evidence already uses, so a
+                // failed run and a failed gate show up side by side.
                 try await SetupAutomationExecutor.run(
                     steps: steps,
                     using: driver,
-                    screenReader: screenReader
+                    screenReader: screenReader,
+                    diagnosticsDirectory: bundle.provisionDirectoryURL
                 )
-                logger.notice("Setup Assistant automation steps completed")
-                print(Style.success("✓ Setup Assistant automation complete."))
+                // NOT "automation complete" / "succeeded": every
+                // keystroke sent and every screen gate along the way
+                // was satisfied, but that only means the sequence
+                // ran — it doesn't confirm Setup Assistant actually
+                // finished on the guest. The SSH confirmation below
+                // is the real success gate; this line just reports
+                // that the keystroke phase is over.
+                logger.notice("Setup Assistant keystroke sequence completed (guest state unverified until SSH confirm)")
+                print(Style.info("Keystroke sequence completed — verifying guest state via SSH..."))
 
                 logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
                 print(Style.info("Waiting for SSH to confirm setup completed..."))
