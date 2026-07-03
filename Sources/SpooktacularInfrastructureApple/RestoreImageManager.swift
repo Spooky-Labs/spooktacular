@@ -553,7 +553,38 @@ public final class RestoreImageManager: Sendable {
         try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
         try config.validate()
 
-        let vm = VZVirtualMachine(configuration: config)
+        // Scoped to its own method so the installer's `VZVirtualMachine`
+        // / `VZMacOSInstaller` / KVO observation are released by ARC
+        // the instant `runInstaller` returns — deterministically, and
+        // before `waitForPlatformArtifactsReleased` below starts
+        // polling. See that method's doc comment: releasing our
+        // reference promptly is necessary but NOT sufficient on its
+        // own — the actual file lock is held by a separate OS
+        // process, not by this Swift object.
+        try await Self.runInstaller(
+            configuration: config,
+            ipswURL: ipswURL,
+            progress: progress
+        )
+        Log.ipsw.notice("macOS installation complete for '\(bundle.url.lastPathComponent, privacy: .public)'")
+
+        await Self.waitForPlatformArtifactsReleased(bundle: bundle)
+    }
+
+    /// Runs `VZMacOSInstaller` to completion in its own scope.
+    ///
+    /// Extracted out of ``install(bundle:from:progress:)`` so its
+    /// `VZVirtualMachine` / `VZMacOSInstaller` / KVO observation are
+    /// local to THIS method — nothing outside references them, so
+    /// ARC releases all three the moment this method returns, before
+    /// the caller goes on to wait for the framework's own teardown.
+    @MainActor
+    private static func runInstaller(
+        configuration: VZVirtualMachineConfiguration,
+        ipswURL: URL,
+        progress: @escaping @Sendable (Double) -> Void
+    ) async throws {
+        let vm = VZVirtualMachine(configuration: configuration)
         let installer = VZMacOSInstaller(
             virtualMachine: vm,
             restoringFromImageAt: ipswURL
@@ -571,7 +602,119 @@ public final class RestoreImageManager: Sendable {
         defer { observation.invalidate() }
 
         try await installer.install()
-        Log.ipsw.notice("macOS installation complete for '\(bundle.url.lastPathComponent, privacy: .public)'")
+    }
+
+    /// Waits for the bundle's platform artifact files (auxiliary
+    /// storage, disk image) to no longer be held open by another
+    /// process, or for `ceiling` to elapse — whichever comes first.
+    ///
+    /// ## Why this exists
+    ///
+    /// `VZVirtualMachine` does not perform virtualization in-process:
+    /// Apple's Virtualization.framework delegates the actual device
+    /// I/O for a VM to a separate, independently-lived XPC service,
+    /// `com.apple.Virtualization.VirtualMachine.xpc`. Releasing our
+    /// Swift reference to a `VZVirtualMachine` (as ``runInstaller``
+    /// does, deterministically, the moment it returns) only asks
+    /// that service to tear down; the service's own exit — which is
+    /// what actually closes its file descriptors on `auxiliary.bin`
+    /// / `disk.img` and releases the advisory lock that
+    /// `VZMacAuxiliaryStorage(contentsOf:)` and
+    /// `VZDiskImageStorageDeviceAttachment(url:)` require for the
+    /// NEXT `VirtualMachine` constructed against the same bundle —
+    /// happens on its own schedule. Neither `VZMacOSInstaller` nor
+    /// `VZVirtualMachine` expose a signal to await that exit.
+    ///
+    /// Confirmed empirically while diagnosing the absence of this
+    /// method (no in-process fix exists — this is not a reference-
+    /// retention bug):
+    ///   - Constructing a new `VirtualMachine` immediately after
+    ///     `install()` returned threw "Failed to lock auxiliary
+    ///     storage" — reproduced twice live, still failing after
+    ///     ~7s of retry backoff.
+    ///   - `lsof <bundle>/auxiliary.bin` during that window showed
+    ///     the file held open by
+    ///     `com.apple.Virtualization.VirtualMachine.xpc` running as
+    ///     its OWN process (`ps`: distinct PID, PPID 1) — not by our
+    ///     CLI/GUI process. This rules out in-process retention:
+    ///     nothing in ``runInstaller`` keeps `vm` / `installer` alive
+    ///     past its own return.
+    ///   - `kill -9` on that XPC PID released the lock within the
+    ///     same `lsof` poll — the lock's lifetime is exactly that
+    ///     process's lifetime, not a background timer our own
+    ///     dealloc could accelerate.
+    ///   - A brand-new process constructing a `VirtualMachine` on
+    ///     the SAME (otherwise idle) bundle succeeded and booted
+    ///     immediately — nothing was permanently stuck; the delay is
+    ///     purely the OLD XPC service's own asynchronous teardown.
+    ///
+    /// With no deterministic release signal available, this polls
+    /// the one thing that IS observable — whether `lsof` still shows
+    /// the file open — instead of guessing a fixed sleep or retrying
+    /// blind construction attempts against an undocumented, possibly
+    /// localized error string. The 30s ceiling mirrors the same
+    /// order of magnitude already observed for the analogous
+    /// `disk.img` post-Stop hold in the GUI (`AppState.isDiskInUse`,
+    /// commit 30413e5e1: "lingers for 5–30 seconds"). If the ceiling
+    /// is hit, this logs and returns anyway rather than throwing —
+    /// callers that construct a `VirtualMachine` right after
+    /// `install()` carry their own small residual retry for exactly
+    /// that unlikely case (see `VirtualMachine.makeAfterInstall(bundle:onRetry:)`).
+    private static func waitForPlatformArtifactsReleased(
+        bundle: VirtualMachineBundle,
+        ceiling: TimeInterval = 30,
+        pollInterval: TimeInterval = 0.25
+    ) async {
+        let paths = [
+            bundle.url.appendingPathComponent(VirtualMachineBundle.auxiliaryStorageFileName).path,
+            bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName).path
+        ]
+        let deadline = Date().addingTimeInterval(ceiling)
+        while Date() < deadline {
+            if !paths.contains(where: isHeldOpenByAnotherProcess) {
+                return
+            }
+            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+        }
+        Log.ipsw.warning(
+            "Platform artifacts for '\(bundle.url.lastPathComponent, privacy: .public)' still held open after \(ceiling, privacy: .public)s wait; proceeding anyway."
+        )
+    }
+
+    /// Returns `true` if `lsof` reports any process holding `path`
+    /// open. Mirrors the GUI's `AppState.isDiskInUse` pre-flight
+    /// (commit 30413e5e1), hoisted here so the CLI and GUI post-
+    /// install paths share one implementation instead of two.
+    ///
+    /// `internal` rather than `private` — unlike the VZ-framework
+    /// calls elsewhere in this file, this is a plain `lsof` wrapper
+    /// with no Apple-entitlement or network dependency, so it's
+    /// exercisable directly from `@testable import
+    /// SpooktacularInfrastructureApple` (see `RestoreImageManagerTests`)
+    /// the same way ``sha256(of:)`` / ``verifyFileHash(at:expected:)``
+    /// already are.
+    static func isHeldOpenByAnotherProcess(path: String) -> Bool {
+        guard FileManager.default.fileExists(atPath: path) else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        process.arguments = [path]
+        let outPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+            // lsof prints a header line plus one line per holder;
+            // more than one line means at least one process has an
+            // open handle.
+            return !data.isEmpty
+                && (String(data: data, encoding: .utf8) ?? "").split(separator: "\n").count > 1
+        } catch {
+            // lsof unavailable — skip the check and let the actual
+            // construction attempt surface the real error, if any.
+            return false
+        }
     }
 
 }

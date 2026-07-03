@@ -46,4 +46,84 @@ struct RestoreImageManagerTests {
         #expect(err.localizedDescription.contains("timeout after 120s"))
         #expect(err.recoverySuggestion?.contains("resume") == true)
     }
+
+    // MARK: - isHeldOpenByAnotherProcess
+    //
+    // Regression coverage for the primitive `install(bundle:from:progress:)`
+    // uses to wait out the post-install auxiliary-storage lock (see
+    // that method's doc comment for the root-cause writeup: a
+    // separate `com.apple.Virtualization.VirtualMachine.xpc` process
+    // holds the fd, not anything in our own object graph). Unlike
+    // the VZ-framework calls elsewhere in this file, `lsof` has no
+    // entitlement or network dependency, so the detection logic
+    // itself is fully exercisable here with a real held-open file —
+    // no VM required.
+
+    @Test("isHeldOpenByAnotherProcess is false for a path with no holder")
+    func isHeldOpenByAnotherProcessNoHolder() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lock-probe-\(UUID().uuidString).bin")
+        try Data("probe".utf8).write(to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        #expect(RestoreImageManager.isHeldOpenByAnotherProcess(path: tmp.path) == false)
+    }
+
+    @Test("isHeldOpenByAnotherProcess is false for a nonexistent path")
+    func isHeldOpenByAnotherProcessMissingFile() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("does-not-exist-\(UUID().uuidString).bin")
+        #expect(RestoreImageManager.isHeldOpenByAnotherProcess(path: missing.path) == false)
+    }
+
+    @Test("isHeldOpenByAnotherProcess detects an externally-open file and clears once the holder exits")
+    func isHeldOpenByAnotherProcessDetectsExternalHolder() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lock-probe-\(UUID().uuidString).bin")
+        try Data("probe".utf8).write(to: tmp)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+
+        // Hold the file open from a real child process — `tail -f`
+        // keeps an fd open on it until killed, mirroring the shape
+        // of the real bug: a separate OS process holding the fd,
+        // not anything in our own process.
+        let holder = Process()
+        holder.executableURL = URL(fileURLWithPath: "/usr/bin/tail")
+        holder.arguments = ["-f", tmp.path]
+        holder.standardOutput = FileHandle.nullDevice
+        holder.standardError = FileHandle.nullDevice
+        try holder.run()
+        defer {
+            if holder.isRunning {
+                holder.terminate()
+                holder.waitUntilExit()
+            }
+        }
+
+        // Poll for the real condition rather than sleeping a fixed
+        // guess — bounded so a stuck process launch can't hang the
+        // suite indefinitely.
+        var detected = false
+        for _ in 0..<20 {
+            if RestoreImageManager.isHeldOpenByAnotherProcess(path: tmp.path) {
+                detected = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        #expect(detected, "expected lsof to report the file held open by the tail process")
+
+        holder.terminate()
+        holder.waitUntilExit()
+
+        var released = false
+        for _ in 0..<20 {
+            if !RestoreImageManager.isHeldOpenByAnotherProcess(path: tmp.path) {
+                released = true
+                break
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        #expect(released, "expected the lock to clear once the holder process exited")
+    }
 }

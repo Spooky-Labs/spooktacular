@@ -1378,7 +1378,13 @@ final class AppState {
                 throw RunnerProvisioningError.macOSVersionUnknown
             }
             updateCreation(name: name, progress: 0.15, status: "Booting for Setup Assistant automation…")
-            let setupVM = try VirtualMachine(bundle: bundle)
+            // `RestoreImageManager.install()` already waits for the
+            // just-finished installer's XPC-backed file lock to
+            // clear before returning — see its doc comment. This
+            // factory only covers the small residual TOCTOU gap
+            // between that wait and this construction call; see
+            // `VirtualMachine.makeAfterInstall(bundle:onRetry:)`.
+            let setupVM = try await VirtualMachine.makeAfterInstall(bundle: bundle)
             guard let underlyingVM = setupVM.vzVM else {
                 throw RunnerProvisioningError.vmInstanceUnavailable
             }

@@ -823,6 +823,68 @@ public final class VirtualMachine: NSObject {
     }
 }
 
+// MARK: - Post-Install Construction
+
+extension VirtualMachine {
+
+    /// Constructs a `VirtualMachine` for `bundle`, tolerating the
+    /// small residual race where Virtualization.framework's XPC
+    /// service backing a just-torn-down `VZVirtualMachine` on the
+    /// SAME bundle hasn't yet released its file lock.
+    ///
+    /// `RestoreImageManager.install(bundle:from:progress:)` already
+    /// waits — by polling `lsof`, see that method's doc comment for
+    /// the empirical evidence that the lock is held by a separate OS
+    /// process (`com.apple.Virtualization.VirtualMachine.xpc`), not
+    /// by anything in our own object graph — for that lock to clear
+    /// before returning. This retry exists ONLY to cover the gap
+    /// between that best-effort wait and this construction call: a
+    /// few hundred milliseconds of TOCTOU, or the rare case where
+    /// the manager's 30s ceiling was hit. It does not, and cannot,
+    /// compensate for the underlying XPC teardown itself — that has
+    /// no faster path from our side. Bounded deliberately small (3
+    /// attempts, ~3s worst-case cumulative backoff): if construction
+    /// is still failing after that, the lock genuinely isn't
+    /// clearing and a longer wait wouldn't help either — better to
+    /// surface the real error than spin.
+    ///
+    /// - Parameters:
+    ///   - bundle: The VM bundle to construct against, immediately
+    ///     after ``RestoreImageManager/install(bundle:from:progress:)``
+    ///     completed for it.
+    ///   - onRetry: Invoked before each retry sleep with the attempt
+    ///     number and the total attempt budget, so callers can
+    ///     surface progress to the user.
+    /// - Returns: The constructed ``VirtualMachine``.
+    /// - Throws: The last construction error if all attempts fail.
+    @MainActor
+    public static func makeAfterInstall(
+        bundle: VirtualMachineBundle,
+        onRetry: (_ attempt: Int, _ maxAttempts: Int) -> Void = { _, _ in }
+    ) async throws -> VirtualMachine {
+        let maxAttempts = 3
+        var attempt = 0
+        var lastError: Error?
+
+        while attempt < maxAttempts {
+            attempt += 1
+            do {
+                return try VirtualMachine(bundle: bundle)
+            } catch {
+                lastError = error
+                Log.vm.warning(
+                    "VirtualMachine construction attempt \(attempt, privacy: .public)/\(maxAttempts, privacy: .public) failed: \(error.localizedDescription, privacy: .public)"
+                )
+                if attempt >= maxAttempts { break }
+                onRetry(attempt, maxAttempts)
+                try await Task.sleep(nanoseconds: UInt64(attempt) * 1_000_000_000)
+            }
+        }
+
+        throw lastError ?? VirtualMachineInvalidatedError()
+    }
+}
+
 // MARK: - VZVirtualMachineDelegate
 
 extension VirtualMachine: VZVirtualMachineDelegate {

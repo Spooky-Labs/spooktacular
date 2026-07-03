@@ -435,17 +435,36 @@ extension Spooktacular {
             var createdBundle: VirtualMachineBundle?
 
             do {
-                print(Style.info("Fetching latest compatible macOS restore image..."))
-                let restoreImage = try await manager.fetchLatestSupported()
-                let version = restoreImage.operatingSystemVersion
-                print(
-                    "Found macOS \(version.majorVersion).\(version.minorVersion)"
-                    + ".\(version.patchVersion)"
-                    + " (build \(restoreImage.buildVersion))"
-                )
-
+                // Restore-image resolution is source-dependent.
+                //
+                //   - local path — load the on-disk IPSW via
+                //     `VZMacOSRestoreImage.image(from:)`. No network
+                //     I/O; `fetchLatestSupported()`'s call to Apple's
+                //     catalog is not required here.
+                //   - `latest`   — fetch from Apple's catalog to
+                //     learn the current IPSW URL, then resume-download.
+                //
+                // Previously this path unconditionally called
+                // `fetchLatestSupported()` before branching, which
+                // made every create (including local-IPSW creates)
+                // depend on Apple's catalog reachability AND on the
+                // catalog's newest version being installable on this
+                // host — a cached IPSW older than the network
+                // "latest" was rejected even though it's perfectly
+                // installable. Mirrors the fix already shipped in
+                // `AppState.runMacOSCreate` for the GUI's local-IPSW
+                // path.
+                let restoreImage: VZMacOSRestoreImage
                 let ipswURL: URL
                 if fromIpsw == "latest" {
+                    print(Style.info("Fetching latest compatible macOS restore image..."))
+                    restoreImage = try await manager.fetchLatestSupported()
+                    let version = restoreImage.operatingSystemVersion
+                    print(
+                        "Found macOS \(version.majorVersion).\(version.minorVersion)"
+                        + ".\(version.patchVersion)"
+                        + " (build \(restoreImage.buildVersion))"
+                    )
                     if !json { print(Style.info("Downloading IPSW (this may take a while)...")) }
                     ipswURL = try await manager.downloadIPSW(
                         from: restoreImage
@@ -475,6 +494,14 @@ extension Spooktacular {
                         }
                         throw ExitCode(CLIExit.validation)
                     }
+                    if !json { print(Style.info("Loading local IPSW '\(ipswURL.lastPathComponent)'...")) }
+                    restoreImage = try await VZMacOSRestoreImage.image(from: ipswURL)
+                    let version = restoreImage.operatingSystemVersion
+                    print(
+                        "Found macOS \(version.majorVersion).\(version.minorVersion)"
+                        + ".\(version.patchVersion)"
+                        + " (build \(restoreImage.buildVersion))"
+                    )
                 }
 
                 if !json { print(Style.info("Creating VM bundle '\(name)' (id=\(bundleID.uuidString))...")) }
@@ -498,7 +525,7 @@ extension Spooktacular {
                 }
                 if !json { print() }
 
-                let macOSMajor = version.majorVersion
+                let macOSMajor = restoreImage.operatingSystemVersion.majorVersion
                 if !skipSetup && SetupAutomation.isSupported(macOSVersion: macOSMajor) {
                     // Zero-touch provisioner install: stage
                     // `Spooktacular Provisioner.pkg` into the
@@ -1114,23 +1141,53 @@ extension Spooktacular {
             logger.info("Starting Setup Assistant automation for macOS \(macOSVersion, privacy: .public)")
             print(Style.info("Automating Setup Assistant for macOS \(macOSVersion)..."))
 
-            let vm = try VirtualMachine(bundle: bundle)
-            guard let underlyingVM = vm.vzVM else {
-                print(Style.error("✗ Failed to create virtual machine instance for setup."))
-                throw ExitCode.failure
-            }
-
-            try await vm.start()
-            logger.notice("VM booted for Setup Assistant automation")
-            print(Style.success("✓ VM booted."))
-
             // Captured on failure so the fail-fast decision below can
             // run AFTER the VM is stopped (same shutdown as the
             // swallowed case) rather than duplicating the stop
-            // sequence in a second catch.
+            // sequence in a second catch. `vm` is optional because
+            // construction/boot themselves can fail — in that case
+            // there is nothing to stop, but the failure must still
+            // flow through this same capture-and-report path rather
+            // than escaping uncaught, which would skip straight to
+            // `run()`'s generic catch and delete the freshly-installed
+            // bundle (see the doc comment on
+            // ``RunnerSetupAutomationFailure``: any failure at this
+            // stage must preserve the bundle, since macOS install
+            // itself already succeeded).
             var automationFailure: Error?
+            var vm: VirtualMachine?
 
             do {
+                // `RestoreImageManager.install()` already waits for
+                // the just-finished installer's XPC-backed file lock
+                // on `auxiliary.bin` / `disk.img` to clear before
+                // returning — see that method's doc comment for why
+                // the lock is held by a separate
+                // `com.apple.Virtualization.VirtualMachine.xpc`
+                // process (confirmed via `ps` / `lsof`), not by
+                // anything in our own object graph, and so can't be
+                // released any faster by dropping a Swift reference
+                // sooner on our end. `makeAfterInstall` below only
+                // covers the small residual TOCTOU gap between that
+                // wait and this construction call.
+                let constructedVM = try await VirtualMachine.makeAfterInstall(bundle: bundle) { attempt, maxAttempts in
+                    print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))..."))
+                }
+                vm = constructedVM
+                guard let underlyingVM = constructedVM.vzVM else {
+                    throw NSError(
+                        domain: "com.spooktacular",
+                        code: 1,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "Failed to create virtual machine instance for setup."
+                        ]
+                    )
+                }
+
+                try await constructedVM.start()
+                logger.notice("VM booted for Setup Assistant automation")
+                print(Style.success("✓ VM booted."))
+
                 let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
                 let screenReader = VZScreenReader(vmView: driver.vmView)
                 let steps = try SetupAutomation.sequence(
@@ -1183,11 +1240,13 @@ extension Spooktacular {
                 }
             }
 
-            logger.info("Stopping VM after Setup Assistant automation")
-            print(Style.info("Stopping VM..."))
-            try? await vm.stop(graceful: false)
-            logger.notice("VM stopped after Setup Assistant automation")
-            print(Style.success("✓ VM stopped."))
+            if let vm {
+                logger.info("Stopping VM after Setup Assistant automation")
+                print(Style.info("Stopping VM..."))
+                try? await vm.stop(graceful: false)
+                logger.notice("VM stopped after Setup Assistant automation")
+                print(Style.success("✓ VM stopped."))
+            }
 
             // Fail fast under --github-runner: the Spooktacular
             // Provisioner never installed, so minting a registration
