@@ -58,6 +58,22 @@ final class VMNotifications {
         )
     }
 
+    /// Post a non-fatal warning notification — the VM itself was
+    /// created successfully, but something downstream of creation
+    /// needs the user's attention (e.g. no Setup Assistant
+    /// automation sequence for the installed macOS version, so an
+    /// injected first-boot script won't run until the operator
+    /// completes Setup Assistant by hand). See
+    /// ``notifyStarted(_:displayName:)`` for the parameter split.
+    func notifyWarning(_ key: String, displayName: String, body: String) {
+        post(
+            identifier: "warning-\(key)",
+            title: displayName,
+            body: body,
+            category: .info
+        )
+    }
+
     // MARK: - Private
 
     private enum Category {

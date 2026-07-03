@@ -175,4 +175,48 @@ struct RunnerCreateFlowPlanTests {
         #expect(error.recoverySuggestion?.contains("15") == true)
         #expect(error.recoverySuggestion?.contains("26") == true)
     }
+
+    // MARK: - First-boot provisioning plan (any script source — GUI + CLI)
+
+    @Test(
+        "no first-boot script: no plan regardless of macOS version",
+        arguments: [14, 15, 26, 27]
+    )
+    func firstBootPlanNoScript(major: Int) {
+        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
+            hasFirstBootScript: false,
+            macOSMajorVersion: major
+        )
+        #expect(plan == .noScript)
+    }
+
+    @Test(
+        "first-boot script on a supported macOS major: stage provisioner + automate",
+        arguments: [15, 26]
+    )
+    func firstBootPlanSupported(major: Int) {
+        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
+            hasFirstBootScript: true,
+            macOSMajorVersion: major
+        )
+        #expect(plan == .stageProvisionerAndAutomate)
+    }
+
+    @Test("first-boot script on an unsupported macOS major: names the version instead of silently no-op'ing")
+    func firstBootPlanUnsupported() {
+        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
+            hasFirstBootScript: true,
+            macOSMajorVersion: 14
+        )
+        #expect(plan == .unsupportedMacOSVersion(14))
+    }
+
+    @Test("first-boot script on a future unsupported macOS major also names the version")
+    func firstBootPlanFutureUnsupported() {
+        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
+            hasFirstBootScript: true,
+            macOSMajorVersion: 27
+        )
+        #expect(plan == .unsupportedMacOSVersion(27))
+    }
 }

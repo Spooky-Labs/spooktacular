@@ -177,6 +177,77 @@ public enum RunnerCreateFlowPlan {
     public static func setupAutomationFailureIsFatal(githubRunner: Bool) -> Bool {
         githubRunner
     }
+
+    /// Decides what a macOS create with a first-boot script should
+    /// do about staging the Spooktacular Provisioner and running
+    /// Setup Assistant automation — for ANY first-boot script
+    /// source, not just `--github-runner`.
+    ///
+    /// Every first-boot script (GitHub runner, `--remote-desktop`,
+    /// `--openclaw`, `--user-data`) lands at the same fixed
+    /// destination in the VM bundle's provisioning share
+    /// (`first-boot.sh`, "last write wins" — see
+    /// ``validateTemplateExclusivity(remoteDesktop:openclaw:hasUserData:)``),
+    /// and is only ever executed by the guest's Spooktacular
+    /// Provisioner LaunchDaemon — which itself is only ever
+    /// installed by ``SetupAutomation`` automation (see
+    /// `SetupAutomation.installProvisionerSteps(password:)`). A
+    /// script with nothing to run it is a silent dead end that
+    /// looks identical to a script that ran and did nothing; this
+    /// decision exists so callers can tell the difference and warn
+    /// instead of silently no-op'ing — see
+    /// ``FirstBootProvisioningPlan/unsupportedMacOSVersion(_:)``.
+    ///
+    /// Mirrors `Create.swift`'s `willInjectFirstBootScript` check
+    /// (`provision == .diskInject && (githubRunner || remoteDesktop
+    /// || openclaw || userData != nil)`), generalized: that gate
+    /// only fires when a first-boot script is actually about to be
+    /// disk-injected — not, say, a plain Guest Tools install with
+    /// no script at all — so `hasFirstBootScript` should be `true`
+    /// only when the caller is about to call
+    /// `DiskInjector.inject(script:into:)`.
+    ///
+    /// - Parameters:
+    ///   - hasFirstBootScript: Whether a first-boot script (runner,
+    ///     template-generated, or `--user-data`/operator-supplied)
+    ///     is about to be disk-injected.
+    ///   - macOSMajorVersion: The macOS major version the VM was
+    ///     just installed with.
+    /// - Returns: The plan the caller should follow.
+    public static func firstBootProvisioningPlan(
+        hasFirstBootScript: Bool,
+        macOSMajorVersion: Int
+    ) -> FirstBootProvisioningPlan {
+        guard hasFirstBootScript else { return .noScript }
+        guard SetupAutomation.isSupported(macOSVersion: macOSMajorVersion) else {
+            return .unsupportedMacOSVersion(macOSMajorVersion)
+        }
+        return .stageProvisionerAndAutomate
+    }
+}
+
+/// The plan returned by
+/// ``RunnerCreateFlowPlan/firstBootProvisioningPlan(hasFirstBootScript:macOSMajorVersion:)``.
+public enum FirstBootProvisioningPlan: Equatable, Sendable {
+    /// No first-boot script is being injected — nothing to stage.
+    case noScript
+
+    /// Stage `Spooktacular Provisioner.pkg` into the bundle's
+    /// provisioning share and run Setup Assistant automation
+    /// (with `installProvisioner: true`) before injecting the
+    /// script, so the guest's provisioner LaunchDaemon is in place
+    /// to execute it on first boot.
+    case stageProvisionerAndAutomate
+
+    /// A first-boot script is being injected, but this macOS major
+    /// has no ``SetupAutomation`` sequence at all — there is no
+    /// automation to run, so nothing will install the provisioner
+    /// LaunchDaemon. The script should still be injected (it may
+    /// be useful later), but the caller MUST surface this to the
+    /// operator rather than silently no-op'ing: the script will
+    /// not run until Setup Assistant is completed by hand and the
+    /// provisioner package is installed manually.
+    case unsupportedMacOSVersion(Int)
 }
 
 /// Errors surfaced by ``RunnerCreateFlowPlan``.
