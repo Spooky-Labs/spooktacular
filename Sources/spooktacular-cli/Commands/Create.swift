@@ -368,13 +368,29 @@ extension Spooktacular {
             var runnerKeychainAccount = ""
             if githubRunner {
                 guard let repo = githubRepo else {
-                    print(Style.error("✗ --github-runner requires --github-repo."))
-                    print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token-keychain org-acme"))
+                    if json {
+                        printJSONError(
+                            code: "runner-validation",
+                            message: "--github-runner requires --github-repo.",
+                            hint: "Example: spook create \(name) --github-runner --github-repo org/repo --github-token-keychain org-acme"
+                        )
+                    } else {
+                        print(Style.error("✗ --github-runner requires --github-repo."))
+                        print(Style.dim("  Example: spook create \(name) --github-runner --github-repo org/repo --github-token-keychain org-acme"))
+                    }
                     throw ExitCode(CLIExit.validation)
                 }
                 guard let account = githubTokenKeychain else {
-                    print(Style.error("✗ --github-runner requires --github-token-keychain <account>."))
-                    print(Style.dim("  Store the PAT first: security add-generic-password -s com.spooktacular.github -a <account> -w <PAT with repo admin scope> -U"))
+                    if json {
+                        printJSONError(
+                            code: "runner-validation",
+                            message: "--github-runner requires --github-token-keychain <account>.",
+                            hint: "Store the PAT first: security add-generic-password -s com.spooktacular.github -a <account> -w <PAT with repo admin scope> -U"
+                        )
+                    } else {
+                        print(Style.error("✗ --github-runner requires --github-token-keychain <account>."))
+                        print(Style.dim("  Store the PAT first: security add-generic-password -s com.spooktacular.github -a <account> -w <PAT with repo admin scope> -U"))
+                    }
                     throw ExitCode(CLIExit.validation)
                 }
                 do {
@@ -457,14 +473,16 @@ extension Spooktacular {
                 let restoreImage: VZMacOSRestoreImage
                 let ipswURL: URL
                 if fromIpsw == "latest" {
-                    print(Style.info("Fetching latest compatible macOS restore image..."))
+                    if !json { print(Style.info("Fetching latest compatible macOS restore image...")) }
                     restoreImage = try await manager.fetchLatestSupported()
                     let version = restoreImage.operatingSystemVersion
-                    print(
-                        "Found macOS \(version.majorVersion).\(version.minorVersion)"
-                        + ".\(version.patchVersion)"
-                        + " (build \(restoreImage.buildVersion))"
-                    )
+                    if !json {
+                        print(
+                            "Found macOS \(version.majorVersion).\(version.minorVersion)"
+                            + ".\(version.patchVersion)"
+                            + " (build \(restoreImage.buildVersion))"
+                        )
+                    }
                     if !json { print(Style.info("Downloading IPSW (this may take a while)...")) }
                     ipswURL = try await manager.downloadIPSW(
                         from: restoreImage
@@ -497,11 +515,46 @@ extension Spooktacular {
                     if !json { print(Style.info("Loading local IPSW '\(ipswURL.lastPathComponent)'...")) }
                     restoreImage = try await VZMacOSRestoreImage.image(from: ipswURL)
                     let version = restoreImage.operatingSystemVersion
-                    print(
-                        "Found macOS \(version.majorVersion).\(version.minorVersion)"
-                        + ".\(version.patchVersion)"
-                        + " (build \(restoreImage.buildVersion))"
+                    if !json {
+                        print(
+                            "Found macOS \(version.majorVersion).\(version.minorVersion)"
+                            + ".\(version.patchVersion)"
+                            + " (build \(restoreImage.buildVersion))"
+                        )
+                    }
+                }
+
+                // Fail fast, BEFORE the 10-20 minute macOS install
+                // begins: --github-runner depends entirely on
+                // ``SetupAutomation`` to install the Spooktacular
+                // Provisioner LaunchDaemon (see
+                // ``RunnerCreateFlowPlan/validateMacOSVersionSupport(githubRunner:macOSMajorVersion:)``'s
+                // doc comment). Checking here — right after the
+                // restore image's version is known, rather than
+                // after `manager.install()` — means an operator who
+                // passes `--from-ipsw` pointing at an unsupported
+                // macOS major gets an immediate, actionable error
+                // instead of a guaranteed ~10-minute online-poll
+                // timeout after losing the install time too.
+                do {
+                    try RunnerCreateFlowPlan.validateMacOSVersionSupport(
+                        githubRunner: githubRunner,
+                        macOSMajorVersion: restoreImage.operatingSystemVersion.majorVersion
                     )
+                } catch {
+                    if json {
+                        printJSONError(
+                            code: "unsupported-macos-runner",
+                            message: error.localizedDescription,
+                            hint: (error as? LocalizedError)?.recoverySuggestion
+                        )
+                    } else {
+                        print(Style.error("✗ \(error.localizedDescription)"))
+                        if let recovery = (error as? LocalizedError)?.recoverySuggestion {
+                            print(Style.dim("  \(recovery)"))
+                        }
+                    }
+                    throw ExitCode(CLIExit.validation)
                 }
 
                 if !json { print(Style.info("Creating VM bundle '\(name)' (id=\(bundleID.uuidString))...")) }
@@ -563,7 +616,7 @@ extension Spooktacular {
                                 .appendingPathComponent(pkgURL.lastPathComponent)
                             try? FileManager.default.removeItem(at: destination)
                             try FileManager.default.copyItem(at: pkgURL, to: destination)
-                            print(Style.info("Staged provisioner pkg for zero-touch install."))
+                            if !json { print(Style.info("Staged provisioner pkg for zero-touch install.")) }
                         } else {
                             // Soft warn, mirroring the Guest Tools
                             // bundle-not-found path below — dev
@@ -573,7 +626,7 @@ extension Spooktacular {
                             // leaving it true) keeps the typed
                             // `installer` command from running
                             // against a file that was never copied.
-                            print(Style.dim("  Provisioner pkg not found — run build-app.sh to produce Spooktacular.app/Contents/Applications/Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg. Continuing without zero-touch provisioning."))
+                            if !json { print(Style.dim("  Provisioner pkg not found — run build-app.sh to produce Spooktacular.app/Contents/Applications/Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg. Continuing without zero-touch provisioning.")) }
                             installProvisioner = false
                         }
                     }
@@ -586,10 +639,12 @@ extension Spooktacular {
                     )
                 } else if !skipSetup {
                     Log.provision.info("No Setup Assistant sequence for macOS \(macOSMajor, privacy: .public)")
-                    print(Style.warning(
-                        "No automated Setup Assistant sequence for macOS \(macOSMajor). "
-                        + "Run 'spook start \(name)' to complete setup manually."
-                    ))
+                    if !json {
+                        print(Style.warning(
+                            "No automated Setup Assistant sequence for macOS \(macOSMajor). "
+                            + "Run 'spook start \(name)' to complete setup manually."
+                        ))
+                    }
                 }
 
                 var provisionScript: URL?
@@ -638,14 +693,47 @@ extension Spooktacular {
                 // not a create-blocking error.
                 if guestTools.installsAppBundle {
                     if let appBundle = AppBundleBootstrapTemplate.locateGuestToolsBundle() {
-                        print(Style.info("Installing Spooktacular Guest Tools into guest..."))
-                        try DiskInjector.installGuestTools(
-                            appBundle: appBundle,
-                            into: bundle
-                        )
-                        print(Style.success("✓ Guest Tools installed (\(guestTools.displayName))."))
+                        if !json { print(Style.info("Installing Spooktacular Guest Tools into guest...")) }
+                        // If Setup Assistant automation just ran (the
+                        // `automateSetupAssistant` call above),
+                        // `vm.stop(graceful: false)` returned only
+                        // moments ago and Apple's VZ XPC service can
+                        // still hold this bundle's `disk.img` open for
+                        // a few seconds — the same lock
+                        // `RestoreImageManager.install` already waits
+                        // out for its own callers (see that method's
+                        // doc comment for the `lsof`-confirmed root
+                        // cause). `DiskInjector.installGuestTools`
+                        // shells straight to `diskutil image attach`
+                        // with no pre-flight of its own, so wait here
+                        // before attaching — closes the exact race a
+                        // live E2E run hit.
+                        await RestoreImageManager.waitForArtifactsReleased(bundle: bundle)
+                        do {
+                            try DiskInjector.installGuestTools(
+                                appBundle: appBundle,
+                                into: bundle
+                            )
+                            if !json { print(Style.success("✓ Guest Tools installed (\(guestTools.displayName)).")) }
+                        } catch {
+                            // Deliberately swallowed, not rethrown:
+                            // the macOS install (10-20 minutes) and
+                            // any Setup Assistant automation already
+                            // succeeded, and the VM is fully usable
+                            // without Guest Tools. Letting this
+                            // propagate to the generic `catch` below
+                            // would delete `bundleURL` over what,
+                            // post-wait, is most likely a residual
+                            // transient lock — destroying a long
+                            // install for a retryable, non-fatal step.
+                            Log.provision.error("Guest Tools install failed: \(error.localizedDescription, privacy: .public)")
+                            emitWarning([
+                                "✗ Guest Tools install failed: \(error.localizedDescription)",
+                                "  The VM was created successfully without Guest Tools. Recreate with --guest-tools installed once the issue clears, or install it later from the Spooktacular app.",
+                            ])
+                        }
                     } else {
-                        print(Style.dim("  Guest Tools bundle not found — run build-app.sh to produce Spooktacular.app/Contents/Applications/Spooktacular Guest Tools.app. Continuing without install."))
+                        if !json { print(Style.dim("  Guest Tools bundle not found — run build-app.sh to produce Spooktacular.app/Contents/Applications/Spooktacular Guest Tools.app. Continuing without install.")) }
                     }
                 }
 
@@ -680,16 +768,18 @@ extension Spooktacular {
 
                     switch provision {
                     case .diskInject:
-                        print(Style.info("Injecting user-data script into guest disk..."))
+                        if !json { print(Style.info("Injecting user-data script into guest disk...")) }
                         try DiskInjector.inject(script: script, into: bundle)
-                        print(Style.success("✓ Script injected. It will run automatically on first boot."))
+                        if !json { print(Style.success("✓ Script injected. It will run automatically on first boot.")) }
                         consumedScript = true
 
                     case .ssh:
                         if noProvision {
                             Log.provision.info("Skipping SSH provisioning (--no-provision)")
-                            print(Style.info("Script generated. Skipping auto-provisioning (--no-provision)."))
-                            print(Style.dim("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh"))
+                            if !json {
+                                print(Style.info("Script generated. Skipping auto-provisioning (--no-provision)."))
+                                print(Style.dim("Next: spook start \(name) --headless --user-data \(script.path) --provision ssh"))
+                            }
                             // Do NOT mark consumed — the operator needs
                             // the path later.
                         } else {
@@ -703,12 +793,20 @@ extension Spooktacular {
                         }
 
                     case .sharedFolder:
-                        print(Style.error("✗ \(provision.label) provisioning is not yet available (planned for a future release)."))
-                        print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
+                        if json {
+                            printJSONError(
+                                code: "unsupported-provision-mode",
+                                message: "\(provision.label) provisioning is not yet available (planned for a future release).",
+                                hint: "Use --provision ssh or --provision disk-inject instead."
+                            )
+                        } else {
+                            print(Style.error("✗ \(provision.label) provisioning is not yet available (planned for a future release)."))
+                            print(Style.dim("  Use --provision ssh or --provision disk-inject instead."))
+                        }
                         throw ExitCode(CLIExit.validation)
                     }
                 }
-                if ephemeral {
+                if ephemeral && !json {
                     print(Style.yellow("⟳ Ephemeral mode: VM auto-destroys after main process exits"))
                 }
 
@@ -778,6 +876,21 @@ extension Spooktacular {
                 // ``RunnerSetupAutomationFailure``.
                 reportSetupAutomationFailureForRunner(failure.underlying)
                 throw ExitCode(classifyExitCode(failure.underlying))
+            } catch let exit as ExitCode {
+                // A validation guard inside this do-block (IPSW not
+                // found, or --github-runner with a macOS version
+                // that has no Setup Assistant automation sequence)
+                // already printed its own single, clean error
+                // message and picked its own documented exit code
+                // before throwing. Passing it straight through
+                // avoids double-reporting a second, uninformative
+                // "ArgumentParser.ExitCode error N" line AND avoids
+                // `classifyExitCode` silently downgrading the
+                // documented code (e.g. validation's 3 falling back
+                // to generalFailure's 1, since `ExitCode` itself
+                // isn't one of the cases `classifyExitCode` knows
+                // how to read).
+                throw exit
             } catch {
                 if json {
                     printJSONError(
@@ -1046,7 +1159,7 @@ extension Spooktacular {
             let logger = Log.provision
 
             logger.info("Creating VM instance from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
-            print(Style.info("Booting VM for provisioning..."))
+            if !json { print(Style.info("Booting VM for provisioning...")) }
             // Post-release construction: this runs either right
             // after `RestoreImageManager.install()` (when Setup
             // Assistant automation was skipped or unsupported) or
@@ -1054,15 +1167,15 @@ extension Spooktacular {
             // in both cases a prior VZVirtualMachine on this same
             // bundle was just released and its XPC service may still
             // hold the file lock. See `VirtualMachine.makeAfterInstall`.
-            let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle) { attempt, maxAttempts in
-                print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))..."))
+            let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle) { [json] attempt, maxAttempts in
+                if !json { print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))...")) }
             }
             try await vm.start()
             logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' started for provisioning")
-            print(Style.success("✓ VM is running."))
+            if !json { print(Style.success("✓ VM is running.")) }
 
             do {
-                print(Style.info("Resolving VM IP address..."))
+                if !json { print(Style.info("Resolving VM IP address...")) }
                 let ip = try await VMProvisioner.provisionViaSSH(
                     macAddress: macAddress,
                     script: script,
@@ -1071,25 +1184,29 @@ extension Spooktacular {
                     timeout: 120
                 )
 
-                Style.field("IP", ip)
-                print(Style.success("✓ Provisioning complete."))
+                if !json {
+                    Style.field("IP", ip)
+                    print(Style.success("✓ Provisioning complete."))
+                }
 
             } catch {
                 logger.error("Provisioning failed: \(error.localizedDescription, privacy: .public)")
-                print(Style.error("✗ Provisioning failed: \(error.localizedDescription)"))
-                if let localizedError = error as? LocalizedError,
-                   let recovery = localizedError.recoverySuggestion {
-                    print(Style.dim("  \(recovery)"))
+                if !json {
+                    print(Style.error("✗ Provisioning failed: \(error.localizedDescription)"))
+                    if let localizedError = error as? LocalizedError,
+                       let recovery = localizedError.recoverySuggestion {
+                        print(Style.dim("  \(recovery)"))
+                    }
+                    print(Style.dim("  The VM was created successfully. Provisioning can be retried with:"))
+                    print(Style.dim("  spook start \(name) --headless --user-data \(script.path) --provision ssh"))
                 }
-                print(Style.dim("  The VM was created successfully. Provisioning can be retried with:"))
-                print(Style.dim("  spook start \(name) --headless --user-data \(script.path) --provision ssh"))
             }
 
             logger.info("Stopping VM '\(bundle.url.lastPathComponent, privacy: .public)' after provisioning")
-            print(Style.info("Stopping VM..."))
+            if !json { print(Style.info("Stopping VM...")) }
             try? await vm.stop(graceful: false)
             logger.notice("VM '\(bundle.url.lastPathComponent, privacy: .public)' stopped after provisioning")
-            print(Style.success("✓ VM stopped."))
+            if !json { print(Style.success("✓ VM stopped.")) }
         }
 
         // MARK: - Setup Assistant Automation
@@ -1148,7 +1265,7 @@ extension Spooktacular {
             let logger = Log.provision
 
             logger.info("Starting Setup Assistant automation for macOS \(macOSVersion, privacy: .public)")
-            print(Style.info("Automating Setup Assistant for macOS \(macOSVersion)..."))
+            if !json { print(Style.info("Automating Setup Assistant for macOS \(macOSVersion)...")) }
 
             // Captured on failure so the fail-fast decision below can
             // run AFTER the VM is stopped (same shutdown as the
@@ -1179,8 +1296,8 @@ extension Spooktacular {
                 // sooner on our end. `makeAfterInstall` below only
                 // covers the small residual TOCTOU gap between that
                 // wait and this construction call.
-                let constructedVM = try await VirtualMachine.makeAfterInstall(bundle: bundle) { attempt, maxAttempts in
-                    print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))..."))
+                let constructedVM = try await VirtualMachine.makeAfterInstall(bundle: bundle) { [json] attempt, maxAttempts in
+                    if !json { print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))...")) }
                 }
                 vm = constructedVM
                 guard let underlyingVM = constructedVM.vzVM else {
@@ -1195,7 +1312,7 @@ extension Spooktacular {
 
                 try await constructedVM.start()
                 logger.notice("VM booted for Setup Assistant automation")
-                print(Style.success("✓ VM booted."))
+                if !json { print(Style.success("✓ VM booted.")) }
 
                 let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
                 let screenReader = VZScreenReader(vmView: driver.vmView)
@@ -1204,7 +1321,7 @@ extension Spooktacular {
                     installProvisioner: installProvisioner
                 )
                 logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
-                print(Style.info("Running Setup Assistant automation (\(steps.count) steps)..."))
+                if !json { print(Style.info("Running Setup Assistant automation (\(steps.count) steps)...")) }
                 // Diagnostics land in the same `provision/` directory
                 // first-boot provisioning evidence already uses, so a
                 // failed run and a failed gate show up side by side.
@@ -1222,10 +1339,10 @@ extension Spooktacular {
                 // is the real success gate; this line just reports
                 // that the keystroke phase is over.
                 logger.notice("Setup Assistant keystroke sequence completed (guest state unverified until SSH confirm)")
-                print(Style.info("Keystroke sequence completed — verifying guest state via SSH..."))
+                if !json { print(Style.info("Keystroke sequence completed — verifying guest state via SSH...")) }
 
                 logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
-                print(Style.info("Waiting for SSH to confirm setup completed..."))
+                if !json { print(Style.info("Waiting for SSH to confirm setup completed...")) }
                 guard let ip = try await IPResolver.resolveIPWithRetry(macAddress: macAddress, timeout: 120) else {
                     logger.error("Could not resolve IP — SSH unreachable, setup cannot be verified")
                     throw NSError(
@@ -1242,30 +1359,36 @@ extension Spooktacular {
                 logger.info("Resolved IP \(ip, privacy: .public), waiting for SSH")
                 try await SSHExecutor.waitForSSH(ip: ip)
                 logger.notice("SSH confirmed on \(ip, privacy: .public)")
-                print(Style.success("✓ SSH available at \(ip). Setup confirmed."))
+                if !json { print(Style.success("✓ SSH available at \(ip). Setup confirmed.")) }
 
                 var metadata = bundle.metadata
                 metadata.setupCompleted = true
                 try VirtualMachineBundle.writeMetadata(metadata, to: bundle.url)
                 logger.notice("setupCompleted = true written to metadata")
-                print(Style.success("✓ Setup marked complete."))
+                if !json { print(Style.success("✓ Setup marked complete.")) }
 
             } catch {
                 logger.error("Setup Assistant automation failed: \(error.localizedDescription, privacy: .public)")
-                print(Style.error("✗ Setup Assistant automation failed: \(error.localizedDescription)"))
+                // Not printed in --json mode: the message is
+                // reported once, cleanly, via `printJSONError` in
+                // `reportSetupAutomationFailureForRunner` (fatal
+                // case) or would otherwise corrupt stdout with a
+                // second, free-text line (swallowed case — see the
+                // `else` branch below, also gated).
+                if !json { print(Style.error("✗ Setup Assistant automation failed: \(error.localizedDescription)")) }
                 if RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: githubRunner) {
                     automationFailure = error
-                } else {
+                } else if !json {
                     print(Style.dim("  The VM was created. Run 'spook start \(name)' to complete setup manually."))
                 }
             }
 
             if let vm {
                 logger.info("Stopping VM after Setup Assistant automation")
-                print(Style.info("Stopping VM..."))
+                if !json { print(Style.info("Stopping VM...")) }
                 try? await vm.stop(graceful: false)
                 logger.notice("VM stopped after Setup Assistant automation")
-                print(Style.success("✓ VM stopped."))
+                if !json { print(Style.success("✓ VM stopped.")) }
             }
 
             // Fail fast under --github-runner: the Spooktacular
@@ -1327,10 +1450,12 @@ extension Spooktacular {
         /// printed either — so in `--json` mode it still owes callers
         /// a single machine-parsable error document on stdout via
         /// `printJSONError`, same as every other pre-success failure
-        /// in this command. The "what failed" line was already
-        /// printed by `automateSetupAssistant`'s catch (unconditional
-        /// on `--json`, like its other progress lines), so this only
-        /// adds the "kept + how to recover" guidance.
+        /// in this command. `automateSetupAssistant`'s own catch
+        /// suppresses its "what failed" line in `--json` mode (like
+        /// every other progress line in that function), so the
+        /// message is reported exactly once, here, via
+        /// `printJSONError` — this method then adds the "kept + how
+        /// to recover" guidance on stderr.
         private func reportSetupAutomationFailureForRunner(_ error: Error) {
             let keepNote = "The VM '\(name)' was created and macOS installed successfully — it has been kept."
             let nextSteps = "Run 'spook start \(name)' to boot it and complete Setup Assistant by hand. "
@@ -1538,7 +1663,8 @@ extension Spooktacular {
                         cleanupRunnerVMAfterStop(
                             bundleURL: bundleURL,
                             name: nameCapture,
-                            ephemeral: isEphemeralCapture
+                            ephemeral: isEphemeralCapture,
+                            json: jsonCapture
                         )
                         // Exit status must reflect whether the
                         // runner was ever confirmed online —
@@ -1575,7 +1701,7 @@ extension Spooktacular {
                 }
                 lines.append("  The VM is left running — the runner may still come online. Investigate with 'spook ssh \(name)' or stop with 'spook stop \(name)'.")
                 lines.append("  This command will exit non-zero because the runner was not confirmed.")
-                emitRunnerWarning(lines)
+                emitWarning(lines)
             }
             // The token has either already been consumed by the
             // guest's `config.sh --token` (online) or is no longer
@@ -1590,7 +1716,7 @@ extension Spooktacular {
                     break
                 }
             }
-            cleanupRunnerVMAfterStop(bundleURL: bundleURL, name: name, ephemeral: ephemeral)
+            cleanupRunnerVMAfterStop(bundleURL: bundleURL, name: name, ephemeral: ephemeral, json: json)
             if !outcome.confirmed {
                 // The poll never confirmed the runner online — the
                 // warning above already explained why. This is the
@@ -1602,10 +1728,13 @@ extension Spooktacular {
             }
         }
 
-        /// Prints warning lines for the runner flow — styled to
-        /// stdout normally; plain text to stderr in `--json` mode so
-        /// stdout stays a single JSON document.
-        private func emitRunnerWarning(_ lines: [String]) {
+        /// Prints non-fatal warning lines — styled to stdout normally;
+        /// plain text to stderr in `--json` mode so stdout stays a
+        /// single JSON document. Used by the runner online-poll
+        /// path and by any other create-flow step (e.g. a Guest
+        /// Tools install failure) that must surface a problem
+        /// without corrupting `--json`'s machine-parsable payload.
+        private func emitWarning(_ lines: [String]) {
             if json {
                 let text = lines.joined(separator: "\n") + "\n"
                 FileHandle.standardError.write(Data(text.utf8))
@@ -1642,11 +1771,19 @@ private final class RunnerOnlineOutcome {
 /// ``Spooktacular/Create/bootRunnerAndAwaitOnline(bundle:bundleURL:service:scope:)``
 /// to avoid duplicating cleanup logic within this file.
 @MainActor
-private func cleanupRunnerVMAfterStop(bundleURL: URL, name: String, ephemeral: Bool) {
+private func cleanupRunnerVMAfterStop(bundleURL: URL, name: String, ephemeral: Bool, json: Bool) {
     PIDFile.remove(from: bundleURL)
     if ephemeral {
         try? FileManager.default.removeItem(at: bundleURL)
-        print("Ephemeral VM '\(name)' destroyed.")
+        // Not printed in --json mode: this can land AFTER the
+        // create flow's single JSON payload on the mainline stop
+        // path (the VM ran headless, was Ctrl-C'd or hit its
+        // ephemeral exit condition, and THEN got cleaned up here),
+        // which would otherwise append a second, non-JSON line to
+        // stdout.
+        if !json {
+            print("Ephemeral VM '\(name)' destroyed.")
+        }
     }
 }
 

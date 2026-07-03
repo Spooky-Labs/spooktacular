@@ -114,4 +114,65 @@ struct RunnerCreateFlowPlanTests {
         let isFatal = RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: false)
         #expect(isFatal == false)
     }
+
+    // MARK: - macOS version support
+
+    @Test("--github-runner with a supported macOS major passes", arguments: [15, 26])
+    func macOSVersionSupportedPasses(major: Int) throws {
+        try RunnerCreateFlowPlan.validateMacOSVersionSupport(
+            githubRunner: true,
+            macOSMajorVersion: major
+        )
+    }
+
+    @Test("--github-runner with an unsupported macOS major is a hard error")
+    func macOSVersionUnsupportedFails() {
+        #expect(throws: RunnerCreateFlowError.unsupportedMacOSVersion(
+            macOSMajorVersion: 14,
+            supportedVersions: SetupAutomation.supportedVersions
+        )) {
+            try RunnerCreateFlowPlan.validateMacOSVersionSupport(
+                githubRunner: true,
+                macOSMajorVersion: 14
+            )
+        }
+    }
+
+    @Test("--github-runner with a future unsupported macOS major is also a hard error")
+    func macOSVersionFutureUnsupportedFails() {
+        #expect(throws: RunnerCreateFlowError.unsupportedMacOSVersion(
+            macOSMajorVersion: 27,
+            supportedVersions: SetupAutomation.supportedVersions
+        )) {
+            try RunnerCreateFlowPlan.validateMacOSVersionSupport(
+                githubRunner: true,
+                macOSMajorVersion: 27
+            )
+        }
+    }
+
+    @Test("without --github-runner, an unsupported macOS major is not validated at all")
+    func macOSVersionSkippedWithoutRunner() throws {
+        // A plain desktop create with no --github-runner has no
+        // dependency on Setup Assistant automation succeeding —
+        // it's fine to boot into an unsupported macOS version and
+        // finish setup by hand.
+        try RunnerCreateFlowPlan.validateMacOSVersionSupport(
+            githubRunner: false,
+            macOSMajorVersion: 14
+        )
+    }
+
+    @Test("unsupportedMacOSVersion error names every supported major and has recovery text")
+    func macOSVersionErrorText() {
+        let error = RunnerCreateFlowError.unsupportedMacOSVersion(
+            macOSMajorVersion: 14,
+            supportedVersions: [15, 26]
+        )
+        #expect(error.errorDescription?.contains("14") == true)
+        #expect(error.errorDescription?.contains("15") == true)
+        #expect(error.errorDescription?.contains("26") == true)
+        #expect(error.recoverySuggestion?.contains("15") == true)
+        #expect(error.recoverySuggestion?.contains("26") == true)
+    }
 }

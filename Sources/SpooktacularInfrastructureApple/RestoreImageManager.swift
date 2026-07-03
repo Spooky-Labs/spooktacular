@@ -574,6 +574,28 @@ public final class RestoreImageManager: Sendable {
         await Self.waitForPlatformArtifactsReleased(bundle: bundle)
     }
 
+    /// Public entry point onto ``waitForPlatformArtifactsReleased(bundle:ceiling:pollInterval:)``
+    /// for callers outside this file that are about to attach to a
+    /// bundle's `disk.img` right after force-stopping a
+    /// `VirtualMachine` built against it — the same lingering VZ
+    /// XPC-service lock this type already waits out for its own
+    /// post-install callers (see that method's doc comment for the
+    /// full `lsof`-confirmed root cause).
+    ///
+    /// Used by `spooktacular-cli`'s `Create` command: after
+    /// `automateSetupAssistant` force-stops its own Setup Assistant
+    /// automation VM, `DiskInjector.installGuestTools` shells
+    /// straight to `diskutil image attach` on the same `disk.img`
+    /// with no pre-flight of its own — exactly the race this wait
+    /// exists to close.
+    public static func waitForArtifactsReleased(
+        bundle: VirtualMachineBundle,
+        ceiling: TimeInterval = 30,
+        pollInterval: TimeInterval = 0.25
+    ) async {
+        await waitForPlatformArtifactsReleased(bundle: bundle, ceiling: ceiling, pollInterval: pollInterval)
+    }
+
     /// Builds the installer configuration and runs `VZMacOSInstaller`
     /// to completion, all in its own scope.
     ///

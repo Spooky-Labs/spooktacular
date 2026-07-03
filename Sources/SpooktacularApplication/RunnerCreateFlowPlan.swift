@@ -104,6 +104,48 @@ public enum RunnerCreateFlowPlan {
         }
     }
 
+    /// Rejects `--github-runner` when the resolved restore image's
+    /// macOS major version has no ``SetupAutomation`` sequence.
+    ///
+    /// Zero-touch runner registration depends on Setup Assistant
+    /// automation to install the Spooktacular Provisioner
+    /// LaunchDaemon (see ``setupAutomationFailureIsFatal(githubRunner:)``'s
+    /// doc comment for the full dependency chain). When
+    /// ``SetupAutomation/isSupported(macOSVersion:)`` is `false` for
+    /// the version this create is about to install — a macOS major
+    /// that predates the mapped sequences, or a future major that
+    /// hasn't been mapped yet — there is no automation to run at
+    /// all, so `setupAutomationFailureIsFatal` never gets a chance
+    /// to fire: the create flow would silently skip straight to
+    /// "no automated Setup Assistant sequence, complete setup
+    /// manually" and then still mint a token, inject the runner
+    /// script, boot headless, and poll for up to 10 minutes for a
+    /// runner that can never come online. Calling this BEFORE the
+    /// IPSW install begins (not just before minting) means an
+    /// operator who passes an unsupported `--from-ipsw` gets an
+    /// immediate, actionable error instead of losing 10-20 minutes
+    /// to an install whose runner phase was always going to fail.
+    ///
+    /// - Parameters:
+    ///   - githubRunner: Whether `--github-runner` was passed.
+    ///   - macOSMajorVersion: The resolved restore image's major
+    ///     version (`VZMacOSRestoreImage.operatingSystemVersion.majorVersion`).
+    /// - Throws: ``RunnerCreateFlowError/unsupportedMacOSVersion(macOSMajorVersion:supportedVersions:)``
+    ///   naming every supported major so the operator knows exactly
+    ///   which restore image to use instead.
+    public static func validateMacOSVersionSupport(
+        githubRunner: Bool,
+        macOSMajorVersion: Int
+    ) throws {
+        guard githubRunner else { return }
+        guard SetupAutomation.isSupported(macOSVersion: macOSMajorVersion) else {
+            throw RunnerCreateFlowError.unsupportedMacOSVersion(
+                macOSMajorVersion: macOSMajorVersion,
+                supportedVersions: SetupAutomation.supportedVersions
+            )
+        }
+    }
+
     /// Decides whether a Setup Assistant automation failure must
     /// abort the create flow rather than being swallowed so a
     /// desktop VM can still be used with setup finished by hand.
@@ -154,6 +196,12 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
     /// the runner script only consumes disk-injected scripts.
     case unsupportedProvisionMode
 
+    /// `--github-runner` was combined with a restore image whose
+    /// macOS major version has no ``SetupAutomation`` sequence —
+    /// there is nothing to install the provisioner LaunchDaemon,
+    /// so the runner could never come online.
+    case unsupportedMacOSVersion(macOSMajorVersion: Int, supportedVersions: Set<Int>)
+
     public var errorDescription: String? {
         switch self {
         case .zeroTouchRequiresSetupAutomation:
@@ -166,6 +214,10 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
             return "--github-runner only supports --provision disk-inject: the runner script is "
                 + "executed by the provisioner LaunchDaemon on first boot, which only consumes "
                 + "disk-injected scripts."
+        case .unsupportedMacOSVersion(let macOSMajorVersion, let supportedVersions):
+            let supported = supportedVersions.sorted().map(String.init).joined(separator: ", ")
+            return "--github-runner requires a macOS version with a Setup Assistant automation "
+                + "sequence. macOS \(macOSMajorVersion) has none — supported majors: \(supported)."
         }
     }
 
@@ -180,6 +232,10 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
         case .unsupportedProvisionMode:
             return "Drop the --provision flag — disk-inject is the default and the only mode "
                 + "the runner flow supports."
+        case .unsupportedMacOSVersion(_, let supportedVersions):
+            let supported = supportedVersions.sorted().map { "macOS \($0)" }.joined(separator: " or ")
+            return "Use --from-ipsw with a \(supported) restore image, or drop --github-runner "
+                + "and complete Setup Assistant + provisioner install manually."
         }
     }
 }
