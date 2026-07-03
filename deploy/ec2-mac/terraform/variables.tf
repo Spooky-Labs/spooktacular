@@ -81,7 +81,7 @@ variable "spooktacular_version" {
 # ------------------------------------------------------------------------------
 
 variable "log_retention_days" {
-  description = "CloudWatch log retention period (days). 2555 days = 7 years, matching the audit WORM policy."
+  description = "CloudWatch log retention period (days). 2555 days = 7 years, a common compliance-driven retention window."
   type        = number
   default     = 90
 

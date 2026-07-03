@@ -121,7 +121,7 @@ Terraform will:
 2. Launch an EC2 Mac instance with the macOS AMI
 3. Register the `SpooktacularInstall` SSM document from `ssm/install-spooktacular.yaml`
 4. Run `bootstrap.sh` as user-data to install and configure Spooktacular
-5. Create CloudWatch alarms for host utilization, API errors, audit export failures, TLS expiry, and ASG capacity gaps
+5. Create CloudWatch alarms for host utilization, API errors, TLS expiry, and ASG capacity gaps
 6. (Optional, `enable_license_manager = true`) Create a License Manager license configuration and Host Resource Group
 7. (Optional, `enable_asg = true`) Provision a launch template, ASG, and drain-on-terminate lifecycle hook
 8. Output the instance IP and SSH command

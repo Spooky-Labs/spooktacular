@@ -192,36 +192,6 @@ resource "aws_cloudwatch_metric_alarm" "vm_creation_failure_rate" {
 }
 
 # ------------------------------------------------------------------------------
-# Alarm: AuditExportFailure — any WORM S3 write failure in a 1h window
-# ------------------------------------------------------------------------------
-#
-# Audit export failures are SOC 2 ship-blockers: a single unreported event
-# breaks the Merkle chain for that window. Page on any non-zero value.
-
-resource "aws_cloudwatch_metric_alarm" "audit_export_failure" {
-  alarm_name          = "${var.name_prefix}-audit-export-failure"
-  alarm_description   = "Spooktacular audit export to S3 Object Lock failed. SOC 2 ship-blocker."
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  threshold           = 0
-  period              = 3600
-  namespace           = "Spooktacular"
-  metric_name         = "AuditExportFailures"
-  statistic           = "Sum"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    Host = aws_instance.mac.id
-  }
-
-  alarm_actions = [aws_sns_topic.alerts.arn]
-
-  tags = merge(var.tags, {
-    Severity = "page"
-  })
-}
-
-# ------------------------------------------------------------------------------
 # Alarm: TLSCertExpiry — published by spook serve as DaysUntilExpiry
 # ------------------------------------------------------------------------------
 
