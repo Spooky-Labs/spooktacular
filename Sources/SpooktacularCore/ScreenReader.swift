@@ -162,6 +162,41 @@ public protocol ScreenshotCapturing: Sendable {
     @MainActor func capturePNG() async throws -> Data?
 }
 
+/// A ``ScreenReader`` that can additionally perform one high-accuracy
+/// OCR pass on demand, separate from whatever recognition level it
+/// uses for its regular polling-cadence ``ScreenReader/recognizeText()``.
+///
+/// Conformance is optional and separate from ``ScreenReader`` itself,
+/// mirroring ``ScreenshotCapturing``'s design: the protocol lives here
+/// (Foundation-only, no Vision import) so any caller can test for it
+/// with `as?`, but only a screen reader that can actually vary its
+/// Vision recognition level per call — ``VZScreenReader`` in
+/// `SpooktacularInfrastructureApple` — conforms. A test double that
+/// only replays scripted OCR frames has no second recognition level
+/// to offer and simply doesn't conform.
+///
+/// `SetupAutomationExecutor` uses this to capture a higher-fidelity
+/// OCR dump specifically for the diagnostic artifact saved when a
+/// screen gate (``ScreenReader/waitForText(_:timeout:)`` or the
+/// executor's `expectScreen` action) times out. The routine polling
+/// that led up to the timeout uses ``VZScreenReader``'s faster,
+/// lower-fidelity `.fast` recognition level (see its own
+/// documentation for why) — cheap enough to run every poll interval
+/// on the main actor — but the one-time forensic capture on failure
+/// is worth the extra latency of `.accurate` for the best available
+/// transcription of what actually went wrong.
+public protocol AccurateTextCapturing: Sendable {
+
+    /// Captures the current screen and recognizes text using the
+    /// highest-accuracy OCR pass available, independent of whatever
+    /// level ``ScreenReader/recognizeText()`` uses for routine
+    /// polling.
+    ///
+    /// - Returns: Recognized text regions, in the same format as
+    ///   ``ScreenReader/recognizeText()``.
+    @MainActor func recognizeTextAccurate() async throws -> [RecognizedText]
+}
+
 /// Errors that can occur during screen reading operations.
 public enum ScreenReaderError: Error, Sendable, LocalizedError {
 

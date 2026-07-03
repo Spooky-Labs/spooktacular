@@ -156,9 +156,12 @@ public enum SetupAutomationExecutor {
     ///     `VirtualMachineBundle.provisionDirectoryURL`), the same
     ///     place first-boot provisioning evidence already lands.
     ///   - screenGatePollInterval: Seconds between OCR polls inside
-    ///     `.expectScreen`. Defaults to 2, matching ``ScreenReader``
-    ///     implementations' own polling cadence. Tests pass a much
-    ///     smaller value to keep gate tests fast.
+    ///     `.expectScreen`. Defaults to 3, matching ``VZScreenReader``'s
+    ///     own default polling cadence (see its "Polling Strategy"
+    ///     documentation for the rationale: `.fast`-level recognition
+    ///     plus a 3-second cadence together bound how much main-actor
+    ///     time a long-open gate spends in Vision requests). Tests
+    ///     pass a much smaller value to keep gate tests fast.
     /// - Throws: ``SetupAutomationExecutorError/unmappableCharacter(_:)``
     ///   if a text character cannot be converted to a key code,
     ///   ``SetupAutomationExecutorError/screenGateTimedOut(stepIndex:totalSteps:expectedMarkers:actualTextExcerpt:timeout:artifactDirectory:)``
@@ -170,7 +173,7 @@ public enum SetupAutomationExecutor {
         using driver: any KeyboardDriver,
         screenReader: (any ScreenReader)? = nil,
         diagnosticsDirectory: URL? = nil,
-        screenGatePollInterval: TimeInterval = 2
+        screenGatePollInterval: TimeInterval = 3
     ) async throws {
         Log.provision.info("Starting Setup Assistant automation (\(steps.count) steps)")
         if screenReader != nil {
@@ -424,10 +427,16 @@ public enum SetupAutomationExecutor {
     ///     name the artifact files.
     ///   - expectedMarkers: The markers the gate was waiting for,
     ///     recorded in the dump for context.
-    ///   - observed: Every OCR text region seen on the final poll.
+    ///   - observed: Every OCR text region seen on the final poll
+    ///     (`.fast`-level — see ``VZScreenReader``'s "Polling
+    ///     Strategy" documentation). Used as the saved dump's content
+    ///     only when `screenReader` can't do better; see
+    ///     `dumpedText` below.
     ///   - screenReader: The screen reader that was polled — cast to
     ///     ``SpooktacularCore/ScreenshotCapturing`` when possible to
-    ///     also save a PNG.
+    ///     also save a PNG, and to
+    ///     ``SpooktacularCore/AccurateTextCapturing`` when possible
+    ///     to re-run OCR at `.accurate` for the saved dump.
     /// - Returns: `directory`, if artifacts were written there;
     ///   `nil` if `directory` was `nil` or the write failed.
     @MainActor
@@ -451,13 +460,33 @@ public enum SetupAutomationExecutor {
 
         let baseName = "automation-failure-step\(stepIndex + 1)"
 
+        // The thrown error's own `actualTextExcerpt` (built by the
+        // caller, `performExpectScreen`, from the same `observed`
+        // value) stays at whatever level routine polling used —
+        // cheap and already in hand. The *saved* dump is a forensic
+        // artifact worth the extra Vision latency for: prefer one
+        // fresh `.accurate` pass when the reader supports it,
+        // falling back to the last poll's (`.fast`-level) `observed`
+        // when it doesn't (e.g. mock readers in tests) or the pass
+        // itself throws.
+        var dumpedText = observed
+        if let accurateReader = screenReader as? any AccurateTextCapturing {
+            do {
+                dumpedText = try await accurateReader.recognizeTextAccurate()
+            } catch {
+                Log.provision.warning(
+                    "Accurate re-scan for diagnostics failed, using last poll's OCR instead: \(error.localizedDescription, privacy: .public)"
+                )
+            }
+        }
+
         var dump = "Setup Assistant screen gate timed out at step \(stepIndex + 1).\n"
         dump += "Expected one of: \(expectedMarkers)\n\n"
-        dump += "Observed OCR text (\(observed.count) region(s)):\n"
-        if observed.isEmpty {
+        dump += "Observed OCR text (\(dumpedText.count) region(s)):\n"
+        if dumpedText.isEmpty {
             dump += "(no text recognized)\n"
         } else {
-            for region in observed {
+            for region in dumpedText {
                 dump += "- \(region.text)\n"
             }
         }

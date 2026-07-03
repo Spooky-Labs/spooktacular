@@ -356,7 +356,7 @@ public enum SetupAutomation {
         // Terminal, so the session it opened is still the
         // foreground app and still has a live shell prompt when
         // these steps begin.
-        return steps + installProvisionerSteps(username: username, password: password)
+        return steps + installProvisionerSteps(password: password)
     }
 
     // MARK: - Sequoia Sequence Segments
@@ -378,6 +378,28 @@ public enum SetupAutomation {
     /// safe. Every gate from here on can rely on English text
     /// because ``sequoiaSequence`` sets the language to English
     /// before any later screen renders.
+    ///
+    /// The country screen's confirm is a screen-reader-driven click
+    /// on the "Continue" button (``BootAction/clickText(_:timeout:)``),
+    /// not a blind keystroke. Live e2e evidence
+    /// (`plans/e2e-notes-2026-07.md`, ATTEMPT 4, gate 12/100) captured
+    /// a screenshot + OCR dump proving the previous `shiftTab` +
+    /// `space` blind confirm — Tab-navigate focus backward onto the
+    /// Continue button, then press Space — left "United States"
+    /// correctly selected and the "Continue" button visibly enabled,
+    /// but the screen never advanced: on macOS 26.4.1, that specific
+    /// focus-chain navigation doesn't reliably land on/activate the
+    /// button. `clickText` sidesteps the guess entirely by reading
+    /// the actual screen and clicking the button's real on-screen
+    /// location. The language screen's `.text("english")` + `enter`
+    /// two steps above is deliberately left as-is — it submits a
+    /// type-ahead search field (Return is the semantically correct
+    /// confirm there, same as it is for the "Terminal" Spotlight
+    /// search in ``enableSSHSteps(password:)``), and the same live
+    /// evidence run reached the country screen through it
+    /// successfully, so there's no proof (and no plausible mechanism,
+    /// since there's no separate button to mis-click) that it shares
+    /// the country screen's bug.
     private static func languageAndCountrySteps() -> [BootStep] {
         [
             BootStep(delay: 60, action: .wait(0)),
@@ -397,8 +419,7 @@ public enum SetupAutomation {
                 timeout: 60
             )),
             BootStep(delay: 0, action: .text("united states")),
-            BootStep(delay: 0, action: shiftTab),
-            BootStep(delay: 0, action: space),
+            BootStep(delay: 0, action: .clickText("Continue")),
         ]
     }
 
@@ -582,6 +603,19 @@ public enum SetupAutomation {
     /// shortcut, not text typed into a specific field, so it's safe
     /// to send immediately — what matters is gating on its *effect*
     /// before proceeding.
+    ///
+    /// A third gate closes the function: the `systemsetup` command
+    /// carries the ``sentinelEcho(_:)`` for the `"SSHON"` token
+    /// (marker: ``sentinelMarker(_:)``), and the function doesn't
+    /// return until that marker is on screen — i.e. until
+    /// `systemsetup -setremotelogin on` has actually *finished*
+    /// running, not merely been typed. See ``sentinelEcho(_:)``'s doc
+    /// comment for why a one-shot sentinel (rather than, say, gating
+    /// on the returned shell prompt) is necessary here, and for the
+    /// bug this pattern replaces
+    /// (``installProvisionerSteps(password:)`` used to gate on the
+    /// account `username`, which sits permanently in the zsh prompt
+    /// and so resolved instantly, synchronizing nothing).
     private static func enableSSHSteps(password: String) -> [BootStep] {
         [
             BootStep(delay: 0, action: .shortcut(.space, modifiers: [.option])),
@@ -592,11 +626,95 @@ public enum SetupAutomation {
             BootStep(delay: 0, action: .text("Terminal")),
             BootStep(delay: 0, action: enter),
             BootStep(delay: 0, action: .expectScreen(containsAny: ["Last login"], timeout: 60)),
-            BootStep(delay: 0, action: .text("sudo systemsetup -setremotelogin on")),
+            BootStep(delay: 0, action: .text("sudo systemsetup -setremotelogin on" + sentinelEcho("SSHON"))),
             BootStep(delay: 0, action: enter),
             BootStep(delay: 5, action: .text(password)),
             BootStep(delay: 0, action: enter),
+            BootStep(delay: 0, action: .expectScreen(containsAny: [sentinelMarker("SSHON")], timeout: 60)),
         ]
+    }
+
+    // MARK: - One-Shot Completion Sentinels
+    //
+    // `installProvisionerSteps(password:)` originally gated its first
+    // step on `expectScreen(containsAny: [username])` — but the
+    // account's username sits permanently in the zsh `PS1` prompt
+    // (see `/etc/zshrc`), so that gate was satisfied by the *previous*
+    // command's leftover prompt the instant the screen was first
+    // polled, before the `systemsetup` sudo call it was meant to wait
+    // for had necessarily finished. It synchronized nothing — a
+    // self-satisfying gate, provable by inspection rather than a live
+    // run (unlike bug #4/gate-12, which needed a live e2e capture).
+    //
+    // The fix appends a one-shot marker to the *end* of each command
+    // this file types into Terminal, joined with `;` so it runs
+    // unconditionally after the preceding command completes
+    // (regardless of that command's exit status — this automation
+    // cares that the shell is idle and ready for the next line, not
+    // that `sudo` itself succeeded) and gates the following step on
+    // that marker appearing. Unlike the username, a freshly-echoed
+    // token cannot already be on screen from a previous command.
+    //
+    // The one subtlety: the marker must not appear in the *typed*
+    // command line itself, only in the command's *executed output*.
+    // OCR cannot distinguish "this text is on screen because it was
+    // just typed and hasn't run yet" from "this text is on screen
+    // because the command that produced it already finished" — both
+    // look identical to `expectScreen`'s poll. A naive
+    // `; echo SPOOK_OK_MKDIR` fails exactly this test: the moment
+    // `sudo mkdir -p '...'; echo SPOOK_OK_MKDIR` is typed (before
+    // Return is even pressed), the marker `SPOOK_OK_MKDIR` is already
+    // visible on screen as part of the as-typed command line, so the
+    // gate would resolve immediately — the same self-satisfaction bug
+    // this whole mechanism exists to fix, just relocated.
+    //
+    // ``sentinelEcho(_:)`` avoids that by splitting the token's
+    // literal quoting around the fixed `"OK"` segment:
+    // `echo SPOOK_"OK"_MKDIR`. Shell word concatenation (quoted and
+    // unquoted fragments with no separating whitespace join into one
+    // word — standard, unambiguous POSIX/zsh behavior, not a zsh-
+    // specific extension) makes the *executed* output exactly
+    // `SPOOK_OK_MKDIR`, while the *typed* line contains the literal
+    // substring `SPOOK_"OK"_MKDIR` — the embedded quote characters
+    // break contiguity, so `typed.contains(marker)` is false. Verified
+    // empirically on this host's zsh (the same shell macOS Setup
+    // Assistant's Terminal.app opens by default):
+    // `zsh -c 'echo SPOOK_"OK"_MKDIR'` prints `SPOOK_OK_MKDIR`. An
+    // arithmetic-expansion form (`SPOOK_$((40+2))_DONE` typed,
+    // `SPOOK_42_DONE` executed) also verified working, but was not
+    // chosen: it ties every token to a hand-checked sum, is harder to
+    // read at the call site, and buys no additional collision safety
+    // over the simpler quote split.
+    //
+    // `SetupAutomationTests`'s "sentinel markers never appear in typed
+    // text" test is the regression guard for this exact failure mode.
+
+    /// Builds the on-screen marker a sentinel's *executed output*
+    /// produces for the given phase token.
+    ///
+    /// - Parameter token: A short, phase-identifying label (e.g.
+    ///   `"MKDIR"`, `"SSHON"`). Uppercase by convention, to stand out
+    ///   from surrounding shell/OCR text.
+    /// - Returns: The exact string an `expectScreen` gate should wait
+    ///   for, e.g. `sentinelMarker("MKDIR")` returns `"SPOOK_OK_MKDIR"`.
+    private static func sentinelMarker(_ token: String) -> String {
+        "SPOOK_OK_\(token)"
+    }
+
+    /// Builds the shell fragment appended to a typed Terminal command
+    /// so that command's completion echoes ``sentinelMarker(_:)``'s
+    /// text as fresh output — see the "One-Shot Completion Sentinels"
+    /// section comment above this declaration for the full design
+    /// rationale, including why the token is quote-split instead of
+    /// written plainly.
+    ///
+    /// - Parameter token: The same phase-identifying label passed to
+    ///   ``sentinelMarker(_:)`` for the matching gate.
+    /// - Returns: A `; echo ...`-prefixed fragment ready to append
+    ///   directly to a command string, e.g. `sentinelEcho("MKDIR")`
+    ///   returns `"; echo SPOOK_\"OK\"_MKDIR"`.
+    private static func sentinelEcho(_ token: String) -> String {
+        "; echo SPOOK_\"OK\"_\(token)"
     }
 
     // MARK: - Zero-Touch Provisioner Install
@@ -676,32 +794,34 @@ public enum SetupAutomation {
     /// (`Create.swift`'s `automateSetupAssistant`) starts polling
     /// for SSH.
     ///
-    /// A screen gate opens this function, confirming the shell
-    /// prompt from the `systemsetup` call in
-    /// ``enableSSHSteps(password:)`` actually returned — i.e. the
-    /// terminal is idle and ready for the next command — before
-    /// `sudo mkdir` is typed. macOS's default shell prompt includes
-    /// the logged-in account name (`zsh`'s default `PS1`; see
-    /// `/etc/zshrc` and `man zshmisc` PROMPT EXPANSION), so the
-    /// account's own `username` — already known and unique to this
-    /// automation run, not a guess at Setup Assistant UI copy — is a
-    /// reliable, locale-independent marker for "the prompt is back."
-    private static func installProvisionerSteps(username: String, password: String) -> [BootStep] {
+    /// Every command carries a ``sentinelEcho(_:)`` and is followed
+    /// by an `expectScreen` gate on the matching
+    /// ``sentinelMarker(_:)`` — including the very first `mkdir`,
+    /// which no longer needs its own opening gate the way earlier
+    /// revisions did: ``enableSSHSteps(password:)`` now gates on its
+    /// own `"SSHON"` sentinel immediately before returning, so by the
+    /// time this function's first step runs, the `systemsetup`
+    /// command it used to wait on (via the now-removed, self-
+    /// satisfying `expectScreen(containsAny: [username])` gate — see
+    /// the "One-Shot Completion Sentinels" section comment above
+    /// ``sentinelMarker(_:)`` for why that was broken) has already
+    /// been confirmed complete by the caller.
+    private static func installProvisionerSteps(password: String) -> [BootStep] {
         let pkgPath = "\(provisionMountPoint)/\(AppBundleBootstrapTemplate.provisionerPkgFileName)"
 
-        func sudoStep(_ command: String) -> [BootStep] {
+        func sudoStep(_ command: String, sentinel token: String) -> [BootStep] {
             [
-                BootStep(delay: 5, action: .text(command)),
+                BootStep(delay: 5, action: .text(command + sentinelEcho(token))),
                 BootStep(delay: 0, action: enter),
                 BootStep(delay: 5, action: .text(password)),
                 BootStep(delay: 0, action: enter),
+                BootStep(delay: 0, action: .expectScreen(containsAny: [sentinelMarker(token)], timeout: 60)),
             ]
         }
 
-        return [BootStep(delay: 0, action: .expectScreen(containsAny: [username], timeout: 60))]
-            + sudoStep("sudo mkdir -p '\(provisionMountPoint)'")
-            + sudoStep("sudo mount_virtiofs \(provisionShareTag) '\(provisionMountPoint)'")
-            + sudoStep("sudo installer -pkg '\(pkgPath)' -target /")
+        return sudoStep("sudo mkdir -p '\(provisionMountPoint)'", sentinel: "MKDIR")
+            + sudoStep("sudo mount_virtiofs \(provisionShareTag) '\(provisionMountPoint)'", sentinel: "MOUNT")
+            + sudoStep("sudo installer -pkg '\(pkgPath)' -target /", sentinel: "PKG")
             + [BootStep(delay: 20, action: .wait(0))]
     }
 

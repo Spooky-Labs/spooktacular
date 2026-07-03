@@ -257,6 +257,95 @@ struct SetupAutomationExecutorTests {
         }
     }
 
+    // MARK: - Accurate Re-Scan on Timeout
+
+    @Test("On timeout, the saved OCR dump prefers a fresh accurate re-scan over the last (fast-level) poll, when the reader supports one")
+    func timeoutPrefersAccurateRescanForSavedDump() async throws {
+        let tempDir = TempDirectory()
+        let driver = RecordingKeyboardDriver()
+        let reader = AccurateCapableScreenReader(
+            frames: [[recognized("Fast Level Text")]],
+            accurateFrame: [recognized("Accurate Level Text")]
+        )
+        let steps = [
+            BootStep(delay: 0, action: .expectScreen(containsAny: ["Right Screen"], timeout: 0.02)),
+        ]
+
+        await #expect(throws: SetupAutomationExecutorError.self) {
+            try await SetupAutomationExecutor.run(
+                steps: steps,
+                using: driver,
+                screenReader: reader,
+                diagnosticsDirectory: tempDir.url,
+                screenGatePollInterval: 0.01
+            )
+        }
+
+        #expect(reader.recognizeTextAccurateCallCount == 1)
+        let textURL = tempDir.file("automation-failure-step1.txt")
+        let dump = try String(contentsOf: textURL, encoding: .utf8)
+        #expect(dump.contains("Accurate Level Text"))
+        #expect(!dump.contains("Fast Level Text"))
+    }
+
+    @Test("On timeout, the thrown error's excerpt still reflects the last poll, even when an accurate re-scan exists for the saved dump")
+    func timeoutErrorExcerptUsesLastPollNotAccurateRescan() async throws {
+        let driver = RecordingKeyboardDriver()
+        let reader = AccurateCapableScreenReader(
+            frames: [[recognized("Fast Level Text")]],
+            accurateFrame: [recognized("Accurate Level Text")]
+        )
+        let steps = [
+            BootStep(delay: 0, action: .expectScreen(containsAny: ["Right Screen"], timeout: 0.02)),
+        ]
+
+        do {
+            try await SetupAutomationExecutor.run(
+                steps: steps,
+                using: driver,
+                screenReader: reader,
+                screenGatePollInterval: 0.01
+            )
+            Issue.record("Expected the gate to time out")
+        } catch let error as SetupAutomationExecutorError {
+            guard case .screenGateTimedOut(_, _, _, let actualTextExcerpt, _, _) = error else {
+                Issue.record("Expected .screenGateTimedOut, got \(error)")
+                return
+            }
+            // Cheap-and-already-in-hand for the thrown error; the
+            // extra Vision latency of an accurate re-scan is spent
+            // only once, on the saved dump — see
+            // `timeoutPrefersAccurateRescanForSavedDump`.
+            #expect(actualTextExcerpt.contains("Fast Level Text"))
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test("On timeout, if the accurate re-scan throws, the saved dump falls back to the last poll's OCR instead of losing the artifact")
+    func timeoutFallsBackToLastPollWhenAccurateRescanThrows() async throws {
+        let tempDir = TempDirectory()
+        let driver = RecordingKeyboardDriver()
+        let reader = ThrowingAccurateScreenReader(frames: [[recognized("Fast Level Text")]])
+        let steps = [
+            BootStep(delay: 0, action: .expectScreen(containsAny: ["Right Screen"], timeout: 0.02)),
+        ]
+
+        await #expect(throws: SetupAutomationExecutorError.self) {
+            try await SetupAutomationExecutor.run(
+                steps: steps,
+                using: driver,
+                screenReader: reader,
+                diagnosticsDirectory: tempDir.url,
+                screenGatePollInterval: 0.01
+            )
+        }
+
+        let textURL = tempDir.file("automation-failure-step1.txt")
+        let dump = try String(contentsOf: textURL, encoding: .utf8)
+        #expect(dump.contains("Fast Level Text"))
+    }
+
     @Test("screenGateTimedOut's error description names the step and includes the actual-text excerpt")
     func screenGateTimedOutErrorDescriptionIsActionable() {
         let error = SetupAutomationExecutorError.screenGateTimedOut(
@@ -362,5 +451,60 @@ private final class ScreenshotCapableScreenReader: ScreenReader, ScreenshotCaptu
     func capturePNG() async throws -> Data? {
         capturePNGCallCount += 1
         return pngData
+    }
+}
+
+/// A ``ScriptedScreenReader`` that also conforms to
+/// ``AccurateTextCapturing``, returning a fixed, distinguishable
+/// frame from ``recognizeTextAccurate()`` — separate from whatever
+/// ``recognizeText()``'s scripted (fast-level) frames say — so a test
+/// can prove which of the two the saved diagnostic dump actually
+/// used.
+private final class AccurateCapableScreenReader: ScreenReader, AccurateTextCapturing, @unchecked Sendable {
+    private let inner: ScriptedScreenReader
+    private let accurateFrame: [RecognizedText]
+    private(set) var recognizeTextAccurateCallCount = 0
+
+    init(frames: [[RecognizedText]], accurateFrame: [RecognizedText]) {
+        self.inner = ScriptedScreenReader(frames: frames)
+        self.accurateFrame = accurateFrame
+    }
+
+    func recognizeText() async throws -> [RecognizedText] {
+        try await inner.recognizeText()
+    }
+
+    func waitForText(_ text: String, timeout: TimeInterval) async throws -> RecognizedText {
+        try await inner.waitForText(text, timeout: timeout)
+    }
+
+    func recognizeTextAccurate() async throws -> [RecognizedText] {
+        recognizeTextAccurateCallCount += 1
+        return accurateFrame
+    }
+}
+
+/// A ``ScriptedScreenReader`` that also conforms to
+/// ``AccurateTextCapturing``, but whose accurate pass always throws —
+/// exercises the "fall back to the last poll's OCR" path when a
+/// second, more-accurate Vision request fails after the routine
+/// (fast-level) polling already succeeded.
+private final class ThrowingAccurateScreenReader: ScreenReader, AccurateTextCapturing, @unchecked Sendable {
+    private let inner: ScriptedScreenReader
+
+    init(frames: [[RecognizedText]]) {
+        self.inner = ScriptedScreenReader(frames: frames)
+    }
+
+    func recognizeText() async throws -> [RecognizedText] {
+        try await inner.recognizeText()
+    }
+
+    func waitForText(_ text: String, timeout: TimeInterval) async throws -> RecognizedText {
+        try await inner.waitForText(text, timeout: timeout)
+    }
+
+    func recognizeTextAccurate() async throws -> [RecognizedText] {
+        throw ScreenReaderError.textNotFound("accurate rescan unavailable", timeout: 0)
     }
 }

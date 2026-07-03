@@ -25,21 +25,49 @@ import Vision
 /// It also conforms to ``ScreenshotCapturing``, reusing the same
 /// bitmap capture to hand back PNG data — `SetupAutomationExecutor`
 /// uses this to save a screenshot alongside the OCR dump when a
-/// screen gate times out.
+/// screen gate times out. It further conforms to
+/// ``AccurateTextCapturing`` for that same failure path's OCR dump —
+/// see ``recognizeTextAccurate()``.
 ///
 /// ## Polling Strategy
 ///
-/// ``waitForText(_:timeout:)`` polls every 2 seconds, which balances
-/// responsiveness with CPU usage. Setup Assistant screen transitions
-/// typically take 1--5 seconds, so 2-second polling catches most
-/// transitions within one poll cycle.
+/// ``recognizeText()`` — used both by ``waitForText(_:timeout:)``'s
+/// own poll loop and by `SetupAutomationExecutor`'s `expectScreen`
+/// gate loop — runs on the main actor and blocks it for the duration
+/// of each Vision request, every poll interval, for as long as a gate
+/// is open (up to its timeout). Two choices keep that cost down
+/// without weakening what a gate actually detects:
+///
+/// - **Recognition level: `.fast`.** Per Apple's documentation,
+///   [`.fast`](https://developer.apple.com/documentation/vision/vnrequesttextrecognitionlevel/fast)
+///   "returns results more quickly at the expense of accuracy" and is
+///   "optimized for" real-time reading, while
+///   [`.accurate`](https://developer.apple.com/documentation/vision/vnrequesttextrecognitionlevel/accurate)
+///   "takes more time to produce a more comprehensive result." Every
+///   string this project gates or clicks on (``BootAction/expectScreen(containsAny:timeout:)``,
+///   ``BootAction/clickText(_:timeout:)``, ``BootAction/waitForText(_:timeout:)``)
+///   is a whole word or short phrase of large, high-contrast Setup
+///   Assistant/Terminal UI text — exactly the "real-time reading"
+///   case `.fast` targets, not small or stylized text where the
+///   accuracy gap matters. ``recognizeTextAccurate()`` still exists,
+///   at `.accurate`, purely for the one-shot diagnostic capture a
+///   timed-out gate saves to disk, where the extra latency is paid
+///   once instead of every poll.
+/// - **Poll interval: 3 seconds** (was 2). Setup Assistant screen
+///   transitions typically take 1--5 seconds, so a 3-second cadence
+///   still catches most transitions within one or two poll cycles
+///   while cutting the number of main-actor-blocking Vision requests
+///   issued over a long gate wait by a third relative to the previous
+///   2-second cadence — meaningful given `.fast` is already the
+///   cheaper level; the two changes compound rather than substitute
+///   for each other.
 ///
 /// ## Thread Safety
 ///
 /// All methods are `@MainActor` because `VZVirtualMachineView` and
 /// `NSBitmapImageRep` must be accessed on the main thread.
 @MainActor
-public final class VZScreenReader: ScreenReader, ScreenshotCapturing {
+public final class VZScreenReader: ScreenReader, ScreenshotCapturing, AccurateTextCapturing {
 
     /// The VM view to capture.
     private let vmView: VZVirtualMachineView
@@ -52,8 +80,9 @@ public final class VZScreenReader: ScreenReader, ScreenshotCapturing {
     /// - Parameters:
     ///   - vmView: The `VZVirtualMachineView` to capture for OCR.
     ///   - pollInterval: Seconds between screen captures when polling.
-    ///     Defaults to 2 seconds.
-    public init(vmView: VZVirtualMachineView, pollInterval: TimeInterval = 2) {
+    ///     Defaults to 3 seconds — see this type's "Polling Strategy"
+    ///     documentation for why.
+    public init(vmView: VZVirtualMachineView, pollInterval: TimeInterval = 3) {
         self.vmView = vmView
         self.pollInterval = pollInterval
     }
@@ -82,12 +111,21 @@ public final class VZScreenReader: ScreenReader, ScreenshotCapturing {
     // MARK: - ScreenReader
 
     /// Captures the VM's current display and recognizes every
-    /// visible text region via Vision OCR.
+    /// visible text region via Vision OCR, at the given recognition
+    /// level.
     ///
+    /// Shared implementation behind ``recognizeText()`` (`.fast`,
+    /// used for routine polling) and ``recognizeTextAccurate()``
+    /// (`.accurate`, used for one-shot diagnostic capture) — see this
+    /// type's "Polling Strategy" documentation for why they differ.
+    ///
+    /// - Parameter level: The Vision recognition level to request.
     /// - Returns: Recognized text regions with bounding boxes and
     ///   confidence scores, or an empty array if the view couldn't
     ///   be captured.
-    public func recognizeText() async throws -> [SpooktacularCore.RecognizedText] {
+    private func recognizeText(
+        level: VNRequestTextRecognitionLevel
+    ) async throws -> [SpooktacularCore.RecognizedText] {
         guard let bitmap = captureBitmap() else {
             // captureBitmap() already logged the specific reason.
             return []
@@ -99,7 +137,7 @@ public final class VZScreenReader: ScreenReader, ScreenshotCapturing {
 
         // Run Vision OCR.
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
+        request.recognitionLevel = level
         let handler = VNImageRequestHandler(cgImage: cgImage)
         try handler.perform([request])
 
@@ -125,9 +163,36 @@ public final class VZScreenReader: ScreenReader, ScreenshotCapturing {
         }
 
         Log.provision.debug(
-            "VZScreenReader: recognized \(results.count) text region(s)"
+            "VZScreenReader: recognized \(results.count) text region(s) at \(String(describing: level), privacy: .public) level"
         )
         return results
+    }
+
+    /// Captures the VM's current display and recognizes every
+    /// visible text region via Vision OCR at `.fast` recognition —
+    /// see this type's "Polling Strategy" documentation for why.
+    ///
+    /// - Returns: Recognized text regions with bounding boxes and
+    ///   confidence scores, or an empty array if the view couldn't
+    ///   be captured.
+    public func recognizeText() async throws -> [SpooktacularCore.RecognizedText] {
+        try await recognizeText(level: .fast)
+    }
+
+    // MARK: - AccurateTextCapturing
+
+    /// Captures the VM's current display and recognizes every
+    /// visible text region via Vision OCR at `.accurate` recognition
+    /// — reserved for the one-shot diagnostic capture a timed-out
+    /// screen gate saves to disk (see ``AccurateTextCapturing``'s
+    /// documentation). Routine polling uses ``recognizeText()``'s
+    /// cheaper `.fast` level instead.
+    ///
+    /// - Returns: Recognized text regions with bounding boxes and
+    ///   confidence scores, or an empty array if the view couldn't
+    ///   be captured.
+    public func recognizeTextAccurate() async throws -> [SpooktacularCore.RecognizedText] {
+        try await recognizeText(level: .accurate)
     }
 
     /// Polls the VM's display every ``pollInterval`` seconds until

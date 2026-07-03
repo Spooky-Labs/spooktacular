@@ -142,6 +142,31 @@ struct SetupAutomationTests {
             }
             #expect(hasUTC, "Must set timezone to UTC")
         }
+
+        @Test(
+            "Country screen is confirmed via a screen-reader click on 'Continue', not a blind keystroke",
+            arguments: [15, 26]
+        )
+        func countryScreenConfirmsViaClickText(version: Int) throws {
+            // Regression test for live e2e gate 12/100
+            // (`plans/e2e-notes-2026-07.md`, ATTEMPT 4): a blind
+            // `shiftTab` + `space` confirm left "United States"
+            // selected and "Continue" visibly enabled but never
+            // clicked, so the next screen gate timed out. The fix
+            // reads the actual screen and clicks the button instead
+            // of guessing a Tab-focus chain.
+            let steps = try SetupAutomation.sequence(for: version)
+            let countryTextIndex = try #require(steps.firstIndex { step in
+                if case .text(let text) = step.action { return text == "united states" }
+                return false
+            })
+            let confirmAction = steps[countryTextIndex + 1].action
+            guard case .clickText(let label, _) = confirmAction else {
+                Issue.record("Expected the country selection to be confirmed via clickText, got \(confirmAction)")
+                return
+            }
+            #expect(label == "Continue")
+        }
     }
 
     // MARK: - Username and Password Customization
@@ -223,9 +248,17 @@ struct SetupAutomationTests {
             let steps = try SetupAutomation.sequence(for: version, installProvisioner: true)
             let hasInstallerCommand = steps.contains { step in
                 if case .text(let text) = step.action {
-                    return text == "sudo installer -pkg "
-                        + "'/Library/Application Support/Spooktacular/provision/Spooktacular Provisioner.pkg' "
-                        + "-target /"
+                    // Suffixed with a one-shot completion sentinel
+                    // (`; echo SPOOK_"OK"_PKG`) rather than matched
+                    // exactly — see the "sentinel markers never
+                    // appear in typed text" regression test below for
+                    // why the typed and executed forms of that
+                    // sentinel deliberately differ.
+                    return text.hasPrefix(
+                        "sudo installer -pkg "
+                            + "'/Library/Application Support/Spooktacular/provision/Spooktacular Provisioner.pkg' "
+                            + "-target /"
+                    )
                 }
                 return false
             }
@@ -240,7 +273,7 @@ struct SetupAutomationTests {
                 return nil
             }
             let mountIndex = try #require(textSteps.first {
-                $0.1 == "sudo mount_virtiofs spook-provision '/Library/Application Support/Spooktacular/provision'"
+                $0.1.hasPrefix("sudo mount_virtiofs spook-provision '/Library/Application Support/Spooktacular/provision'")
             }?.0)
             let installIndex = try #require(textSteps.first {
                 $0.1.hasPrefix("sudo installer -pkg ")
@@ -256,7 +289,7 @@ struct SetupAutomationTests {
                 return nil
             }
             let mkdirIndex = try #require(textSteps.first {
-                $0.1 == "sudo mkdir -p '/Library/Application Support/Spooktacular/provision'"
+                $0.1.hasPrefix("sudo mkdir -p '/Library/Application Support/Spooktacular/provision'")
             }?.0)
             let mountIndex = try #require(textSteps.first {
                 $0.1.hasPrefix("sudo mount_virtiofs")
@@ -464,7 +497,7 @@ struct SetupAutomationTests {
             return false
         }
 
-        @Test("installProvisioner: true gates the provisioner phase on the shell prompt returning, before the first sudo command")
+        @Test("installProvisioner: true gates the provisioner phase on a one-shot sentinel, never the (permanently visible) username")
         func provisionerPhaseIsGatedOnShellPrompt() throws {
             let steps = try SetupAutomation.sequence(for: 15, username: "runner", installProvisioner: true)
             let gates = Self.expectScreenSteps(steps)
@@ -476,10 +509,79 @@ struct SetupAutomationTests {
                 gates.last { $0.index < mkdirIndex },
                 "The provisioner phase must be gated before its first sudo command"
             )
+            // The account's own username sits permanently in the zsh
+            // `PS1` prompt (`/etc/zshrc`), so a gate that waits for it
+            // is satisfied by *any* prior command's leftover prompt —
+            // resolving instantly and synchronizing nothing. This is
+            // the exact self-satisfaction bug a one-shot sentinel
+            // (``SetupAutomation/sentinelMarker(_:)``) replaces.
             #expect(
-                precedingGate.markers.contains("runner"),
-                "The provisioner-phase gate should use the created account's own username as its marker"
+                !precedingGate.markers.contains("runner"),
+                "The gate must not use the account username as its marker"
             )
+            #expect(
+                precedingGate.markers.contains { $0.hasPrefix("SPOOK_OK_") },
+                "The provisioner phase must be gated on a one-shot sentinel marker"
+            )
+        }
+
+        @Test("installProvisioner: true gates every sudo command on its own sentinel before the next command is typed")
+        func eachProvisionerCommandGatedBeforeNext() throws {
+            let steps = try SetupAutomation.sequence(for: 15, installProvisioner: true)
+            let gates = Self.expectScreenSteps(steps)
+            let commandOrder = ["mkdir", "mount_virtiofs", "installer"]
+            let commandIndices = try commandOrder.map { fragment in
+                try #require(steps.firstIndex { step in
+                    if case .text(let text) = step.action { return text.contains(fragment) }
+                    return false
+                })
+            }
+            for pair in zip(commandIndices, commandIndices.dropFirst()) {
+                #expect(
+                    gates.contains { $0.index > pair.0 && $0.index < pair.1 },
+                    "Must gate on a completion sentinel between typing one provisioner command and the next"
+                )
+            }
+        }
+
+        @Test("Sentinel gate markers never appear verbatim in any typed command — regression guard against self-satisfying gates")
+        func sentinelMarkersNeverAppearInTypedText() throws {
+            let steps = try SetupAutomation.sequence(for: 15, installProvisioner: true)
+            let gates = Self.expectScreenSteps(steps)
+            let sentinelMarkers = Set(gates.flatMap(\.markers).filter { $0.hasPrefix("SPOOK_OK_") })
+            #expect(!sentinelMarkers.isEmpty, "Expected at least one sentinel-gated step in the sequence")
+
+            let typedStrings = steps.compactMap { step -> String? in
+                if case .text(let text) = step.action { return text }
+                return nil
+            }
+            for marker in sentinelMarkers {
+                for typed in typedStrings {
+                    #expect(
+                        !typed.contains(marker),
+                        """
+                        Typed command '\(typed)' contains sentinel marker '\(marker)' verbatim — the gate would \
+                        resolve while the command is still on screen mid-type, before it has actually executed, \
+                        exactly the self-satisfaction bug this sentinel design fixes.
+                        """
+                    )
+                }
+            }
+        }
+
+        @Test("enableSSHSteps gates on the systemsetup command's own completion sentinel after it is typed")
+        func sshEnableIsGatedOnItsOwnSentinel() throws {
+            let steps = try SetupAutomation.sequence(for: 15)
+            let gates = Self.expectScreenSteps(steps)
+            let sshonGate = try #require(
+                gates.first { $0.markers.contains("SPOOK_OK_SSHON") },
+                "Must gate on the systemsetup command's completion sentinel"
+            )
+            let sudoIndex = try #require(steps.firstIndex { step in
+                if case .text(let text) = step.action { return text.contains("setremotelogin") }
+                return false
+            })
+            #expect(sshonGate.index > sudoIndex, "The SSHON gate must come after the systemsetup command is typed")
         }
 
         @Test("Terminal/SSH phase gates Spotlight opening before Terminal is typed, and a shell prompt before the sudo command")
