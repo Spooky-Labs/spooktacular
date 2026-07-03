@@ -1,1 +1,1 @@
-Double your Mac capacity. Same hardware. Two macOS VMs per Mac, ephemeral CI runners, Kubernetes operator, RFC 6962 audit, MIT licensed.
+Double your Mac capacity. Same hardware. Two macOS VMs per Mac, zero-touch GitHub Actions runners, remote desktop, MIT licensed.
