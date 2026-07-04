@@ -2,9 +2,7 @@ git_url("https://github.com/Spooky-Labs/spooktacular-certificates")
 storage_mode("git")
 type("appstore")
 
-# Both the host app and its bundled `.systemextension` are
-# signed by the same team, so they share one match repo.
-app_identifier([
-  "com.spooktacular.app",
-  "com.spooktacular.app.NetworkFilter",
-])
+# The host app is the only App Store-signed bundle. (The former
+# bundled `.systemextension` — com.spooktacular.app.NetworkFilter —
+# was removed in the descope, so it no longer needs a profile.)
+app_identifier(["com.spooktacular.app"])
