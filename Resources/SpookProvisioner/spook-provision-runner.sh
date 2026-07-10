@@ -51,6 +51,16 @@ if [ ! -f "${SCRIPT_PATH}" ]; then
     exit 0
 fi
 
+# The framework creates the provisioning account (VZMacGuestProvisioningOptions)
+# during early boot; this RunAtLoad daemon can fire before it exists. Wait
+# (bounded ~2 min) for the account before running the user script, which may
+# `sudo -u` it (e.g. the GitHub runner config).
+RUNNER_USER="${SPOOK_PROVISION_USER:-runner}"
+for _ in $(seq 1 60); do
+    id "${RUNNER_USER}" >/dev/null 2>&1 && break
+    sleep 2
+done
+
 log "running first-boot script"
 /bin/bash "${SCRIPT_PATH}" \
     > "${STDOUT_LOG}" \
