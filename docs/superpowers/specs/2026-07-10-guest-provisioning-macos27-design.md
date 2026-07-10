@@ -265,3 +265,117 @@ job runs on the ephemeral runner (the milestone the OCR path never reached).
   own plan task; the first shippable increment targets root-on-EC2-Mac
   (`DirectPrivilegedFileOps`).
 - Multi-tenant / control-plane concerns (separate pending decision).
+
+## Verification results
+
+**Status: VERIFIED** — all four Phase-1 facts confirmed empirically on a live
+macOS 27 guest. This is the verify-before-delete gate for Phase 4.
+
+**Date:** 2026-07-10. **Host:** macOS 27.0 (26A5378j), SDK 27.0, Mac14,2
+(Apple silicon). **Method:** throwaway, virtualization-entitlement-signed Swift
+harness (not committed to `Sources/`) that installed macOS 27 into a temp bundle
+via `VZMacOSInstaller`, then booted headless with
+`VZMacOSVirtualMachineStartOptions.setGuestProvisioning(_:)` carrying
+`VZMacGuestProvisioningOptions(username: "probe", password: <random>,
+fullName: "Probe", logsInAutomatically: true, enablesRemoteLogin: true)`. VM
+reached the network in ~12 s and sshd in ~48 s; verification was over
+password SSH (`probe@192.168.64.101`), IP resolved from `/var/db/dhcpd_leases`.
+
+**Guest IPSW:** macOS 27.0 beta 3, build **26A5378j**
+(`UniversalMac_27.0_26A5378j_Restore.ipsw`, 22,567,352,533 bytes,
+SHA1 `38d473d910d99d53a635a3a6971248d55f1ec257` — matches Apple's CDN
+`x-amz-meta-digest-sh1`). Cached at
+`~/.spooktacular/cache/ipsw/UniversalMac_27.0_26A5378j_Restore.ipsw`.
+
+> **IPSW-acquisition caveat (affects the real create flow):**
+> `VZMacOSRestoreImage.latestSupported` returned **macOS 26.5.2 (25F84)**, not
+> 27 — Apple's `latestSupported` / the public
+> `com_apple_macOSIPSW.xml` catalog track the latest *release*, not the
+> installed *beta*. The macOS 27 beta IPSW is not served through
+> `latestSupported`; it must be fetched from the seed CDN URL directly
+> (`softwareupdate --fetch-full-installer` only yields an installer app, not an
+> IPSW usable by `VZMacOSInstaller`). The later e2e/CLI work must not rely on
+> `latestSupported` to obtain a 27 guest — pass an explicit
+> `--from-ipsw`/local path.
+
+**setGuestProvisioning accepted the options** (validation passed;
+`startOptions.guestProvisioningOptions?.username` read back `"probe"`) —
+`GUEST_PROVISIONING_SET username=probe logsInAutomatically=true enablesRemoteLogin=true`.
+
+### Fact 1 — framework-created user is an admin: **CONFIRMED**
+
+`id probe` includes `80(admin)`; `sudo -v` → succeeded (`SUDO_V_OK`);
+`sudo id` → `uid=0(root) gid=0(wheel) …`. The framework-provisioned account has
+full admin/sudo.
+
+### Fact 2 — Setup Assistant skipped to a usable state: **CONFIRMED**
+
+`/var/db/.AppleSetupDone` present (`root:wheel`, born 04:39:40, ~T+105 s after
+the 04:37:55 boot); `autoLoginUser = probe`; a live Aqua session
+(`who` → `probe console`, with `Dock` (pid 679), `Finder` (683), and
+`loginwindow` (107) all running). No login-wall stall — SSH and an
+auto-logged-in desktop were both reachable. (Two `Setup Assistant.app` *migration/backup*
+background helpers — `mbsystemadministration`, `mbbackgrounduseragent` — were
+present but are not the interactive setup wall; `.AppleSetupDone` + the live
+console session prove setup is complete.)
+
+### Fact 3 — `enablesRemoteLogin` actually enables sshd: **CONFIRMED**
+
+Port 22 opened ~48 s after boot; password SSH succeeded; explicit
+`systemsetup -getremotelogin` → **`Remote Login: On`**. Setting
+`enablesRemoteLogin = true` turns on Remote Login/sshd.
+
+### Fact 4 — a `RunAtLoad` root LaunchDaemon coexists with framework provisioning: **CONFIRMED**
+
+A trivial `RunAtLoad` daemon (`/Library/LaunchDaemons/com.spook.probe.plist`,
+`root:wheel` 0644 → `/usr/local/libexec/spook-probe.sh`, `root:wheel` 0755) was
+installed and the VM rebooted. After reboot (new boot time 04:43:49, later than
+the original 04:37:55 — a real reboot), `/var/tmp/spook-daemon-ran` existed with:
+
+```
+Fri Jul 10 04:44:22 PDT 2026
+uid=0(root) gid=0(wheel) groups=0(wheel),1(daemon),…,20(staff),80(admin),…
+boottime: { sec = 1783683829, … } Fri Jul 10 04:43:49 2026
+```
+
+The daemon **ran as `uid=0(root)`**, and the framework-provisioned account
+**persisted and stayed admin** (`id probe` → `80(admin)`), with auto-login
+re-established (`who` → `probe console`). Framework account-creation and a
+`RunAtLoad` root daemon coexist; both run on boot.
+
+**Daemon-vs-account timing (informs the `first-boot.sh` account-wait):** on the
+**first** boot the framework created the `probe` account late — home dir born
+04:38:49 (**~T+54 s** after the 04:37:55 boot), dslocal plist finalized 04:41:10.
+A `RunAtLoad` daemon fires early in boot (the injected probe ran at **~T+33 s**
+post-reboot; stock `RunAtLoad` daemons run in the first seconds). **Therefore a
+`RunAtLoad` daemon fires BEFORE the framework account exists on first boot** —
+confirming the design's bounded account-wait in `spook-provision-runner.sh` /
+`first-boot.sh` is necessary (Plan Task 5, Step 5).
+
+### Harness-signing note (for the later e2e/CLI signing)
+
+Signing the harness with the full app entitlements file
+(`Spooktacular.entitlements`, which carries
+`com.apple.application-identifier` + `com.apple.developer.team-identifier`)
+made the *bare CLI* binary hang at launch (no provisioning profile embedded) —
+process stuck before `main`, killed by watchdog. Re-signing with a
+virtualization-only entitlements plist (just `com.apple.security.virtualization`,
+which is the only entitlement `VZVirtualMachine`/`VZMacOSInstaller`/
+`VZMacGuestProvisioningOptions` actually require) fixed it and the harness used
+Virtualization normally. Identity used: the same `Apple Development:` cert
+`build-app.sh` resolves. Takeaway: a standalone CLI/helper needs only the
+virtualization entitlement, not the app-identifier keys.
+
+### Pre-boot injection vs. in-guest injection (scope note)
+
+The harness could not perform the *host-side, pre-first-boot* daemon injection
+(mount the installed Data volume + `chown root:wheel`) because that needs host
+root and passwordless `sudo` was unavailable in this automated run. Fact 4 was
+instead proven by installing the same `root:wheel` `RunAtLoad` daemon in-guest
+(via the provisioned admin's `sudo`) and rebooting — which demonstrates the
+identical runtime property (a `root:wheel` `RunAtLoad` daemon runs as root and
+coexists with the provisioned account). The first-boot *ordering* is
+established from the timestamp evidence above (account @ ~T+54 s vs. RunAtLoad @
+~T+33 s). The production `DirectPrivilegedFileOps` path (Plan Task 4/6) requires
+`geteuid() == 0`, which is satisfied on EC2 Mac / under the root service, and is
+exercised end-to-end in Phase 3 (Task 10).
