@@ -55,7 +55,7 @@ jobs:
       #    try increasing the --depth"
       # and returns exit 1, which Danger's --fail-on-errors flips
       # into a build failure.
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -99,7 +99,7 @@ jobs:
     runs-on: macos-26
     needs: [lint]
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       # Reads `.ruby-version`, installs that Ruby, reads
       # `Gemfile.lock`'s `BUNDLED WITH` to install the matching
@@ -157,7 +157,7 @@ jobs:
     runs-on: macos-26
     needs: [lint]
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Build Spooktacular scheme via Xcode
         run: |

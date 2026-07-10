@@ -48,7 +48,7 @@ jobs:
       # — unlike the commit SHA, which wouldn't parse.
       BUILD_NUMBER: ${{ github.run_number }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # Full history so `git log` can populate the changelog
           # and match's Git remote can cache-resolve.
@@ -92,7 +92,7 @@ jobs:
     # and no `spooktacular-certificates` repo access — just xcodegen
     # + xcodebuild test. Only the `testflight` job above needs certs.
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: ruby/setup-ruby@v1
         with:
