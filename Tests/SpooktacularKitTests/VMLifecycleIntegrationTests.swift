@@ -164,48 +164,6 @@ struct VMLifecycleIntegrationTests {
         #expect(after.sourceVM == "base-image")
     }
 
-    // MARK: - Webhook replay protection (no VM, no network)
-
-    /// GitHub delivers each webhook with an `X-GitHub-Delivery`
-    /// UUID. A correctly-wired replay guard MUST reject the
-    /// same ID on a second delivery inside the skew window.
-    /// The controller already owns a general-purpose
-    /// ``UsedTicketCache`` — this test proves the idempotency
-    /// contract holds when treating the delivery ID as the JTI.
-    @Test("webhook replay protection — second delivery with same ID is rejected")
-    func webhookReplayIdempotent() {
-        let cache = UsedTicketCache(maxEntries: 16)
-        let deliveryID = "ef8a4c86-2b71-11f0-9d8a-0242ac120002"
-        let expiresAt = Date().addingTimeInterval(300)
-
-        let first = cache.tryConsume(
-            jti: deliveryID, expiresAt: expiresAt, maxUses: 1
-        )
-        let second = cache.tryConsume(
-            jti: deliveryID, expiresAt: expiresAt, maxUses: 1
-        )
-
-        #expect(first == true,
-                "first delivery must pass idempotency guard")
-        #expect(second == false,
-                "second delivery with same X-GitHub-Delivery must be rejected")
-    }
-
-    /// Distinct delivery IDs must each pass — we want replay
-    /// protection on collisions, not suppression of unrelated
-    /// events that happen to share a key prefix.
-    @Test("webhook replay protection — distinct delivery IDs both pass")
-    func webhookReplayDistinctDeliveriesPass() {
-        let cache = UsedTicketCache(maxEntries: 16)
-        let expiresAt = Date().addingTimeInterval(300)
-
-        let a = cache.tryConsume(jti: "delivery-a", expiresAt: expiresAt, maxUses: 1)
-        let b = cache.tryConsume(jti: "delivery-b", expiresAt: expiresAt, maxUses: 1)
-
-        #expect(a == true)
-        #expect(b == true)
-    }
-
     // MARK: - Capacity gate projection (no VM)
 
     /// Apple's EULA caps concurrent macOS guests at 2. The

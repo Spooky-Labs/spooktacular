@@ -347,11 +347,11 @@ public enum AdminPresenceError: Error, LocalizedError {
         case .bypassRefusedInStrictMode:
             "Run this command from an operator workstation with biometry/passcode configured. If strict mode was set by mistake, unset `SPOOKTACULAR_ADMIN_PRESENCE_STRICT` in the daemon environment."
         case .bypassTokenMissing:
-            "Mint a monthly consent token (`spook break-glass issue-presence-token --host <hostname>`) and export it as `SPOOKTACULAR_ADMIN_PRESENCE_BYPASS_TOKEN`."
+            "Mint a monthly consent token with your `BypassTokenVerifier`'s issuance tooling and export it as `SPOOKTACULAR_ADMIN_PRESENCE_BYPASS_TOKEN`."
         case .bypassVerifierNotConfigured:
             "Wire a `BypassTokenVerifier` through the CLI bootstrapper (see Serve.swift). Passing nil disables the bypass surface entirely — which is the intended default for any path that hasn't been explicitly configured for headless operation."
         case .bypassTokenInvalid:
-            "Check the token's expiry (tokens rotate monthly) and confirm the current hostname matches one in the token's allowlist. Re-issue with `spook break-glass issue-presence-token --host <hostname>` if rotation is due."
+            "Check the token's expiry (tokens rotate monthly) and confirm the current hostname matches one in the token's allowlist. Re-issue a fresh consent token via your `BypassTokenVerifier`'s issuance tooling if rotation is due."
         case .bypassAuditSinkNotConfigured:
             "Pass an AuditSink to `requirePresence(...)`. Operators who wire the admin surface by hand should use the same sink (OSLog / JSON file / append-only store) they use for control-plane audit."
         case .evaluationFailed:

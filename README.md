@@ -12,7 +12,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 26+](https://img.shields.io/badge/macOS-26+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-903_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-830_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Get Started](#quick-start) · [Build from Source](#building-from-source) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/)
 
@@ -173,7 +173,6 @@ Infrastructure wraps Apple frameworks.
 | `spook doctor` | Check if this Mac is ready to run VMs |
 | `spook rbac` | Manage roles and role assignments |
 | `spook bundle` | Bundle-level maintenance: protect, import, export |
-| `spook break-glass` | Issue and manage emergency-access tickets |
 | `spook iam` | Bind VMs to cloud IAM roles (AWS / GCP / Azure) |
 | `spook identity` | Manage SEP-bound signing keys (operator, host, OIDC) |
 | `spook sign-request` | Sign an HTTP request for the operator-to-API auth scheme |
@@ -240,7 +239,7 @@ Spooktacular supports **single-tenant** and **multi-tenant** deployment modes:
 
 - **Mandatory mTLS** in production — the control plane refuses to start without TLS certificates (TLS 1.3 floor, hot-reloadable)
 - **Hardware-bound break-glass signing via Secure Enclave (AAL3)** — emergency-access keys never leave the SEP; every signing operation gated by Touch ID / Watch / passcode
-- **Per-action MFA** — `LocalAuthentication` gates admin CLI commands (role assign/revoke, break-glass issuance); fails closed on headless hosts unless explicitly bypassed (every bypass logged)
+- **Per-action MFA** — `LocalAuthentication` gates admin CLI commands (role assign/revoke); fails closed on headless hosts unless explicitly bypassed (every bypass logged)
 - **Workload-identity federation** — VMs bind to a cloud IAM role (AWS/GCP/Azure); the host mints short-lived SEP-signed OIDC tokens, no long-lived credentials baked into images
 - **Per-request signed operator-to-API auth** — P-256 ECDSA request signing with nonce replay protection, no shared static tokens
 - **RBAC** — deny-by-default role assignments, multi-tenant isolation, and per-tenant VM quotas
@@ -284,7 +283,7 @@ Every release ships with:
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 903 tests (867 root + 36 SPICE packages)
+swift test               # Run 830 tests (794 root + 36 SPICE packages)
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -292,7 +291,7 @@ swift test               # Run 903 tests (867 root + 36 SPICE packages)
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (800 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (830 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [SBOM](https://github.com/Spooky-Labs/spooktacular/actions/workflows/sbom.yml) | PR (smoke test) | Validates SBOM generation produces valid SPDX JSON |
@@ -306,7 +305,7 @@ We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welco
 1. Fork the repo
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure `swift test` passes (903 tests: 867 root + 36 across Packages/)
+4. Ensure `swift test` passes (830 tests: 794 root + 36 across Packages/)
 5. Open a PR using our [PR template](.github/pull_request_template.md)
 
 ## License

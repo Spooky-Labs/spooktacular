@@ -20,8 +20,9 @@ extension Spooktacular {
     ///
     /// ```bash
     /// # Operator workstation (one-time):
-    /// spook break-glass keygen \
-    ///     --keychain-label alice-api \
+    /// spook identity keygen \
+    ///     --type operator \
+    ///     --label alice-api \
     ///     --public-key ~/alice-api.pem
     /// # Deploy alice-api.pem into the server's
     /// # SPOOKTACULAR_API_PUBLIC_KEYS_DIR as alice@acme.pem.
@@ -32,11 +33,10 @@ extension Spooktacular {
     ///     --curl-args | xargs curl https://spook.acme:8484
     /// ```
     ///
-    /// The subcommand re-uses the break-glass signing-key store —
-    /// operators who already have a Keychain-backed SEP key for
-    /// emergency access can use the same `--keychain-label` here.
-    /// Separate keys per purpose are also supported; the signing
-    /// primitive is the same either way.
+    /// The subcommand loads the key from the operator-identity
+    /// signing-key store (``P256KeyStore/Service/operatorIdentity``)
+    /// by `--keychain-label`; generate the key with `spook identity
+    /// keygen --type operator` first.
     struct SignRequest: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "sign-request",

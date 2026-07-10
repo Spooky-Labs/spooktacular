@@ -50,90 +50,7 @@ struct CryptoHardeningTests {
         }
     }
 
-    // MARK: - 7. Clock-skew direction (isFutureIssued)
-
-    @Suite("BreakGlass clock-skew direction")
-    struct BreakGlassSkew {
-
-        @Test("Ticket issued 61s in the future is rejected")
-        func futureIssuedRejected() {
-            let now = Date(timeIntervalSince1970: 1_700_000_000)
-            let ticket = BreakGlassTicket(
-                jti: "j", issuer: "alice", tenant: .default,
-                issuedAt: now.addingTimeInterval(61),
-                expiresAt: now.addingTimeInterval(3600)
-            )
-            #expect(ticket.isFutureIssued(now: now, clockSkew: 60))
-        }
-
-        @Test("Ticket issued 59s in the future is accepted")
-        func futureIssuedInToleranceAccepted() {
-            let now = Date(timeIntervalSince1970: 1_700_000_000)
-            let ticket = BreakGlassTicket(
-                jti: "j", issuer: "alice", tenant: .default,
-                issuedAt: now.addingTimeInterval(59),
-                expiresAt: now.addingTimeInterval(3600)
-            )
-            #expect(!ticket.isFutureIssued(now: now, clockSkew: 60))
-        }
-
-        @Test("Issued-at in the past is accepted regardless of skew")
-        func pastIssuedAccepted() {
-            let now = Date(timeIntervalSince1970: 1_700_000_000)
-            let ticket = BreakGlassTicket(
-                jti: "j", issuer: "alice", tenant: .default,
-                issuedAt: now.addingTimeInterval(-3600),
-                expiresAt: now.addingTimeInterval(3600)
-            )
-            #expect(!ticket.isFutureIssued(now: now))
-        }
-    }
-
-    // MARK: - 8. maxUses counter
-
-    @Suite("BreakGlass maxUses counter")
-    struct BreakGlassMaxUses {
-
-        @Test("maxUses=5 accepts exactly 5 consumes")
-        func capRespected() {
-            let cache = UsedTicketCache()
-            let jti = "ticket-5x"
-            let exp = Date().addingTimeInterval(600)
-            for _ in 0..<5 {
-                #expect(cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 5))
-            }
-            // 6th attempt must refuse.
-            #expect(!cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 5))
-        }
-
-        @Test("maxUses=1 collapses to strict single-use")
-        func singleUse() {
-            let cache = UsedTicketCache()
-            let jti = "ticket-1x"
-            let exp = Date().addingTimeInterval(600)
-            #expect(cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 1))
-            #expect(!cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 1))
-        }
-
-        @Test("500 attempts on a maxUses=5 ticket yield 5 successes")
-        func attemptFloodOnlyYields5() {
-            let cache = UsedTicketCache()
-            let jti = "ticket-flood"
-            let exp = Date().addingTimeInterval(600)
-            // Map each attempt to a Bool via `reduce` — filter
-            // discipline SwiftLint's `for_where` rule wants, but
-            // counting the side-effecting call's `true` results
-            // without the for/if shape the rule rejects.
-            let successes = (0..<500).reduce(into: 0) { count, _ in
-                if cache.tryConsume(jti: jti, expiresAt: exp, maxUses: 5) {
-                    count += 1
-                }
-            }
-            #expect(successes == 5)
-        }
-    }
-
-    // MARK: - 9. Webhook truncated / non-hex signature rejection
+    // MARK: - 7. Webhook truncated / non-hex signature rejection
 
     @Suite("Webhook signature shape")
     struct WebhookSignatureShape {
@@ -170,59 +87,7 @@ struct CryptoHardeningTests {
         }
     }
 
-    // MARK: - 10. BreakGlass envelope format
-
-    @Suite("BreakGlass envelope format validation")
-    struct BreakGlassFormat {
-
-        @Test("Envelope without bgt: prefix is rejected")
-        func missingPrefix() {
-            let signer = P256.Signing.PrivateKey()
-            #expect(throws: BreakGlassTicketError.self) {
-                _ = try BreakGlassTicketCodec.decode(
-                    "notbgt:aa.bb",
-                    publicKeys: [signer.publicKey],
-                    allowedIssuers: ["alice"]
-                )
-            }
-        }
-
-        @Test("Envelope with zero dots is rejected")
-        func zeroDots() {
-            let signer = P256.Signing.PrivateKey()
-            #expect(throws: BreakGlassTicketError.self) {
-                _ = try BreakGlassTicketCodec.decode(
-                    "bgt:onlyonepiece",
-                    publicKeys: [signer.publicKey],
-                    allowedIssuers: ["alice"]
-                )
-            }
-        }
-
-        @Test("Envelope with empty base64 segment is rejected")
-        func emptySegment() {
-            let signer = P256.Signing.PrivateKey()
-            #expect(throws: BreakGlassTicketError.self) {
-                _ = try BreakGlassTicketCodec.decode(
-                    "bgt:.", publicKeys: [signer.publicKey],
-                    allowedIssuers: ["alice"]
-                )
-            }
-        }
-
-        @Test("Envelope with invalid base64 payload is rejected")
-        func invalidBase64() {
-            let signer = P256.Signing.PrivateKey()
-            #expect(throws: BreakGlassTicketError.self) {
-                _ = try BreakGlassTicketCodec.decode(
-                    "bgt:@@@.###", publicKeys: [signer.publicKey],
-                    allowedIssuers: ["alice"]
-                )
-            }
-        }
-    }
-
-    // MARK: - 11. TLS anchor pinning contract
+    // MARK: - 8. TLS anchor pinning contract
 
     @Suite("PinnedTLSIdentityProvider contract")
     struct PinnedTLSContract {

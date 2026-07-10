@@ -77,7 +77,7 @@ public enum SecurityControlInventory {
             name: "Per-action MFA: LocalAuthentication gate on admin CLI commands",
             category: "Authentication & Identity",
             standard: "OWASP ASVS V4.3.1 (Administrative Interface MFA)",
-            implementation: "Sources/SpooktacularInfrastructureApple/AdminPresenceGate.swift + Sources/spooktacular-cli/Commands/RBAC.swift (Assign/Revoke) + Sources/spooktacular-cli/Commands/BreakGlass.swift (Issue file-path mode)",
+            implementation: "Sources/SpooktacularInfrastructureApple/AdminPresenceGate.swift + Sources/spooktacular-cli/Commands/RBAC.swift (Assign/Revoke)",
             test: "Tests/SpooktacularKitTests/AdminPresenceGateTests.swift",
             notes: "LAContext.deviceOwnerAuthentication; fails closed on headless hosts unless SPOOKTACULAR_ADMIN_PRESENCE_BYPASS=1 is set (every bypass logged to OSLog at .error)."
         ),
