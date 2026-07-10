@@ -33,9 +33,8 @@ public struct GuestExecResult: Sendable {
 ///
 /// `NodeClient` defines the set of remote operations the controller
 /// can perform against any node in the fleet. Implementations handle
-/// the actual HTTP transport; consumers (such as ``RecycleStrategy``
-/// implementations) program against this protocol so they can be
-/// tested with a mock.
+/// the actual HTTP transport; consumers program against this
+/// protocol so they can be tested with a mock.
 ///
 /// All methods are async and throwing — network failures, permission
 /// errors, or node-side problems surface as thrown errors.

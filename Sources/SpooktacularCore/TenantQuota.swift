@@ -88,10 +88,9 @@ extension TenantQuota {
     ///     concurrent creations each see "one slot left" and both
     ///     succeed (the `TOCTOU` race the original `evaluate(...)`
     ///     signature silently admitted). Callers who want the
-    ///     atomic admission guarantee use a
-    ///     `PendingAllocationReserver` to turn the read-modify-
-    ///     write into a single serialized step — the reserver
-    ///     passes its pending count through this parameter so the
+    ///     atomic admission guarantee serialize their own
+    ///     read-modify-write around admission and pass the
+    ///     resulting in-flight count through this parameter so the
     ///     decision reflects `committed + pending + 1`.
     ///
     /// - Returns: `QuotaDecision` — `.allowed` or `.denied` with

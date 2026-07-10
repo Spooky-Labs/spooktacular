@@ -32,7 +32,6 @@ struct Spooktacular: AsyncParsableCommand {
             Doctor.self,
             RBAC.self,
             Bundle.self,
-            BreakGlass.self,
             IAM.self,
             Identity.self,
             SignRequest.self,

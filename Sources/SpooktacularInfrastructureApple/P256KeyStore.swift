@@ -10,7 +10,7 @@ import SpooktacularApplication
 ///
 /// | Service namespace                          | Purpose                            | Presence gate          |
 /// |--------------------------------------------|------------------------------------|------------------------|
-/// | `P256KeyStore.Service.breakGlass`          | Operator-minted break-glass tickets | `.userPresence`        |
+/// | `P256KeyStore.Service.breakGlass`          | Emergency-access (break-glass) identity key | `.userPresence`        |
 /// | `P256KeyStore.Service.operatorIdentity`    | Operator signs API requests         | `.userPresence`        |
 /// | `P256KeyStore.Service.hostIdentity`        | Host signs to guest agent           | none (daemon use)      |
 /// | `P256KeyStore.Service.oidcIssuer`          | Workload-identity JWT minting       | none (daemon use)      |
@@ -386,9 +386,9 @@ public enum KeyStoreError: Error, LocalizedError {
         case .secureEnclaveUnavailableOnHost:
             "Spooktacular's threat model mandates SEP-bound keys — malware running as the logged-in user can exfiltrate software keys from disk but cannot extract from the Secure Enclave. Run on an Apple Silicon or T2-equipped Mac."
         case .notFound:
-            "Generate the key with the appropriate CLI (e.g. `spook break-glass keygen --keychain-label <label>`)."
+            "Generate the key with the appropriate CLI (e.g. `spook identity keygen --type operator --label <label>`)."
         case .userDeclined:
-            "Touch the sensor or enter the password when prompted. Unattended / CI use that can't accommodate presence gates should use the break-glass ticket flow instead, which does provide an out-of-band consent artifact."
+            "Touch the sensor or enter the password when prompted. Unattended / CI use that can't accommodate presence gates should generate the key with `presenceGated: false` instead."
         case .presenceUnavailable:
             "Configure a login password or enrolled Touch ID on the host — `.userPresence` requires at least one. Truly headless deployments shouldn't be provisioning presence-gated keys; drop `presenceGated: true`."
         case .malformedKeyData:
