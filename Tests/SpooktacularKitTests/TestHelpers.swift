@@ -4,63 +4,6 @@ import Testing
 @testable import SpooktacularApplication
 @testable import SpooktacularInfrastructureApple
 
-// MARK: - Shared Mock: Node Client
-
-/// Records calls made to a mock Mac node for verification.
-final class MockNodeClient: NodeClient, @unchecked Sendable {
-    var calls: [String] = []
-    var healthResult = true
-    var execResult = GuestExecResult(exitCode: 0, stdout: "OK", stderr: "")
-
-    func clone(vm: String, from source: String, on node: URL) async throws {
-        calls.append("clone:\(vm):\(source)")
-    }
-    func start(vm: String, on node: URL) async throws { calls.append("start:\(vm)") }
-    func stop(vm: String, on node: URL) async throws { calls.append("stop:\(vm)") }
-    func delete(vm: String, on node: URL) async throws { calls.append("delete:\(vm)") }
-    func restoreSnapshot(vm: String, snapshot: String, on node: URL) async throws {
-        calls.append("restore:\(vm):\(snapshot)")
-    }
-    func execInGuest(vm: String, command: String, on node: URL) async throws -> GuestExecResult {
-        calls.append("exec:\(vm)")
-        return execResult
-    }
-    func health(vm: String, on node: URL) async throws -> Bool {
-        calls.append("health:\(vm)")
-        return healthResult
-    }
-}
-
-/// Mock node client that returns different results for successive exec calls.
-final class PhasedMockNodeClient: NodeClient, @unchecked Sendable {
-    var calls: [String] = []
-    var healthResult = true
-    var execResults: [GuestExecResult] = []
-    private var execCallIndex = 0
-
-    func clone(vm: String, from source: String, on node: URL) async throws {
-        calls.append("clone:\(vm):\(source)")
-    }
-    func start(vm: String, on node: URL) async throws { calls.append("start:\(vm)") }
-    func stop(vm: String, on node: URL) async throws { calls.append("stop:\(vm)") }
-    func delete(vm: String, on node: URL) async throws { calls.append("delete:\(vm)") }
-    func restoreSnapshot(vm: String, snapshot: String, on node: URL) async throws {
-        calls.append("restore:\(vm):\(snapshot)")
-    }
-    func execInGuest(vm: String, command: String, on node: URL) async throws -> GuestExecResult {
-        calls.append("exec:\(vm)")
-        let result = execCallIndex < execResults.count
-            ? execResults[execCallIndex]
-            : GuestExecResult(exitCode: 0, stdout: "OK", stderr: "")
-        execCallIndex += 1
-        return result
-    }
-    func health(vm: String, on node: URL) async throws -> Bool {
-        calls.append("health:\(vm)")
-        return healthResult
-    }
-}
-
 // MARK: - Shared Mock: Role Store
 
 /// A role store that returns no roles (deny-by-default testing).
