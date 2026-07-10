@@ -115,15 +115,6 @@ public enum SecurityControlInventory {
             test: "Tests/SpooktacularKitTests/MultiTenantAuthTests.swift",
             notes: "Every request carries a TenantID; scheduler gates ensure tenant A can't schedule onto tenant B's host pools."
         ),
-        SecurityControl(
-            name: "Fair-share scheduler (weighted max-min)",
-            category: "Authorization",
-            standard: "Capacity fairness — no starvation",
-            implementation: "Sources/SpooktacularCore/FairScheduler.swift",
-            test: "Tests/SpooktacularKitTests/FairSchedulerTests.swift",
-            notes: "Activated via SPOOKTACULAR_SCHEDULER_POLICY + SPOOKTACULAR_FLEET_CAPACITY. Deterministic, work-conserving, monotone."
-        ),
-
         // MARK: Audit & Non-Repudiation
 
         SecurityControl(
