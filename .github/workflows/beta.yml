@@ -85,10 +85,12 @@ jobs:
     name: UI Tests (screenshots)
     runs-on: macos-26
     # No secrets needed: the `:ui_tests` lane runs XCUITest against
-    # a Debug-config build that skips signing entirely
-    # (`CODE_SIGNING_ALLOWED: NO` + a stripped entitlements file
-    # without `app-sandbox`). No match, no API key, no cert repo
-    # access — just xcodegen + xcodebuild test.
+    # a locally-run macOS build with signing forced OFF
+    # (`CODE_SIGNING_ALLOWED=NO` passed to xcodebuild via scan's
+    # xcargs). Screenshot capture never installs or distributes the
+    # app, so it needs no match cert, no App Store Connect API key,
+    # and no `spooktacular-certificates` repo access — just xcodegen
+    # + xcodebuild test. Only the `testflight` job above needs certs.
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 

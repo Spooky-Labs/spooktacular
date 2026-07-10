@@ -617,12 +617,14 @@ platform :mac do
       sh("xcodegen", "generate")
     end
 
-    # Debug config uses real Apple Development signing via
-    # `match` — the same cert developers install locally.
-    # `setup_ci` (ran in `before_all`) provisions an
-    # ephemeral keychain on CI runners so `match` can import
-    # the cert without prompting; locally, the cert is
-    # already in the login keychain.
+    # Screenshot generation runs XCUITests against a locally-run
+    # macOS build — it never installs or distributes the app, so it
+    # needs no real code-signing identity. We force signing OFF
+    # (overriding project.yml's Manual/`match Development …` config)
+    # so this lane is green on any machine and on CI WITHOUT the
+    # `spooktacular-certificates` match repo being populated. Only
+    # the signed `beta`/`release` lanes need match certs + the
+    # App Store Connect API key. See docs/SIGNING.md.
     scan(
       project: "Spooktacular.xcodeproj",
       scheme: "SpooktacularApp",
@@ -631,6 +633,8 @@ platform :mac do
       result_bundle: true,
       output_directory: "./fastlane/test_output",
       output_types: "html,junit",
+      xcargs: "CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO " \
+              "CODE_SIGN_IDENTITY='' PROVISIONING_PROFILE_SPECIFIER=''",
       fail_build: true
     )
 
