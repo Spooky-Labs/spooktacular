@@ -17,13 +17,13 @@ struct EmptyStateView: View {
 
             Image(systemName: "sparkles")
                 .font(.system(size: 72, weight: .light))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [.purple.opacity(0.9), .blue.opacity(0.8)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                // `ShapeStyle.tint` reflects the app's accent
+                // color (or an explicit `.tint(_:)` if a view
+                // higher up sets one) — per Apple's Liquid Glass
+                // "color sparingly" guidance, a single semantic
+                // tint reads cleaner here than a bespoke two-stop
+                // purple/blue gradient.
+                .foregroundStyle(.tint)
                 .symbolEffect(.pulse.byLayer, options: .repeating, value: phase)
                 .phaseAnimator([AnimationPhase.drift, .lift, .settle], trigger: phase) { content, phase in
                     content
