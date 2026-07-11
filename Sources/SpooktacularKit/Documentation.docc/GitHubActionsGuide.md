@@ -105,6 +105,15 @@ spook create runner-01 --from-ipsw latest \
     --github-runner --github-repo myorg/myrepo --github-token-keychain myorg
 ```
 
+> Important: `--github-runner` requires a **macOS 27+ guest image**.
+> The flow creates the admin account and skips Setup Assistant natively
+> via `VZMacGuestProvisioningOptions` — no keystroke automation, no OCR,
+> no installer package. A root LaunchDaemon injected onto the guest disk
+> before first boot (`DiskInjector.installProvisionerDaemon`) runs the
+> setup script once the account exists. `--from-ipsw latest` can resolve
+> below the floor; `spook create` fails fast with an actionable error in
+> that case rather than timing out 10-20 minutes into the install.
+
 The `--github-runner` flag drives a flow that:
 
 1. Mints a short-lived GitHub Actions runner registration token from

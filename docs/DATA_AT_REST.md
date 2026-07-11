@@ -10,7 +10,7 @@
 
 - Source-code checkouts (proprietary, pre-release, or regulated).
 - CI/CD signing certificates and private keys used to sign shipped artifacts.
-- API tokens injected via Setup Assistant or user-data scripts.
+- API tokens injected via the disk-injected first-boot script (`DiskInjector`) or user-data scripts.
 - Fresh IPSW firmware blobs that are expensive to re-download.
 
 A stolen laptop with a compromised FileVault recovery key (phishing, MDM breach, Genius Bar incident) gives an attacker read access to every one of those bundles at their convenience. The whole-disk encryption story stops there; nothing narrower gates the bundles.
