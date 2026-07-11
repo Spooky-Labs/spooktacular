@@ -41,15 +41,15 @@
 
 **Interfaces:** Produces the empirical facts every later task assumes: created user is admin; Setup Assistant is skipped; SSH/auto-login behave; framework provisioning + a `RunAtLoad` LaunchDaemon coexist on first boot.
 
-- [ ] **Step 1: Confirm host + SDK.** Run: `sw_vers -productVersion` (expect 27.x) and `xcrun --sdk macosx --show-sdk-version` (expect 27.0). If host < 27, STOP and report — this plan cannot proceed.
-- [ ] **Step 2: Download a macOS 27 guest IPSW.** Only 26.4.1 is cached. In a scratch Swift snippet (or `mcp__xcode__RunCodeSnippet`), call `VZMacOSRestoreImage.latestSupported` and download `restoreImage.url` to `~/.spooktacular/cache/ipsw/`. Confirm `operatingSystemVersion.majorVersion == 27`. Expected: a ~19GB `.ipsw` on disk.
-- [ ] **Step 3: Write a throwaway harness** (`/tmp/vz27probe/main.swift`, not committed) that: installs macOS 27 into a temp bundle via `VZMacOSInstaller`; then builds `VZMacOSVirtualMachineStartOptions`, sets `VZMacGuestProvisioningOptions(username: "probe", password: "Probe-<random>", fullName: "Probe", logsInAutomatically: true, enablesRemoteLogin: true)` via `setGuestProvisioningOptions(_:error:)`; starts the VM headless. Sign with the `com.apple.security.virtualization` entitlement (copy `Spooktacular.entitlements`).
-- [ ] **Step 4: Observe first boot.** Give it ~10 min. Confirm via the VM console / `spook ip`-style DHCP lease + `ssh probe@<ip>`:
+- [x] **Step 1: Confirm host + SDK.** Run: `sw_vers -productVersion` (expect 27.x) and `xcrun --sdk macosx --show-sdk-version` (expect 27.0). If host < 27, STOP and report — this plan cannot proceed.
+- [x] **Step 2: Download a macOS 27 guest IPSW.** Only 26.4.1 is cached. In a scratch Swift snippet (or `mcp__xcode__RunCodeSnippet`), call `VZMacOSRestoreImage.latestSupported` and download `restoreImage.url` to `~/.spooktacular/cache/ipsw/`. Confirm `operatingSystemVersion.majorVersion == 27`. Expected: a ~19GB `.ipsw` on disk.
+- [x] **Step 3: Write a throwaway harness** (`/tmp/vz27probe/main.swift`, not committed) that: installs macOS 27 into a temp bundle via `VZMacOSInstaller`; then builds `VZMacOSVirtualMachineStartOptions`, sets `VZMacGuestProvisioningOptions(username: "probe", password: "Probe-<random>", fullName: "Probe", logsInAutomatically: true, enablesRemoteLogin: true)` via `setGuestProvisioningOptions(_:error:)`; starts the VM headless. Sign with the `com.apple.security.virtualization` entitlement (copy `Spooktacular.entitlements`).
+- [x] **Step 4: Observe first boot.** Give it ~10 min. Confirm via the VM console / `spook ip`-style DHCP lease + `ssh probe@<ip>`:
   - `id probe` shows membership in `admin` and `sudo -v` succeeds → **user is admin**;
   - the VM did NOT stall at Setup Assistant (SSH reachable / auto-login session present);
   - `enablesRemoteLogin` actually enabled sshd.
-- [ ] **Step 5: Confirm daemon coexistence.** Before Step 3's boot, also inject a trivial `RunAtLoad` LaunchDaemon (root:wheel) that `touch`es `/var/tmp/spook-daemon-ran` and logs `id`. After boot, SSH in and confirm `/var/tmp/spook-daemon-ran` exists → the framework account-creation and a `RunAtLoad` daemon coexist. Note whether the daemon fired before/after the account existed (informs the `first-boot.sh` account-wait).
-- [ ] **Step 6: Record + tear down.** Append the confirmed/failed facts to the spec's "Verification results" section (this is the gate for Phase 4). `rm -rf` the probe bundle. Commit the spec update: `docs(spec): record macOS 27 guest-provisioning verification results`.
+- [x] **Step 5: Confirm daemon coexistence.** Before Step 3's boot, also inject a trivial `RunAtLoad` LaunchDaemon (root:wheel) that `touch`es `/var/tmp/spook-daemon-ran` and logs `id`. After boot, SSH in and confirm `/var/tmp/spook-daemon-ran` exists → the framework account-creation and a `RunAtLoad` daemon coexist. Note whether the daemon fired before/after the account existed (informs the `first-boot.sh` account-wait).
+- [x] **Step 6: Record + tear down.** Append the confirmed/failed facts to the spec's "Verification results" section (this is the gate for Phase 4). `rm -rf` the probe bundle. Commit the spec update: `docs(spec): record macOS 27 guest-provisioning verification results`.
 
 **If any Step-4 assumption fails**, STOP and report — the design needs revising before proceeding.
 
@@ -66,7 +66,7 @@
 **Interfaces:**
 - Produces: `GuestProvisioningSpec` (struct) with `fullName`, `username`, `password`, `logsInAutomatically`, `enablesRemoteLogin: Bool`; `func validated() throws -> GuestProvisioningSpec`; `enum GuestProvisioningError: Error, Equatable`.
 
-- [ ] **Step 1: Write the failing test.**
+- [x] **Step 1: Write the failing test.**
 
 ```swift
 import Testing
@@ -101,8 +101,8 @@ struct GuestProvisioningSpecTests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails.** Run: `swift test --filter GuestProvisioningSpec` → FAIL ("cannot find 'GuestProvisioningSpec'").
-- [ ] **Step 3: Write minimal implementation.**
+- [x] **Step 2: Run test to verify it fails.** Run: `swift test --filter GuestProvisioningSpec` → FAIL ("cannot find 'GuestProvisioningSpec'").
+- [x] **Step 3: Write minimal implementation.**
 
 ```swift
 import Foundation
@@ -155,8 +155,8 @@ public enum GuestProvisioningError: Error, Equatable {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes.** Run: `swift test --filter GuestProvisioningSpec` → PASS (4 tests).
-- [ ] **Step 5: Commit.** `git add Sources/SpooktacularCore/GuestProvisioningSpec.swift Tests/SpooktacularKitTests/GuestProvisioningSpecTests.swift && git commit -m "feat(provisioning): GuestProvisioningSpec domain type"`
+- [x] **Step 4: Run test to verify it passes.** Run: `swift test --filter GuestProvisioningSpec` → PASS (4 tests).
+- [x] **Step 5: Commit.** `git add Sources/SpooktacularCore/GuestProvisioningSpec.swift Tests/SpooktacularKitTests/GuestProvisioningSpecTests.swift && git commit -m "feat(provisioning): GuestProvisioningSpec domain type"`
 
 ### Task 3: Spec→`VZMacGuestProvisioningOptions` mapping + ephemeral password
 
@@ -168,7 +168,7 @@ public enum GuestProvisioningError: Error, Equatable {
 - Consumes: `GuestProvisioningSpec` (Task 2).
 - Produces: `enum EphemeralCredential { static func generatePassword(length: Int = 24) -> String }`; `@available(macOS 27, *) func makeGuestProvisioningOptions(from spec: GuestProvisioningSpec) -> VZMacGuestProvisioningOptions`.
 
-- [ ] **Step 1: Write the failing test.** (The mapping test is gated on macOS 27 at runtime; the password test always runs.)
+- [x] **Step 1: Write the failing test.** (The mapping test is gated on macOS 27 at runtime; the password test always runs.)
 
 ```swift
 import Testing
@@ -202,8 +202,8 @@ struct GuestProvisioningOptionsMappingTests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails.** Run: `swift test --filter GuestProvisioningOptionsMapping` → FAIL.
-- [ ] **Step 3: Write minimal implementation.**
+- [x] **Step 2: Run test to verify it fails.** Run: `swift test --filter GuestProvisioningOptionsMapping` → FAIL.
+- [x] **Step 3: Write minimal implementation.**
 
 ```swift
 import Foundation
@@ -241,8 +241,8 @@ public func makeGuestProvisioningOptions(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes.** Run: `swift test --filter GuestProvisioningOptionsMapping` → PASS (on a macOS 27 host both tests run; the mapping test is skipped by availability on older hosts).
-- [ ] **Step 5: Commit.** `git commit -am "feat(provisioning): spec→VZMacGuestProvisioningOptions mapping + ephemeral password"`
+- [x] **Step 4: Run test to verify it passes.** Run: `swift test --filter GuestProvisioningOptionsMapping` → PASS (on a macOS 27 host both tests run; the mapping test is skipped by availability on older hosts).
+- [x] **Step 5: Commit.** `git commit -am "feat(provisioning): spec→VZMacGuestProvisioningOptions mapping + ephemeral password"`
 
 ### Task 4: `PrivilegedFileOps` seam + `DirectPrivilegedFileOps`
 
@@ -253,7 +253,7 @@ public func makeGuestProvisioningOptions(
 **Interfaces:**
 - Produces: `protocol PrivilegedFileOps: Sendable { func preflight() throws; func makeDirectory(at: URL) throws; func installFile(from: URL, to: URL, mode: mode_t) throws }`; `struct DirectPrivilegedFileOps: PrivilegedFileOps` (requires `geteuid() == 0`, else throws `.notPrivileged`); `enum PrivilegedOpsError: Error, Equatable { case notPrivileged }`. `preflight()` is the cheap "am I able to do privileged ops?" check callers run before expensive work (e.g. disk mounting).
 
-- [ ] **Step 1: Write the failing test.** (Root-requiring assertions run only when the test itself is root; the not-privileged path is always tested by faking euid via a seam.)
+- [x] **Step 1: Write the failing test.** (Root-requiring assertions run only when the test itself is root; the not-privileged path is always tested by faking euid via a seam.)
 
 ```swift
 import Testing
@@ -287,8 +287,8 @@ struct PrivilegedFileOpsTests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails.** Run: `swift test --filter PrivilegedFileOps` → FAIL.
-- [ ] **Step 3: Write minimal implementation.**
+- [x] **Step 2: Run test to verify it fails.** Run: `swift test --filter PrivilegedFileOps` → FAIL.
+- [x] **Step 3: Write minimal implementation.**
 
 ```swift
 import Foundation
@@ -364,8 +364,8 @@ public struct DirectPrivilegedFileOps: PrivilegedFileOps {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes.** Run: `swift test --filter PrivilegedFileOps` → PASS.
-- [ ] **Step 5: Commit.** `git commit -am "feat(provisioning): PrivilegedFileOps seam + DirectPrivilegedFileOps"`
+- [x] **Step 4: Run test to verify it passes.** Run: `swift test --filter PrivilegedFileOps` → PASS.
+- [x] **Step 5: Commit.** `git commit -am "feat(provisioning): PrivilegedFileOps seam + DirectPrivilegedFileOps"`
 
 ### Task 5: Provisioner asset locator + image-injection variant of the plist/runner
 
@@ -377,8 +377,8 @@ public struct DirectPrivilegedFileOps: PrivilegedFileOps {
 **Interfaces:**
 - Produces: `enum ProvisionerAssets { static func locate() -> (plist: URL, runner: URL)? }` — returns the bundled plist + runner-script URLs from the app bundle, or `nil` in a plain `swift test` context (mirrors `AppBundleBootstrapTemplate.locateGuestToolsBundle()`); read that existing locator first and follow its resolution pattern.
 
-- [ ] **Step 1: Read the existing locator.** Read `Sources/SpooktacularApplication/AppBundleBootstrapTemplate.swift` for `locateGuestToolsBundle()` — copy its bundle-resolution approach (search `Bundle.main` resource paths, tolerate absence in unit tests). Reuse the resolution logic; do not invent a new mechanism.
-- [ ] **Step 2: Write the failing test.**
+- [x] **Step 1: Read the existing locator.** Read `Sources/SpooktacularApplication/AppBundleBootstrapTemplate.swift` for `locateGuestToolsBundle()` — copy its bundle-resolution approach (search `Bundle.main` resource paths, tolerate absence in unit tests). Reuse the resolution logic; do not invent a new mechanism.
+- [x] **Step 2: Write the failing test.**
 
 ```swift
 import Testing
@@ -395,9 +395,9 @@ struct ProvisionerAssetsTests {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it fails.** Run: `swift test --filter ProvisionerAssets` → FAIL.
-- [ ] **Step 4: Implement `ProvisionerAssets.locate()`** following the `AppBundleBootstrapTemplate` pattern, returning the URLs to `com.spookylabs.spooktacular.provisioner.plist` and `spook-provision-runner.sh` bundled under the app's `Resources/SpookProvisioner/` (built there by `build-app.sh`), or `nil` when not found. Full DocC on the type + method.
-- [ ] **Step 5: Add the account-wait to `spook-provision-runner.sh`.** Before executing `first-boot.sh`, insert a bounded wait so the runner script doesn't race the framework's account creation:
+- [x] **Step 3: Run test to verify it fails.** Run: `swift test --filter ProvisionerAssets` → FAIL.
+- [x] **Step 4: Implement `ProvisionerAssets.locate()`** following the `AppBundleBootstrapTemplate` pattern, returning the URLs to `com.spookylabs.spooktacular.provisioner.plist` and `spook-provision-runner.sh` bundled under the app's `Resources/SpookProvisioner/` (built there by `build-app.sh`), or `nil` when not found. Full DocC on the type + method.
+- [x] **Step 5: Add the account-wait to `spook-provision-runner.sh`.** Before executing `first-boot.sh`, insert a bounded wait so the runner script doesn't race the framework's account creation:
 
 ```bash
 # The framework creates the provisioning account (VZMacGuestProvisioningOptions)
@@ -407,8 +407,8 @@ RUNNER_USER="${SPOOK_PROVISION_USER:-runner}"
 for _ in $(seq 1 60); do id "$RUNNER_USER" >/dev/null 2>&1 && break; sleep 2; done
 ```
 
-- [ ] **Step 6: Run test + shell lint.** Run: `swift test --filter ProvisionerAssets` → PASS; `bash -n Resources/SpookProvisioner/spook-provision-runner.sh` → exit 0.
-- [ ] **Step 7: Commit.** `git commit -am "feat(provisioning): ProvisionerAssets locator + account-wait in runner script"`
+- [x] **Step 6: Run test + shell lint.** Run: `swift test --filter ProvisionerAssets` → PASS; `bash -n Resources/SpookProvisioner/spook-provision-runner.sh` → exit 0.
+- [x] **Step 7: Commit.** `git commit -am "feat(provisioning): ProvisionerAssets locator + account-wait in runner script"`
 
 ### Task 6: `DiskInjector.installProvisionerDaemon`
 
@@ -420,7 +420,7 @@ for _ in $(seq 1 60); do id "$RUNNER_USER" >/dev/null 2>&1 && break; sleep 2; do
 - Consumes: `PrivilegedFileOps` (Task 4), `ProvisionerAssets` URLs (Task 5), `VirtualMachineBundle`, and `DiskInjector`'s existing `runProcess`/`parseDeviceFromPlist`/`ensureDataVolume`/`mountDataVolume` helpers.
 - Produces: `public static func installProvisionerDaemon(into bundle: VirtualMachineBundle, plist: URL, runner: URL, privileged: PrivilegedFileOps) throws` — attaches `disk.img`, mounts the Data volume, installs the runner script to `<vol>/usr/local/libexec/spook-provision-runner.sh` (0755) and the plist to `<vol>/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist` (0644), both `root:wheel` via `privileged`, then detaches. Reuses the attach/mount/detach pattern from `installGuestTools`.
 
-- [ ] **Step 1: Write the failing test.** The disk-mount path needs a real image, so the unit test asserts the *non-privileged guard* (fast, no disk): calling with a `DirectPrivilegedFileOps` that reports non-root surfaces `PrivilegedOpsError.notPrivileged` before any disk work — verify by pointing at a bundle whose `disk.img` is absent and asserting the privileged error is thrown, not `diskImageNotFound`. Structure the method to check `privileged` readiness first.
+- [x] **Step 1: Write the failing test.** The disk-mount path needs a real image, so the unit test asserts the *non-privileged guard* (fast, no disk): calling with a `DirectPrivilegedFileOps` that reports non-root surfaces `PrivilegedOpsError.notPrivileged` before any disk work — verify by pointing at a bundle whose `disk.img` is absent and asserting the privileged error is thrown, not `diskImageNotFound`. Structure the method to check `privileged` readiness first.
 
 ```swift
 import Testing
@@ -444,10 +444,10 @@ struct DiskInjectorProvisionerTests {
 ```
 (If `VirtualMachineBundle(url:)` differs, read its initializer and adapt the construction; keep the intent — non-privileged fails before disk work.)
 
-- [ ] **Step 2: Run test to verify it fails.** Run: `swift test --filter "DiskInjector provisioner"` → FAIL.
-- [ ] **Step 3: Implement `installProvisionerDaemon`.** Read `installGuestTools` (lines ~69–133) for the attach/`ensureDataVolume`/`ditto`/detach pattern. Structure the method so it **calls `privileged.preflight()` as its very first statement** (defined in Task 4's protocol) — so a non-root run throws `PrivilegedOpsError.notPrivileged` before any disk work. Then: attach `disk.img`, mount the Data volume (`ensureDataVolume`/`mountDataVolume`), `privileged.makeDirectory(at: <vol>/usr/local/libexec)`, `privileged.installFile(from: runner, to: <vol>/usr/local/libexec/spook-provision-runner.sh, mode: 0o755)`, `privileged.installFile(from: plist, to: <vol>/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist, mode: 0o644)`, detach in `defer`. Full DocC.
-- [ ] **Step 4: Run test to verify it passes.** Run: `swift test --filter "DiskInjector provisioner"` → PASS. Then full suite: `swift test --parallel --skip SpooktacularUITests` → green.
-- [ ] **Step 5: Commit.** `git commit -am "feat(provisioning): DiskInjector.installProvisionerDaemon (image-time root LaunchDaemon)"`
+- [x] **Step 2: Run test to verify it fails.** Run: `swift test --filter "DiskInjector provisioner"` → FAIL.
+- [x] **Step 3: Implement `installProvisionerDaemon`.** Read `installGuestTools` (lines ~69–133) for the attach/`ensureDataVolume`/`ditto`/detach pattern. Structure the method so it **calls `privileged.preflight()` as its very first statement** (defined in Task 4's protocol) — so a non-root run throws `PrivilegedOpsError.notPrivileged` before any disk work. Then: attach `disk.img`, mount the Data volume (`ensureDataVolume`/`mountDataVolume`), `privileged.makeDirectory(at: <vol>/usr/local/libexec)`, `privileged.installFile(from: runner, to: <vol>/usr/local/libexec/spook-provision-runner.sh, mode: 0o755)`, `privileged.installFile(from: plist, to: <vol>/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist, mode: 0o644)`, detach in `defer`. Full DocC.
+- [x] **Step 4: Run test to verify it passes.** Run: `swift test --filter "DiskInjector provisioner"` → PASS. Then full suite: `swift test --parallel --skip SpooktacularUITests` → green.
+- [x] **Step 5: Commit.** `git commit -am "feat(provisioning): DiskInjector.installProvisionerDaemon (image-time root LaunchDaemon)"`
 
 ### Task 7: `VirtualMachine.start(guestProvisioning:)`
 
@@ -459,7 +459,7 @@ struct DiskInjectorProvisionerTests {
 - Consumes: `GuestProvisioningSpec` (Task 2), `makeGuestProvisioningOptions` (Task 3).
 - Produces: `public func start(startUpFromMacOSRecovery: Bool = false, guestProvisioning: GuestProvisioningSpec? = nil) async throws`. When `guestProvisioning != nil`: on macOS 27+ build `VZMacOSVirtualMachineStartOptions`, `setGuestProvisioningOptions(makeGuestProvisioningOptions(from: spec.validated()))`, and start with options; if host < macOS 27 throw `VirtualMachineProvisioningError.hostTooOld`.
 
-- [ ] **Step 1: Write the failing test** (a pure host-version-gating test using a small extracted helper so no real VM boots):
+- [x] **Step 1: Write the failing test** (a pure host-version-gating test using a small extracted helper so no real VM boots):
 
 ```swift
 import Testing
@@ -478,8 +478,8 @@ struct VirtualMachineStartOptionsTests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails.** Run: `swift test --filter "VM start provisioning"` → FAIL.
-- [ ] **Step 3: Implement.** Extract a testable static helper and wire it into `start`:
+- [x] **Step 2: Run test to verify it fails.** Run: `swift test --filter "VM start provisioning"` → FAIL.
+- [x] **Step 3: Implement.** Extract a testable static helper and wire it into `start`:
 
 ```swift
 enum VirtualMachineProvisioningError: Error, Equatable { case hostTooOld }
@@ -499,8 +499,8 @@ static func makeStartOptions(
 ```
 Then change `start` to `start(startUpFromMacOSRecovery: Bool = false, guestProvisioning: GuestProvisioningSpec? = nil)`: if `guestProvisioning != nil || startUpFromMacOSRecovery`, build via `makeStartOptions` and use the `start(options:)` continuation (the existing recovery branch already shows the continuation pattern); else keep `try await unsafeVM.start()`.
 
-- [ ] **Step 4: Run test to verify it passes.** Run: `swift test --filter "VM start provisioning"` → PASS; grep call sites of `.start(` in `Sources/` and confirm the new default param keeps them compiling; full suite green.
-- [ ] **Step 5: Commit.** `git commit -am "feat(provisioning): VirtualMachine.start(guestProvisioning:) sets VZMacGuestProvisioningOptions"`
+- [x] **Step 4: Run test to verify it passes.** Run: `swift test --filter "VM start provisioning"` → PASS; grep call sites of `.start(` in `Sources/` and confirm the new default param keeps them compiling; full suite green.
+- [x] **Step 5: Commit.** `git commit -am "feat(provisioning): VirtualMachine.start(guestProvisioning:) sets VZMacGuestProvisioningOptions"`
 
 ### Task 8: Wire the CLI runner create flow
 
@@ -511,11 +511,11 @@ Then change `start` to `start(startUpFromMacOSRecovery: Bool = false, guestProvi
 **Interfaces:**
 - Consumes: Tasks 2–7. Produces the CLI runner flow: install macOS 27 → generate password + `GuestProvisioningSpec(username: "runner", …)` → `DiskInjector.installProvisionerDaemon(into:plist:runner:privileged: DirectPrivilegedFileOps())` (locate assets via `ProvisionerAssets.locate()`; soft-warn + skip if absent in dev) → mint token + render `first-boot.sh` + `DiskInjector.inject(script:)` (existing) → `vm.start(guestProvisioning: spec)` (first boot) → online poll (existing).
 
-- [ ] **Step 1:** Read the current runner branch in `Create.swift` (the `automateSetupAssistant` + `provisionGitHubRunner` region). Replace the Setup-Assistant-automation call with: build `GuestProvisioningSpec`, inject the provisioner daemon (via `ProvisionerAssets.locate()` + `DirectPrivilegedFileOps()`; if `locate()` is nil, `Log.provision.warning` + continue so dev builds don't hard-fail), then start the VM with `guestProvisioning:`.
-- [ ] **Step 2:** Preflight check: before install, call `DirectPrivilegedFileOps().preflight()`; if it throws, fail fast with an actionable message ("provisioner injection requires running as root; on EC2 Mac run under the root service, or `sudo spook create …`"). Do not add a `--no-provisioner-daemon` flag (YAGNI — the runner cannot provision without the daemon).
-- [ ] **Step 3:** Keep the online-poll + exit-code contract unchanged. Update `Create.swift` help text: the runner flow now requires a macOS 27+ guest and provisions natively (no Setup Assistant).
-- [ ] **Step 4:** Build the CLI: `swift build --product spooktacular-cli`; run `.build/debug/spooktacular-cli create --help` and confirm truthful text; full suite green; `swiftlint --strict --quiet` exit 0.
-- [ ] **Step 5: Commit.** `git commit -am "feat(runner): CLI create uses native guest provisioning + injected daemon"`
+- [x] **Step 1:** Read the current runner branch in `Create.swift` (the `automateSetupAssistant` + `provisionGitHubRunner` region). Replace the Setup-Assistant-automation call with: build `GuestProvisioningSpec`, inject the provisioner daemon (via `ProvisionerAssets.locate()` + `DirectPrivilegedFileOps()`; if `locate()` is nil, `Log.provision.warning` + continue so dev builds don't hard-fail), then start the VM with `guestProvisioning:`.
+- [x] **Step 2:** Preflight check: before install, call `DirectPrivilegedFileOps().preflight()`; if it throws, fail fast with an actionable message ("provisioner injection requires running as root; on EC2 Mac run under the root service, or `sudo spook create …`"). Do not add a `--no-provisioner-daemon` flag (YAGNI — the runner cannot provision without the daemon).
+- [x] **Step 3:** Keep the online-poll + exit-code contract unchanged. Update `Create.swift` help text: the runner flow now requires a macOS 27+ guest and provisions natively (no Setup Assistant).
+- [x] **Step 4:** Build the CLI: `swift build --product spooktacular-cli`; run `.build/debug/spooktacular-cli create --help` and confirm truthful text; full suite green; `swiftlint --strict --quiet` exit 0.
+- [x] **Step 5: Commit.** `git commit -am "feat(runner): CLI create uses native guest provisioning + injected daemon"`
 
 ### Task 9: GUI parity (`AppState.runMacOSCreate`)
 
@@ -525,9 +525,9 @@ Then change `start` to `start(startUpFromMacOSRecovery: Bool = false, guestProvi
 
 **Interfaces:** Mirror Task 8 in the GUI pipeline: after install, generate the spec, inject the provisioner daemon, start with `guestProvisioning:`, poll online. Remove the GUI's Setup-Assistant-automation call.
 
-- [ ] **Step 1:** Read `provisionGitHubRunnerForCreate` (added in the earlier runner work) and replace its Setup-Assistant-automation portion with the native-provisioning path (spec + daemon inject + `start(guestProvisioning:)`), surfacing stages through the existing `pendingCreations`/`updateCreation` progress.
-- [ ] **Step 2:** Build the GUI target (`swift build`), full suite green, `swiftlint --strict` exit 0.
-- [ ] **Step 3: Commit.** `git commit -am "feat(gui): native guest provisioning parity in AppState create pipeline"`
+- [x] **Step 1:** Read `provisionGitHubRunnerForCreate` (added in the earlier runner work) and replace its Setup-Assistant-automation portion with the native-provisioning path (spec + daemon inject + `start(guestProvisioning:)`), surfacing stages through the existing `pendingCreations`/`updateCreation` progress.
+- [x] **Step 2:** Build the GUI target (`swift build`), full suite green, `swiftlint --strict` exit 0.
+- [x] **Step 3: Commit.** `git commit -am "feat(gui): native guest provisioning parity in AppState create pipeline"`
 
 ---
 
@@ -556,11 +556,11 @@ Then change `start` to `start(startUpFromMacOSRecovery: Bool = false, guestProvi
 - Delete: `Sources/SpooktacularApplication/SetupAutomation.swift`, `Sources/SpooktacularInfrastructureApple/{SetupAutomationExecutor,VZKeyboardDriver,VZScreenReader}.swift`, `Sources/SpooktacularCore/{ScreenReader,KeyboardDriver}.swift`, `Sources/SpooktacularGuestTools/ProvisionerInstaller.swift`, `Resources/SpookProvisioner/postinstall`, and their tests (`SetupAutomation*Tests`, screen-gate tests, `VZKeyboardDriver`/`VZScreenReader` tests).
 - Modify: `Sources/spooktacular-cli/Commands/Create.swift`, `Sources/Spooktacular/AppState.swift`, `Sources/SpooktacularApplication/RunnerCreateFlowPlan.swift` — remove `automateSetupAssistant`, screen-gate, and Setup-Assistant-support branches; `Sources/SpooktacularApplication/AppBundleBootstrapTemplate.swift` if it references the pkg-install path; `build-app.sh` — delete the provisioner-`pkg` assembly (`pkgbuild`/`productbuild` of `Spooktacular Provisioner.pkg`) but keep bundling the plist + runner script under `Resources/SpookProvisioner/`; `SecurityControlInventory.swift` if it cites any deleted file (path-existence test).
 
-- [ ] **Step 1:** `grep -rn 'SetupAutomation\|SetupAutomationExecutor\|VZKeyboardDriver\|VZScreenReader\|ScreenReader\|KeyboardDriver\|ProvisionerInstaller\|automateSetupAssistant\|Provisioner.pkg' Sources/ Tests/ build-app.sh` to enumerate every reference before deleting.
-- [ ] **Step 2:** Delete the files; remove every reference found in Step 1 (create-flow branches, `RunnerCreateFlowPlan` Setup-Assistant gating, `SecurityControlInventory` entries, `build-app.sh` pkg block).
-- [ ] **Step 3:** `swift build` → 0 errors; `swift test --parallel --skip SpooktacularUITests` → green; `swiftlint --strict --quiet` → exit 0; `bash -n build-app.sh` → exit 0.
-- [ ] **Step 4:** Re-run the grep from Step 1 → only historical/CHANGELOG hits remain.
-- [ ] **Step 5: Commit.** `git commit -am "descope(provisioning): remove Setup Assistant OCR + pkg path (superseded by native macOS 27 provisioning)"`
+- [x] **Step 1:** `grep -rn 'SetupAutomation\|SetupAutomationExecutor\|VZKeyboardDriver\|VZScreenReader\|ScreenReader\|KeyboardDriver\|ProvisionerInstaller\|automateSetupAssistant\|Provisioner.pkg' Sources/ Tests/ build-app.sh` to enumerate every reference before deleting.
+- [x] **Step 2:** Delete the files; remove every reference found in Step 1 (create-flow branches, `RunnerCreateFlowPlan` Setup-Assistant gating, `SecurityControlInventory` entries, `build-app.sh` pkg block).
+- [x] **Step 3:** `swift build` → 0 errors; `swift test --parallel --skip SpooktacularUITests` → green; `swiftlint --strict --quiet` → exit 0; `bash -n build-app.sh` → exit 0.
+- [x] **Step 4:** Re-run the grep from Step 1 → only historical/CHANGELOG hits remain.
+- [x] **Step 5: Commit.** `git commit -am "descope(provisioning): remove Setup Assistant OCR + pkg path (superseded by native macOS 27 provisioning)"`
 
 ---
 
@@ -570,8 +570,8 @@ Then change `start` to `start(startUpFromMacOSRecovery: Bool = false, guestProvi
 
 **Files:** `README.md`, `docs/get-started.html`, `Sources/SpooktacularKit/Documentation.docc/GitHubActionsGuide.md`, `CHANGELOG.md`, `docs/superpowers/specs/2026-07-10-guest-provisioning-macos27-design.md` (mark implemented).
 
-- [ ] **Step 1:** Update the runner docs: provisioning is now native (macOS 27+ guests, no Setup Assistant); remove any OCR / Setup-Assistant references. Note the macOS 27+ guest requirement prominently.
-- [ ] **Step 2:** Sync the README test count (`swift test … | grep 'Test run with'` for root + the 3 SPICE packages; update all three README sites to the new total) and run `scripts/ci/validate-readme-claims.sh` → exit 0.
+- [x] **Step 1:** Update the runner docs: provisioning is now native (macOS 27+ guests, no Setup Assistant); remove any OCR / Setup-Assistant references. Note the macOS 27+ guest requirement prominently.
+- [x] **Step 2:** Sync the README test count (`swift test … | grep 'Test run with'` for root + the 3 SPICE packages; update all three README sites to the new total) and run `scripts/ci/validate-readme-claims.sh` → exit 0.
 - [ ] **Step 3:** `swiftlint --strict --quiet` (0), full `swift test` green, `./build-app.sh release` completes.
 - [ ] **Step 4:** Push `feat/guest-provisioning-macos27`; open a PR to `main`; watch CI (`gh run watch`) until all three jobs pass; fix any residual failures.
 - [ ] **Step 5: Commit + finish.** Use superpowers:finishing-a-development-branch to complete.

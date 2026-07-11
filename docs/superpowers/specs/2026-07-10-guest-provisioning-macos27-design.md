@@ -1,6 +1,7 @@
 # Native guest provisioning on macOS 27 — design
 
-**Status:** Approved design, pre-implementation
+**Status:** Implemented (Plan Tasks 2-9, 11 done). Live end-to-end run on
+a macOS 27 guest (Plan Task 10) is still pending — see "E2E results" below.
 **Date:** 2026-07-10
 **Branch:** `feat/guest-provisioning-macos27`
 
@@ -379,3 +380,12 @@ established from the timestamp evidence above (account @ ~T+54 s vs. RunAtLoad @
 ~T+33 s). The production `DirectPrivilegedFileOps` path (Plan Task 4/6) requires
 `geteuid() == 0`, which is satisfied on EC2 Mac / under the root service, and is
 exercised end-to-end in Phase 3 (Task 10).
+
+## E2E results
+
+**Pending live run (gated on interactive sudo).** Plan Task 10 — a full
+`spook create --github-runner` against a real macOS 27 guest, run as root so
+`DiskInjector.installProvisionerDaemon` can attach and write to the disk image
+— has not yet been executed. This section will be filled in with the actual
+timeline, evidence, and pass/fail verdict once that run happens; nothing below
+this heading should be treated as a substitute for it.
