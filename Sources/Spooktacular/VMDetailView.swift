@@ -43,12 +43,17 @@ struct VMDetailView: View {
 
     // MARK: - Hero card
     //
-    // One rounded-rect glass surface with a subtle state-tinted
-    // gradient wash. Inside, a top-to-bottom stack:
+    // One rounded-rect Liquid Glass card, tinted with the VM's
+    // lifecycle state color via `Glass.tint(_:)` — per Apple's
+    // "Applying Liquid Glass to custom views" guidance ("Assign
+    // a tint color to suggest prominence"), that's the documented
+    // way to carry semantic color on a glass surface, so the card
+    // alone signals lifecycle state without a hand-rolled gradient
+    // fill. Inside, a top-to-bottom stack:
     //
-    //   1. Icon medallion (WorkspaceIconView over a glowing
-    //      tinted shadow — keeps the user's custom icon front
-    //      and center, adds state meaning around it).
+    //   1. Icon medallion — keeps the user's custom icon front
+    //      and center; the card's tint carries the state signal
+    //      so the icon itself stays neutral.
     //   2. Title + uppercased state eyebrow.
     //   3. Spec chips (CPU / RAM / Disk / guest OS) — individual
     //      glass capsules with SF-Symbol leading glyphs, grouped
@@ -72,43 +77,20 @@ struct VMDetailView: View {
         .padding(.vertical, 40)
         .padding(.horizontal, 32)
         .frame(maxWidth: 640)
-        .background(heroBackground)
-        .clipShape(.rect(cornerRadius: 24))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(stateTint.opacity(0.25), lineWidth: 1)
-        )
+        .glassCard(cornerRadius: 24, tint: stateTint)
         .frame(maxWidth: .infinity)
     }
 
-    /// Full-bleed gradient pane behind the hero content. The
-    /// top-left/bottom-right axis gives the card a light source,
-    /// the tint is state-driven (green running, orange suspended,
-    /// neutral gray stopped) so the card's color alone signals
-    /// lifecycle at a glance.
-    private var heroBackground: some View {
-        LinearGradient(
-            colors: [
-                stateTint.opacity(0.28),
-                stateTint.opacity(0.10),
-                .black.opacity(0.05),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    /// The user's custom `WorkspaceIconView` sitting over a
-    /// tinted blur halo. Landmarks uses the same "hero image +
-    /// radial glow" shape for landmark badges — it draws the
-    /// eye to the subject while the color ring carries the
-    /// state signal.
+    /// The user's custom `WorkspaceIconView`. State meaning lives
+    /// on the surrounding `heroPane`'s glass tint — per the HIG's
+    /// "color carries meaning once" pattern, doubling it with a
+    /// colored glow shadow on the icon itself would just repeat
+    /// the same signal.
     private var iconMedallion: some View {
         WorkspaceIconView(
             spec: bundle.metadata.iconSpec ?? .defaultSpec,
             size: 140
         )
-        .shadow(color: stateTint.opacity(0.45), radius: 36, y: 12)
         .accessibilityHidden(true)
     }
 
@@ -424,35 +406,18 @@ struct ImageDetailView: View {
         .padding(.vertical, 40)
         .padding(.horizontal, 32)
         .frame(maxWidth: 640)
-        .background(heroBackground)
-        .clipShape(.rect(cornerRadius: 24))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(tintColor.opacity(0.25), lineWidth: 1)
-        )
+        .glassCard(cornerRadius: 24, tint: tintColor)
         .frame(maxWidth: .infinity)
-    }
-
-    /// Full-bleed gradient pane behind the hero content. Uses
-    /// the source-specific tint so IPSW + OCI images are
-    /// visually distinguishable at a glance.
-    private var heroBackground: some View {
-        LinearGradient(
-            colors: [
-                tintColor.opacity(0.30),
-                tintColor.opacity(0.10),
-                .black.opacity(0.05),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
     }
 
     /// Circular glass medallion around the SF Symbol, tinted
     /// to match the hero. `glassEffect(.regular.tint(...)
     /// .interactive(), in: .circle)` gives the round capsule
     /// a subtle pressure/hover response per Apple's Liquid
-    /// Glass interactive-variant guidance.
+    /// Glass interactive-variant guidance. The surrounding
+    /// `heroCard` already carries the same tint via
+    /// `Glass.tint(_:)`, so the medallion doesn't need its own
+    /// colored glow shadow — that would just repeat the signal.
     private var iconMedallion: some View {
         Image(systemName: iconName)
             .font(.system(size: 56, weight: .regular))
@@ -462,7 +427,6 @@ struct ImageDetailView: View {
                 .regular.tint(tintColor).interactive(),
                 in: .circle
             )
-            .shadow(color: tintColor.opacity(0.35), radius: 30, y: 10)
             .accessibilityHidden(true)
     }
 

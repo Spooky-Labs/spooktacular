@@ -47,14 +47,27 @@ struct GlassProminentButtonModifier: ViewModifier {
 /// card picks up the subtle pressure / hover response Apple
 /// ships with interactable glass surfaces.
 ///
+/// An optional `tint` assigns a color to the glass itself — per
+/// Apple's ["Applying Liquid Glass to custom views"](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views)
+/// guidance ("Assign a tint color to suggest prominence"), the
+/// documented way to carry semantic/lifecycle color on a glass
+/// surface is `Glass.tint(_:)`, not a hand-rolled gradient fill
+/// behind the card. Leave `tint` `nil` for neutral chrome.
+///
 /// Apply sparingly: the macOS HIG calls out glass as a hierarchy
 /// signal, not a default treatment.
 struct GlassCardModifier: ViewModifier {
     var cornerRadius: CGFloat = 16
+    var tint: Color?
 
     func body(content: Content) -> some View {
+        let glass: Glass = if let tint {
+            .regular.tint(tint).interactive()
+        } else {
+            .regular.interactive()
+        }
         content
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+            .glassEffect(glass, in: .rect(cornerRadius: cornerRadius))
     }
 }
 
@@ -127,9 +140,11 @@ extension View {
             .glassEffect(.regular, in: .capsule)
     }
 
-    /// Applies a Liquid Glass card background.
-    func glassCard(cornerRadius: CGFloat = 16) -> some View {
-        modifier(GlassCardModifier(cornerRadius: cornerRadius))
+    /// Applies a Liquid Glass card background. Pass `tint` to give
+    /// the card a semantic/lifecycle color (state-tinted hero
+    /// panes); leave it `nil` for neutral chrome.
+    func glassCard(cornerRadius: CGFloat = 16, tint: Color? = nil) -> some View {
+        modifier(GlassCardModifier(cornerRadius: cornerRadius, tint: tint))
     }
 
     /// Applies a Liquid Glass capsule badge.
