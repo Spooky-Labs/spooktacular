@@ -503,12 +503,25 @@ final class AppState {
     /// Marks the VM as transitioning for the duration of the start
     /// sequence so the menu-bar icon switches to its busy variant.
     ///
-    /// - Parameter recovery: When `true`, boots the guest into
-    ///   macOS Recovery via
-    ///   `VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`.
-    ///   Useful for filesystem repair, Startup Security Utility,
-    ///   or reinstalling the OS. Defaults to `false`.
-    func startVM(_ name: String, recovery: Bool = false) async {
+    /// - Parameters:
+    ///   - recovery: When `true`, boots the guest into macOS
+    ///     Recovery via
+    ///     `VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`.
+    ///     Useful for filesystem repair, Startup Security Utility,
+    ///     or reinstalling the OS. Defaults to `false`.
+    ///   - guestProvisioning: Applied only when this happens to be
+    ///     the bundle's actual first boot after install —
+    ///     `VZMacGuestProvisioningOptions` is evaluated solely on
+    ///     that boot (macOS 27+ guests; silently ignored otherwise).
+    ///     Passed by ``provisionGitHubRunnerForCreate(bundle:runnerSpec:displayName:cancellationTask:)``
+    ///     for the runner's own first boot; `nil` for every other
+    ///     caller (a manual sidebar Start on an existing VM is never
+    ///     a first boot).
+    func startVM(
+        _ name: String,
+        recovery: Bool = false,
+        guestProvisioning: GuestProvisioningSpec? = nil
+    ) async {
         guard let bundle = vms[name], runningVMs[name] == nil else { return }
         guard !transitioningVMs.contains(name) else { return }
 
@@ -562,7 +575,7 @@ final class AppState {
             // state file when one exists (the "close the laptop"
             // workflow from Suspend), falling back to a cold boot
             // if restore fails or when booting into Recovery.
-            try await vm.startOrResume(startUpFromMacOSRecovery: recovery)
+            try await vm.startOrResume(startUpFromMacOSRecovery: recovery, guestProvisioning: guestProvisioning)
             runningVMs[name] = vm
 
             // Host-side metrics sampler. Created eagerly —
@@ -1038,7 +1051,6 @@ final class AppState {
         // — deliberately OUTSIDE the do/catch, see its call site —
         // has what it needs without re-deriving it.
         var createdBundle: VirtualMachineBundle?
-        var installedMacOSMajorVersion: Int?
 
         do {
             // Restore-image resolution is source-dependent.
@@ -1072,7 +1084,6 @@ final class AppState {
                 try Task.checkCancellation()
                 ipswURL = candidate
                 let v = restoreImage.operatingSystemVersion
-                installedMacOSMajorVersion = v.majorVersion
                 updateCreation(
                     name: name,
                     progress: 0.5,
@@ -1083,7 +1094,6 @@ final class AppState {
                 restoreImage = try await manager.fetchLatestSupported()
                 try Task.checkCancellation()
                 let v = restoreImage.operatingSystemVersion
-                installedMacOSMajorVersion = v.majorVersion
                 updateCreation(
                     name: name,
                     progress: 0.05,
@@ -1128,74 +1138,44 @@ final class AppState {
             }
             try Task.checkCancellation()
 
-            // First-boot script provisioning readiness. A GUI create
-            // with a template (Remote Desktop / OpenClaw) or
+            // Provisioner daemon injection. A GUI create with a
+            // template (Remote Desktop / OpenClaw) or
             // operator-supplied `--user-data` script writes
             // `first-boot.sh` to the bundle's provisioning share
             // below via `provisionBundleForCreate`, but that script
             // is only ever EXECUTED by the guest's Spooktacular
-            // Provisioner LaunchDaemon — the same daemon
-            // `provisionGitHubRunnerForCreate` installs via Setup
-            // Assistant automation for `--github-runner` creates.
-            // Without staging the pkg and running that automation
-            // here too, a non-runner scripted create's script would
-            // sit on the share with nothing to ever run it — a
-            // silent dead end indistinguishable from success.
-            // Mirrors the CLI's `willInjectFirstBootScript` check in
-            // `Create.swift`, generalized to any script source; see
-            // ``RunnerCreateFlowPlan/firstBootProvisioningPlan(hasFirstBootScript:macOSMajorVersion:)``.
-            if request.userScriptURL != nil {
-                guard let macOSMajorVersion = installedMacOSMajorVersion else {
-                    throw SetupAssistantProvisioningError.macOSVersionUnknown
-                }
-                let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
-                    hasFirstBootScript: true,
-                    macOSMajorVersion: macOSMajorVersion
-                )
-                switch plan {
-                case .noScript:
-                    break
-                case .stageProvisionerAndAutomate:
+            // Provisioner LaunchDaemon, injected directly onto the
+            // guest's Data volume before first boot (see
+            // ``DiskInjector/installProvisionerDaemon``) — replacing
+            // the old Setup Assistant + pkg-install path. No OS boot
+            // needed to install it. Mirrors the CLI's
+            // `willInjectFirstBootScript` gate, generalized to any
+            // script source. Non-fatal on failure: the VM is still a
+            // perfectly usable desktop VM once the operator installs
+            // the daemon or completes setup by hand.
+            let willInjectFirstBootScript = request.userScriptURL != nil
+            if willInjectFirstBootScript || bundle.spec.guestToolsInstall.installsAppBundle {
+                if let assets = ProvisionerAssets.locate() {
                     do {
-                        try await stageProvisionerAndRunSetupAssistant(
-                            bundle: bundle,
-                            macOSMajorVersion: macOSMajorVersion,
-                            name: name,
-                            progressRange: 0.9...0.94
+                        try DiskInjector.installProvisionerDaemon(
+                            into: bundle,
+                            plist: assets.plist,
+                            runner: assets.runner,
+                            privileged: DirectPrivilegedFileOps()
                         )
-                    } catch let error as CancellationError {
-                        // Cancellation is not a "warn and continue"
-                        // outcome — propagate so the outer catch
-                        // below deletes the partial bundle, same as
-                        // every other cancellation point in this
-                        // pipeline.
-                        throw error
                     } catch {
-                        // Unlike `--github-runner` (fatal — see
-                        // `RunnerCreateFlowPlan.setupAutomationFailureIsFatal`),
-                        // a plain scripted create has nothing that
-                        // depends on the automation succeeding: the
-                        // VM is still a perfectly usable desktop VM.
-                        // Swallow and warn instead of aborting a
-                        // create that already spent 10-20 minutes
-                        // installing macOS.
                         Log.provision.error(
-                            "Setup Assistant automation failed for '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)"
+                            "Provisioner daemon injection failed for '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)"
                         )
                         notifications.notifyWarning(
                             bundleID.uuidString,
                             displayName: name,
-                            body: "Setup Assistant automation failed, so the first-boot script may not run automatically. Start the VM to complete setup and run it by hand."
+                            body: "Provisioner daemon injection failed, so the first-boot script may not run automatically. Start the VM to complete setup and run it by hand."
                         )
                     }
-                case .unsupportedMacOSVersion(let major):
-                    Log.provision.info(
-                        "No Setup Assistant sequence for macOS \(major, privacy: .public) — '\(name, privacy: .public)''s first-boot script will not run automatically"
-                    )
-                    notifications.notifyWarning(
-                        bundleID.uuidString,
-                        displayName: name,
-                        body: "No automated Setup Assistant sequence for macOS \(major). Start the VM and complete setup by hand for the first-boot script to run — see 'spook start \(name)'."
+                } else {
+                    Log.provision.warning(
+                        "Provisioner assets not found — skipping daemon injection for '\(name, privacy: .public)'. Run build-app.sh to produce Resources/SpookProvisioner/."
                     )
                 }
             }
@@ -1208,18 +1188,17 @@ final class AppState {
             //     (template or `--user-data`).
             //
             // `provisionBundleForCreate` handles both
-            // independently — Guest Tools via `ditto`
-            // (fully unprivileged — launch-at-login is the
-            // guest app's concern, not the host installer's),
-            // user scripts via the legacy
-            // `DiskInjector.inject(script:)` LaunchDaemon
-            // path (still requires one admin-auth prompt for
-            // `/Library/LaunchDaemons/` root:wheel chown). Runs
-            // regardless of the first-boot-script readiness outcome
-            // above — even on `.unsupportedMacOSVersion` or a
-            // swallowed automation failure, the script is still
-            // written to the share so it's there once the operator
-            // finishes setup and installs the provisioner by hand.
+            // independently — Guest Tools via `ditto` (fully
+            // unprivileged — launch-at-login is the guest app's own
+            // concern, not the host installer's), user scripts via
+            // `DiskInjector.inject(script:)`, a plain host-side copy
+            // into the bundle's provisioning share (no root needed;
+            // the daemon that will read it back was already injected
+            // above). Runs regardless of the daemon-injection outcome
+            // above — even if it failed or the assets weren't found,
+            // the script is still written to the share so it's there
+            // once the operator installs the daemon or completes
+            // setup by hand.
             let needsProvisioning =
                 bundle.spec.guestToolsInstall.installsAppBundle
                 || request.userScriptURL != nil
@@ -1270,12 +1249,11 @@ final class AppState {
         // `loadVMs()`. A late failure here (Keychain miss, GitHub API
         // error, boot failure) must NOT delete a bundle that took
         // 10-20 minutes to install — see
-        // ``provisionGitHubRunnerForCreate(bundle:runnerSpec:macOSMajorVersion:displayName:)``.
+        // ``provisionGitHubRunnerForCreate(bundle:runnerSpec:displayName:cancellationTask:)``.
         if let runnerSpec = request.runnerSpec, let createdBundle {
             await provisionGitHubRunnerForCreate(
                 bundle: createdBundle,
                 runnerSpec: runnerSpec,
-                macOSMajorVersion: installedMacOSMajorVersion,
                 displayName: name,
                 cancellationTask: cancellationTask
             )
@@ -1407,156 +1385,13 @@ final class AppState {
         }
     }
 
-    /// Stages `Spooktacular Provisioner.pkg` into `bundle`'s
-    /// provisioning share and drives Setup Assistant automation to
-    /// install it, so the guest's Spooktacular Provisioner
-    /// LaunchDaemon is in place before a first-boot script is
-    /// disk-injected. Boots the VM headless, runs the keyboard
-    /// automation sequence, then stops it.
-    ///
-    /// Shared by two callers that both need this exact sequence for
-    /// the same underlying reason — a first-boot script is only
-    /// ever executed by the provisioner LaunchDaemon, and the
-    /// LaunchDaemon is only ever installed by this automation:
-    ///
-    /// 1. ``provisionGitHubRunnerForCreate(bundle:runnerSpec:macOSMajorVersion:displayName:cancellationTask:)`` —
-    ///    `--github-runner` creates. A failure here is fatal to the
-    ///    runner flow (see
-    ///    ``RunnerCreateFlowPlan/setupAutomationFailureIsFatal(githubRunner:)``).
-    /// 2. ``runMacOSCreate(request:)`` — plain scripted-template
-    ///    creates (`--remote-desktop`, `--openclaw`, custom
-    ///    user-data). A failure here is NOT fatal — the VM is still
-    ///    a perfectly usable desktop VM once Setup Assistant is
-    ///    completed by hand — so that caller catches and warns
-    ///    instead of propagating.
-    ///
-    /// Mirrors `Create.swift`'s inline provisioner-staging +
-    /// `automateSetupAssistant` call. Whether to call this at all is
-    /// ``RunnerCreateFlowPlan/firstBootProvisioningPlan(hasFirstBootScript:macOSMajorVersion:)``'s
-    /// job, not this method's — by the time this runs, the caller
-    /// has already confirmed ``SetupAutomation/isSupported(macOSVersion:)``.
-    ///
-    /// - Parameters:
-    ///   - bundle: The freshly macOS-installed VM bundle.
-    ///   - macOSMajorVersion: The macOS major version just
-    ///     installed — selects the automation sequence.
-    ///   - name: Display name, used only for
-    ///     ``updateCreation(name:progress:status:)`` progress rows.
-    ///   - progressRange: The slice of the 0...1 progress bar this
-    ///     phase owns. The two callers are at very different points
-    ///     in their own pipelines (a `--github-runner` create's
-    ///     Setup Assistant phase runs early; a scripted-template
-    ///     create's runs after the "Installing macOS…" phase), so
-    ///     the caller — not this method — decides where its portion
-    ///     of the bar lives.
-    /// - Throws: ``SetupAssistantProvisioningError/vmInstanceUnavailable``
-    ///   if `VirtualMachine.vzVM` is `nil` after construction, or
-    ///   whatever ``SetupAutomationExecutor/run(steps:using:screenReader:diagnosticsDirectory:)``
-    ///   throws. Callers decide whether that's fatal.
-    @MainActor
-    private func stageProvisionerAndRunSetupAssistant(
-        bundle: VirtualMachineBundle,
-        macOSMajorVersion: Int,
-        name: String,
-        progressRange: ClosedRange<Double>
-    ) async throws {
-        let span = progressRange.upperBound - progressRange.lowerBound
-        func progress(_ fraction: Double) -> Double {
-            progressRange.lowerBound + span * fraction
-        }
-
-        // Seed the provisioner pkg into the bundle's provisioning
-        // share BEFORE Setup Assistant automation runs — its typed
-        // `installer` command needs the pkg already sitting on the
-        // share. Soft fail: dev builds that never ran build-app.sh
-        // don't have a pkg to stage, so continue without zero-touch
-        // provisioning rather than blocking the whole create on a
-        // missing dev artifact.
-        updateCreation(name: name, progress: progress(0), status: "Staging provisioner package…")
-        var installProvisioner = false
-        if let pkgURL = AppBundleBootstrapTemplate.locateProvisionerPkg() {
-            // 0700 — this share can hold a live secret verbatim
-            // (a GitHub Actions runner registration token) once a
-            // script is injected below; see the matching comment on
-            // `VirtualMachineBundle.create`.
-            try FileManager.default.createDirectory(
-                at: bundle.provisionDirectoryURL,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
-            let destination = bundle.provisionDirectoryURL
-                .appendingPathComponent(pkgURL.lastPathComponent)
-            try? FileManager.default.removeItem(at: destination)
-            try FileManager.default.copyItem(at: pkgURL, to: destination)
-            installProvisioner = true
-        } else {
-            Log.provision.warning(
-                "Provisioner pkg not found — continuing without zero-touch install. Run build-app.sh to produce Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg."
-            )
-        }
-        try Task.checkCancellation()
-
-        // Setup Assistant automation — boot headless, drive the
-        // keyboard automation sequence for the macOS version this
-        // VM was installed with, then stop. Mirrors Create.swift's
-        // `automateSetupAssistant` VM construction and
-        // driver/screen-reader wiring.
-        updateCreation(name: name, progress: progress(0.2), status: "Booting for Setup Assistant automation…")
-        // `RestoreImageManager.install()` already waits for the
-        // just-finished installer's XPC-backed file lock to clear
-        // before returning — see its doc comment. This factory only
-        // covers the small residual TOCTOU gap between that wait
-        // and this construction call; see
-        // `VirtualMachine.makeAfterInstall(bundle:onRetry:)`.
-        let setupVM = try await VirtualMachine.makeAfterInstall(bundle: bundle)
-        guard let underlyingVM = setupVM.vzVM else {
-            throw SetupAssistantProvisioningError.vmInstanceUnavailable
-        }
-        try await setupVM.start()
-        // Once booted, every failure path below must still stop
-        // this VM before propagating — otherwise a thrown
-        // `SetupAutomationExecutorError` (e.g. an unmappable
-        // character) would leave a booted `VZVirtualMachine`
-        // running with no tracking in `runningVMs` and no UI
-        // affordance to stop it.
-        do {
-            let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
-            let screenReader = VZScreenReader(vmView: driver.vmView)
-            let steps = try SetupAutomation.sequence(
-                for: macOSMajorVersion,
-                installProvisioner: installProvisioner
-            )
-            updateCreation(name: name, progress: progress(0.35), status: "Running Setup Assistant automation…")
-            // Diagnostics land in the same `provision/` directory
-            // first-boot provisioning evidence already uses, so a
-            // failed run and a failed gate show up side by side.
-            try await SetupAutomationExecutor.run(
-                steps: steps,
-                using: driver,
-                screenReader: screenReader,
-                diagnosticsDirectory: bundle.provisionDirectoryURL
-            )
-            // NOT "succeeded": the keystroke sequence finished and
-            // every screen gate along the way was satisfied, but
-            // that doesn't confirm Setup Assistant actually
-            // finished on the guest.
-            updateCreation(name: name, progress: progress(0.9), status: "Keystroke sequence completed.")
-        } catch {
-            try? await setupVM.stop(graceful: false)
-            throw error
-        }
-        updateCreation(name: name, progress: progress(0.95), status: "Stopping VM after Setup Assistant…")
-        try? await setupVM.stop(graceful: false)
-        try Task.checkCancellation()
-    }
-
     /// Zero-touch GitHub Actions runner provisioning for a freshly
     /// created macOS VM. Mirrors `Create.swift`'s
-    /// `automateSetupAssistant` → `provisionGitHubRunner` →
-    /// `bootRunnerAndAwaitOnline` chain, adapted to the GUI's
-    /// in-process VM lifecycle: no PID file and no headless-process
-    /// signal handling — the running app itself is the long-lived
-    /// host process, and ``startVM(_:recovery:)`` /
+    /// `provisionGitHubRunner` → `bootRunnerAndAwaitOnline` chain,
+    /// adapted to the GUI's in-process VM lifecycle: no PID file and
+    /// no headless-process signal handling — the running app itself
+    /// is the long-lived host process, and
+    /// ``startVM(_:recovery:guestProvisioning:)`` /
     /// ``stopVM(_:)`` already own that bookkeeping.
     ///
     /// Called from ``runMacOSCreate(request:)`` **after** its
@@ -1579,14 +1414,13 @@ final class AppState {
     /// so the user can read it and dismiss.
     ///
     /// ``transitioningVMs`` guards the VM's Start/Stop controls
-    /// (see ``startVM(_:recovery:)``'s own guard) for the seed +
-    /// Setup Assistant automation window, since this method drives
-    /// its own raw ``VirtualMachine`` instance outside
-    /// ``runningVMs`` during that window — a concurrent user-
-    /// initiated start would otherwise race the same bundle's disk
-    /// image. The guard is lifted before handing off to
-    /// ``startVM(_:recovery:)``, which manages its own
-    /// insert/remove for the boot it performs.
+    /// (see ``startVM(_:recovery:guestProvisioning:)``'s own guard)
+    /// for the provisioner-daemon-injection window, since that
+    /// attaches/mounts the bundle's disk image outside
+    /// ``runningVMs`` — a concurrent user-initiated start would
+    /// otherwise race it. The guard is lifted before handing off to
+    /// ``startVM(_:recovery:guestProvisioning:)``, which manages its
+    /// own insert/remove for the boot it performs.
     ///
     /// - Parameter cancellationTask: The Task handle
     ///   ``beginCreateMacOSVM(_:)`` originally attached to this VM's
@@ -1604,7 +1438,6 @@ final class AppState {
     private func provisionGitHubRunnerForCreate(
         bundle: VirtualMachineBundle,
         runnerSpec: RunnerRequest,
-        macOSMajorVersion: Int?,
         displayName: String,
         cancellationTask: Task<Void, Never>?
     ) async {
@@ -1626,29 +1459,41 @@ final class AppState {
         transitioningVMs.insert(key)
 
         do {
-            // 1-2. Stage the provisioner pkg and run Setup Assistant
-            //    automation (with `installProvisioner: true`) so the
-            //    guest's provisioner LaunchDaemon is in place before
-            //    the runner script is disk-injected below. Shared
-            //    with the plain scripted-template path in
-            //    `runMacOSCreate(request:)` — see
-            //    ``stageProvisionerAndRunSetupAssistant(bundle:macOSMajorVersion:name:progressRange:)``.
-            //    Unlike that path, a failure here IS fatal: per
-            //    ``RunnerCreateFlowPlan/setupAutomationFailureIsFatal(githubRunner:)``,
-            //    zero-touch runner registration has nothing to fall
-            //    back to if the provisioner never lands, so the
-            //    error is left to propagate to this method's own
-            //    `catch` below rather than being swallowed.
-            guard let macOSMajorVersion else {
-                throw SetupAssistantProvisioningError.macOSVersionUnknown
+            // 1. Inject the provisioner LaunchDaemon directly onto
+            //    the guest's Data volume so it's in place before the
+            //    runner script is disk-injected below — replacing
+            //    the old Setup Assistant + pkg-install path (see
+            //    ``DiskInjector/installProvisionerDaemon``). No OS
+            //    boot needed. Unlike the non-runner scripted-template
+            //    path in `runMacOSCreate(request:)` (which swallows
+            //    and warns), a failure here IS fatal: zero-touch
+            //    runner registration has nothing to fall back to if
+            //    the daemon never lands, so the error propagates to
+            //    this method's own `catch` below.
+            updateCreation(name: name, progress: 0.05, status: "Injecting provisioner daemon…")
+            try DirectPrivilegedFileOps().preflight()
+            guard let assets = ProvisionerAssets.locate() else {
+                throw RunnerProvisioningError.provisionerAssetsNotFound
             }
-            try await stageProvisionerAndRunSetupAssistant(
-                bundle: bundle,
-                macOSMajorVersion: macOSMajorVersion,
-                name: name,
-                progressRange: 0.05...0.55
+            try DiskInjector.installProvisionerDaemon(
+                into: bundle,
+                plist: assets.plist,
+                runner: assets.runner,
+                privileged: DirectPrivilegedFileOps()
             )
             try Task.checkCancellation()
+
+            // 2. Native guest provisioning account for this VM's
+            //    first boot — the framework creates this admin
+            //    account and skips Setup Assistant (macOS 27+ guests
+            //    only; see ``GuestProvisioningSpec``). The password
+            //    is ephemeral, generated fresh per VM, never
+            //    persisted.
+            let provisioningSpec = GuestProvisioningSpec(
+                fullName: "Spooktacular Runner",
+                username: "runner",
+                password: EphemeralCredential.generatePassword()
+            )
 
             // 3. Mint a fresh registration token — seconds before
             //    boot, since GitHub's tokens expire after one
@@ -1715,11 +1560,13 @@ final class AppState {
                 //    keyed by the bundle's UUID, so the VM becomes
                 //    a normal running instance in `runningVMs`
                 //    with streaming services, graphics view, and
-                //    lifecycle notifications wired up.
+                //    lifecycle notifications wired up. This is the
+                //    bundle's actual first boot after install, so
+                //    `guestProvisioning` is honored.
                 updateCreation(name: name, progress: 0.85, status: "Starting VM…")
-                await startVM(key)
+                await startVM(key, guestProvisioning: provisioningSpec)
                 guard runningVMs[key] != nil else {
-                    throw SetupAssistantProvisioningError.startFailed
+                    throw RunnerProvisioningError.startFailed
                 }
 
                 // 6. Poll GitHub until the runner reports online. A
@@ -2027,34 +1874,27 @@ final class AppState {
         }
     }
 
-    /// Diagnostics for ``stageProvisionerAndRunSetupAssistant(bundle:macOSMajorVersion:name:progressRange:)``,
-    /// shared by ``provisionGitHubRunnerForCreate(bundle:runnerSpec:macOSMajorVersion:displayName:cancellationTask:)``
-    /// and the plain scripted-template path in ``runMacOSCreate(request:)``.
+    /// Errors from ``provisionGitHubRunnerForCreate(bundle:runnerSpec:displayName:cancellationTask:)``.
     ///
     /// Every case describes a failure that happens after the VM
     /// bundle already exists on disk — the recovery text always
     /// points at manual next steps rather than "recreate the VM,"
     /// matching the CLI's "the VM was created and has been kept"
-    /// framing for a late setup-automation-phase failure.
-    enum SetupAssistantProvisioningError: LocalizedError {
-        /// The macOS version installed by this create couldn't be
-        /// determined, so Setup Assistant automation has no
-        /// sequence to run.
-        case macOSVersionUnknown
-        /// `VirtualMachine.vzVM` was `nil` right after
-        /// construction — the underlying `VZVirtualMachine`
-        /// failed to initialize.
-        case vmInstanceUnavailable
-        /// ``AppState/startVM(_:recovery:)`` returned without the
-        /// VM appearing in ``AppState/runningVMs``.
+    /// framing for a late runner-provisioning-phase failure.
+    enum RunnerProvisioningError: LocalizedError {
+        /// The bundled provisioner plist + runner script weren't
+        /// found (a dev build that never ran `build-app.sh`).
+        /// Zero-touch runner registration has nothing to fall back
+        /// to without the daemon that executes the runner script.
+        case provisionerAssetsNotFound
+        /// ``AppState/startVM(_:recovery:guestProvisioning:)`` returned
+        /// without the VM appearing in ``AppState/runningVMs``.
         case startFailed
 
         var errorDescription: String? {
             switch self {
-            case .macOSVersionUnknown:
-                "Could not determine the installed macOS version for Setup Assistant automation."
-            case .vmInstanceUnavailable:
-                "Failed to create a virtual machine instance for Setup Assistant automation."
+            case .provisionerAssetsNotFound:
+                "Provisioner plist/runner script not found — run build-app.sh to produce Resources/SpookProvisioner/."
             case .startFailed:
                 "The VM failed to start after the runner script was injected."
             }
@@ -2062,8 +1902,8 @@ final class AppState {
 
         var recoverySuggestion: String? {
             switch self {
-            case .macOSVersionUnknown, .vmInstanceUnavailable:
-                "The VM was created and has been kept. Start it manually from the sidebar to complete Setup Assistant, then register the runner by hand."
+            case .provisionerAssetsNotFound:
+                "Rebuild the app with ./build-app.sh, which bundles the provisioner plist and runner script."
             case .startFailed:
                 "The runner script is injected. Try starting the VM manually from the sidebar."
             }
