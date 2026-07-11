@@ -84,25 +84,21 @@ struct CreateJSONPurityTests {
         )
     }
 
-    @Test("automateSetupAssistant's progress lines are gated on !json")
-    func automateSetupAssistantProgressIsJSONAware() throws {
+    @Test("provisioner daemon injection's progress lines are gated on !json")
+    func provisionerDaemonInjectionProgressIsJSONAware() throws {
         let source = try readCreateSource()
-        guard let range = source.range(of: "private func automateSetupAssistant(") else {
-            Issue.record("automateSetupAssistant(_:) not found in Create.swift — test is obsolete.")
+        guard let range = source.range(of: "try DiskInjector.installProvisionerDaemon(") else {
+            Issue.record("DiskInjector.installProvisionerDaemon call not found in Create.swift — test is obsolete.")
             return
         }
-        let body = String(source[range.upperBound...].prefix(9500))
-        // Every progress print in this function must be gated —
-        // spot-check the first and last lines of the sequence
-        // rather than every single one, since a full brace-aware
-        // static analyzer is out of scope for a source-grep test.
+        let body = String(source[range.upperBound...].prefix(1200))
         #expect(
-            body.contains(#"if !json { print(Style.info("Automating Setup Assistant for macOS \(macOSVersion)...")) }"#),
-            "automateSetupAssistant's opening progress line must be gated on !json."
+            body.contains(#"if !json { print(Style.success("✓ Provisioner daemon injected.")) }"#),
+            "The provisioner daemon injection's success line must be gated on !json."
         )
         #expect(
-            body.contains(#"if !json { print(Style.success("✓ VM stopped.")) }"#),
-            "automateSetupAssistant's closing 'VM stopped' line must be gated on !json."
+            body.contains(#"if !json { print(Style.dim("  Provisioner assets not found"#),
+            "The provisioner-assets-not-found soft warning must be gated on !json."
         )
     }
 }

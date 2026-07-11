@@ -814,7 +814,17 @@ public final class VirtualMachine: NSObject {
     /// failure list ("the file contents are incompatible with
     /// the current configuration"):
     /// <https://developer.apple.com/documentation/virtualization/vzvirtualmachine/restoremachinestatefrom(url:)>.
-    public func startOrResume(startUpFromMacOSRecovery recovery: Bool = false) async throws {
+    ///
+    /// - Parameter guestProvisioning: Forwarded to the cold-boot path
+    ///   (``start(startUpFromMacOSRecovery:guestProvisioning:)``) when there's
+    ///   no saved state to resume from — the case that matters for a
+    ///   freshly-installed bundle's actual first boot. Ignored when a saved
+    ///   state is restored instead, since `VZMacGuestProvisioningOptions` only
+    ///   applies to a genuine first boot after restore.
+    public func startOrResume(
+        startUpFromMacOSRecovery recovery: Bool = false,
+        guestProvisioning: GuestProvisioningSpec? = nil
+    ) async throws {
         guard vzVM != nil else { throw VirtualMachineInvalidatedError() }
         let savedURL = bundle.savedStateURL
         let hasSaved = FileManager.default.fileExists(atPath: savedURL.path)
@@ -846,7 +856,7 @@ public final class VirtualMachine: NSObject {
             }
         }
 
-        try await start(startUpFromMacOSRecovery: recovery)
+        try await start(startUpFromMacOSRecovery: recovery, guestProvisioning: guestProvisioning)
     }
 
     // MARK: - Private

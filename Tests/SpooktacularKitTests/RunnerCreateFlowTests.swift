@@ -5,38 +5,6 @@ import Foundation
 @Suite("RunnerCreateFlowPlan")
 struct RunnerCreateFlowPlanTests {
 
-    @Test("normal zero-touch: auto-starts")
-    func normalZeroTouch() throws {
-        let autoStart = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: false, noStart: false)
-        #expect(autoStart == true)
-    }
-
-    @Test("--no-start alone: skips auto-start, no error")
-    func noStartAlone() throws {
-        let autoStart = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: false, noStart: true)
-        #expect(autoStart == false)
-    }
-
-    @Test("--skip-setup without --no-start: hard error")
-    func skipSetupBlocked() {
-        #expect(throws: RunnerCreateFlowError.zeroTouchRequiresSetupAutomation) {
-            _ = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: true, noStart: false)
-        }
-    }
-
-    @Test("--skip-setup + --no-start: advanced escape hatch allowed, auto-start off")
-    func skipSetupWithNoStart() throws {
-        let autoStart = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: true, noStart: true)
-        #expect(autoStart == false)
-    }
-
-    @Test("error has description and recovery suggestion")
-    func errorText() {
-        let error = RunnerCreateFlowError.zeroTouchRequiresSetupAutomation
-        #expect(error.errorDescription != nil)
-        #expect(error.recoverySuggestion != nil)
-    }
-
     // MARK: - Template exclusivity
 
     @Test("no conflicting template flags passes")
