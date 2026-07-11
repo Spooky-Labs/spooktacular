@@ -132,7 +132,7 @@ struct ErrorExplainerSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
             }
-            .glassCard(cornerRadius: 12)
+            .background(.regularMaterial, in: .rect(cornerRadius: 12))
         }
         .padding(20)
         .frame(minWidth: 460, idealWidth: 520, minHeight: 340)

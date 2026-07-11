@@ -168,38 +168,29 @@ struct WorkspaceStatsSidebar: View {
     let model: WorkspaceStatsModel
 
     var body: some View {
-        // `GlassEffectContainer` batches the outer card + the
-        // four per-chart surfaces into one render pass and lets
-        // them morph smoothly as samples stream in. Apple's
-        // guidance: use a container whenever multiple glass
-        // surfaces cluster within a common ancestor — avoids
-        // the "every-chart-has-its-own-pane" stacked-glass look
-        // and keeps the GPU from rebuilding overlapping blurs.
-        // One glass card per metric; the outer container keeps
-        // the whole panel on one rendering pass per Apple's
-        // "Applying Liquid Glass to custom views" guidance
-        // (<https://developer.apple.com/documentation/swiftui/
-        // applying-liquid-glass-to-custom-views>), and the
-        // spacing here is larger than the inner VStack's so
-        // individual cards stay distinct rather than blending.
-        GlassEffectContainer(spacing: 20) {
-            VStack(alignment: .leading, spacing: 14) {
-                Label("Live metrics", systemImage: "waveform.path.ecg")
-                    .font(.headline)
-                    .padding(.leading, 4)
+        // These metric cards live in the content layer, so they use
+        // a standard material rather than Liquid Glass — Apple's HIG
+        // is explicit that Liquid Glass belongs to the navigation /
+        // chrome layer, not to content panes ("Don't use Liquid Glass
+        // in the content layer"). With no glass surfaces left to batch
+        // or morph, a `GlassEffectContainer` here would wrap nothing,
+        // so the plain `VStack` is the whole layout.
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Live metrics", systemImage: "waveform.path.ecg")
+                .font(.headline)
+                .padding(.leading, 4)
 
-                cpuChart
-                memoryChart
-                diskChart
-                powerChart
-                pageInChart
-            }
+            cpuChart
+            memoryChart
+            diskChart
+            powerChart
+            pageInChart
         }
     }
 
     // MARK: - Chart components
 
-    /// One Liquid-Glass card per metric. Layout top-to-bottom:
+    /// One material-backed card per metric. Layout top-to-bottom:
     ///
     /// 1. Header row — SF Symbol + title on the left, current
     ///    value readout on the right. The icon gives the card
@@ -214,9 +205,9 @@ struct WorkspaceStatsSidebar: View {
     ///    System Settings pattern — the copy is the footer,
     ///    not a floating tooltip).
     ///
-    /// The whole stack sits on a `.regular.interactive()`
-    /// glass surface so hover / press feedback matches the
-    /// rest of the app's Liquid Glass controls.
+    /// The whole stack sits on a `.regularMaterial` surface —
+    /// this is a content-layer pane, so it uses a standard
+    /// material rather than Liquid Glass, per Apple's HIG.
     private func metricCard<Content: View>(
         title: String,
         systemImage: String,
@@ -251,7 +242,7 @@ struct WorkspaceStatsSidebar: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 14)
+        .background(.regularMaterial, in: .rect(cornerRadius: 14))
     }
 
     /// Formats a `Double?` as a short readable string.

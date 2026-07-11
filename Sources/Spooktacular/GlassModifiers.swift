@@ -84,33 +84,29 @@ struct GlassStatusBadgeModifier: ViewModifier {
     }
 }
 
-// MARK: - Glass Section Header Modifier
+// MARK: - Material Section Header Modifier
 
-/// Applies Liquid Glass styling to section headers in sheets
-/// and inspectors.
-struct GlassSectionHeaderModifier: ViewModifier {
+/// Backs a section header in sheets and inspectors with a
+/// standard material chip.
+///
+/// Section headers live in the content layer, and Apple's HIG is
+/// explicit — ["Don't use Liquid Glass in the content
+/// layer."](https://developer.apple.com/design/human-interface-guidelines/materials)
+/// A `.regularMaterial` fill gives the header its recessed
+/// affordance without borrowing the floating-chrome material
+/// that Liquid Glass reserves for controls and navigation.
+struct MaterialSectionHeaderModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .glassEffect(.regular, in: .rect(cornerRadius: 8))
+            .background(.regularMaterial, in: .rect(cornerRadius: 8))
     }
 }
 
 // MARK: - View Extensions
 
 extension View {
-    /// Hides the toolbar's default material so Liquid Glass
-    /// toolbar elements share a single container. Safe to call
-    /// unconditionally — on macOS 26 the standard
-    /// `NavigationSplitView` toolbar auto-adopts Liquid Glass;
-    /// this helper just removes the duplicated background.
-    @ViewBuilder
-    func toolbarApplyingGlassContainer() -> some View {
-        self.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-            .containerBackground(.clear, for: .window)
-    }
-
     /// Applies the Liquid Glass button style.
     func glassButton() -> some View {
         modifier(GlassButtonModifier())
@@ -152,8 +148,10 @@ extension View {
         modifier(GlassStatusBadgeModifier())
     }
 
-    /// Applies a Liquid Glass section header.
-    func glassSectionHeader() -> some View {
-        modifier(GlassSectionHeaderModifier())
+    /// Backs a section header with a standard material chip. Kept
+    /// out of the Liquid Glass family on purpose — headers are
+    /// content, and the HIG reserves Liquid Glass for chrome.
+    func materialSectionHeader() -> some View {
+        modifier(MaterialSectionHeaderModifier())
     }
 }

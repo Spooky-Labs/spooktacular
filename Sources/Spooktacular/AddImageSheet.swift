@@ -38,7 +38,7 @@ struct AddImageSheet: View {
                 // Source type picker
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Source").font(.headline).glassSectionHeader()
+                        Text("Source").font(.headline).materialSectionHeader()
 
                         Picker("Source", selection: $sourceType) {
                             ForEach(SourceType.allCases, id: \.self) { type in
@@ -68,7 +68,7 @@ struct AddImageSheet: View {
                 // Name
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Display Name").font(.headline).glassSectionHeader()
+                        Text("Display Name").font(.headline).materialSectionHeader()
                         TextField("macOS 15.4", text: $name)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -88,7 +88,7 @@ struct AddImageSheet: View {
                 if sourceType == .localFile {
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("IPSW File").font(.headline).glassSectionHeader()
+                            Text("IPSW File").font(.headline).materialSectionHeader()
                             HStack {
                                 TextField("/path/to/file.ipsw", text: $filePath)
                                     .textFieldStyle(.roundedBorder)
@@ -107,7 +107,7 @@ struct AddImageSheet: View {
                 } else {
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("OCI Reference").font(.headline).glassSectionHeader()
+                            Text("OCI Reference").font(.headline).materialSectionHeader()
                             TextField("ghcr.io/org/image:tag", text: $ociReference)
                                 .textFieldStyle(.roundedBorder)
                         }

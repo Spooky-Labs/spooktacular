@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Library empty state — replaces the default `ContentUnavailable`
-/// look with a glass-hero pitch and SF Symbol phase animation.
+/// look with a tinted hero symbol and a gentle one-shot drift.
 ///
 /// Shown when the user has zero VMs. Meant to be inviting and
 /// self-explanatory so first-run doesn't feel like a dead end.
@@ -24,7 +24,6 @@ struct EmptyStateView: View {
                 // tint reads cleaner here than a bespoke two-stop
                 // purple/blue gradient.
                 .foregroundStyle(.tint)
-                .symbolEffect(.pulse.byLayer, options: .repeating, value: phase)
                 .phaseAnimator([AnimationPhase.drift, .lift, .settle], trigger: phase) { content, phase in
                     content
                         .offset(y: phase == .lift ? -6 : 0)

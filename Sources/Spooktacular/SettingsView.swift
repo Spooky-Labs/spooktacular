@@ -202,6 +202,14 @@ struct VMHelperSettingsView: View {
                 statusRow
                 Button(action: ping) {
                     Label("Ping Helper", systemImage: "bolt.horizontal")
+                        // Pulses only while the XPC round-trip is in
+                        // flight. `ping()` sets `.pinging` before the
+                        // `await client.ping()` and clears it in the
+                        // continuation, so this is a genuine async
+                        // window persona A can watch — an indefinite
+                        // pulse bound to real in-progress state, not
+                        // decoration.
+                        .symbolEffect(.pulse, isActive: status == .pinging)
                 }
                 .disabled(status == .pinging)
             } header: {

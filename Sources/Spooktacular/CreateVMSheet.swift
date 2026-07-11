@@ -715,7 +715,7 @@ struct CreateVMSheet: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .glassCard(cornerRadius: 10)
+                .background(.regularMaterial, in: .rect(cornerRadius: 10))
         }
     }
 

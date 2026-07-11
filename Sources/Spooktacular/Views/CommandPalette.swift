@@ -176,12 +176,19 @@ struct PaletteRow: View {
                 Spacer()
 
                 if let shortcut = command.shortcut {
+                    // Keyboard-shortcut hint pill. This lives in the
+                    // content layer (a list row), so per HIG "Don't use
+                    // Liquid Glass in the content layer" it uses a
+                    // standard material instead of `.glassEffect`. The
+                    // 14/5 inset reproduces the former badge's padding
+                    // (6/2 here + 8/3 inside the old modifier) so the
+                    // pill's size stays identical.
                     Text(shortcut)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .glassStatusBadge()
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .background(.regularMaterial, in: .capsule)
                 }
             }
             .contentShape(Rectangle())

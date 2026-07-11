@@ -31,7 +31,7 @@ struct ProvisioningPane: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard(cornerRadius: 20)
+        .background(.regularMaterial, in: .rect(cornerRadius: 20))
         .task(id: bundle.id) {
             model.start(bundle: bundle)
         }
@@ -51,7 +51,9 @@ struct ProvisioningPane: View {
                 Text("pending")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .glassStatusBadge()
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.regularMaterial, in: .capsule)
             }
         }
     }
@@ -77,8 +79,12 @@ struct ProvisioningPane: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
+                // The first-boot.sh step is active for exactly as
+                // long as it stays pending, so the clock pulses
+                // while the guest hasn't yet consumed the script.
                 Image(systemName: "clock")
                     .foregroundStyle(.orange)
+                    .symbolEffect(.pulse, isActive: model.activity.scriptPending)
                 Text("first-boot.sh")
                     .font(.body.monospaced())
                 Spacer()
@@ -132,10 +138,14 @@ struct ProvisioningPane: View {
                 .padding(.top, 4)
             } label: {
                 HStack(spacing: 8) {
+                    // Completion event: when a new run finishes while
+                    // the pane is open, `completedAt` changes and the
+                    // result glyph bounces once to draw the eye.
                     Image(systemName: run.succeeded
                         ? "checkmark.circle.fill"
                         : "xmark.octagon.fill")
                         .foregroundStyle(run.succeeded ? .green : .red)
+                        .symbolEffect(.bounce, value: run.completedAt)
                     Text(run.succeeded ? "Completed" : "Failed")
                         .font(.body)
                     if !run.succeeded {

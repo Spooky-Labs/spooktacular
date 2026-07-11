@@ -107,6 +107,14 @@ struct SnapshotInspector: View {
                 save(label: newLabel)
             } label: {
                 Label("Save", systemImage: "camera.fill")
+                    // Bounces the camera the instant a snapshot lands
+                    // — `save()` calls `reload()` and the sheet stays
+                    // open, so `snapshots.count` ticks up while the
+                    // footer (and this symbol) remain mounted, which
+                    // is exactly the state change a discrete bounce
+                    // needs. Persona A gets a "captured" beat without
+                    // a modal.
+                    .symbolEffect(.bounce, value: snapshots.count)
             }
             .glassButton()
             .disabled(newLabel.trimmingCharacters(in: .whitespaces).isEmpty

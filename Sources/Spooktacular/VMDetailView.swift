@@ -43,24 +43,23 @@ struct VMDetailView: View {
 
     // MARK: - Hero card
     //
-    // One rounded-rect Liquid Glass card, tinted with the VM's
-    // lifecycle state color via `Glass.tint(_:)` — per Apple's
-    // "Applying Liquid Glass to custom views" guidance ("Assign
-    // a tint color to suggest prominence"), that's the documented
-    // way to carry semantic color on a glass surface, so the card
-    // alone signals lifecycle state without a hand-rolled gradient
-    // fill. Inside, a top-to-bottom stack:
+    // One rounded-rect content pane on a standard
+    // `.regularMaterial` background — per the macOS HIG's "don't
+    // use Liquid Glass in the content layer" guidance, an elevated
+    // detail card belongs on a system material, not on a glass
+    // surface (glass is reserved for the navigation / control
+    // layer). Lifecycle state is carried by the tinted eyebrow (2)
+    // and the status pill (4), so the pane itself stays neutral
+    // chrome. Inside, a top-to-bottom stack:
     //
     //   1. Icon medallion — keeps the user's custom icon front
-    //      and center; the card's tint carries the state signal
-    //      so the icon itself stays neutral.
-    //   2. Title + uppercased state eyebrow.
-    //   3. Spec chips (CPU / RAM / Disk / guest OS) — individual
-    //      glass capsules with SF-Symbol leading glyphs, grouped
-    //      in a GlassEffectContainer so they render as one
-    //      blend-aware material pane.
-    //   4. Status pill (Running / Suspended / Stopped).
-    //   5. Action bar — already-existing glass-container layout.
+    //      and center.
+    //   2. Title + uppercased, state-tinted eyebrow.
+    //   3. Spec chips (CPU / RAM / Disk) — `.regularMaterial`
+    //      capsules with SF-Symbol leading glyphs.
+    //   4. Status pill (Running / Suspended / Stopped) whose glyph
+    //      animates across lifecycle states.
+    //   5. Action bar.
     //
     // The whole pane follows the same aesthetic as
     // `ImageDetailView.heroCard`, so the library feels
@@ -77,15 +76,14 @@ struct VMDetailView: View {
         .padding(.vertical, 40)
         .padding(.horizontal, 32)
         .frame(maxWidth: 640)
-        .glassCard(cornerRadius: 24, tint: stateTint)
+        .background(.regularMaterial, in: .rect(cornerRadius: 24))
         .frame(maxWidth: .infinity)
     }
 
     /// The user's custom `WorkspaceIconView`. State meaning lives
-    /// on the surrounding `heroPane`'s glass tint — per the HIG's
-    /// "color carries meaning once" pattern, doubling it with a
-    /// colored glow shadow on the icon itself would just repeat
-    /// the same signal.
+    /// on the tinted eyebrow and the status pill — per the HIG's
+    /// "color carries meaning once" pattern, adding a colored glow
+    /// shadow on the icon itself would just repeat the same signal.
     private var iconMedallion: some View {
         WorkspaceIconView(
             spec: bundle.metadata.iconSpec ?? .defaultSpec,
@@ -107,28 +105,25 @@ struct VMDetailView: View {
         }
     }
 
-    /// CPU / RAM / Disk spec chips — three glass capsules
-    /// wrapped in a `GlassEffectContainer` so they render as
-    /// one batched material surface and can morph on hover.
-    /// Each chip carries a category-specific SF Symbol so the
-    /// scanning eye reads the numbers + their meaning
-    /// simultaneously.
+    /// CPU / RAM / Disk spec chips — three `.regularMaterial`
+    /// capsules. Each chip carries a category-specific SF Symbol
+    /// so the scanning eye reads the numbers + their meaning
+    /// simultaneously. Material (not glass) keeps these
+    /// content-layer chips off the reserved Liquid Glass layer.
     private var specChips: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
-                specChip(
-                    systemImage: "cpu",
-                    text: "\(bundle.spec.cpuCount) CPU"
-                )
-                specChip(
-                    systemImage: "memorychip",
-                    text: "\(bundle.spec.memorySizeInGigabytes) GB"
-                )
-                specChip(
-                    systemImage: "internaldrive",
-                    text: "\(bundle.spec.diskSizeInGigabytes) GB"
-                )
-            }
+        HStack(spacing: 12) {
+            specChip(
+                systemImage: "cpu",
+                text: "\(bundle.spec.cpuCount) CPU"
+            )
+            specChip(
+                systemImage: "memorychip",
+                text: "\(bundle.spec.memorySizeInGigabytes) GB"
+            )
+            specChip(
+                systemImage: "internaldrive",
+                text: "\(bundle.spec.diskSizeInGigabytes) GB"
+            )
         }
     }
 
@@ -144,7 +139,7 @@ struct VMDetailView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .glassEffect(.regular, in: .capsule)
+        .background(.regularMaterial, in: .capsule)
     }
 
     /// Unified action-bar button shape: every button in the
@@ -252,50 +247,86 @@ struct VMDetailView: View {
         }
     }
 
-    /// Tinted Liquid Glass pill showing the current lifecycle
-    /// state. Only the leading glyph carries the bright semantic
-    /// color; text stays neutral against the tinted glass
-    /// background, per Apple's HIG "color carries meaning once"
-    /// pattern.
-    @ViewBuilder
+    /// Material pill showing the current lifecycle state. A single
+    /// `Image` whose glyph and color derive from ``lifecyclePhase``,
+    /// so the glyph morphs between states with
+    /// `.contentTransition(.symbolEffect(.replace))` (Apple:
+    /// `ContentTransition.symbolEffect(_:options:)` — the Replace
+    /// animation for symbol images; it only fires inside an
+    /// animation context, which the scoped `.animation(_:value:)`
+    /// supplies). While the VM is mid-transition (booting /
+    /// installing / suspending) the glyph pulses via
+    /// `.symbolEffect(.pulse, isActive:)`; a settled Running state
+    /// stays steady. Only the glyph carries the bright semantic
+    /// color; text stays neutral against the material capsule, per
+    /// the HIG's "color carries meaning once" pattern.
     private var statusPill: some View {
-        if isRunning {
-            HStack(spacing: 6) {
-                Image(systemName: "circle.fill")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.green)
-                    .symbolEffect(.pulse, options: .repeating)
-                Text("Running")
-                    .font(.caption.weight(.semibold))
-            }
-            .glassStatusPill()
-        } else if appState.isSuspended(name) {
-            HStack(spacing: 6) {
-                Image(systemName: "pause.circle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.orange)
-                Text("Suspended")
-                    .font(.caption.weight(.semibold))
-            }
-            .glassStatusPill()
-        } else {
-            HStack(spacing: 6) {
-                Image(systemName: "circle")
-                    .font(.system(size: 8))
-                    .foregroundStyle(.secondary)
-                Text("Stopped")
-                    .font(.caption.weight(.semibold))
-            }
-            .glassStatusPill()
+        let transitioning = appState.transitioningVMs.contains(name)
+        return HStack(spacing: 6) {
+            Image(systemName: statusSymbol)
+                .font(.system(size: statusSymbolSize))
+                .foregroundStyle(statusSymbolColor)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.pulse, isActive: transitioning)
+                .animation(.default, value: lifecyclePhase)
+            Text(statusLabel)
+                .font(.caption.weight(.semibold))
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(.regularMaterial, in: .capsule)
     }
 
     // MARK: - Derived state
 
-    /// State-driven tint for the hero card. Green for running
-    /// (matches the macOS system green used in menu-bar indicators
-    /// for live services), orange for suspended (matches the
-    /// pause-state convention), gray for stopped (neutral — no
+    /// The three settled lifecycle states the status pill renders.
+    /// Transitional booting/installing is signalled by pulsing the
+    /// glyph (see ``statusPill``), not by a separate phase.
+    private enum LifecyclePhase: Equatable { case running, suspended, stopped }
+
+    private var lifecyclePhase: LifecyclePhase {
+        if isRunning { return .running }
+        if appState.isSuspended(name) { return .suspended }
+        return .stopped
+    }
+
+    /// Leading glyph for the status pill. Swapping this value
+    /// drives the `.symbolEffect(.replace)` content transition.
+    private var statusSymbol: String {
+        switch lifecyclePhase {
+        case .running: "circle.fill"
+        case .suspended: "pause.circle.fill"
+        case .stopped: "circle"
+        }
+    }
+
+    private var statusSymbolSize: CGFloat {
+        switch lifecyclePhase {
+        case .suspended: 10
+        case .running, .stopped: 8
+        }
+    }
+
+    private var statusSymbolColor: AnyShapeStyle {
+        switch lifecyclePhase {
+        case .running: AnyShapeStyle(.green)
+        case .suspended: AnyShapeStyle(.orange)
+        case .stopped: AnyShapeStyle(.secondary)
+        }
+    }
+
+    private var statusLabel: String {
+        switch lifecyclePhase {
+        case .running: "Running"
+        case .suspended: "Suspended"
+        case .stopped: "Stopped"
+        }
+    }
+
+    /// State-driven accent color for the title eyebrow. Green for
+    /// running (matches the macOS system green used in menu-bar
+    /// indicators for live services), orange for suspended (matches
+    /// the pause-state convention), gray for stopped (neutral — no
     /// alarm, just "not running").
     private var stateTint: Color {
         if isRunning { return .green }

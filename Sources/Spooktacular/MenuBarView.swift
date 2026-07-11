@@ -24,12 +24,20 @@ struct MenuBarView: View {
 
             let running = appState.runningVMs.count
             let total = appState.vms.count
+            let isBooting = !appState.transitioningVMs.isEmpty
             Label(
                 "\(running) of \(total) running",
                 systemImage: "gauge.with.dots.needle.33percent"
             )
             .font(.caption)
             .foregroundStyle(.secondary)
+            // The gauge glyph reflects live running-VM state, the
+            // one thing persona A scans this summary line for:
+            // pulse while any VM is mid start/stop (`transitioningVMs`
+            // is non-empty), and bounce the instant the running count
+            // changes — a VM just came online (or went offline).
+            .symbolEffect(.pulse, isActive: isBooting)
+            .symbolEffect(.bounce, value: running)
 
             Divider()
         }
