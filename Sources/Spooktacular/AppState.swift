@@ -1052,6 +1052,29 @@ final class AppState {
         // has what it needs without re-deriving it.
         var createdBundle: VirtualMachineBundle?
 
+        // Fail fast, BEFORE the IPSW download and 10-20 minute macOS
+        // install begin: a --github-runner create injects a
+        // root:wheel LaunchDaemon (see
+        // ``provisionGitHubRunnerForCreate(bundle:runnerSpec:displayName:cancellationTask:)``),
+        // which requires running with root privileges on the host.
+        // Mirrors the CLI's `DirectPrivilegedFileOps().preflight()`
+        // guard in `Create.swift`, which runs before its own install
+        // begins — without this, a non-root GUI launch burns the
+        // whole install before failing.
+        if request.runnerSpec != nil {
+            do {
+                try DirectPrivilegedFileOps().preflight()
+            } catch {
+                failCreation(
+                    name: name,
+                    message: "Runner provisioning requires Spooktacular to run as root; this "
+                        + "is supported for the root-service/EC2 Mac deployment, not an "
+                        + "ordinary desktop launch."
+                )
+                return
+            }
+        }
+
         do {
             // Restore-image resolution is source-dependent.
             //
