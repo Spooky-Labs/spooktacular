@@ -550,6 +550,17 @@ extension Spooktacular {
                     }
                 }
 
+                // Fail fast if --github-runner resolved a guest image
+                // below the macOS 27 native-guest-provisioning floor —
+                // BEFORE the bundle is created and the 10-20 minute
+                // install begins. See
+                // ``RunnerCreateFlowPlan/validateGuestOSFloor(majorVersion:)``.
+                if githubRunner {
+                    try RunnerCreateFlowPlan.validateGuestOSFloor(
+                        majorVersion: restoreImage.operatingSystemVersion.majorVersion
+                    )
+                }
+
                 if !json { print(Style.info("Creating VM bundle '\(name)' (id=\(bundleID.uuidString))...")) }
                 let bundle = try await manager.createBundle(
                     id: bundleID,
@@ -1057,6 +1068,9 @@ extension Spooktacular {
                 case .downloadFailed:           return "download-failed"
                 }
             }
+            if case .guestOSBelowFloor = error as? RunnerCreateFlowError {
+                return "guest-os-below-floor"
+            }
             return "create-failed"
         }
 
@@ -1070,6 +1084,9 @@ extension Spooktacular {
                 case .downloadFailed:
                     return CLIExit.generalFailure
                 }
+            }
+            if case .guestOSBelowFloor = error as? RunnerCreateFlowError {
+                return CLIExit.validation
             }
             let ns = error as NSError
             if ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError {

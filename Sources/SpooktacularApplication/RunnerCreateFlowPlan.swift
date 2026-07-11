@@ -93,6 +93,37 @@ public enum RunnerCreateFlowPlan {
         }
     }
 
+    /// Rejects a `--github-runner` create whose resolved guest image is
+    /// older than the macOS 27 native-guest-provisioning floor.
+    ///
+    /// The runner flow always builds a `GuestProvisioningSpec` (see
+    /// ``VirtualMachine/start(guestProvisioning:)``) to create the
+    /// unattended admin account the runner script needs. Apple's
+    /// `VZMacGuestProvisioningOptions` is silently ignored by guests
+    /// older than macOS 27: no account is created, Setup Assistant
+    /// stalls waiting for interactive input, and the flow's 10-minute
+    /// online poll times out with a generic "runner never came online"
+    /// error that gives no hint the guest OS was the problem. `spook
+    /// create --github-runner` defaults `--from-ipsw` to `"latest"`,
+    /// and `VZMacOSRestoreImage.latestSupported` can resolve to a
+    /// release below the floor — so the default invocation must be
+    /// caught here rather than left to fail opaquely 10-20 minutes
+    /// into the install.
+    ///
+    /// - Parameter majorVersion: The resolved restore image's
+    ///   `operatingSystemVersion.majorVersion`.
+    /// - Throws: ``RunnerCreateFlowError/guestOSBelowFloor(found:required:)``
+    ///   when `majorVersion` is below 27.
+    public static func validateGuestOSFloor(majorVersion: Int) throws {
+        let requiredMajorVersion = 27
+        guard majorVersion >= requiredMajorVersion else {
+            throw RunnerCreateFlowError.guestOSBelowFloor(
+                found: majorVersion,
+                required: requiredMajorVersion
+            )
+        }
+    }
+
 }
 
 /// Errors surfaced by ``RunnerCreateFlowPlan``.
@@ -114,6 +145,12 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
     /// never a valid outcome for this flow.
     case noProvisionIncompatible
 
+    /// The resolved guest image's major version is below the
+    /// macOS 27 native-guest-provisioning floor the runner flow
+    /// requires. `found` is the resolved image's major version;
+    /// `required` is the floor (27).
+    case guestOSBelowFloor(found: Int, required: Int)
+
     public var errorDescription: String? {
         switch self {
         case .conflictingTemplate(let flag):
@@ -126,6 +163,11 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
         case .noProvisionIncompatible:
             return "--no-provision is incompatible with --github-runner because the runner "
                 + "requires the injected first-boot script to execute."
+        case .guestOSBelowFloor(let found, let required):
+            return "GitHub runner provisioning requires a macOS \(required)+ guest image "
+                + "(native provisioning). This image is macOS \(found). The default "
+                + "--from-ipsw 'latest' resolves to macOS 26.x; pass --from-ipsw <path to a "
+                + "macOS \(required)+ .ipsw>."
         }
     }
 
@@ -141,6 +183,10 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
             return "Drop --no-provision. If you need manual control over provisioning, drop "
                 + "--github-runner too and inject the runner script yourself later via "
                 + "spook start --user-data <path>."
+        case .guestOSBelowFloor(_, let required):
+            return "Download a macOS \(required)+ .ipsw and pass it via --from-ipsw <path>; "
+                + "'latest' only guarantees the newest release your host supports, not the "
+                + "runner flow's floor."
         }
     }
 }

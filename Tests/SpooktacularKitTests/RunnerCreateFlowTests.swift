@@ -90,4 +90,31 @@ struct RunnerCreateFlowPlanTests {
         #expect(error.errorDescription?.contains("--github-runner") == true)
         #expect(error.recoverySuggestion != nil)
     }
+
+    // MARK: - Guest OS floor
+
+    @Test("macOS 26 guest is below the macOS 27 floor")
+    func guestOSFloorBelow() {
+        #expect(throws: RunnerCreateFlowError.guestOSBelowFloor(found: 26, required: 27)) {
+            try RunnerCreateFlowPlan.validateGuestOSFloor(majorVersion: 26)
+        }
+    }
+
+    @Test("macOS 27 guest passes the floor")
+    func guestOSFloorAtFloor() throws {
+        try RunnerCreateFlowPlan.validateGuestOSFloor(majorVersion: 27)
+    }
+
+    @Test("macOS 28 guest passes the floor")
+    func guestOSFloorAboveFloor() throws {
+        try RunnerCreateFlowPlan.validateGuestOSFloor(majorVersion: 28)
+    }
+
+    @Test("guestOSBelowFloor error names the found version and has recovery text")
+    func guestOSFloorErrorText() {
+        let error = RunnerCreateFlowError.guestOSBelowFloor(found: 26, required: 27)
+        #expect(error.errorDescription?.contains("26") == true)
+        #expect(error.errorDescription?.contains("27") == true)
+        #expect(error.recoverySuggestion != nil)
+    }
 }

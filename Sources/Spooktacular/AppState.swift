@@ -1116,6 +1116,17 @@ final class AppState {
             }
             try Task.checkCancellation()
 
+            // Fail fast if this is a --github-runner create whose
+            // resolved guest image is below the macOS 27
+            // native-guest-provisioning floor — BEFORE the bundle is
+            // created and the 10-20 minute install begins. See
+            // ``RunnerCreateFlowPlan/validateGuestOSFloor(majorVersion:)``.
+            if request.runnerSpec != nil {
+                try RunnerCreateFlowPlan.validateGuestOSFloor(
+                    majorVersion: restoreImage.operatingSystemVersion.majorVersion
+                )
+            }
+
             updateCreation(name: name, progress: 0.5, status: "Writing base disk…")
             let bundle = try await manager.createBundle(
                 id: bundleID,
