@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-    Spooktacular provisioner LaunchDaemon — the "pkg-installed"
+    Spooktacular provisioner LaunchDaemon — the disk-injected
     variant.
 
-    Installed into `/Library/LaunchDaemons/` by
-    `Spooktacular Provisioner.pkg`, which Installer.app runs
-    as root after the user types their admin password once.
+    Not installed by any installer or pkg on the guest at all:
+    `DiskInjector.installProvisionerDaemon` (host-side, root)
+    attaches the VM's disk image with `diskutil image attach
+    --nomount`, mounts the guest's data volume, and writes this
+    plist straight into `/Library/LaunchDaemons/` (mode 0644,
+    `root:wheel`) alongside the runner script in
+    `/usr/local/libexec/` — all before the guest ever boots.
     `launchctl` picks the plist up on every subsequent boot;
     the runner looks for `first-boot.sh` on the per-VM virtio-fs
     share and executes it as root, then removes the trigger so
@@ -20,10 +24,12 @@
     plistName:)` unless the daemon itself is a sandboxed
     Mach-O — our runner is a bash script (needs to
     `mount_virtiofs` and exec arbitrary user scripts as root),
-    which cannot meet that requirement. Apple's sanctioned
-    escape hatch for sandboxed apps that need to install a
-    privileged helper is a signed `.pkg` handed to
-    `Installer.app`, which is the route this plist is built for.
+    which cannot meet that requirement. Writing the plist
+    directly onto the guest's Data volume as a host-side root
+    file operation, before first boot, sidesteps the sandboxed-
+    daemon restriction entirely: there is no guest-side install
+    step, no admin-password prompt, and nothing for the guest
+    user to approve.
 -->
 <plist version="1.0">
 <dict>

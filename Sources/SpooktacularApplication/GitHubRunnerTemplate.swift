@@ -175,9 +175,10 @@ public enum GitHubRunnerTemplate {
         RUNNER_USER="admin"
         RUNNER_DIR="/Users/${RUNNER_USER}/actions-runner"
 
-        # network wait: Setup Assistant is done but DHCP may still be
-        # settling on first boot, so give the network up to two
-        # minutes to come up before hitting the GitHub API.
+        # network wait: native guest provisioning has already created
+        # the account by the time this LaunchDaemon runs, but DHCP may
+        # still be settling on first boot, so give the network up to
+        # two minutes to come up before hitting the GitHub API.
         for _ in $(seq 1 60); do
             curl -fsS --max-time 10 https://api.github.com >/dev/null 2>&1 && break
             sleep 2

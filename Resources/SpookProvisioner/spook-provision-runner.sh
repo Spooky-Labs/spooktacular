@@ -1,11 +1,16 @@
 #!/bin/bash
 # Spooktacular provisioner runner.
 #
-# Ships inside Guest Tools.app at Contents/Resources/. The
-# LaunchDaemon plist at Contents/Library/LaunchDaemons/ invokes
-# this script as root via `launchd` after
-# `SMAppService.daemon(plistName:).register()` is approved by
-# the guest user in System Settings → Login Items & Extensions.
+# Bundled host-side in the main app's Resources/SpookProvisioner/
+# (staged there by build-app.sh; located at runtime via
+# `ProvisionerAssets.locate()`). `DiskInjector.installProvisionerDaemon`
+# writes this script and its paired LaunchDaemon plist directly onto
+# the guest's Data volume — `/usr/local/libexec/` and
+# `/Library/LaunchDaemons/` respectively, root:wheel — before first
+# boot, by attaching the disk image as a host-side root file
+# operation. No guest-side install step, no `SMAppService`
+# registration, nothing for the guest user to approve: `launchd`
+# invokes this script as root on every boot per `RunAtLoad=true`.
 #
 # Behavior: fires once per boot (`RunAtLoad=true`). Mounts the
 # per-VM virtio-fs share; if `first-boot.sh` is present at the

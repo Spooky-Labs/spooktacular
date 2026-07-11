@@ -530,14 +530,15 @@ final class AppState {
 
         do {
             // Post-release-tolerant construction: this method is
-            // called by `provisionGitHubRunnerForCreate` immediately
-            // after it stopped its own Setup Assistant VM on this
-            // same bundle, and by the user right after a manual Stop
-            // — in both cases the stopped VM's XPC service can still
-            // hold the bundle's file lock for a few seconds (the
-            // same documented 5-30s window `isDiskInUse` pre-flights
-            // for agent install). On a cold start the first attempt
-            // succeeds and the retry never engages. See
+            // called by `provisionGitHubRunnerForCreate` for the
+            // bundle's actual first boot (no prior VM boot on this
+            // bundle to race against), and by the user right after a
+            // manual Stop — in the latter case the stopped VM's XPC
+            // service can still hold the bundle's file lock for a
+            // few seconds (the same documented 5-30s window
+            // `isDiskInUse` pre-flights for agent install). On a
+            // cold start the first attempt succeeds and the retry
+            // never engages. See
             // `VirtualMachine.makeAfterInstall(bundle:onRetry:)`.
             let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle)
 
@@ -1592,12 +1593,11 @@ final class AppState {
                     Log.provision.error("Runner script cleanup failed: \(error.localizedDescription, privacy: .public)")
                 }
 
-                // The raw setup-automation VM is stopped and
-                // dropped; hand off to the existing GUI start
-                // path, which manages its own `transitioningVMs`
-                // insert/remove keyed the same way (bundle UUID).
-                // Removing our hold here first avoids self-
-                // blocking `startVM`'s own re-entrancy guard.
+                // Hand off to the existing GUI start path, which
+                // manages its own `transitioningVMs` insert/remove
+                // keyed the same way (bundle UUID). Removing our
+                // hold here first avoids self-blocking `startVM`'s
+                // own re-entrancy guard.
                 transitioningVMs.remove(key)
                 try Task.checkCancellation()
 

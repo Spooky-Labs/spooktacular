@@ -351,7 +351,7 @@ extension Spooktacular {
             // --github-runner invocation BEFORE spending 10-20
             // minutes on an IPSW download and macOS install: flag
             // presence, scope shape, template exclusivity, provision
-            // mode, and the --skip-setup/--no-start interaction.
+            // mode, and the --no-start interaction.
             // Only the Keychain PAT resolution and token mint stay
             // late (the token's one-hour TTL must cover the guest's
             // first boot). See ``RunnerCreateFlowPlan`` for the pure
