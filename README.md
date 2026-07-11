@@ -135,7 +135,7 @@ Infrastructure wraps Apple frameworks.
 | VM Creation | [`RestoreImageManager.swift`](Sources/SpooktacularInfrastructureApple/RestoreImageManager.swift) | Auto-download latest compatible macOS IPSW, install |
 | APFS Cloning | [`CloneManager.swift`](Sources/SpooktacularInfrastructureApple/CloneManager.swift) | Copy-on-write clone with new MachineIdentifier |
 | VM Lifecycle | [`VirtualMachine.swift`](Sources/SpooktacularInfrastructureApple/VirtualMachine.swift) | Start, stop, pause, resume, save/restore state |
-| Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularInfrastructureApple/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
+| Guest Provisioning | [`GuestProvisioningSpec.swift`](Sources/SpooktacularCore/GuestProvisioningSpec.swift) | Native macOS 27+ account creation + Setup Assistant skip via `VZMacGuestProvisioningOptions` — no keystroke automation |
 | SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularInfrastructureApple/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
 | Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularInfrastructureApple/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
 | Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularApplication/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |

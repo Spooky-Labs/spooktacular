@@ -70,8 +70,9 @@ public enum RemoteDesktopTemplate {
         set -euo pipefail
 
         # Spooktacular Remote Desktop template
-        # Runs as root via the provisioner LaunchDaemon
-        # (see SpooktacularGuestTools/ProvisionerInstaller).
+        # Runs as root via the provisioner LaunchDaemon injected
+        # onto the guest disk before first boot (see
+        # SpooktacularInfrastructureApple/DiskInjector.installProvisionerDaemon).
 
         # Enable the Screen Sharing launchd service. This is
         # the modern, Apple-documented way to enable VNC —

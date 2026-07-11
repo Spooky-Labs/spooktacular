@@ -583,11 +583,11 @@ public final class RestoreImageManager: Sendable {
     /// full `lsof`-confirmed root cause).
     ///
     /// Used by `spooktacular-cli`'s `Create` command: after
-    /// `automateSetupAssistant` force-stops its own Setup Assistant
-    /// automation VM, `DiskInjector.installGuestTools` shells
-    /// straight to `diskutil image attach` on the same `disk.img`
-    /// with no pre-flight of its own — exactly the race this wait
-    /// exists to close.
+    /// `DiskInjector.installProvisionerDaemon` attaches/detaches this
+    /// same bundle's `disk.img`, `DiskInjector.installGuestTools`
+    /// shells straight to `diskutil image attach` on it again with
+    /// no pre-flight of its own — exactly the race this wait exists
+    /// to close.
     public static func waitForArtifactsReleased(
         bundle: VirtualMachineBundle,
         ceiling: TimeInterval = 30,

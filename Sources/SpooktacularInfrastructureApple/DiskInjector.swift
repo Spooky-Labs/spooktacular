@@ -6,22 +6,26 @@ import os
 /// Stages host-side artifacts into a VM bundle so the guest's
 /// Spooktacular provisioner picks them up at boot.
 ///
-/// Two responsibilities:
+/// Three responsibilities:
 ///
 /// 1. ``installGuestTools(appBundle:into:)`` — mounts the
 ///    guest's APFS data volume and `ditto`s
 ///    `Spooktacular Guest Tools.app` into `/Applications/`.
-///    This is the only path that touches the guest filesystem
-///    directly; everything else writes into a virtio-fs share
-///    that the guest mounts at runtime.
-/// 2. ``inject(script:into:)`` /
+/// 2. ``installProvisionerDaemon(into:plist:runner:privileged:)`` —
+///    mounts the guest's APFS data volume and installs the
+///    provisioner LaunchDaemon (plist + runner script,
+///    `root:wheel`) directly onto disk, before first boot.
+///    Both of these touch the guest filesystem directly;
+///    everything else writes into a virtio-fs share that the
+///    guest mounts at runtime.
+/// 3. ``inject(script:into:)`` /
 ///    ``inject(scriptBytes:into:)`` — writes
 ///    `first-boot.sh` into the bundle's `provision/`
 ///    subdirectory. On next boot the guest's Spooktacular
 ///    Provisioner LaunchDaemon (installed once via
-///    ``ProvisionerInstaller``) picks the file up via the
-///    virtio-fs share and runs it as root. No host-side mount
-///    needed for the script path.
+///    ``installProvisionerDaemon(into:plist:runner:privileged:)``)
+///    picks the file up via the virtio-fs share and runs it as
+///    root. No host-side mount needed for the script path.
 ///
 /// ## Thread safety
 ///
@@ -537,10 +541,11 @@ public enum DiskInjector {
 
     // Host-side user-data delivery writes a single
     // `first-boot.sh` to the bundle's `provision/` share.
-    // The guest's Guest Tools LaunchDaemon mounts that share
-    // via `mount_virtiofs` on boot and runs the script once.
-    // See `ProvisionerInstaller` in `SpooktacularGuestTools`
-    // and `applyProvisioning` in `VirtualMachineConfiguration`.
+    // The guest's provisioner LaunchDaemon (injected via
+    // `installProvisionerDaemon(into:plist:runner:privileged:)`)
+    // mounts that share via `mount_virtiofs` on boot and runs
+    // the script once. See `applyProvisioning` in
+    // `VirtualMachineConfiguration`.
 }
 
 // MARK: - Errors

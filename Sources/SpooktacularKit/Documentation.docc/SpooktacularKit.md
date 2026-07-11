@@ -111,16 +111,6 @@ try VirtualMachineConfiguration.applySpec(spec, to: config)
 - ``VirtualMachineImage``
 - ``ImageSource``
 
-### Setup Automation
-
-- ``SetupAutomation``
-- ``SetupAutomationExecutor``
-- ``SetupAutomationExecutorError``
-- ``BootStep``
-- ``BootAction``
-- ``KeyCode``
-- ``Modifier``
-
 ### Templates
 
 - ``GitHubRunnerTemplate``
