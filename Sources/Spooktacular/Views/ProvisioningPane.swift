@@ -31,8 +31,7 @@ struct ProvisioningPane: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(paneBackground)
-        .clipShape(.rect(cornerRadius: 20))
+        .glassCard(cornerRadius: 20)
         .task(id: bundle.id) {
             model.start(bundle: bundle)
         }
@@ -52,9 +51,7 @@ struct ProvisioningPane: View {
                 Text("pending")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(.thinMaterial, in: Capsule())
+                    .glassStatusBadge()
             }
         }
     }
@@ -181,20 +178,6 @@ struct ProvisioningPane: View {
             .foregroundStyle(.secondary)
             .help("Open \(label) in the default editor")
         }
-    }
-
-    // MARK: - Styling
-
-    private var paneBackground: some View {
-        Color.clear
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(.background.secondary)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .strokeBorder(.separator.opacity(0.5), lineWidth: 0.5)
-            )
     }
 }
 
