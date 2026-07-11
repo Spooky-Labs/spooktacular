@@ -1187,8 +1187,20 @@ final class AppState {
             // script source. Non-fatal on failure: the VM is still a
             // perfectly usable desktop VM once the operator installs
             // the daemon or completes setup by hand.
+            //
+            // Excludes --github-runner creates: the runner path
+            // injects the daemon itself, later, in
+            // ``provisionGitHubRunnerForCreate(bundle:runnerSpec:displayName:cancellationTask:)``,
+            // right before it disk-injects the runner script — and
+            // treats that injection as fatal, unlike this soft-fail
+            // path. Without this exclusion, a runner create with the
+            // default Guest Tools install (`.installed`, which
+            // `installsAppBundle`) would inject the daemon twice: once
+            // here (soft-fail), then again in the runner phase
+            // (hard-fail on the now-already-injected daemon).
             let willInjectFirstBootScript = request.userScriptURL != nil
-            if willInjectFirstBootScript || bundle.spec.guestToolsInstall.installsAppBundle {
+            if (willInjectFirstBootScript || bundle.spec.guestToolsInstall.installsAppBundle)
+                && request.runnerSpec == nil {
                 if let assets = ProvisionerAssets.locate() {
                     do {
                         try DiskInjector.installProvisionerDaemon(
