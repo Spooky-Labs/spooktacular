@@ -116,24 +116,29 @@ struct WorkspaceWindow: View {
 
     @ToolbarContentBuilder
     private var runningToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            // Leading indicator, not a button — just reports
-            // clipboard-bridge health. Placed first so users
-            // glance at the color without their eyes having to
-            // skip past the action buttons. State is pushed by
-            // the guest via `GuestEvent.spiceStatus` on every
-            // SPICE-bridge transition; no polling.
+        // Clipboard-bridge health — a status indicator, not an action.
+        // `.sharedBackgroundVisibility(.hidden)` keeps it in its own
+        // grouping so it doesn't glass-merge with the action buttons.
+        // The system applies Liquid Glass to toolbar items automatically;
+        // we never hand-roll `.glassButton()`/`.glassEffect` here — doing
+        // so double-stacked the material and broke the buttons' look.
+        ToolbarItem(placement: .primaryAction) {
             ClipboardStatusPill(
                 snapshot: appState.clipboardStatuses[vmName]
                     ?? .init(state: .notStarted)
             )
+        }
+        .sharedBackgroundVisibility(.hidden)
 
+        ToolbarSpacer(.fixed)
+
+        // Lifecycle cluster: Suspend / Stop share one glass group.
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 Task { await appState.suspendVM(vmName) }
             } label: {
                 Label("Suspend", systemImage: "pause.fill")
             }
-            .glassButton()
             .help("Save VM state and quit — next start picks up where you left off")
 
             Button {
@@ -141,26 +146,24 @@ struct WorkspaceWindow: View {
             } label: {
                 Label("Stop", systemImage: "stop.fill")
             }
-            .glassButton()
             .help("Stop this workspace")
             .accessibilityIdentifier(AccessibilityID.stopButton)
+        }
 
+        ToolbarSpacer(.fixed)
+
+        // Utilities cluster: Snapshots + the network split-button.
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 showSnapshots = true
             } label: {
                 Label("Snapshots", systemImage: "clock.arrow.circlepath")
             }
-            .glassButton()
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
 
-            // Network actions grouped under a Menu: primary tap
-            // copies the IP (the most frequent action); the
-            // chevron exposes `SSH in Terminal…` (mirrors
-            // `spook ssh <vm>`). Packaging both behind a single
-            // toolbar slot keeps the chrome tight — the toolbar
-            // already has Stop / Snapshots alongside — and
-            // matches Apple's own "split-button" pattern.
+            // Network actions under a split-button Menu: primary tap
+            // copies the IP; the chevron exposes `SSH in Terminal…`.
             // Docs: https://developer.apple.com/documentation/swiftui/menu
             Menu {
                 Button {
@@ -174,17 +177,17 @@ struct WorkspaceWindow: View {
                     lastCopiedIP ?? "Copy IP",
                     systemImage: lastCopiedIP != nil ? "checkmark.circle.fill" : "number"
                 )
+                // Morph number → checkmark on copy + a one-shot bounce so
+                // the copy registers without a modal toast.
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: lastCopiedIP)
             } primaryAction: {
                 Task { await resolveAndCopyIP() }
             }
-            .glassButton()
             .help("Resolve this workspace's IPv4 address. Tap to copy it; chevron for other network actions.")
             .accessibilityLabel(
                 lastCopiedIP.map { "Copied \($0)" } ?? "Workspace network actions"
             )
-            // Subtle transition when the label swaps between
-            // "Copy IP" and the resolved address — matches the
-            // pulse indicator pattern elsewhere in the toolbar.
             .animation(.smooth(duration: 0.2), value: lastCopiedIP)
         }
     }
@@ -263,15 +266,13 @@ struct WorkspaceWindow: View {
 
     @ToolbarContentBuilder
     private var stoppedToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            // Start button with a split-menu affordance: primary
-            // tap performs a normal boot; the chevron exposes
-            // `Start in Recovery Mode`, which boots the guest
-            // into macOS Recovery via
-            // `VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`.
-            // SwiftUI's `Menu(primaryAction:)` renders exactly
-            // this split-button shape on macOS 14+ per
-            // https://developer.apple.com/documentation/swiftui/menu.
+        // Start split-button: primary tap boots normally; the chevron
+        // exposes Recovery-mode boot
+        // (`VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`).
+        // Its own group + green tint mark it as the primary action. The
+        // system applies Liquid Glass automatically — no hand-rolled glass.
+        // Docs: https://developer.apple.com/documentation/swiftui/menu
+        ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button {
                     Task { await appState.startVM(vmName, recovery: true) }
@@ -284,17 +285,20 @@ struct WorkspaceWindow: View {
             } primaryAction: {
                 Task { await appState.startVM(vmName) }
             }
-            .glassButton()
             .tint(.green)
             .help("Start this workspace. Hold the chevron for Recovery-mode boot.")
             .accessibilityIdentifier(AccessibilityID.startButton)
+        }
 
+        ToolbarSpacer(.fixed)
+
+        // Utilities cluster: Hardware + Snapshots.
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 showHardware = true
             } label: {
                 Label("Hardware", systemImage: "cpu")
             }
-            .glassButton()
             .help("Edit CPU, memory, and disk (⇧⌘H)")
             .keyboardShortcut("h", modifiers: [.command, .shift])
 
@@ -303,7 +307,6 @@ struct WorkspaceWindow: View {
             } label: {
                 Label("Snapshots", systemImage: "clock.arrow.circlepath")
             }
-            .glassButton()
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
         }
@@ -346,9 +349,7 @@ struct WorkspaceLaunchView: View {
                     .font(.headline)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-            }
-            .glassButton()
-            .tint(.green)
+            }            .tint(.green)
             .controlSize(.large)
             .accessibilityIdentifier(AccessibilityID.startButton)
 
