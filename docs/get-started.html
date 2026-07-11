@@ -217,17 +217,19 @@ Spooktacular
 </div>
 <pre><span class="dim">$</span> <span class="cmd">spook create my-first-vm --from-ipsw latest</span>
 
-<span class="ok">&#10003;</span> Downloading macOS 15.4 Sequoia (13.2 GB)...
-<span class="ok">&#10003;</span> Installing macOS into virtual machine...
-<span class="ok">&#10003;</span> Automating Setup Assistant...
-<span class="ok">&#10003;</span> VM "my-first-vm" created successfully
+<span class="ok">&#10003;</span> Fetching latest compatible macOS restore image...
+<span class="ok">&#10003;</span> Downloading IPSW (this may take a while)...
+<span class="ok">&#10003;</span> Installing macOS (10-20 minutes)...
+<span class="ok">&#10003;</span> VM 'my-first-vm' created successfully.
+
+Run 'spook start my-first-vm' to boot the VM.
 
 <span class="cmt"># Total time: ~15-20 minutes (mostly IPSW download)</span></pre>
 </div>
 
 <div class="explain">
 <h4>What just happened?</h4>
-<p>Spooktacular downloaded the latest macOS restore image (IPSW) from Apple, installed it into a Virtualization.framework VM, and ran through Setup Assistant automatically. Your VM is ready to use -- no manual configuration required.</p>
+<p>Spooktacular downloaded the latest macOS restore image (IPSW) from Apple and installed it into a Virtualization.framework VM. Run <code>spook start my-first-vm</code> to boot it and complete Setup Assistant yourself, same as a physical Mac's first boot -- no automation runs here. (GitHub Actions runner VMs are different: see Step 4, which uses native macOS 27+ guest provisioning to create the account and skip Setup Assistant with zero interaction.)</p>
 </div>
 </section>
 
@@ -357,7 +359,7 @@ Spooktacular
 <span class="dim">$</span> <span class="cmd">spook ip runner-01</span>
 <span class="file">192.168.1.42</span>
 
-<span class="cmt"># SSH into the VM (Setup Assistant enables Remote Login)</span>
+<span class="cmt"># SSH into the VM (requires Remote Login enabled on the guest)</span>
 <span class="dim">$</span> <span class="cmd">spook ssh runner-01</span>
 <span class="ok">Connecting to admin@192.168.1.42...</span>
 <span class="dim">runner-01:~$</span> <span class="cmd">sw_vers</span>
