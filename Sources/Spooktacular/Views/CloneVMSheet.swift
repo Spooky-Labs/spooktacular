@@ -50,9 +50,23 @@ struct CloneVMSheet: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Reading surface (validation prose), so
+                    // material — not glass. Corners resolve
+                    // concentric with the sheet's 26pt container
+                    // (declared by `apparitionSheetGround()`)
+                    // instead of hardcoding a small radius.
+                    .background(
+                        .regularMaterial,
+                        in: ConcentricRectangle(
+                            corners: .concentric(minimum: 10.0),
+                            isUniform: true
+                        )
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
             }
 
             Divider()
@@ -125,21 +139,36 @@ struct CloneVMSheet: View {
         // Group the cancel + confirm pair in a single glass
         // container so they morph together on hover / press and
         // share one rendered material pane rather than stacking
-        // two independent glass layers.
+        // two independent glass layers. The interior spacing (10)
+        // is deliberately LARGER than the container spacing (8):
+        // per Apple's GlassEffectContainer semantics, container
+        // spacing >= interior stack spacing makes adjacent shapes
+        // merge at rest — the fused-blob failure mode. 10 > 8
+        // keeps the pair distinct at rest while still blending
+        // mid-morph.
         GlassEffectContainer(spacing: 8) {
-            HStack {
+            HStack(spacing: 10) {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .glassButton()
                     .keyboardShortcut(.cancelAction)
-                Button("Clone") { performClone() }
-                    .glassProminentButton()
-                    // The ONE ember glassProminent on this
-                    // surface — the accent marks the primary
-                    // action and nothing else.
-                    .tint(Apparition.ember)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canClone || isCloning)
+                Button {
+                    performClone()
+                } label: {
+                    Label("Clone", systemImage: "doc.on.doc")
+                        // Hover delight: the clone glyph bounces
+                        // once on pointer entry (Reduce-Motion-
+                        // gated inside the modifier).
+                        .hoverSymbolBounce()
+                }
+                .glassProminentButton()
+                // The ONE wisp glassProminent on this
+                // surface — the accent marks the primary
+                // action and nothing else; the prominent
+                // style itself carries the wisp, so no
+                // manual `.tint` here.
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canClone || isCloning)
             }
         }
         .padding(16)

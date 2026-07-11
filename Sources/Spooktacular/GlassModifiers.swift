@@ -35,7 +35,40 @@ struct GlassButtonModifier: ViewModifier {
 /// even lighter style so the hierarchy reads cleanly.
 struct GlassProminentButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
-        content.buttonStyle(.glassProminent)
+        // The prominent button IS the wisp moment ("Night & Wisp"
+        // contract: one accent, spent on the single primary action
+        // per surface). Carrying the tint here — instead of a
+        // root-level `.tint` on the window — keeps every other
+        // glass button neutral by default; a root tint cascades
+        // into every glass fill and turns secondary buttons into
+        // candy.
+        content
+            .buttonStyle(.glassProminent)
+            .tint(Apparition.wisp)
+    }
+}
+
+// MARK: - Hover Symbol Bounce
+
+/// One-shot symbol bounce when the pointer enters the control —
+/// the hover half of the "extremely responsive" contract.
+///
+/// The bounce is the discrete `.symbolEffect(_:value:)` variant
+/// keyed off a hover counter, so it fires exactly once per pointer
+/// entry (never loops) and is skipped entirely under Reduce
+/// Motion. Apply to a `Label`/`Image` inside a button, not the
+/// button itself, so only the symbol animates.
+struct HoverSymbolBounce: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hoverCount = 0
+
+    func body(content: Content) -> some View {
+        content
+            .symbolEffect(.bounce, value: hoverCount)
+            .onHover { hovering in
+                guard hovering, !reduceMotion else { return }
+                hoverCount += 1
+            }
     }
 }
 
@@ -80,5 +113,12 @@ extension View {
     /// content, and the HIG reserves Liquid Glass for chrome.
     func materialSectionHeader() -> some View {
         modifier(MaterialSectionHeaderModifier())
+    }
+
+    /// Bounces the symbol once when the pointer enters — apply to
+    /// the `Label` inside interactive controls. No-op under Reduce
+    /// Motion; never loops.
+    func hoverSymbolBounce() -> some View {
+        modifier(HoverSymbolBounce())
     }
 }

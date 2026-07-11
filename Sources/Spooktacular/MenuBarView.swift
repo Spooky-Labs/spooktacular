@@ -119,7 +119,7 @@ struct MenuBarView: View {
                     HStack(spacing: 4) {
                         Text(displayName)
                         // Vital = alive / online in the Apparition
-                        // palette — never the ember accent.
+                        // palette — never the wisp accent.
                         Text("Running").foregroundStyle(Apparition.vital)
                     }
                 } icon: {

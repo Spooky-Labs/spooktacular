@@ -50,7 +50,18 @@ struct AddImageSheet: View {
                         // hold an invalid value.
                         RitualSectionHeader(title: "Source", complete: true)
                             .font(.headline)
-                            .materialSectionHeader()
+                            // Ritual section chips are chrome
+                            // floating over the sheet ground —
+                            // Liquid Glass capsule per the
+                            // Apparition re-grade. Each chip is
+                            // isolated (no adjacent glass), so no
+                            // `GlassEffectContainer` — nothing to
+                            // blend with, no at-rest merge risk.
+                            // (Inlined: the fileprivate helper
+                            // lives in CreateVMSheet.swift.)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .glassEffect(.regular, in: .capsule)
 
                         Picker("Source", selection: $sourceType) {
                             ForEach(SourceType.allCases, id: \.self) { type in
@@ -87,7 +98,11 @@ struct AddImageSheet: View {
                             complete: nameComplete
                         )
                         .font(.headline)
-                        .materialSectionHeader()
+                        // Glass chip — chrome over the sheet
+                        // ground, isolated, no container needed.
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .glassEffect(.regular, in: .capsule)
                         TextField("macOS 15.4", text: $name)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -113,7 +128,11 @@ struct AddImageSheet: View {
                                 complete: filePathComplete
                             )
                             .font(.headline)
-                            .materialSectionHeader()
+                            // Glass chip — chrome over the sheet
+                            // ground, isolated, no container needed.
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .glassEffect(.regular, in: .capsule)
                             HStack {
                                 TextField("/path/to/file.ipsw", text: $filePath)
                                     .textFieldStyle(.roundedBorder)
@@ -138,7 +157,11 @@ struct AddImageSheet: View {
                                 complete: ociReferenceComplete
                             )
                             .font(.headline)
-                            .materialSectionHeader()
+                            // Glass chip — chrome over the sheet
+                            // ground, isolated, no container needed.
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .glassEffect(.regular, in: .capsule)
                             TextField("ghcr.io/org/image:tag", text: $ociReference)
                                 .textFieldStyle(.roundedBorder)
                         }
@@ -157,26 +180,59 @@ struct AddImageSheet: View {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout)
                         .foregroundStyle(.red)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        // Reading surface (validation prose), so
+                        // material — not glass. Corners resolve
+                        // concentric with the sheet's 26pt
+                        // container (declared by
+                        // `apparitionSheetGround()`) instead of
+                        // hardcoding a small radius.
+                        .background(
+                            .regularMaterial,
+                            in: ConcentricRectangle(
+                                corners: .concentric(minimum: 10.0),
+                                isUniform: true
+                            )
+                        )
                 }
             }
             .padding(24)
 
             Divider()
 
+            // Explicit interior spacing (10) LARGER than the
+            // container spacing (8): per Apple's
+            // GlassEffectContainer semantics, container spacing
+            // >= interior stack spacing merges adjacent shapes at
+            // rest — the fused-blob failure mode. (The Spacer
+            // keeps this pair far apart anyway; the explicit
+            // value makes the contract auditable, matching the
+            // app's other sheet footers.)
             GlassEffectContainer(spacing: 8) {
-                HStack {
+                HStack(spacing: 10) {
                     Button("Cancel") { dismiss() }
                         .glassButton()
                         .keyboardShortcut(.cancelAction)
                     Spacer()
-                    Button("Add") { addImage() }
-                        .glassProminentButton()
-                        // The ONE ember glassProminent on this
-                        // surface — the accent marks the primary
-                        // action and nothing else.
-                        .tint(Apparition.ember)
-                        .disabled(!isValid)
-                        .keyboardShortcut(.defaultAction)
+                    Button {
+                        addImage()
+                    } label: {
+                        Label("Add", systemImage: "plus")
+                            // Hover delight: the plus bounces once
+                            // on pointer entry (Reduce-Motion-gated
+                            // inside the modifier).
+                            .hoverSymbolBounce()
+                    }
+                    .glassProminentButton()
+                    // The ONE wisp glassProminent on this
+                    // surface — the accent marks the primary
+                    // action and nothing else; the prominent
+                    // style itself carries the wisp, so no
+                    // manual `.tint` here.
+                    .disabled(!isValid)
+                    .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(.horizontal, 24)

@@ -33,9 +33,9 @@ struct CommandPalette: View {
             subtitle: "Create a new workspace",
             systemImage: "plus.square.on.square",
             shortcut: "⌘N",
-            // Ember marks the app's ONE primary action in this
+            // Wisp marks the app's ONE primary action in this
             // list; every other row icon stays neutral.
-            iconTint: Apparition.ember,
+            iconTint: Apparition.wisp,
             action: { appState.showCreateSheet = true }
         ))
         result.append(PaletteCommand(
@@ -102,10 +102,29 @@ struct CommandPalette: View {
             resultsList
         }
         .frame(width: 520, height: 420)
-        // Faint night wash over the sheet's opaque background —
-        // an ambient tint over system chrome, never a replacement
-        // (macOS sheet backgrounds are always opaque).
-        .background(Apparition.night1.opacity(0.3))
+        // Content is clipped to the same 24pt continuous shape the
+        // glass uses, so scrolled rows can't poke square corners
+        // past the panel's rounded edge. Clip BEFORE the glass so
+        // the glass rim highlight itself is never cut.
+        .clipShape(.rect(cornerRadius: 24, style: .continuous))
+        // The palette is floating chrome over the library window,
+        // so it carries Liquid Glass rather than a color wash.
+        // `.regular` — not `.clear` — because the panel can sit
+        // over light content in light mode and `.clear` needs a
+        // dimming layer to stay legible (per the `Glass.clear`
+        // docs); `.regular` keeps text readable everywhere.
+        // Single glass surface, so no `GlassEffectContainer`.
+        .glassEffect(.regular, in: .rect(cornerRadius: 24, style: .continuous))
+        // Container shape so nested shapes — the row selection
+        // highlight's `ConcentricRectangle` — resolve their corner
+        // radii concentrically with the panel's 24pt corner
+        // (shared center points, per the macOS 26 geometry).
+        .containerShape(.rect(cornerRadius: 24, style: .continuous))
+        // The panel supplies its own glass surface; clear the
+        // sheet's opaque backdrop so the palette actually floats
+        // over the window instead of sitting on system chrome.
+        // No-op until a presenter wires `showCommandPalette`.
+        .presentationBackground(.clear)
         // Animates the results ↔ "No matches" swap as the user
         // types (bound to the filter crossing empty); disabled
         // entirely under Reduce Motion.
@@ -143,8 +162,8 @@ struct CommandPalette: View {
                 })
             }
             .listStyle(.plain)
-            // Let the night wash behind the palette ground the
-            // rows instead of the list's own opaque backdrop.
+            // Let the panel's glass show through the rows instead
+            // of the list's own opaque backdrop.
             .scrollContentBackground(.hidden)
         }
     }
@@ -165,7 +184,7 @@ struct PaletteCommand: Identifiable {
     let shortcut: String?
     /// Semantic tint for the row icon. `nil` renders the icon in
     /// `.secondary` — only the surface's single primary command
-    /// carries the ember accent.
+    /// carries the wisp accent.
     var iconTint: Color?
     let action: () -> Void
 }
@@ -175,13 +194,18 @@ struct PaletteRow: View {
     let command: PaletteCommand
     let onRun: () -> Void
 
+    /// Pointer-over state driving the row's selection highlight.
+    /// A plain state flip — the highlight appears/disappears with
+    /// no animation, so no Reduce Motion gating is needed.
+    @State private var isHovering = false
+
     var body: some View {
         Button(action: onRun) {
             HStack(spacing: 12) {
                 Image(systemName: command.systemImage)
                     .font(.system(size: 18))
                     .frame(width: 24)
-                    // Neutral by default; ember is reserved for the
+                    // Neutral by default; wisp is reserved for the
                     // one primary command per the palette contract.
                     .foregroundStyle(command.iconTint ?? Color.secondary)
 
@@ -212,8 +236,29 @@ struct PaletteRow: View {
                         .background(.regularMaterial, in: .capsule)
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
+            // Applied to the button's content (not the button) so
+            // pointer entry anywhere on the row bounces the row's
+            // one SF Symbol — the icon — exactly once.
+            // Reduce-Motion-gated inside the modifier.
+            .hoverSymbolBounce()
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .background {
+            if isHovering {
+                // Selection highlight nests concentrically inside
+                // the panel's 24pt `containerShape`. Mid-list rows
+                // sit far from the panel corners, where a pure
+                // concentric resolution would collapse to square —
+                // `minimum: 8` floors the radius, and `isUniform`
+                // keeps all four corners symmetric even when their
+                // distances to the container edge differ.
+                ConcentricRectangle(corners: .concentric(minimum: 8), isUniform: true)
+                    .fill(.quaternary)
+            }
+        }
     }
 }

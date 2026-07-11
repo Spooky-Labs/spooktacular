@@ -52,6 +52,11 @@ struct ContentView: View {
                     appState.showCreateSheet = true
                 } label: {
                     Label("New Virtual Machine", systemImage: "plus")
+                        // Hover delight on the label (not the
+                        // button) so only the symbol bounces;
+                        // one-shot + Reduce-Motion-gated inside
+                        // the modifier.
+                        .hoverSymbolBounce()
                 }
                 .help("New Virtual Machine (⌘N)")
             }
@@ -149,6 +154,10 @@ struct ContentView: View {
                     appState.showAddImage = true
                 } label: {
                     Label("Add Image…", systemImage: "plus")
+                        // Same hover-bounce contract as the
+                        // toolbar action — the row is interactive,
+                        // so its symbol responds to the pointer.
+                        .hoverSymbolBounce()
                 }
                 .buttonStyle(.plain)
             }
@@ -202,7 +211,7 @@ struct ContentView: View {
         if appState.vms.isEmpty {
             // First-run séance: `EmptyStateView` sits directly over
             // the aurora (no material between them) and carries this
-            // surface's single `glassProminent` ember action.
+            // surface's single `glassProminent` wisp action.
             EmptyStateView {
                 appState.showCreateSheet = true
             }

@@ -185,6 +185,10 @@ struct WorkspaceWindow: View {
                 Task { await appState.suspendVM(vmName) }
             } label: {
                 Label("Suspend", systemImage: "pause.fill")
+                    // Hover delight: one-shot symbol bounce on pointer
+                    // entry (Reduce-Motion-gated inside the modifier).
+                    // Attached to the Label so only the symbol animates.
+                    .hoverSymbolBounce()
             }
             .help("Save VM state and quit — next start picks up where you left off")
 
@@ -192,6 +196,7 @@ struct WorkspaceWindow: View {
                 Task { await appState.stopVM(vmName) }
             } label: {
                 Label("Stop", systemImage: "stop.fill")
+                    .hoverSymbolBounce()
             }
             .help("Stop this workspace")
             .accessibilityIdentifier(AccessibilityID.stopButton)
@@ -205,6 +210,7 @@ struct WorkspaceWindow: View {
                 showSnapshots = true
             } label: {
                 Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                    .hoverSymbolBounce()
             }
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
@@ -228,6 +234,10 @@ struct WorkspaceWindow: View {
                 // the copy registers without a modal toast.
                 .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, value: lastCopiedIP)
+                // Hover bounce composes with the copy-confirmation
+                // bounce above — discrete symbol effects keyed to
+                // different values stack independently.
+                .hoverSymbolBounce()
             } primaryAction: {
                 Task { await resolveAndCopyIP() }
             }
@@ -329,6 +339,9 @@ struct WorkspaceWindow: View {
                 .help("Boot into macOS Recovery (Disk Utility, Startup Security Utility, reinstall).")
             } label: {
                 Label("Start", systemImage: "play.fill")
+                    // Hover delight: one-shot symbol bounce on pointer
+                    // entry (Reduce-Motion-gated inside the modifier).
+                    .hoverSymbolBounce()
             } primaryAction: {
                 Task { await appState.startVM(vmName) }
             }
@@ -345,6 +358,7 @@ struct WorkspaceWindow: View {
                 showHardware = true
             } label: {
                 Label("Hardware", systemImage: "cpu")
+                    .hoverSymbolBounce()
             }
             .help("Edit CPU, memory, and disk (⇧⌘H)")
             .keyboardShortcut("h", modifiers: [.command, .shift])
@@ -353,6 +367,7 @@ struct WorkspaceWindow: View {
                 showSnapshots = true
             } label: {
                 Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                    .hoverSymbolBounce()
             }
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
@@ -365,13 +380,17 @@ struct WorkspaceWindow: View {
 /// The séance — the workspace's stopped-state landing.
 ///
 /// Shown when the user opens a workspace window for a stopped VM.
-/// The night-ground aurora washes the content layer (Apparition
-/// tints biasing the system background — never glass; the HIG
-/// reserves Liquid Glass for floating controls, and this whole
-/// surface is content). The workspace icon *materializes* with a
-/// one-shot entrance, the spec line speaks in monospaced
-/// machine-voice, and the ember `glassProminent` Start button is
-/// the surface's single prominent action.
+/// The night-ground aurora washes the content layer, and the
+/// séance itself is a single floating Liquid Glass hero pane over
+/// that ambience — `glassEffect(.regular)` in a 28pt continuous
+/// rounded rect, the pane also declared as the concentric-corner
+/// container via `containerShape(.rect(cornerRadius: 28))` so any
+/// nested rounded element resolves its corners against the pane's
+/// geometry (macOS 27 concentric-corner contract). Inside the
+/// pane, the workspace icon *materializes* with a one-shot
+/// entrance, the spec line speaks in monospaced machine-voice,
+/// and the wisp `glassProminent` Start button is the surface's
+/// single prominent action.
 ///
 /// ## Motion contract
 /// The entrance is a one-shot staggered reveal bound to the view's
@@ -402,14 +421,40 @@ struct WorkspaceLaunchView: View {
     private var revealed: Bool { materialized || reduceMotion }
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack {
             Spacer()
+            seanceCard
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Night ground wash — the aurora is a content-layer tint
+        // bias over the system window background, not glass. It
+        // extends under the (system-glass) toolbar so the chrome
+        // floats over ambience, not over a hard seam.
+        .background {
+            AuroraBackground()
+                .ignoresSafeArea()
+        }
+        .onAppear { materialized = true }
+    }
 
+    /// The séance's hero pane: one Liquid Glass card floating over
+    /// the aurora. `.regular` glass (not `.clear` — the aurora is a
+    /// soft tint wash, not a visually rich background that would
+    /// warrant clear + dimming). The 28pt continuous rounded rect
+    /// is also declared as the pane's `containerShape`, making it
+    /// the concentric-corner root for anything nested inside.
+    ///
+    /// This is the only glass shape on the surface (the toolbar is
+    /// system glass in a separate layer), so there's no adjacent
+    /// glass to batch — a `GlassEffectContainer` would wrap exactly
+    /// one shape and is deliberately omitted.
+    private var seanceCard: some View {
+        VStack(spacing: 28) {
             // The apparition materializes: blur condenses, scale
             // settles, opacity arrives — one shot, bound to the
             // `revealed` state change (the view's appearance event).
             WorkspaceIconView(spec: bundle.metadata.iconSpec ?? .defaultSpec, size: 140)
-                .background { emberHalo }
                 .scaleEffect(revealed ? 1 : 0.85)
                 .blur(radius: revealed ? 0 : 18)
                 .opacity(revealed ? 1 : 0)
@@ -431,8 +476,10 @@ struct WorkspaceLaunchView: View {
             .offset(y: revealed ? 0 : 6)
             .animation(Apparition.spring.delay(0.08), value: revealed)
 
-            // The surface's ONE glassProminent, in ember — the
-            // primary action and the only place the accent shouts.
+            // The surface's ONE glassProminent, in wisp — the
+            // primary action and the only place the accent shouts
+            // (the prominent style itself carries the wisp, so no
+            // manual `.tint` here).
             Button {
                 Task { await appState.startVM(name) }
             } label: {
@@ -440,39 +487,48 @@ struct WorkspaceLaunchView: View {
                     .font(.system(.headline, design: .rounded))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
+                    // Hover delight: one-shot symbol bounce on
+                    // pointer entry (Reduce-Motion-gated).
+                    .hoverSymbolBounce()
             }
             .glassProminentButton()
-            .tint(Apparition.ember)
             .controlSize(.large)
             .accessibilityIdentifier(AccessibilityID.startButton)
             .opacity(revealed ? 1 : 0)
             .offset(y: revealed ? 0 : 10)
             .animation(Apparition.spring.delay(0.16), value: revealed)
-
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Night ground wash — the aurora is a content-layer tint
-        // bias over the system window background, not glass. It
-        // extends under the (system-glass) toolbar so the chrome
-        // floats over ambience, not over a hard seam.
-        .background {
-            AuroraBackground()
-                .ignoresSafeArea()
-        }
-        .onAppear { materialized = true }
+        .padding(.horizontal, 48)
+        .padding(.vertical, 36)
+        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        // Concentric-corner root: nested rounded elements inside
+        // this pane share corner centers with the 28pt container.
+        // Docs: https://developer.apple.com/documentation/swiftui/view/containershape(_:)
+        .containerShape(.rect(cornerRadius: 28))
+        // The wisp halo now glows *beneath* the glass — a brand
+        // moment refracted through the pane instead of a raw glow
+        // spilling past the card's edges (its old home behind the
+        // icon bled outside the pane bounds).
+        .background { wispHalo }
+        // The pane fades in with the first beat of the entrance so
+        // an empty glass slab never precedes its contents. Same
+        // state binding, same gate as the staggered reveal.
+        .opacity(revealed ? 1 : 0)
+        .animation(Apparition.spring, value: revealed)
     }
 
-    /// A soft ember halo behind the icon — the séance's candle.
+    /// A soft wisp halo beneath the séance's glass pane — the
+    /// séance's cool glow.
     ///
-    /// A brand moment (ember is reserved for exactly these), drawn
+    /// A brand moment (wisp is reserved for exactly these), drawn
     /// as a heavily blurred fill so it reads as light, not as a
-    /// shape. It appears once with the materialize entrance and
-    /// then holds perfectly still — no looping glow. Light mode
-    /// halves the strength; fog wants a hint, not a lamp.
-    private var emberHalo: some View {
+    /// shape — and layered *behind* the glass so the pane refracts
+    /// it. It appears once with the materialize entrance and then
+    /// holds perfectly still — no looping glow. Light mode halves
+    /// the strength; fog wants a hint, not a lamp.
+    private var wispHalo: some View {
         Circle()
-            .fill(Apparition.ember)
+            .fill(Apparition.wisp)
             .frame(width: 240, height: 240)
             .blur(radius: 60)
             .opacity(revealed ? (colorScheme == .dark ? 0.20 : 0.10) : 0)

@@ -58,13 +58,17 @@ struct EmptyStateView: View {
                     .font(.headline)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
+                    // Applied after the padding so pointer entry
+                    // anywhere on the label area bounces the
+                    // symbol once; Reduce-Motion-gated inside the
+                    // modifier.
+                    .hoverSymbolBounce()
             }
             .glassProminentButton()
             .controlSize(.large)
-            // THE single `glassProminent` on this surface, pinned
-            // explicitly to the Apparition accent so the primary
-            // action is ember regardless of ancestor tint.
-            .tint(Apparition.ember)
+            // THE single `glassProminent` on this surface — the
+            // prominent style itself carries the wisp accent, so
+            // no manual `.tint` here.
 
             Spacer()
         }

@@ -47,6 +47,12 @@ struct SnapshotInspector: View {
         // ambient tint layered over system chrome, not a
         // replacement, and no glass in the content layer.
         .background(Apparition.night1.opacity(0.3))
+        // Declare the sheet as a 26pt continuous rounded container
+        // so any nested `ConcentricRectangle` resolves corners that
+        // share center points with the sheet's own — the macOS 26
+        // concentric-geometry contract (matches the creation-flow
+        // sheets' `apparitionSheetGround()`).
+        .containerShape(.rect(cornerRadius: 26))
         // Animates the empty-state ↔ list swap when the first
         // snapshot lands or the last one is deleted (bound to
         // `snapshots` crossing empty); off under Reduce Motion.
@@ -127,6 +133,12 @@ struct SnapshotInspector: View {
                     // needs. Persona A gets a "captured" beat without
                     // a modal.
                     .symbolEffect(.bounce, value: snapshots.count)
+                    // Hover delight: a second, independent discrete
+                    // bounce keyed to pointer entry — composes with
+                    // the capture bounce above because each keys off
+                    // its own value. Reduce-Motion-gated inside the
+                    // modifier.
+                    .hoverSymbolBounce()
             }
             .glassButton()
             .disabled(newLabel.trimmingCharacters(in: .whitespaces).isEmpty
@@ -225,15 +237,22 @@ struct SnapshotRow: View {
             // into stacked panes and cost render time). Glass
             // lives on the header/footer CTAs where one prominent
             // action reads clearly.
-            Button("Restore", systemImage: "arrow.uturn.backward", action: onRestore)
-                .buttonStyle(.borderless)
-                .disabled(running)
-                .help(running
-                      ? "Stop the workspace to restore this snapshot"
-                      : "Restore the workspace to this snapshot")
+            Button(action: onRestore) {
+                Label("Restore", systemImage: "arrow.uturn.backward")
+                    // Hover delight: the symbol bounces once on
+                    // pointer entry (Reduce-Motion-gated inside
+                    // the modifier).
+                    .hoverSymbolBounce()
+            }
+            .buttonStyle(.borderless)
+            .disabled(running)
+            .help(running
+                  ? "Stop the workspace to restore this snapshot"
+                  : "Restore the workspace to this snapshot")
 
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
+                    .hoverSymbolBounce()
             }
             .buttonStyle(.borderless)
             .help("Delete this snapshot")

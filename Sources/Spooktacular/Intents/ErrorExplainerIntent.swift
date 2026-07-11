@@ -114,9 +114,9 @@ struct ErrorExplainerSheet: View {
                     Text("Explain this error")
                 } icon: {
                     Image(systemName: "sparkles")
-                        // Ember marks the brand moment of the
+                        // Wisp marks the brand moment of the
                         // surface (on-device intelligence).
-                        .foregroundStyle(Apparition.ember)
+                        .foregroundStyle(Apparition.wisp)
                         // Pulses only while the model is genuinely
                         // streaming tokens — an indefinite effect
                         // bound to real in-flight work, never
@@ -150,7 +150,20 @@ struct ErrorExplainerSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
             }
-            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            // Reading surface (long streamed prose), so material —
+            // not glass. The pane's corners resolve concentric with
+            // the sheet's 26pt container below, sharing center
+            // points with the sheet corners instead of hardcoding a
+            // small radius; `minimum:` keeps a comfortable 12pt
+            // floor since the 20pt inset would otherwise resolve
+            // the corner down to 6pt.
+            .background(
+                .regularMaterial,
+                in: ConcentricRectangle(
+                    corners: .concentric(minimum: 12.0),
+                    isUniform: true
+                )
+            )
         }
         .padding(20)
         .frame(minWidth: 460, idealWidth: 520, minHeight: 340)
@@ -158,6 +171,11 @@ struct ErrorExplainerSheet: View {
         // ambient tint layered over system chrome (the scroll pane
         // above keeps its standard material), no content glass.
         .background(Apparition.night1.opacity(0.3))
+        // Declare the sheet as a 26pt continuous rounded container
+        // so the nested `ConcentricRectangle` above resolves
+        // corners that share center points with the sheet's own —
+        // the macOS 26 concentric-geometry contract.
+        .containerShape(.rect(cornerRadius: 26))
         .task(id: errorMessage) {
             await streamExplanation()
         }

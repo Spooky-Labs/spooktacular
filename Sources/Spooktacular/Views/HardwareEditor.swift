@@ -62,6 +62,12 @@ struct HardwareEditor: View {
         // ambient tint layered over system chrome, not a
         // replacement, and no glass in the content layer.
         .background(Apparition.night1.opacity(0.3))
+        // Declare the sheet as a 26pt continuous rounded container
+        // so any nested `ConcentricRectangle` resolves corners that
+        // share center points with the sheet's own — the macOS 26
+        // concentric-geometry contract (matches the creation-flow
+        // sheets' `apparitionSheetGround()`).
+        .containerShape(.rect(cornerRadius: 26))
         // Inherit the `.switch` style to every Toggle in the sheet.
         .toggleStyle(.switch)
         .task(id: vmName) { loadInitialValues() }
@@ -193,6 +199,10 @@ struct HardwareEditor: View {
                             sharedFolders.removeAll { $0.id == folder.id }
                         } label: {
                             Image(systemName: "minus.circle")
+                                // Interactive control — the symbol
+                                // bounces once on pointer entry
+                                // (Reduce-Motion-gated).
+                                .hoverSymbolBounce()
                         }
                         .buttonStyle(.plain)
                         .help("Remove this shared folder. Takes effect next start.")
@@ -204,6 +214,7 @@ struct HardwareEditor: View {
                 addSharedFolder()
             } label: {
                 Label("Add Folder…", systemImage: "plus")
+                    .hoverSymbolBounce()
             }
         }
     }
@@ -214,16 +225,30 @@ struct HardwareEditor: View {
         // the app uses (`CreateVMSheet`, `CloneVMSheet`,
         // `AddImageSheet`): Cancel on `.glassButton()`, the
         // primary action on `.glassProminentButton()`.
+        // Interior spacing (10) is deliberately LARGER than the
+        // container spacing (8): per Apple's GlassEffectContainer
+        // semantics, container spacing >= interior stack spacing
+        // makes adjacent shapes merge at rest — the fused-blob
+        // failure mode. 10 > 8 keeps the pair distinct at rest
+        // while still blending mid-morph.
         GlassEffectContainer(spacing: 8) {
-            HStack {
+            HStack(spacing: 10) {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .glassButton()
                     .keyboardShortcut(.cancelAction)
-                Button("Save") { save() }
-                    .glassProminentButton()
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isRunning || !hasChanges)
+                Button {
+                    save()
+                } label: {
+                    Label("Save", systemImage: "checkmark")
+                        // Hover delight: the checkmark bounces once
+                        // on pointer entry (Reduce-Motion-gated
+                        // inside the modifier).
+                        .hoverSymbolBounce()
+                }
+                .glassProminentButton()
+                .keyboardShortcut(.defaultAction)
+                .disabled(isRunning || !hasChanges)
             }
         }
         .padding(16)

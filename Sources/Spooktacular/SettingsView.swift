@@ -104,8 +104,8 @@ struct SecuritySettingsView: View {
                         systemImage: "exclamationmark.triangle"
                     )
                     // Lantern carries "needs attention" in the
-                    // Apparition palette — plain orange would read
-                    // as the ember accent.
+                    // Apparition palette — the semantic in-progress
+                    // gold, never the wisp accent.
                     .foregroundStyle(Apparition.lantern)
                     .font(.caption)
                 }
@@ -213,6 +213,11 @@ struct VMHelperSettingsView: View {
                         // pulse bound to real in-progress state, not
                         // decoration.
                         .symbolEffect(.pulse, isActive: status == .pinging)
+                        // Hover delight: one discrete bounce on
+                        // pointer entry — composes with the pulse
+                        // above (independent effects). Reduce-
+                        // Motion-gated inside the modifier.
+                        .hoverSymbolBounce()
                 }
                 .disabled(status == .pinging)
             } header: {

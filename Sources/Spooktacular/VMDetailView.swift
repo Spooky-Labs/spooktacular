@@ -63,24 +63,26 @@ struct VMDetailView: View {
 
     // MARK: - Hero card
     //
-    // One rounded-rect content pane on a standard
-    // `.regularMaterial` background — per the macOS HIG's "don't
-    // use Liquid Glass in the content layer" guidance, an elevated
-    // detail card belongs on a system material, not on a glass
-    // surface (glass is reserved for the navigation / control
-    // layer). The material carries a low-alpha Apparition ground
-    // wash (``ApparitionPaneBackground``) that biases it toward
-    // the "Night & Ember" palette without replacing it. Lifecycle
-    // state is carried by the tinted eyebrow (2) and the status
-    // pill (4) — vital when running, lantern while suspended or
-    // mid-transition — so the pane itself stays neutral chrome.
-    // Inside, a top-to-bottom stack:
+    // One floating pane over the aurora mesh. The pane hovers
+    // above the ground rather than sitting in a reading column,
+    // so it reads as chrome and carries Liquid Glass:
+    // `.glassEffect(.regular, in:)` on a 28pt continuous rounded
+    // rect (`.rect(cornerRadius:)` defaults to `.continuous`).
+    // `.containerShape(.rect(cornerRadius: 28))` publishes that
+    // radius to descendants so nested chips resolve macOS 26
+    // concentric corners — shared center points with the pane —
+    // via `ConcentricRectangle` (see ``specChip(systemImage:text:)``).
+    // Lifecycle state is carried by the tinted eyebrow (2) and
+    // the status pill (4) — vital when running, lantern while
+    // suspended or mid-transition — so the pane itself stays
+    // neutral chrome. Inside, a top-to-bottom stack:
     //
     //   1. Icon medallion — keeps the user's custom icon front
     //      and center.
     //   2. Title + uppercased, state-tinted eyebrow.
-    //   3. Spec chips (CPU / RAM / Disk) — `.regularMaterial`
-    //      capsules with SF-Symbol leading glyphs.
+    //   3. Spec chips (CPU / RAM / Disk) — glass
+    //      `ConcentricRectangle` chips with SF-Symbol leading
+    //      glyphs.
     //   4. Status pill + action bar in one `GlassEffectContainer`
     //      (``statusAndActions``): the Start/Resume button and the
     //      pill share the ``heroGlass`` namespace so starting the
@@ -100,7 +102,8 @@ struct VMDetailView: View {
         .padding(.vertical, 40)
         .padding(.horizontal, 32)
         .frame(maxWidth: 640)
-        .background { ApparitionPaneBackground(cornerRadius: 24) }
+        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        .containerShape(.rect(cornerRadius: 28))
         .frame(maxWidth: .infinity)
     }
 
@@ -108,11 +111,22 @@ struct VMDetailView: View {
     /// action bar, wrapped in **one** `GlassEffectContainer` so
     /// the two shapes that carry `glassEffect` (the pill and the
     /// Start/Resume button, see ``actionBar``) can morph into each
-    /// other. Mirrors Apple's pencil/note example for
-    /// `glassEffectTransition(_:)`: the container spacing matches
-    /// the interior stack spacing, the persistent shape (the pill)
-    /// and the appearing/disappearing shape (Start/Resume) each
-    /// carry a `glassEffectID(_:in:)` in ``heroGlass``.
+    /// other. Both carry a `glassEffectID(_:in:)` in ``heroGlass``,
+    /// mirroring Apple's pencil/note example for
+    /// `glassEffectTransition(_:)`.
+    ///
+    /// Spacing geometry — per Apple's `GlassEffectContainer`
+    /// semantics, glass shapes closer together than the container
+    /// spacing blend at rest, so a container spacing LARGER than
+    /// an interior stack's spacing fuses that stack's shapes into
+    /// one blob (exactly the fused action-bar bug this fixes):
+    /// - container spacing **20** > VStack spacing **18** → the
+    ///   pill and the action bar stay inside blending range, which
+    ///   is what lets the Start ⇄ pill `.matchedGeometry` morph
+    ///   pair across the lifecycle flip.
+    /// - the action bar's HStack spacing is **24** (see
+    ///   ``actionBar``), ABOVE the container spacing → adjacent
+    ///   buttons never merge at rest.
     ///
     /// Motion bindings — nothing here loops:
     /// - `Apparition.spring` fires on ``lifecyclePhase`` changes
@@ -122,8 +136,8 @@ struct VMDetailView: View {
     ///   (button label ↔ spinner swap while the VM is mid-work).
     /// - Reduce Motion replaces both with instant updates.
     private var statusAndActions: some View {
-        GlassEffectContainer(spacing: 24) {
-            VStack(spacing: 24) {
+        GlassEffectContainer(spacing: 20) {
+            VStack(spacing: 18) {
                 statusPill
                 actionBar
             }
@@ -167,28 +181,43 @@ struct VMDetailView: View {
         }
     }
 
-    /// CPU / RAM / Disk spec chips — three `.regularMaterial`
-    /// capsules. Each chip carries a category-specific SF Symbol
-    /// so the scanning eye reads the numbers + their meaning
-    /// simultaneously. Material (not glass) keeps these
-    /// content-layer chips off the reserved Liquid Glass layer.
+    /// CPU / RAM / Disk spec chips — three Liquid Glass
+    /// `ConcentricRectangle` chips. Each chip carries a
+    /// category-specific SF Symbol so the scanning eye reads the
+    /// numbers + their meaning simultaneously. The chips float on
+    /// the hero's glass pane, so they are glass too — grouped in
+    /// their own `GlassEffectContainer` for blending/perf, with
+    /// container spacing **8** BELOW the HStack's **12** so the
+    /// three chips never merge at rest (larger container spacing
+    /// than the interior stack would fuse them — the blob bug).
     private var specChips: some View {
-        HStack(spacing: 12) {
-            specChip(
-                systemImage: "cpu",
-                text: "\(bundle.spec.cpuCount) CPU"
-            )
-            specChip(
-                systemImage: "memorychip",
-                text: "\(bundle.spec.memorySizeInGigabytes) GB"
-            )
-            specChip(
-                systemImage: "internaldrive",
-                text: "\(bundle.spec.diskSizeInGigabytes) GB"
-            )
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 12) {
+                specChip(
+                    systemImage: "cpu",
+                    text: "\(bundle.spec.cpuCount) CPU"
+                )
+                specChip(
+                    systemImage: "memorychip",
+                    text: "\(bundle.spec.memorySizeInGigabytes) GB"
+                )
+                specChip(
+                    systemImage: "internaldrive",
+                    text: "\(bundle.spec.diskSizeInGigabytes) GB"
+                )
+            }
         }
     }
 
+    /// One spec chip. The shape is a `ConcentricRectangle` whose
+    /// corners share center points with the hero pane's 28pt
+    /// container shape (`.containerShape` on ``heroPane``) — the
+    /// macOS 26 concentric-geometry contract. A chip sits far from
+    /// the pane's corners, where pure concentric resolution
+    /// (container radius minus inset) would go square, so
+    /// `.concentric(minimum: .fixed(12))` keeps a 12pt floor;
+    /// `isUniform: true` applies the largest resolved radius to
+    /// all four corners for a symmetric chip.
     private func specChip(systemImage: String, text: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
@@ -201,19 +230,26 @@ struct VMDetailView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.regularMaterial, in: .capsule)
+        .glassEffect(
+            .regular,
+            in: ConcentricRectangle(
+                corners: .concentric(minimum: .fixed(12)),
+                isUniform: true
+            )
+        )
     }
 
     /// Action bar inside the hero's shared `GlassEffectContainer`
-    /// (see ``statusAndActions``). Secondary buttons are
-    /// `.glassButton()` so they share one visual weight; semantic
-    /// emphasis comes from `.tint(...)`, not from a different fill
-    /// style.
+    /// (see ``statusAndActions``). Its HStack spacing is **24** —
+    /// deliberately ABOVE the container's spacing of 20 — so
+    /// adjacent buttons never blend into one fused shape at rest.
+    /// Every button label carries ``hoverSymbolBounce()`` (a
+    /// one-shot, Reduce-Motion-gated symbol bounce on pointer
+    /// entry).
     ///
-    /// The Start/Resume button is the exception — the Apparition
-    /// signature. It carries an explicit ember-tinted
-    /// `glassEffect(_:in:)` (the ONE ember/prominent moment on
-    /// this surface) plus `glassEffectID(_:in:)` and
+    /// The Start/Resume button is the Apparition signature. It
+    /// carries an explicit wisp-tinted `glassEffect(_:in:)` plus
+    /// `glassEffectID(_:in:)` and
     /// `glassEffectTransition(.matchedGeometry)`. When starting
     /// succeeds, `isRunning` flips, the button leaves the
     /// hierarchy, and its glass morphs into the status pill — the
@@ -222,27 +258,24 @@ struct VMDetailView: View {
     /// Only this button and the pill carry `glassEffect`, so the
     /// container's morph can't pair with a neighboring button.
     ///
-    /// Tint mapping ("Night & Ember" contract):
-    ///   - ember → the primary action for the current state
-    ///     (Start/Resume when stopped; Open Workspace inherits the
-    ///     ember app accent when running)
+    /// Tint mapping ("Night & Wisp" contract — the accent is
+    /// spent exactly once per state):
+    ///   - wisp → the single primary action for the current state
+    ///     (Open Workspace via ``glassProminentButton()`` when
+    ///     running; the Start/Resume glass morph when stopped —
+    ///     the prominent style carries the wisp itself, no manual
+    ///     `.tint` needed)
     ///   - vital → success confirmation (Guest Tools Installed)
-    ///   - red → hard-stop (system destructive convention)
-    ///   - neutral → everything else
+    ///   - neutral → everything else, including Stop: its
+    ///     destructive meaning lives in the hard-stop help text,
+    ///     not in a red fill that would fight the surface's
+    ///     single-accent budget
     private var actionBar: some View {
         let transitioning = appState.transitioningVMs.contains(name)
         let suspended = !isRunning && appState.isSuspended(name)
 
-        return HStack(spacing: 10) {
-            Button {
-                openWindow(id: "workspace", value: name)
-            } label: {
-                Label("Open Workspace", systemImage: "macwindow")
-            }
-            .glassButton()
-            .controlSize(.large)
-            .tint(isRunning ? .accentColor : nil)
-            .keyboardShortcut(.return, modifiers: [])
+        return HStack(spacing: 24) {
+            openWorkspaceButton
 
             if isRunning {
                 Button {
@@ -252,6 +285,7 @@ struct VMDetailView: View {
                         ProgressView().controlSize(.small)
                     } else {
                         Label("Suspend", systemImage: "pause.circle")
+                            .hoverSymbolBounce()
                     }
                 }
                 .glassButton()
@@ -263,10 +297,10 @@ struct VMDetailView: View {
                     Task { await appState.stopVM(name) }
                 } label: {
                     Label("Stop", systemImage: "stop.circle")
+                        .hoverSymbolBounce()
                 }
                 .glassButton()
                 .controlSize(.large)
-                .tint(.red)
                 .disabled(transitioning)
                 .help("Hard-stop the VM. The guest doesn't get a chance to flush state — use Suspend for graceful.")
             } else {
@@ -281,6 +315,7 @@ struct VMDetailView: View {
                                 suspended ? "Resume" : "Start",
                                 systemImage: suspended ? "play.circle.fill" : "play.circle"
                             )
+                            .hoverSymbolBounce()
                         }
                     }
                     .padding(.horizontal, 16)
@@ -289,7 +324,7 @@ struct VMDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .glassEffect(
-                    .regular.tint(Apparition.ember).interactive(),
+                    .regular.tint(Apparition.wisp).interactive(),
                     in: .capsule
                 )
                 .glassEffectID("primaryAction", in: heroGlass)
@@ -308,8 +343,10 @@ struct VMDetailView: View {
                             ProgressView().controlSize(.small)
                         } else if installed {
                             Label("Guest Tools Installed", systemImage: "checkmark.seal.fill")
+                                .hoverSymbolBounce()
                         } else {
                             Label("Install Guest Tools", systemImage: "arrow.down.to.line.circle")
+                                .hoverSymbolBounce()
                         }
                     }
                     .glassButton()
@@ -321,6 +358,31 @@ struct VMDetailView: View {
                         : "Install Spooktacular Guest Tools (clipboard bridge + guest-agent API) into /Applications and auto-launch at first login. Requires admin password once.")
                 }
             }
+        }
+    }
+
+    /// Open Workspace — the ONE prominent (wisp) button on this
+    /// surface while the VM is running: opening the live display
+    /// is a running VM's primary action, and
+    /// ``glassProminentButton()`` carries the accent itself (no
+    /// manual `.tint`). While stopped it demotes to neutral
+    /// `.glassButton()` — Start/Resume owns the wisp moment then,
+    /// keeping the one-accent-per-surface budget.
+    @ViewBuilder
+    private var openWorkspaceButton: some View {
+        let button = Button {
+            openWindow(id: "workspace", value: name)
+        } label: {
+            Label("Open Workspace", systemImage: "macwindow")
+                .hoverSymbolBounce()
+        }
+        .controlSize(.large)
+        .keyboardShortcut(.return, modifiers: [])
+
+        if isRunning {
+            button.glassProminentButton()
+        } else {
+            button.glassButton()
         }
     }
 
@@ -394,11 +456,11 @@ struct VMDetailView: View {
         }
     }
 
-    /// Semantic glyph color per the "Night & Ember" palette:
+    /// Semantic glyph color per the "Night & Wisp" palette:
     /// lantern while mid-transition (booting / suspending /
     /// installing — in-progress) or suspended (a saved, dormant
-    /// ember), vital when running (alive), neutral when stopped.
-    /// Never ember — the accent marks actions, not states.
+    /// glow), vital when running (alive), neutral when stopped.
+    /// Never wisp — the accent marks actions, not states.
     private var statusSymbolColor: AnyShapeStyle {
         if isTransitioning { return AnyShapeStyle(Apparition.lantern) }
         switch lifecyclePhase {
@@ -444,49 +506,6 @@ struct VMDetailView: View {
     private var statsPane: some View {
         WorkspaceStatsSidebar(model: stats)
             .frame(maxWidth: .infinity)
-    }
-}
-
-/// The Apparition hero-pane ground: a `.regularMaterial`
-/// rounded rect (content layer stays on system materials per the
-/// HIG — never Liquid Glass) with a low-alpha "Night & Ember"
-/// wash layered **over** the material. The wash is a night2 →
-/// night1 vertical gradient that biases the system material
-/// toward the séance-room palette without replacing it; in the
-/// light ("Fog") appearance the same tints read as a faint lift.
-/// An optional `tint` adds a whisper (6%) of a semantic hue for
-/// heroes that carry a kind color (see `ImageDetailView`).
-///
-/// Static by design — a ground never animates on its own.
-private struct ApparitionPaneBackground: View {
-
-    /// Corner radius of the pane; matches the hero card shape.
-    var cornerRadius: CGFloat = 24
-
-    /// Optional semantic hue washed over the ground at 6% alpha.
-    var tint: Color?
-
-    var body: some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius)
-        shape
-            .fill(.regularMaterial)
-            .overlay {
-                shape.fill(
-                    LinearGradient(
-                        colors: [
-                            Apparition.night2.opacity(0.30),
-                            Apparition.night1.opacity(0.12),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            }
-            .overlay {
-                if let tint {
-                    shape.fill(tint.opacity(0.06))
-                }
-            }
     }
 }
 
@@ -539,17 +558,17 @@ struct VMDisplayView: NSViewRepresentable {
 
 /// Detail view for a selected image in the Images section.
 ///
-/// A material "hero card" mirroring ``VMDetailView``'s hero:
-/// the pane and its metadata chips are content, so they sit on
-/// `.regularMaterial` with the shared Apparition ground wash
-/// (``ApparitionPaneBackground``) — never on Liquid Glass, per
-/// the HIG's "don't use Liquid Glass in the content layer."
-/// The image-kind tint (IPSW = Apple blue, ISO = Tux gold,
+/// A Liquid Glass "hero card" mirroring ``VMDetailView``'s hero:
+/// the pane floats over the aurora, so it's chrome —
+/// `.glassEffect(.regular, in:)` on a 28pt continuous rounded
+/// rect, with `.containerShape(.rect(cornerRadius: 28))` so the
+/// metadata chips inside resolve concentric corners. The
+/// image-kind tint (IPSW = Apple blue, ISO = Tux gold,
 /// OCI = purple) carries semantic weight in exactly three
 /// places: the eyebrow text, the medallion's color fill, and a
-/// 6% wash over the pane. Glass appears only where controls
-/// live — the action bar, whose single `glassProminent` button
-/// inherits the ember app accent.
+/// 6% tint on the pane's glass. The action bar's single
+/// `glassProminent` button carries the wisp accent via
+/// `glassProminentButton()`.
 struct ImageDetailView: View {
 
     let image: VirtualMachineImage
@@ -577,7 +596,11 @@ struct ImageDetailView: View {
         .padding(.vertical, 40)
         .padding(.horizontal, 32)
         .frame(maxWidth: 640)
-        .background { ApparitionPaneBackground(cornerRadius: 24, tint: tintColor) }
+        .glassEffect(
+            .regular.tint(tintColor.opacity(0.06)),
+            in: .rect(cornerRadius: 28)
+        )
+        .containerShape(.rect(cornerRadius: 28))
         .frame(maxWidth: .infinity)
     }
 
@@ -610,28 +633,32 @@ struct ImageDetailView: View {
         }
     }
 
-    /// Two material chips: source detail + size — the exact
-    /// counterpart of ``VMDetailView``'s spec chips (metadata is
-    /// content, so `.regularMaterial` capsules, not glass).
+    /// Two glass chips: source detail + size — the exact
+    /// counterpart of ``VMDetailView``'s spec chips:
+    /// `ConcentricRectangle` glass chips grouped in a
+    /// `GlassEffectContainer` whose spacing (**8**) stays BELOW
+    /// the HStack's **12** so the chips never merge at rest.
     /// Truncates the source detail in the middle so long IPSW
     /// hashes don't dominate the hero — Apple's `.middle`
     /// truncation mode preserves both ends (build + extension).
     private var metadataRow: some View {
-        HStack(spacing: 12) {
-            metadataChip(
-                systemImage: sourceIcon,
-                text: sourceDetailLabel,
-                truncation: .middle
-            )
-            if let bytes = image.sizeInBytes {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 12) {
                 metadataChip(
-                    systemImage: "internaldrive",
-                    text: ByteCountFormatter.string(
-                        fromByteCount: Int64(bytes),
-                        countStyle: .file
-                    ),
-                    truncation: .tail
+                    systemImage: sourceIcon,
+                    text: sourceDetailLabel,
+                    truncation: .middle
                 )
+                if let bytes = image.sizeInBytes {
+                    metadataChip(
+                        systemImage: "internaldrive",
+                        text: ByteCountFormatter.string(
+                            fromByteCount: Int64(bytes),
+                            countStyle: .file
+                        ),
+                        truncation: .tail
+                    )
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -655,9 +682,18 @@ struct ImageDetailView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.regularMaterial, in: .capsule)
+        .glassEffect(
+            .regular,
+            in: ConcentricRectangle(
+                corners: .concentric(minimum: .fixed(12)),
+                isUniform: true
+            )
+        )
     }
 
+    /// Action bar — container spacing **8** stays BELOW the
+    /// HStack's **12**, so the two buttons never merge at rest
+    /// (this pane never had the blob bug; keep it that way).
     private var actionBar: some View {
         GlassEffectContainer(spacing: 8) {
             HStack(spacing: 12) {
@@ -681,6 +717,7 @@ struct ImageDetailView: View {
                     appState.showCreateSheet = true
                 } label: {
                     Label("Create VM from image", systemImage: "plus.square.on.square")
+                        .hoverSymbolBounce()
                         .padding(.horizontal, 8)
                 }
                 .glassProminentButton()
@@ -690,6 +727,7 @@ struct ImageDetailView: View {
                     try? appState.imageLibrary.remove(id: image.id)
                 } label: {
                     Label("Delete", systemImage: "trash")
+                        .hoverSymbolBounce()
                 }
                 .glassButton()
                 .controlSize(.large)

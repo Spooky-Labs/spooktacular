@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// The séance-room ambience — a slow aurora of ember and vital
+/// The séance-room ambience — a slow aurora of wisp and vital
 /// light drifting through the night grounds.
 ///
 /// A single 3×3 `MeshGradient` carries the whole effect: the outer
 /// ring holds the adaptive Apparition grounds, while two interior
-/// vertices are tinted with very-low-alpha ``Apparition/ember``
+/// vertices are tinted with very-low-alpha ``Apparition/wisp``
 /// (~6%) and ``Apparition/vital`` (~4%) washes. In the light
 /// ("Fog") appearance the same mesh resolves to fog grounds and the
 /// tints drop even lower, so the ambience reads as a whisper in
@@ -60,19 +60,19 @@ struct AuroraBackground: View {
 
     /// The 3×3 mesh at a given instant. Corner and edge vertices
     /// are pinned so the mesh hull always covers the view; the two
-    /// tinted vertices (center ember, lower-middle vital) drift on
+    /// tinted vertices (center wisp, lower-middle vital) drift on
     /// small, slow sin/cos orbits. Any hairline the drifting
     /// lower vertex opens along the bottom edge is filled by the
     /// `background:` ground, so it stays invisible.
     private func mesh(at time: TimeInterval) -> some View {
         // Multi-second, mutually prime periods so the two orbits
         // never visibly sync up.
-        let emberAngle = time * (2 * .pi / 17)
+        let wispAngle = time * (2 * .pi / 17)
         let vitalAngle = time * (2 * .pi / 23)
 
-        let emberPoint = SIMD2<Float>(
-            0.42 + 0.06 * Float(sin(emberAngle)),
-            0.44 + 0.05 * Float(cos(emberAngle))
+        let wispPoint = SIMD2<Float>(
+            0.42 + 0.06 * Float(sin(wispAngle)),
+            0.44 + 0.05 * Float(cos(wispAngle))
         )
         let vitalPoint = SIMD2<Float>(
             0.62 + 0.07 * Float(cos(vitalAngle)),
@@ -81,7 +81,7 @@ struct AuroraBackground: View {
 
         // In the light ("Fog") appearance the washes drop even
         // lower — fog wants a hint, not a glow.
-        let emberAmount = colorScheme == .dark ? 0.06 : 0.035
+        let wispAmount = colorScheme == .dark ? 0.06 : 0.035
         let vitalAmount = colorScheme == .dark ? 0.04 : 0.025
 
         return MeshGradient(
@@ -89,13 +89,13 @@ struct AuroraBackground: View {
             height: 3,
             points: [
                 .init(0, 0), .init(0.5, 0), .init(1, 0),
-                .init(0, 0.5), emberPoint, .init(1, 0.5),
+                .init(0, 0.5), wispPoint, .init(1, 0.5),
                 .init(0, 1), vitalPoint, .init(1, 1),
             ],
             colors: [
                 Apparition.night0, Apparition.night1, Apparition.night0,
                 Apparition.night1,
-                Apparition.night2.mix(with: Apparition.ember, by: emberAmount),
+                Apparition.night2.mix(with: Apparition.wisp, by: wispAmount),
                 Apparition.night1,
                 Apparition.night2, Apparition.night1.mix(with: Apparition.vital, by: vitalAmount),
                 Apparition.night0,

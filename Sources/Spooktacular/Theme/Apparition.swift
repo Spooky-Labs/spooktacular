@@ -5,10 +5,10 @@ import SwiftUI
 ///
 /// Spooktacular's VMs are *apparitions*: they materialize, work, and
 /// dissipate. This namespace is the single source of truth for the
-/// "Night & Ember" palette and the app's shared motion voice.
+/// "Night & Wisp" palette and the app's shared motion voice.
 ///
 /// ## Palette contract
-/// - ``ember`` is the ONE accent. It marks the primary action and
+/// - ``wisp`` is the ONE accent. It marks the primary action and
 ///   brand moments — nothing else. Never use it to mean "running".
 /// - ``vital`` and ``lantern`` are *semantic* lifecycle colors
 ///   (alive / in-progress), deliberately separate from the accent.
@@ -24,27 +24,29 @@ enum Apparition {
 
     // MARK: - Accent
 
-    /// Ember orange — the app's single accent color.
+    /// Wisp violet — the app's single accent color.
     ///
-    /// Reserved for the primary action on a surface and for brand
-    /// moments (app tint, the one `glassProminent` button). Dark:
-    /// `#FF8A3D`; light ("Fog"): `#C85F1E`, deepened so it holds
-    /// AA contrast on fog grounds.
-    static let ember = dynamic(
-        name: "ember",
-        dark: rgb(0xFF8A3D),
-        light: rgb(0xC85F1E)
+    /// Will-o'-the-wisp — the séance's cool glow: spectral, moonlit,
+    /// deliberately distinct from ``vital``'s teal. Reserved for the
+    /// primary action on a surface and for brand moments (the one
+    /// `glassProminent` button). Dark: `#9D8FFF`, luminous on night
+    /// grounds; light ("Fog"): `#5646D6`, deepened so it holds AA
+    /// contrast on fog grounds.
+    static let wisp = dynamic(
+        name: "wisp",
+        dark: rgb(0x9D8FFF),
+        light: rgb(0x5646D6)
     )
 
-    /// Deep ember — the accent's low register.
+    /// Deep wisp — the accent's low register.
     ///
-    /// A darker sibling of ``ember`` for gradient stops, pressed
-    /// states, and moments where full ember would shout. Dark:
-    /// `#D96A24`; light: `#A84E14`.
-    static let emberDeep = dynamic(
-        name: "emberDeep",
-        dark: rgb(0xD96A24),
-        light: rgb(0xA84E14)
+    /// A darker sibling of ``wisp`` for gradient stops, pressed
+    /// states, and moments where full wisp would shout. Dark:
+    /// `#7C6AE8`; light: `#4334A8`.
+    static let wispDeep = dynamic(
+        name: "wispDeep",
+        dark: rgb(0x7C6AE8),
+        light: rgb(0x4334A8)
     )
 
     // MARK: - Semantic lifecycle colors

@@ -181,29 +181,35 @@ struct WorkspaceStatsSidebar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // These metric cards live in the content layer, so they use
-        // a standard material rather than Liquid Glass — Apple's HIG
-        // is explicit that Liquid Glass belongs to the navigation /
-        // chrome layer, not to content panes ("Don't use Liquid Glass
-        // in the content layer"). With no glass surfaces left to batch
-        // or morph, a `GlassEffectContainer` here would wrap nothing,
-        // so the plain `VStack` is the whole layout.
-        VStack(alignment: .leading, spacing: 14) {
-            Label("Live metrics", systemImage: "waveform.path.ecg")
-                .font(.headline)
-                .padding(.leading, 4)
+        // The metric cards are floating Liquid Glass panes (see
+        // `metricCard`), so adjacent glass shapes batch into one
+        // `GlassEffectContainer` for blending and render efficiency.
+        //
+        // Spacing contract: the container's spacing (10) is
+        // deliberately SMALLER than the interior VStack's spacing
+        // (14). Per Apple's `GlassEffectContainer` semantics, a
+        // container spacing *larger* than the interior stack spacing
+        // makes neighboring glass shapes blend at rest — the exact
+        // fused-blob failure mode this design pass is repairing.
+        // 10 < 14 keeps every card a crisp, separate pane.
+        GlassEffectContainer(spacing: 10) {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("Live metrics", systemImage: "waveform.path.ecg")
+                    .font(.headline)
+                    .padding(.leading, 4)
 
-            cpuChart
-            memoryChart
-            diskChart
-            powerChart
-            pageInChart
+                cpuChart
+                memoryChart
+                diskChart
+                powerChart
+                pageInChart
+            }
         }
     }
 
     // MARK: - Chart components
 
-    /// One material-backed card per metric. Layout top-to-bottom:
+    /// One Liquid Glass card per metric. Layout top-to-bottom:
     ///
     /// 1. Header row — SF Symbol + title on the left, current
     ///    value readout on the right. The icon gives the card
@@ -218,9 +224,14 @@ struct WorkspaceStatsSidebar: View {
     ///    System Settings pattern — the copy is the footer,
     ///    not a floating tooltip).
     ///
-    /// The whole stack sits on a `.regularMaterial` surface —
-    /// this is a content-layer pane, so it uses a standard
-    /// material rather than Liquid Glass, per Apple's HIG.
+    /// The whole stack sits on a floating Liquid Glass pane —
+    /// `glassEffect(.regular)` in a 20pt continuous rounded rect.
+    /// These stat cards float over the workspace ambience, which
+    /// makes them chrome, not reading surfaces; `.regular` glass
+    /// (never `.clear`) keeps the description copy legible without
+    /// a dimming layer. The cards batch in the `body`'s
+    /// `GlassEffectContainer`, whose spacing (10) stays below the
+    /// stack spacing (14) so panes never merge at rest.
     private func metricCard<Content: View>(
         title: String,
         systemImage: String,
@@ -265,7 +276,7 @@ struct WorkspaceStatsSidebar: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial, in: .rect(cornerRadius: 14))
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 
     /// Formats a `Double?` as a short readable string.
