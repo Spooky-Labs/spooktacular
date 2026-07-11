@@ -19,6 +19,7 @@ struct SnapshotInspector: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var snapshots: [SnapshotInfo] = []
     @State private var newLabel: String = ""
@@ -42,6 +43,14 @@ struct SnapshotInspector: View {
             footer
         }
         .frame(minWidth: 420, idealWidth: 480, minHeight: 360, idealHeight: 440)
+        // Faint night wash over the sheet's opaque background —
+        // ambient tint layered over system chrome, not a
+        // replacement, and no glass in the content layer.
+        .background(Apparition.night1.opacity(0.3))
+        // Animates the empty-state ↔ list swap when the first
+        // snapshot lands or the last one is deleted (bound to
+        // `snapshots` crossing empty); off under Reduce Motion.
+        .animation(reduceMotion ? nil : Apparition.spring, value: snapshots.isEmpty)
         .task(id: vmName) { reload() }
         .alert(
             "Snapshot error",
@@ -94,6 +103,9 @@ struct SnapshotInspector: View {
                 }
             }
             .listStyle(.inset)
+            // Let the night wash behind the sheet ground the rows
+            // instead of the list's own opaque backdrop.
+            .scrollContentBackground(.hidden)
         }
     }
 
@@ -199,7 +211,9 @@ struct SnapshotRow: View {
                     Text("·")
                     Text(humanBytes(info.sizeInBytes))
                 }
-                .font(.caption)
+                // Machine-speak (timestamps, byte sizes) is set in
+                // mono per the Apparition type contract.
+                .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
             }
 

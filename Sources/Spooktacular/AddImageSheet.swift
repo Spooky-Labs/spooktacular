@@ -10,6 +10,11 @@ struct AddImageSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
+    /// Reduce Motion gate — the error-bar spring collapses to an
+    /// instant state application when the user asks the system
+    /// to reduce motion. (The header seals gate themselves.)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var sourceType: SourceType = .localFile
     @State private var name = ""
     @State private var filePath = ""
@@ -26,6 +31,9 @@ struct AddImageSheet: View {
             HStack {
                 Text("Add Image")
                     .font(.headline)
+                    // Display headings speak in SF Pro Rounded —
+                    // the Apparition type voice.
+                    .fontDesign(.rounded)
                 Spacer()
             }
             .padding(.horizontal, 24)
@@ -38,7 +46,11 @@ struct AddImageSheet: View {
                 // Source type picker
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Source").font(.headline).materialSectionHeader()
+                        // Always sealed — the radio group can't
+                        // hold an invalid value.
+                        RitualSectionHeader(title: "Source", complete: true)
+                            .font(.headline)
+                            .materialSectionHeader()
 
                         Picker("Source", selection: $sourceType) {
                             ForEach(SourceType.allCases, id: \.self) { type in
@@ -68,7 +80,14 @@ struct AddImageSheet: View {
                 // Name
                 HStack(alignment: .top, spacing: 24) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Display Name").font(.headline).materialSectionHeader()
+                        // Seals (DrawOn) the moment a non-blank
+                        // name exists.
+                        RitualSectionHeader(
+                            title: "Display Name",
+                            complete: nameComplete
+                        )
+                        .font(.headline)
+                        .materialSectionHeader()
                         TextField("macOS 15.4", text: $name)
                             .textFieldStyle(.roundedBorder)
                     }
@@ -88,7 +107,13 @@ struct AddImageSheet: View {
                 if sourceType == .localFile {
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("IPSW File").font(.headline).materialSectionHeader()
+                            // Seals once a file path is present.
+                            RitualSectionHeader(
+                                title: "IPSW File",
+                                complete: filePathComplete
+                            )
+                            .font(.headline)
+                            .materialSectionHeader()
                             HStack {
                                 TextField("/path/to/file.ipsw", text: $filePath)
                                     .textFieldStyle(.roundedBorder)
@@ -107,7 +132,13 @@ struct AddImageSheet: View {
                 } else {
                     HStack(alignment: .top, spacing: 24) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("OCI Reference").font(.headline).materialSectionHeader()
+                            // Seals once a reference is present.
+                            RitualSectionHeader(
+                                title: "OCI Reference",
+                                complete: ociReferenceComplete
+                            )
+                            .font(.headline)
+                            .materialSectionHeader()
                             TextField("ghcr.io/org/image:tag", text: $ociReference)
                                 .textFieldStyle(.roundedBorder)
                         }
@@ -140,6 +171,10 @@ struct AddImageSheet: View {
                     Spacer()
                     Button("Add") { addImage() }
                         .glassProminentButton()
+                        // The ONE ember glassProminent on this
+                        // surface — the accent marks the primary
+                        // action and nothing else.
+                        .tint(Apparition.ember)
                         .disabled(!isValid)
                         .keyboardShortcut(.defaultAction)
                 }
@@ -147,6 +182,12 @@ struct AddImageSheet: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
+        // Ground the sheet in the Apparition palette (material +
+        // faint night wash — no content-layer glass), and spring
+        // the error label in/out on the `errorMessage` state
+        // change.
+        .apparitionSheetGround()
+        .animation(reduceMotion ? nil : Apparition.spring, value: errorMessage)
         .frame(width: 600)
     }
 
@@ -155,6 +196,27 @@ struct AddImageSheet: View {
         (sourceType == .localFile
             ? !filePath.trimmingCharacters(in: .whitespaces).isEmpty
             : !ociReference.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+
+    // MARK: - Ritual section validity
+    //
+    // Presentation-only mirrors of `isValid`'s per-field
+    // requirements; each drives the completion seal in its
+    // section header.
+
+    /// The Display Name section seals once a non-blank name exists.
+    private var nameComplete: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The IPSW File section seals once a path is present.
+    private var filePathComplete: Bool {
+        !filePath.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The OCI Reference section seals once a reference is present.
+    private var ociReferenceComplete: Bool {
+        !ociReference.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private func browseIPSW() {

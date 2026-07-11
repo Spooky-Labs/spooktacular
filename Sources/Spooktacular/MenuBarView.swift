@@ -30,6 +30,9 @@ struct MenuBarView: View {
                 systemImage: "gauge.with.dots.needle.33percent"
             )
             .font(.caption)
+            // Machine-speak counts get tabular digits so the line
+            // doesn't jitter as running/total change.
+            .monospacedDigit()
             .foregroundStyle(.secondary)
             // The gauge glyph reflects live running-VM state, the
             // one thing persona A scans this summary line for:
@@ -97,7 +100,9 @@ struct MenuBarView: View {
                 }
             } icon: {
                 Image(systemName: "hourglass")
-                    .foregroundStyle(.orange)
+                    // Lantern = materializing / in-progress in the
+                    // Apparition palette.
+                    .foregroundStyle(Apparition.lantern)
             }
         } else if isRunning {
             Menu {
@@ -113,11 +118,13 @@ struct MenuBarView: View {
                 Label {
                     HStack(spacing: 4) {
                         Text(displayName)
-                        Text("Running").foregroundStyle(.green)
+                        // Vital = alive / online in the Apparition
+                        // palette — never the ember accent.
+                        Text("Running").foregroundStyle(Apparition.vital)
                     }
                 } icon: {
                     Image(systemName: "play.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Apparition.vital)
                 }
             }
         } else {

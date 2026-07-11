@@ -103,7 +103,10 @@ struct SecuritySettingsView: View {
                         "SPOOKTACULAR_BUNDLE_PROTECTION is set — it overrides this setting until unset.",
                         systemImage: "exclamationmark.triangle"
                     )
-                    .foregroundStyle(.orange)
+                    // Lantern carries "needs attention" in the
+                    // Apparition palette — plain orange would read
+                    // as the ember accent.
+                    .foregroundStyle(Apparition.lantern)
                     .font(.caption)
                 }
             }
@@ -250,7 +253,8 @@ struct VMHelperSettingsView: View {
             } icon: {
                 Image(systemName: "checkmark.circle.fill")
             }
-            .foregroundStyle(.green)
+            // Vital = alive / healthy in the Apparition palette.
+            .foregroundStyle(Apparition.vital)
         case .failed(let message):
             Label {
                 VStack(alignment: .leading, spacing: 2) {

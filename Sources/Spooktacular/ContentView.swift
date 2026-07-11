@@ -26,7 +26,25 @@ struct ContentView: View {
         NavigationSplitView {
             sidebar
         } detail: {
-            detail
+            // The séance room: the ambient aurora sits behind every
+            // detail state (hero, image detail, empty state) as a
+            // bias over the system background — content renders on
+            // top, never on glass.
+            //
+            // `backgroundExtensionEffect()` mirrors + blurs the
+            // aurora into the safe areas around the detail column
+            // (under the sidebar and title bar), which is Apple's
+            // documented pattern for background content in a
+            // `NavigationSplitView` detail column:
+            // <https://developer.apple.com/documentation/SwiftUI/View/backgroundExtensionEffect()>
+            // The aurora is near-uniform ambient light, so its
+            // mirrored copies are seamless — the room reads
+            // edge-to-edge without the content layer moving.
+            ZStack {
+                AuroraBackground()
+                    .backgroundExtensionEffect()
+                detail
+            }
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -182,16 +200,11 @@ struct ContentView: View {
     @ViewBuilder
     private var detailEmptyState: some View {
         if appState.vms.isEmpty {
-            ContentUnavailableView {
-                Label("No workspaces yet", systemImage: "sparkles")
-            } description: {
-                Text("Create your first macOS workspace to get started.")
-            } actions: {
-                Button("Create Workspace") {
-                    appState.showCreateSheet = true
-                }
-                .glassProminentButton()
-                .controlSize(.large)
+            // First-run séance: `EmptyStateView` sits directly over
+            // the aurora (no material between them) and carries this
+            // surface's single `glassProminent` ember action.
+            EmptyStateView {
+                appState.showCreateSheet = true
             }
         } else {
             ContentUnavailableView(

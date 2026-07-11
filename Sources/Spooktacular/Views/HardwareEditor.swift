@@ -19,6 +19,7 @@ struct HardwareEditor: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var cpu: Int = 4
     @State private var memoryGB: Int = 8
@@ -45,11 +46,22 @@ struct HardwareEditor: View {
                 sharedFoldersRow
             }
             .formStyle(.grouped)
+            // Let the night wash behind the sheet ground the form
+            // instead of its own opaque backdrop.
+            .scrollContentBackground(.hidden)
             .disabled(isRunning)
+            // Animates the "Stop the workspace…" lock hint sliding
+            // in/out when the VM's running state flips while the
+            // sheet is open; off under Reduce Motion.
+            .animation(reduceMotion ? nil : Apparition.spring, value: isRunning)
             Divider()
             footer
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 340)
+        // Faint night wash over the sheet's opaque background —
+        // ambient tint layered over system chrome, not a
+        // replacement, and no glass in the content layer.
+        .background(Apparition.night1.opacity(0.3))
         // Inherit the `.switch` style to every Toggle in the sheet.
         .toggleStyle(.switch)
         .task(id: vmName) { loadInitialValues() }
@@ -165,7 +177,10 @@ struct HardwareEditor: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Text("tag: \(folder.tag)")
-                                .font(.caption)
+                                // VirtIO FS mount tags are
+                                // machine-speak — mono per the
+                                // Apparition type contract.
+                                .font(.system(.caption, design: .monospaced))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()

@@ -27,6 +27,7 @@ struct WorkspaceWindow: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showSnapshots: Bool = false
     @State private var showHardware: Bool = false
@@ -48,6 +49,18 @@ struct WorkspaceWindow: View {
                 missingWorkspace
             }
         }
+        // Animates exactly one thing: the séance ⇄ guest-display
+        // swap, bound to the "is this VM running?" state change.
+        // Under Reduce Motion the transitions degrade to plain
+        // crossfades, so the quick non-bouncy curve fits better
+        // than the signature spring.
+        //
+        // `animation(_:value:)` docs:
+        // https://developer.apple.com/documentation/SwiftUI/View/animation(_:value:)
+        .animation(
+            reduceMotion ? Apparition.quick : Apparition.spring,
+            value: appState.runningVMs[vmName] != nil
+        )
         .frame(minWidth: 720, minHeight: 460)
         .navigationTitle(appState.vms[vmName]?.displayName ?? vmName)
         .task(id: vmName) {
@@ -96,10 +109,44 @@ struct WorkspaceWindow: View {
                 cachedView: appState.graphicsViews[vmName]
             )
             .toolbar { runningToolbar }
+            // The guest materializes. Deliberately NOT
+            // `.blurReplace` on this branch: SwiftUI filter
+            // effects like blur don't reach into AppKit-hosted
+            // content, so on an `NSViewRepresentable` the blur
+            // half of that transition would silently no-op.
+            // Opacity + a whisper of scale are the effects that
+            // demonstrably apply to hosted views, and the swap's
+            // spring lives on the container's
+            // `animation(_:value:)` above.
+            .transition(guestMaterialize)
         } else {
             WorkspaceLaunchView(name: vmName, bundle: bundle)
                 .toolbar { stoppedToolbar }
+                // Pure SwiftUI content, so the full blur+scale
+                // materialize applies. When Reduce Motion is on
+                // the system swaps this for a plain crossfade —
+                // motion transitions carry `hasMotion`, and "that
+                // transition will be replaced by opacity when
+                // Reduce Motion is enabled":
+                // https://developer.apple.com/documentation/SwiftUI/TransitionProperties/hasMotion
+                //
+                // `blurReplace` docs:
+                // https://developer.apple.com/documentation/SwiftUI/Transition/blurReplace
+                .transition(.blurReplace)
         }
+    }
+
+    /// The guest display's materialize/dissipate transition:
+    /// opacity with a 2% scale settle. Reduce Motion drops the
+    /// scale and leaves a plain crossfade (hand-gated here because
+    /// the automatic `hasMotion` → opacity replacement is a
+    /// `Transition`-protocol behavior, and this branch uses the
+    /// type-erased `AnyTransition` combinators:
+    /// <https://developer.apple.com/documentation/SwiftUI/AnyTransition/combined(with:)>).
+    private var guestMaterialize: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .opacity.combined(with: .scale(scale: 0.98))
     }
 
     @ViewBuilder
@@ -315,49 +362,120 @@ struct WorkspaceWindow: View {
 
 // MARK: - Launch view
 
-/// Glass-chromed landing view when a workspace is not running.
+/// The séance — the workspace's stopped-state landing.
 ///
-/// Shown when the user opens a workspace window for a stopped VM —
-/// think of it as the workspace's idle state. A prominent start
-/// button, a spec summary, and the workspace's custom icon.
+/// Shown when the user opens a workspace window for a stopped VM.
+/// The night-ground aurora washes the content layer (Apparition
+/// tints biasing the system background — never glass; the HIG
+/// reserves Liquid Glass for floating controls, and this whole
+/// surface is content). The workspace icon *materializes* with a
+/// one-shot entrance, the spec line speaks in monospaced
+/// machine-voice, and the ember `glassProminent` Start button is
+/// the surface's single prominent action.
+///
+/// ## Motion contract
+/// The entrance is a one-shot staggered reveal bound to the view's
+/// insertion (`onAppear` flips ``materialized`` exactly once per
+/// appearance — nothing loops). Under Reduce Motion, ``revealed``
+/// is `true` from the first frame, so the state never changes and
+/// no motion occurs at all; the content simply renders settled.
+///
+/// `accessibilityReduceMotion` docs:
+/// <https://developer.apple.com/documentation/SwiftUI/EnvironmentValues/accessibilityReduceMotion>
 struct WorkspaceLaunchView: View {
 
     let name: String
     let bundle: VirtualMachineBundle
 
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Drives the one-shot materialize entrance. Flipped to `true`
+    /// in `onAppear`, so the reveal replays each time the séance
+    /// returns (fresh `@State` on every re-insertion — e.g. after
+    /// the guest dissipates on stop).
+    @State private var materialized = false
+
+    /// The entrance's effective state: settled immediately when
+    /// Reduce Motion is on, otherwise once `onAppear` has fired.
+    private var revealed: Bool { materialized || reduceMotion }
 
     var body: some View {
         VStack(spacing: 28) {
             Spacer()
 
+            // The apparition materializes: blur condenses, scale
+            // settles, opacity arrives — one shot, bound to the
+            // `revealed` state change (the view's appearance event).
             WorkspaceIconView(spec: bundle.metadata.iconSpec ?? .defaultSpec, size: 140)
+                .background { emberHalo }
+                .scaleEffect(revealed ? 1 : 0.85)
+                .blur(radius: revealed ? 0 : 18)
+                .opacity(revealed ? 1 : 0)
+                .animation(Apparition.spring, value: revealed)
 
             VStack(spacing: 6) {
                 Text(bundle.displayName)
                     .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Apparition.fogText)
+                // Machine-voice: the spec line is something the
+                // machine says, so it speaks fully monospaced
+                // (inherently tabular — no `monospacedDigit()`
+                // needed on top).
                 Text(specSummary)
-                    .font(.callout)
+                    .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
             }
+            .opacity(revealed ? 1 : 0)
+            .offset(y: revealed ? 0 : 6)
+            .animation(Apparition.spring.delay(0.08), value: revealed)
 
+            // The surface's ONE glassProminent, in ember — the
+            // primary action and the only place the accent shouts.
             Button {
                 Task { await appState.startVM(name) }
             } label: {
                 Label("Start Workspace", systemImage: "play.fill")
-                    .font(.headline)
+                    .font(.system(.headline, design: .rounded))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-            }            .tint(.green)
+            }
+            .glassProminentButton()
+            .tint(Apparition.ember)
             .controlSize(.large)
             .accessibilityIdentifier(AccessibilityID.startButton)
+            .opacity(revealed ? 1 : 0)
+            .offset(y: revealed ? 0 : 10)
+            .animation(Apparition.spring.delay(0.16), value: revealed)
 
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassCard(cornerRadius: 24)
-        .padding(24)
+        // Night ground wash — the aurora is a content-layer tint
+        // bias over the system window background, not glass. It
+        // extends under the (system-glass) toolbar so the chrome
+        // floats over ambience, not over a hard seam.
+        .background {
+            AuroraBackground()
+                .ignoresSafeArea()
+        }
+        .onAppear { materialized = true }
+    }
+
+    /// A soft ember halo behind the icon — the séance's candle.
+    ///
+    /// A brand moment (ember is reserved for exactly these), drawn
+    /// as a heavily blurred fill so it reads as light, not as a
+    /// shape. It appears once with the materialize entrance and
+    /// then holds perfectly still — no looping glow. Light mode
+    /// halves the strength; fog wants a hint, not a lamp.
+    private var emberHalo: some View {
+        Circle()
+            .fill(Apparition.ember)
+            .frame(width: 240, height: 240)
+            .blur(radius: 60)
+            .opacity(revealed ? (colorScheme == .dark ? 0.20 : 0.10) : 0)
     }
 
     private var specSummary: String {

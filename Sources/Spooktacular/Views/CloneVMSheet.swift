@@ -25,6 +25,11 @@ struct CloneVMSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
+    /// Reduce Motion gate — the header pulse, the name seal, and
+    /// the error-bar spring all collapse to instant state
+    /// application when the user asks the system to reduce motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var destination: String = ""
     @State private var errorMessage: String?
     @State private var isCloning: Bool = false
@@ -53,6 +58,11 @@ struct CloneVMSheet: View {
             Divider()
             buttonBar
         }
+        // Ground the sheet in the Apparition palette (material +
+        // faint night wash — no content-layer glass), and spring
+        // the error bar in/out on the `errorMessage` state change.
+        .apparitionSheetGround()
+        .animation(reduceMotion ? nil : Apparition.spring, value: errorMessage)
         .frame(minWidth: 420, idealWidth: 460, minHeight: 260)
         .task(id: source) { preseedDestinationName() }
     }
@@ -63,6 +73,15 @@ struct CloneVMSheet: View {
         HStack {
             Label("Clone Virtual Machine", systemImage: "doc.on.doc")
                 .font(.headline)
+                // Display headings speak in SF Pro Rounded — the
+                // Apparition type voice.
+                .fontDesign(.rounded)
+                // The doc glyph breathes only while the clone is
+                // genuinely in flight (`isCloning`) — an
+                // indefinite pulse bound to real work, gated on
+                // Reduce Motion. Docs:
+                // <https://developer.apple.com/documentation/SwiftUI/View/symbolEffect(_:options:isActive:)>
+                .symbolEffect(.pulse, isActive: isCloning && !reduceMotion)
             Spacer()
         }
         .padding(16)
@@ -77,10 +96,16 @@ struct CloneVMSheet: View {
     }
 
     private var destinationRow: some View {
-        LabeledContent("Clone name") {
+        // The label carries the ritual seal: it draws on the
+        // moment the destination name is non-blank AND free of
+        // collisions (`canClone`) — the same instant the Clone
+        // button arms.
+        LabeledContent {
             TextField("name", text: $destination)
                 .textFieldStyle(.roundedBorder)
                 .disableAutocorrection(true)
+        } label: {
+            RitualSectionHeader(title: "Clone name", complete: canClone)
         }
     }
 
@@ -109,6 +134,10 @@ struct CloneVMSheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Clone") { performClone() }
                     .glassProminentButton()
+                    // The ONE ember glassProminent on this
+                    // surface — the accent marks the primary
+                    // action and nothing else.
+                    .tint(Apparition.ember)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canClone || isCloning)
             }

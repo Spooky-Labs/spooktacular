@@ -99,14 +99,32 @@ struct ErrorExplainerSheet: View {
     let context: String?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var explanation: String = ""
     @State private var failed: Bool = false
+    /// `true` only while the on-device model round-trip is in
+    /// flight — set before the token loop in
+    /// ``streamExplanation()`` and cleared when it exits.
+    @State private var isStreaming: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("Explain this error", systemImage: "sparkles")
-                    .font(.headline)
+                Label {
+                    Text("Explain this error")
+                } icon: {
+                    Image(systemName: "sparkles")
+                        // Ember marks the brand moment of the
+                        // surface (on-device intelligence).
+                        .foregroundStyle(Apparition.ember)
+                        // Pulses only while the model is genuinely
+                        // streaming tokens — an indefinite effect
+                        // bound to real in-flight work, never
+                        // decoration — and stays static under
+                        // Reduce Motion.
+                        .symbolEffect(.pulse, isActive: isStreaming && !reduceMotion)
+                }
+                .font(.headline)
                 Spacer()
                 Button("Done") { dismiss() }
                     .glassProminentButton()
@@ -136,6 +154,10 @@ struct ErrorExplainerSheet: View {
         }
         .padding(20)
         .frame(minWidth: 460, idealWidth: 520, minHeight: 340)
+        // Faint night wash over the sheet's opaque background —
+        // ambient tint layered over system chrome (the scroll pane
+        // above keeps its standard material), no content glass.
+        .background(Apparition.night1.opacity(0.3))
         .task(id: errorMessage) {
             await streamExplanation()
         }
@@ -182,6 +204,8 @@ struct ErrorExplainerSheet: View {
     private func streamExplanation() async {
         #if canImport(FoundationModels)
         guard ErrorExplainer.isAvailable else { return }
+        isStreaming = true
+        defer { isStreaming = false }
         do {
             // Each snapshot is the full explanation so far — replace,
             // don't append.

@@ -11,8 +11,16 @@ struct VMDetailView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isRunning: Bool { appState.isRunning(name) }
+    private var isTransitioning: Bool { appState.transitioningVMs.contains(name) }
+
+    /// Namespace shared by the hero's Liquid Glass shapes — the
+    /// status pill and the Start/Resume action — so their glass
+    /// morphs between each other on lifecycle changes. See
+    /// ``statusAndActions``.
+    @Namespace private var heroGlass
 
     @State private var stats = WorkspaceStatsModel()
 
@@ -20,12 +28,24 @@ struct VMDetailView: View {
         ScrollView {
             VStack(spacing: 24) {
                 heroPane
-                if isRunning { statsPane }
+                if isRunning {
+                    statsPane
+                        .transition(statsTransition)
+                }
                 ProvisioningPane(bundle: bundle)
             }
             .frame(maxWidth: 560)
             .padding(24)
             .frame(maxWidth: .infinity)
+            // Bound to the running-state flip (user pressed
+            // Start/Stop and the VM actually changed state):
+            // springs the stats pane in/out and settles the hero
+            // relayout in the app's shared motion voice. Reduce
+            // Motion swaps the spring for a short fade-only curve.
+            .animation(
+                reduceMotion ? .smooth(duration: 0.2) : Apparition.spring,
+                value: isRunning
+            )
         }
         .navigationTitle(bundle.displayName)
         .task(id: "\(name)-\(isRunning)") {
@@ -48,18 +68,23 @@ struct VMDetailView: View {
     // use Liquid Glass in the content layer" guidance, an elevated
     // detail card belongs on a system material, not on a glass
     // surface (glass is reserved for the navigation / control
-    // layer). Lifecycle state is carried by the tinted eyebrow (2)
-    // and the status pill (4), so the pane itself stays neutral
-    // chrome. Inside, a top-to-bottom stack:
+    // layer). The material carries a low-alpha Apparition ground
+    // wash (``ApparitionPaneBackground``) that biases it toward
+    // the "Night & Ember" palette without replacing it. Lifecycle
+    // state is carried by the tinted eyebrow (2) and the status
+    // pill (4) — vital when running, lantern while suspended or
+    // mid-transition — so the pane itself stays neutral chrome.
+    // Inside, a top-to-bottom stack:
     //
     //   1. Icon medallion — keeps the user's custom icon front
     //      and center.
     //   2. Title + uppercased, state-tinted eyebrow.
     //   3. Spec chips (CPU / RAM / Disk) — `.regularMaterial`
     //      capsules with SF-Symbol leading glyphs.
-    //   4. Status pill (Running / Suspended / Stopped) whose glyph
-    //      animates across lifecycle states.
-    //   5. Action bar.
+    //   4. Status pill + action bar in one `GlassEffectContainer`
+    //      (``statusAndActions``): the Start/Resume button and the
+    //      pill share the ``heroGlass`` namespace so starting the
+    //      VM morphs the button's glass into the pill.
     //
     // The whole pane follows the same aesthetic as
     // `ImageDetailView.heroCard`, so the library feels
@@ -70,14 +95,51 @@ struct VMDetailView: View {
             iconMedallion
             titleBlock
             specChips
-            statusPill
-            actionBar
+            statusAndActions
         }
         .padding(.vertical, 40)
         .padding(.horizontal, 32)
         .frame(maxWidth: 640)
-        .background(.regularMaterial, in: .rect(cornerRadius: 24))
+        .background { ApparitionPaneBackground(cornerRadius: 24) }
         .frame(maxWidth: .infinity)
+    }
+
+    /// The hero's Liquid Glass cluster — status pill above the
+    /// action bar, wrapped in **one** `GlassEffectContainer` so
+    /// the two shapes that carry `glassEffect` (the pill and the
+    /// Start/Resume button, see ``actionBar``) can morph into each
+    /// other. Mirrors Apple's pencil/note example for
+    /// `glassEffectTransition(_:)`: the container spacing matches
+    /// the interior stack spacing, the persistent shape (the pill)
+    /// and the appearing/disappearing shape (Start/Resume) each
+    /// carry a `glassEffectID(_:in:)` in ``heroGlass``.
+    ///
+    /// Motion bindings — nothing here loops:
+    /// - `Apparition.spring` fires on ``lifecyclePhase`` changes
+    ///   (the start/stop/suspend flip): drives the glass morph and
+    ///   the action-bar button swap.
+    /// - `Apparition.quick` fires on ``isTransitioning`` changes
+    ///   (button label ↔ spinner swap while the VM is mid-work).
+    /// - Reduce Motion replaces both with instant updates.
+    private var statusAndActions: some View {
+        GlassEffectContainer(spacing: 24) {
+            VStack(spacing: 24) {
+                statusPill
+                actionBar
+            }
+        }
+        .animation(reduceMotion ? nil : Apparition.spring, value: lifecyclePhase)
+        .animation(reduceMotion ? nil : Apparition.quick, value: isTransitioning)
+    }
+
+    /// Entrance/exit for the live-stats pane, bound to the
+    /// running-state flip. Full motion slides it up from the
+    /// bottom edge while fading; Reduce Motion keeps the fade
+    /// only.
+    private var statsTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .opacity.combined(with: .move(edge: .bottom))
     }
 
     /// The user's custom `WorkspaceIconView`. State meaning lives
@@ -142,68 +204,76 @@ struct VMDetailView: View {
         .background(.regularMaterial, in: .capsule)
     }
 
-    /// Unified action-bar button shape: every button in the
-    /// row is `.glassButton()` (never `.glassProminentButton`)
-    /// so they share one visual weight — rounded-rect glass
-    /// capsule, same height, same chrome. Semantic emphasis
-    /// comes from `.tint(...)` color, not from a different
-    /// fill style. That reads as one Liquid Glass "button
-    /// group" rather than a mismatched mix of filled /
-    /// subtle / outlined styles.
+    /// Action bar inside the hero's shared `GlassEffectContainer`
+    /// (see ``statusAndActions``). Secondary buttons are
+    /// `.glassButton()` so they share one visual weight; semantic
+    /// emphasis comes from `.tint(...)`, not from a different fill
+    /// style.
     ///
-    /// Tint mapping:
-    ///   - primary action in the current state → accent blue
-    ///     (Open Workspace when running, Start when stopped)
-    ///   - destructive-ish but not destructive → red (Stop)
-    ///   - resume / positive → green (Start/Resume, Agent
-    ///     Installed confirmation)
-    ///   - neutral → no tint, inherits secondary (Suspend,
-    ///     Install Agent idle state)
+    /// The Start/Resume button is the exception — the Apparition
+    /// signature. It carries an explicit ember-tinted
+    /// `glassEffect(_:in:)` (the ONE ember/prominent moment on
+    /// this surface) plus `glassEffectID(_:in:)` and
+    /// `glassEffectTransition(.matchedGeometry)`. When starting
+    /// succeeds, `isRunning` flips, the button leaves the
+    /// hierarchy, and its glass morphs into the status pill — the
+    /// pill that now reads "Running" in vital. Stopping runs the
+    /// same morph in reverse: the pill births the Start button.
+    /// Only this button and the pill carry `glassEffect`, so the
+    /// container's morph can't pair with a neighboring button.
+    ///
+    /// Tint mapping ("Night & Ember" contract):
+    ///   - ember → the primary action for the current state
+    ///     (Start/Resume when stopped; Open Workspace inherits the
+    ///     ember app accent when running)
+    ///   - vital → success confirmation (Guest Tools Installed)
+    ///   - red → hard-stop (system destructive convention)
+    ///   - neutral → everything else
     private var actionBar: some View {
         let transitioning = appState.transitioningVMs.contains(name)
         let suspended = !isRunning && appState.isSuspended(name)
 
-        return GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 10) {
+        return HStack(spacing: 10) {
+            Button {
+                openWindow(id: "workspace", value: name)
+            } label: {
+                Label("Open Workspace", systemImage: "macwindow")
+            }
+            .glassButton()
+            .controlSize(.large)
+            .tint(isRunning ? .accentColor : nil)
+            .keyboardShortcut(.return, modifiers: [])
+
+            if isRunning {
                 Button {
-                    openWindow(id: "workspace", value: name)
+                    Task { await appState.suspendVM(name) }
                 } label: {
-                    Label("Open Workspace", systemImage: "macwindow")
+                    if transitioning {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Suspend", systemImage: "pause.circle")
+                    }
                 }
                 .glassButton()
                 .controlSize(.large)
-                .tint(isRunning ? .accentColor : nil)
-                .keyboardShortcut(.return, modifiers: [])
+                .disabled(transitioning)
+                .help("Save VM state and quit. Next start picks up exactly where you left off.")
 
-                if isRunning {
-                    Button {
-                        Task { await appState.suspendVM(name) }
-                    } label: {
-                        if transitioning {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Suspend", systemImage: "pause.circle")
-                        }
-                    }
-                    .glassButton()
-                    .controlSize(.large)
-                    .disabled(transitioning)
-                    .help("Save VM state and quit. Next start picks up exactly where you left off.")
-
-                    Button {
-                        Task { await appState.stopVM(name) }
-                    } label: {
-                        Label("Stop", systemImage: "stop.circle")
-                    }
-                    .glassButton()
-                    .controlSize(.large)
-                    .tint(.red)
-                    .disabled(transitioning)
-                    .help("Hard-stop the VM. The guest doesn't get a chance to flush state — use Suspend for graceful.")
-                } else {
-                    Button {
-                        Task { await appState.startVM(name) }
-                    } label: {
+                Button {
+                    Task { await appState.stopVM(name) }
+                } label: {
+                    Label("Stop", systemImage: "stop.circle")
+                }
+                .glassButton()
+                .controlSize(.large)
+                .tint(.red)
+                .disabled(transitioning)
+                .help("Hard-stop the VM. The guest doesn't get a chance to flush state — use Suspend for graceful.")
+            } else {
+                Button {
+                    Task { await appState.startVM(name) }
+                } label: {
+                    Group {
                         if transitioning {
                             ProgressView().controlSize(.small)
                         } else {
@@ -213,41 +283,48 @@ struct VMDetailView: View {
                             )
                         }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .contentShape(.capsule)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(
+                    .regular.tint(Apparition.ember).interactive(),
+                    in: .capsule
+                )
+                .glassEffectID("primaryAction", in: heroGlass)
+                .glassEffectTransition(.matchedGeometry)
+                .disabled(transitioning)
+                .help(suspended
+                    ? "Restore from the saved state and continue exactly where you left off."
+                    : "Cold-boot the VM.")
+
+                if bundle.spec.guestOS == .macOS {
+                    let installed = appState.guestToolsInstalled.contains(name)
+                    Button {
+                        appState.installGuestTools(name)
+                    } label: {
+                        if transitioning {
+                            ProgressView().controlSize(.small)
+                        } else if installed {
+                            Label("Guest Tools Installed", systemImage: "checkmark.seal.fill")
+                        } else {
+                            Label("Install Guest Tools", systemImage: "arrow.down.to.line.circle")
+                        }
+                    }
                     .glassButton()
                     .controlSize(.large)
-                    .tint(.green)
+                    .tint(installed ? Apparition.vital : nil)
                     .disabled(transitioning)
-                    .help(suspended
-                        ? "Restore from the saved state and continue exactly where you left off."
-                        : "Cold-boot the VM.")
-
-                    if bundle.spec.guestOS == .macOS {
-                        let installed = appState.guestToolsInstalled.contains(name)
-                        Button {
-                            appState.installGuestTools(name)
-                        } label: {
-                            if transitioning {
-                                ProgressView().controlSize(.small)
-                            } else if installed {
-                                Label("Guest Tools Installed", systemImage: "checkmark.seal.fill")
-                            } else {
-                                Label("Install Guest Tools", systemImage: "arrow.down.to.line.circle")
-                            }
-                        }
-                        .glassButton()
-                        .controlSize(.large)
-                        .tint(installed ? .green : nil)
-                        .disabled(transitioning)
-                        .help(installed
-                            ? "Spooktacular Guest Tools are already installed. Click to reinstall — idempotent and safe."
-                            : "Install Spooktacular Guest Tools (clipboard bridge + guest-agent API) into /Applications and auto-launch at first login. Requires admin password once.")
-                    }
+                    .help(installed
+                        ? "Spooktacular Guest Tools are already installed. Click to reinstall — idempotent and safe."
+                        : "Install Spooktacular Guest Tools (clipboard bridge + guest-agent API) into /Applications and auto-launch at first login. Requires admin password once.")
                 }
             }
         }
     }
 
-    /// Material pill showing the current lifecycle state. A single
+    /// Glass pill showing the current lifecycle state. A single
     /// `Image` whose glyph and color derive from ``lifecyclePhase``,
     /// so the glyph morphs between states with
     /// `.contentTransition(.symbolEffect(.replace))` (Apple:
@@ -255,26 +332,36 @@ struct VMDetailView: View {
     /// animation for symbol images; it only fires inside an
     /// animation context, which the scoped `.animation(_:value:)`
     /// supplies). While the VM is mid-transition (booting /
-    /// installing / suspending) the glyph pulses via
-    /// `.symbolEffect(.pulse, isActive:)`; a settled Running state
-    /// stays steady. Only the glyph carries the bright semantic
-    /// color; text stays neutral against the material capsule, per
-    /// the HIG's "color carries meaning once" pattern.
+    /// installing / suspending) the glyph pulses lantern via
+    /// `.symbolEffect(.pulse, isActive:)` — the one looping effect
+    /// here, active only while the system is genuinely mid-work
+    /// and suppressed entirely under Reduce Motion.
+    /// Only the glyph carries the semantic color; text stays
+    /// neutral against the capsule, per the HIG's "color carries
+    /// meaning once" pattern.
+    ///
+    /// The pill is the persistent glass shape of the hero's morph
+    /// pair: it carries `.glassEffect` + `.glassEffectID` in
+    /// ``heroGlass`` so the Start/Resume button's glass can morph
+    /// into it when the VM starts (see ``actionBar``).
     private var statusPill: some View {
-        let transitioning = appState.transitioningVMs.contains(name)
-        return HStack(spacing: 6) {
+        HStack(spacing: 6) {
             Image(systemName: statusSymbol)
                 .font(.system(size: statusSymbolSize))
                 .foregroundStyle(statusSymbolColor)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.pulse, isActive: transitioning)
-                .animation(.default, value: lifecyclePhase)
+                .symbolEffect(.pulse, isActive: isTransitioning && !reduceMotion)
+                .animation(
+                    reduceMotion ? nil : Apparition.spring,
+                    value: lifecyclePhase
+                )
             Text(statusLabel)
                 .font(.caption.weight(.semibold))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(.regularMaterial, in: .capsule)
+        .glassEffect(.regular, in: .capsule)
+        .glassEffectID("status", in: heroGlass)
     }
 
     // MARK: - Derived state
@@ -307,11 +394,17 @@ struct VMDetailView: View {
         }
     }
 
+    /// Semantic glyph color per the "Night & Ember" palette:
+    /// lantern while mid-transition (booting / suspending /
+    /// installing — in-progress) or suspended (a saved, dormant
+    /// ember), vital when running (alive), neutral when stopped.
+    /// Never ember — the accent marks actions, not states.
     private var statusSymbolColor: AnyShapeStyle {
+        if isTransitioning { return AnyShapeStyle(Apparition.lantern) }
         switch lifecyclePhase {
-        case .running: AnyShapeStyle(.green)
-        case .suspended: AnyShapeStyle(.orange)
-        case .stopped: AnyShapeStyle(.secondary)
+        case .running: return AnyShapeStyle(Apparition.vital)
+        case .suspended: return AnyShapeStyle(Apparition.lantern)
+        case .stopped: return AnyShapeStyle(.secondary)
         }
     }
 
@@ -323,15 +416,16 @@ struct VMDetailView: View {
         }
     }
 
-    /// State-driven accent color for the title eyebrow. Green for
-    /// running (matches the macOS system green used in menu-bar
-    /// indicators for live services), orange for suspended (matches
-    /// the pause-state convention), gray for stopped (neutral — no
-    /// alarm, just "not running").
-    private var stateTint: Color {
-        if isRunning { return .green }
-        if appState.isSuspended(name) { return .orange }
-        return Color(white: 0.5)
+    /// State-driven tint for the title eyebrow, matching
+    /// ``statusSymbolColor``: vital for running (alive), lantern
+    /// for in-progress or suspended, neutral secondary for stopped
+    /// (no alarm, just "not running"). Same signal in both places,
+    /// same colors — the eyebrow and the pill glyph always agree.
+    private var stateTint: AnyShapeStyle {
+        if isTransitioning { return AnyShapeStyle(Apparition.lantern) }
+        if isRunning { return AnyShapeStyle(Apparition.vital) }
+        if appState.isSuspended(name) { return AnyShapeStyle(Apparition.lantern) }
+        return AnyShapeStyle(.secondary)
     }
 
     /// Uppercased eyebrow under the title — "macOS VIRTUAL
@@ -350,6 +444,49 @@ struct VMDetailView: View {
     private var statsPane: some View {
         WorkspaceStatsSidebar(model: stats)
             .frame(maxWidth: .infinity)
+    }
+}
+
+/// The Apparition hero-pane ground: a `.regularMaterial`
+/// rounded rect (content layer stays on system materials per the
+/// HIG — never Liquid Glass) with a low-alpha "Night & Ember"
+/// wash layered **over** the material. The wash is a night2 →
+/// night1 vertical gradient that biases the system material
+/// toward the séance-room palette without replacing it; in the
+/// light ("Fog") appearance the same tints read as a faint lift.
+/// An optional `tint` adds a whisper (6%) of a semantic hue for
+/// heroes that carry a kind color (see `ImageDetailView`).
+///
+/// Static by design — a ground never animates on its own.
+private struct ApparitionPaneBackground: View {
+
+    /// Corner radius of the pane; matches the hero card shape.
+    var cornerRadius: CGFloat = 24
+
+    /// Optional semantic hue washed over the ground at 6% alpha.
+    var tint: Color?
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        shape
+            .fill(.regularMaterial)
+            .overlay {
+                shape.fill(
+                    LinearGradient(
+                        colors: [
+                            Apparition.night2.opacity(0.30),
+                            Apparition.night1.opacity(0.12),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            }
+            .overlay {
+                if let tint {
+                    shape.fill(tint.opacity(0.06))
+                }
+            }
     }
 }
 
@@ -402,14 +539,17 @@ struct VMDisplayView: NSViewRepresentable {
 
 /// Detail view for a selected image in the Images section.
 ///
-/// Styled as a gradient "hero card" — full-width background
-/// wash, layered glass surfaces for the icon and metadata,
-/// tinted stroke, the whole thing sitting in a rounded-rect
-/// glass pane. Matches the Liquid Glass data-rich UI pattern
-/// Apple showcases in the "Landmarks" sample: one prominent
-/// hero region per detail view, tint color carrying semantic
-/// weight (IPSW = orange, OCI = blue), supplemental
-/// metadata in glass chip capsules below the title.
+/// A material "hero card" mirroring ``VMDetailView``'s hero:
+/// the pane and its metadata chips are content, so they sit on
+/// `.regularMaterial` with the shared Apparition ground wash
+/// (``ApparitionPaneBackground``) — never on Liquid Glass, per
+/// the HIG's "don't use Liquid Glass in the content layer."
+/// The image-kind tint (IPSW = Apple blue, ISO = Tux gold,
+/// OCI = purple) carries semantic weight in exactly three
+/// places: the eyebrow text, the medallion's color fill, and a
+/// 6% wash over the pane. Glass appears only where controls
+/// live — the action bar, whose single `glassProminent` button
+/// inherits the ember app accent.
 struct ImageDetailView: View {
 
     let image: VirtualMachineImage
@@ -437,27 +577,23 @@ struct ImageDetailView: View {
         .padding(.vertical, 40)
         .padding(.horizontal, 32)
         .frame(maxWidth: 640)
-        .glassCard(cornerRadius: 24, tint: tintColor)
+        .background { ApparitionPaneBackground(cornerRadius: 24, tint: tintColor) }
         .frame(maxWidth: .infinity)
     }
 
-    /// Circular glass medallion around the SF Symbol, tinted
-    /// to match the hero. `glassEffect(.regular.tint(...)
-    /// .interactive(), in: .circle)` gives the round capsule
-    /// a subtle pressure/hover response per Apple's Liquid
-    /// Glass interactive-variant guidance. The surrounding
-    /// `heroCard` already carries the same tint via
-    /// `Glass.tint(_:)`, so the medallion doesn't need its own
-    /// colored glow shadow — that would just repeat the signal.
+    /// Circular medallion around the SF Symbol. A plain
+    /// color-gradient fill (`Color.gradient` — "the standard
+    /// gradient for the color") in the hero's kind tint: the
+    /// medallion is content-layer imagery, so it gets a color
+    /// fill, not Liquid Glass. The saturated disc is where the
+    /// kind color speaks loudest; the pane wash and eyebrow only
+    /// echo it.
     private var iconMedallion: some View {
         Image(systemName: iconName)
             .font(.system(size: 56, weight: .regular))
             .foregroundStyle(.white)
             .frame(width: 120, height: 120)
-            .glassEffect(
-                .regular.tint(tintColor).interactive(),
-                in: .circle
-            )
+            .background(tintColor.gradient, in: .circle)
             .accessibilityHidden(true)
     }
 
@@ -474,31 +610,31 @@ struct ImageDetailView: View {
         }
     }
 
-    /// Two glass chips: source detail + size. Truncates the
-    /// source detail in the middle so long IPSW hashes don't
-    /// dominate the hero — Apple's `.middle` truncation mode
-    /// preserves both ends (build + extension).
+    /// Two material chips: source detail + size — the exact
+    /// counterpart of ``VMDetailView``'s spec chips (metadata is
+    /// content, so `.regularMaterial` capsules, not glass).
+    /// Truncates the source detail in the middle so long IPSW
+    /// hashes don't dominate the hero — Apple's `.middle`
+    /// truncation mode preserves both ends (build + extension).
     private var metadataRow: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 12) {
+        HStack(spacing: 12) {
+            metadataChip(
+                systemImage: sourceIcon,
+                text: sourceDetailLabel,
+                truncation: .middle
+            )
+            if let bytes = image.sizeInBytes {
                 metadataChip(
-                    systemImage: sourceIcon,
-                    text: sourceDetailLabel,
-                    truncation: .middle
+                    systemImage: "internaldrive",
+                    text: ByteCountFormatter.string(
+                        fromByteCount: Int64(bytes),
+                        countStyle: .file
+                    ),
+                    truncation: .tail
                 )
-                if let bytes = image.sizeInBytes {
-                    metadataChip(
-                        systemImage: "internaldrive",
-                        text: ByteCountFormatter.string(
-                            fromByteCount: Int64(bytes),
-                            countStyle: .file
-                        ),
-                        truncation: .tail
-                    )
-                }
             }
-            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func metadataChip(
@@ -512,13 +648,14 @@ struct ImageDetailView: View {
                 .foregroundStyle(.secondary)
             Text(text)
                 .font(.system(.caption, design: .monospaced))
+                .monospacedDigit()
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(truncation)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .glassEffect(.regular, in: .capsule)
+        .background(.regularMaterial, in: .capsule)
     }
 
     private var actionBar: some View {
@@ -662,7 +799,7 @@ struct VMRow: View {
         HStack(spacing: 8) {
             Image(systemName: "circle.fill")
                 .font(.system(size: 7))
-                .foregroundStyle(isRunning ? .green : .secondary.opacity(0.3))
+                .foregroundStyle(isRunning ? Apparition.vital : .secondary.opacity(0.3))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -712,12 +849,13 @@ struct PendingVMRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // Orange while creating (matches transitioning /
-            // suspended convention); red when errored so the
-            // row reads as a failure at a glance.
+            // Lantern while creating (the Apparition in-progress
+            // color, matching the transitioning / suspended
+            // convention); red when errored so the row reads as
+            // a failure at a glance.
             Image(systemName: "circle.fill")
                 .font(.system(size: 7))
-                .foregroundStyle(hasError ? .red : .orange)
+                .foregroundStyle(hasError ? .red : Apparition.lantern)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -754,7 +892,7 @@ struct PendingVMRow: View {
                         total: 1.0
                     )
                     .progressViewStyle(.linear)
-                    .tint(.orange)
+                    .tint(Apparition.lantern)
                     .controlSize(.small)
                 }
 

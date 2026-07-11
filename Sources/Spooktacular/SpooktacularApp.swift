@@ -85,6 +85,12 @@ struct SpooktacularApp: App {
                         appState.presentError(error)
                     }
                 }
+                // Apparition: ember is the app's one accent — set
+                // as the window tint so controls, selection, and
+                // prominent buttons all speak with the brand voice.
+                //
+                // Docs: https://developer.apple.com/documentation/swiftui/view/tint(_:)
+                .tint(Apparition.ember)
         }
         .defaultSize(width: 1000, height: 640)
         .commands {
@@ -161,6 +167,9 @@ struct SpooktacularApp: App {
             if let name = vmName {
                 WorkspaceWindow(vmName: name)
                     .environment(appState)
+                    // Same ember accent as the library window —
+                    // one voice across every Apparition surface.
+                    .tint(Apparition.ember)
             }
         }
         .defaultSize(width: 1024, height: 640)

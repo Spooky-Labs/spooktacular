@@ -17,6 +17,7 @@ struct CommandPalette: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var query: String = ""
     @FocusState private var focused: Bool
@@ -32,6 +33,9 @@ struct CommandPalette: View {
             subtitle: "Create a new workspace",
             systemImage: "plus.square.on.square",
             shortcut: "⌘N",
+            // Ember marks the app's ONE primary action in this
+            // list; every other row icon stays neutral.
+            iconTint: Apparition.ember,
             action: { appState.showCreateSheet = true }
         ))
         result.append(PaletteCommand(
@@ -98,6 +102,14 @@ struct CommandPalette: View {
             resultsList
         }
         .frame(width: 520, height: 420)
+        // Faint night wash over the sheet's opaque background —
+        // an ambient tint over system chrome, never a replacement
+        // (macOS sheet backgrounds are always opaque).
+        .background(Apparition.night1.opacity(0.3))
+        // Animates the results ↔ "No matches" swap as the user
+        // types (bound to the filter crossing empty); disabled
+        // entirely under Reduce Motion.
+        .animation(reduceMotion ? nil : Apparition.quick, value: filtered.isEmpty)
         .task { focused = true }
     }
 
@@ -131,6 +143,9 @@ struct CommandPalette: View {
                 })
             }
             .listStyle(.plain)
+            // Let the night wash behind the palette ground the
+            // rows instead of the list's own opaque backdrop.
+            .scrollContentBackground(.hidden)
         }
     }
 
@@ -148,6 +163,10 @@ struct PaletteCommand: Identifiable {
     let subtitle: String
     let systemImage: String
     let shortcut: String?
+    /// Semantic tint for the row icon. `nil` renders the icon in
+    /// `.secondary` — only the surface's single primary command
+    /// carries the ember accent.
+    var iconTint: Color?
     let action: () -> Void
 }
 
@@ -162,7 +181,9 @@ struct PaletteRow: View {
                 Image(systemName: command.systemImage)
                     .font(.system(size: 18))
                     .frame(width: 24)
-                    .foregroundStyle(.tint)
+                    // Neutral by default; ember is reserved for the
+                    // one primary command per the palette contract.
+                    .foregroundStyle(command.iconTint ?? Color.secondary)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(command.title)

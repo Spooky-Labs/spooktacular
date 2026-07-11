@@ -162,10 +162,23 @@ final class WorkspaceStatsModel {
 }
 
 /// SwiftUI surface rendering the ``WorkspaceStatsModel``'s rolling
-/// window as two stacked area charts.
+/// window as a stack of "tide" charts: each metric draws a
+/// gradient-filled `AreaMark` (metric color fading to clear) under
+/// its `LineMark`, with a softly glowing `PointMark` riding the
+/// newest sample — the "now" endpoint of the tide. Healthy
+/// CPU / memory use the Apparition vital teal; the remaining
+/// metrics keep their own hues (the disk chart's teal/pink split
+/// is even named in its user-facing description).
 struct WorkspaceStatsSidebar: View {
 
     let model: WorkspaceStatsModel
+
+    /// Apparition motion contract: every animation binds to a state
+    /// change and is gated on Reduce Motion. Here it gates the
+    /// numeric readout's rolling-digit transition — the only
+    /// animation this pane owns (chart marks re-render per frame
+    /// without animation).
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // These metric cards live in the content layer, so they use
@@ -228,9 +241,19 @@ struct WorkspaceStatsSidebar: View {
                         .imageScale(.medium)
                 }
                 Spacer(minLength: 8)
+                // Live readout: digits roll to their new value on
+                // every pushed stats frame (the `value` string is
+                // derived from the newest sample, so the transition
+                // is bound to that state change). `contentTransition`
+                // only animates inside an animation context, so the
+                // paired `.animation(_:value:)` supplies it — and
+                // passing `nil` under Reduce Motion disables the
+                // roll entirely, per the Apparition motion contract.
                 Text(value ?? "—")
                     .font(.subheadline.monospacedDigit().weight(.medium))
                     .foregroundStyle(value == nil ? .tertiary : .primary)
+                    .contentTransition(.numericText())
+                    .animation(reduceMotion ? nil : Apparition.quick, value: value)
             }
 
             chart()
@@ -254,13 +277,52 @@ struct WorkspaceStatsSidebar: View {
         return String(format: "%.\(digits)f %@", value, unit)
     }
 
+    // MARK: - Tide treatment
+
+    /// The tide fill drawn under each metric's line: the metric
+    /// color at the crest fading to (near) clear at the baseline,
+    /// so the area reads as water depth rather than a solid block.
+    private func tideFill(_ color: Color) -> LinearGradient {
+        LinearGradient(
+            colors: [color.opacity(0.35), color.opacity(0.02)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    /// The stroke shared by every metric line — slightly heavier
+    /// than the default hairline, rounded caps so the 60-second
+    /// window's cut edges don't look clipped.
+    private var tideStroke: StrokeStyle {
+        StrokeStyle(lineWidth: 1.5, lineCap: .round)
+    }
+
+    /// Faint dashed horizontal gridlines with small tabular-digit
+    /// labels — enough reference to read a value off the tide
+    /// without the grid competing with the data (HIG: the data is
+    /// the most prominent element; axes provide quiet context).
+    private var tideGrid: some AxisContent {
+        AxisMarks(values: .automatic(desiredCount: 4)) {
+            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
+                .foregroundStyle(Apparition.fogText.opacity(0.15))
+            AxisValueLabel()
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+        }
+    }
+
     // MARK: - Charts
 
     private var cpuChart: some View {
-        metricCard(
+        // The newest sample that actually carries a CPU value hosts
+        // the glowing "now" endpoint — recomputed from the sample
+        // array on every pushed frame so the glow always rides the
+        // leading edge of the tide.
+        let newestID = model.samples.last(where: { $0.cpuUsage != nil })?.id
+        return metricCard(
             title: "CPU",
             systemImage: "cpu",
-            tint: .blue,
+            tint: Apparition.vital,
             value: readout(model.samples.last?.cpuUsage.map { $0 * 100 }, unit: "%"),
             description: "How much of this virtual machine's processing power is in use. The horizontal axis is the last 60 seconds; the vertical axis is the percent of allocated virtual CPUs currently busy. Zero means the guest is idle; 100% means every virtual CPU you've allocated is fully saturated. Brief spikes are normal — they happen when the guest launches an app or renders a page. A line that stays at 100% for minutes means the guest is compute-bound and could use more vCPUs. The measurement comes from ps(1), which reports the CPU time accumulated by the VM's backing process the same way Activity Monitor does."
         ) {
@@ -270,27 +332,42 @@ struct WorkspaceStatsSidebar: View {
                         x: .value("time", sample.at),
                         y: .value("percent", cpu * 100)
                     )
-                    .foregroundStyle(.blue.opacity(0.3))
+                    .foregroundStyle(tideFill(Apparition.vital))
 
                     LineMark(
                         x: .value("time", sample.at),
                         y: .value("percent", cpu * 100)
                     )
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Apparition.vital)
+                    .lineStyle(tideStroke)
+
+                    if sample.id == newestID {
+                        PointMark(
+                            x: .value("time", sample.at),
+                            y: .value("percent", cpu * 100)
+                        )
+                        .symbolSize(30)
+                        .foregroundStyle(Apparition.vital)
+                        .shadow(color: Apparition.vital, radius: 4, x: 0, y: 0)
+                    }
                 }
             }
             .chartYScale(domain: 0...100)
             .frame(height: 90)
             .chartYAxisLabel("%", position: .leading)
             .chartXAxis(.hidden)
+            .chartYAxis { tideGrid }
         }
     }
 
     private var memoryChart: some View {
-        metricCard(
+        // Newest sample with a memory value hosts the glowing "now"
+        // endpoint, recomputed on every pushed frame.
+        let newestID = model.samples.last(where: { $0.memoryUsage != nil })?.id
+        return metricCard(
             title: "Memory",
             systemImage: "memorychip",
-            tint: .purple,
+            tint: Apparition.vital,
             value: readout(model.samples.last?.memoryUsage.map { $0 * 100 }, unit: "%"),
             description: "The share of this virtual machine's memory that's actively held in your Mac's RAM right now. The horizontal axis is the last 60 seconds; the vertical axis is the percent of allocated memory in active use. A rising value means the guest is doing more; a falling value means macOS is compressing pages the guest hasn't touched recently, which frees up real RAM for your Mac. Don't worry if it settles at a moderate number — that's normal caching behavior. Sourced from the VM backing process's resident memory footprint as reported by the macOS kernel."
         ) {
@@ -300,19 +377,31 @@ struct WorkspaceStatsSidebar: View {
                         x: .value("time", sample.at),
                         y: .value("percent", mem * 100)
                     )
-                    .foregroundStyle(.purple.opacity(0.3))
+                    .foregroundStyle(tideFill(Apparition.vital))
 
                     LineMark(
                         x: .value("time", sample.at),
                         y: .value("percent", mem * 100)
                     )
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(Apparition.vital)
+                    .lineStyle(tideStroke)
+
+                    if sample.id == newestID {
+                        PointMark(
+                            x: .value("time", sample.at),
+                            y: .value("percent", mem * 100)
+                        )
+                        .symbolSize(30)
+                        .foregroundStyle(Apparition.vital)
+                        .shadow(color: Apparition.vital, radius: 4, x: 0, y: 0)
+                    }
                 }
             }
             .chartYScale(domain: 0...100)
             .frame(height: 90)
             .chartYAxisLabel("%", position: .leading)
             .chartXAxis(.hidden)
+            .chartYAxis { tideGrid }
         }
     }
 
@@ -327,6 +416,13 @@ struct WorkspaceStatsSidebar: View {
             case (let r, let w): return (r ?? 0) + (w ?? 0)
             }
         }()
+        // Each direction gets its own glowing "now" endpoint on its
+        // newest non-nil sample. This chart deliberately has no
+        // gradient areas: two overlapping series would need
+        // unstacked areas, and stacked ones (the default) would
+        // draw write on top of read and misstate both rates.
+        let newestRead = model.samples.last(where: { $0.diskReadRateMiBPerSec != nil })?.id
+        let newestWrite = model.samples.last(where: { $0.diskWriteRateMiBPerSec != nil })?.id
         return metricCard(
             title: "Disk Activity",
             systemImage: "internaldrive",
@@ -342,6 +438,17 @@ struct WorkspaceStatsSidebar: View {
                         series: .value("direction", "read")
                     )
                     .foregroundStyle(.teal)
+                    .lineStyle(tideStroke)
+
+                    if sample.id == newestRead {
+                        PointMark(
+                            x: .value("time", sample.at),
+                            y: .value("MiB/s", read)
+                        )
+                        .symbolSize(30)
+                        .foregroundStyle(.teal)
+                        .shadow(color: .teal, radius: 4, x: 0, y: 0)
+                    }
                 }
                 if let write = sample.diskWriteRateMiBPerSec {
                     LineMark(
@@ -350,11 +457,23 @@ struct WorkspaceStatsSidebar: View {
                         series: .value("direction", "write")
                     )
                     .foregroundStyle(.pink)
+                    .lineStyle(tideStroke)
+
+                    if sample.id == newestWrite {
+                        PointMark(
+                            x: .value("time", sample.at),
+                            y: .value("MiB/s", write)
+                        )
+                        .symbolSize(30)
+                        .foregroundStyle(.pink)
+                        .shadow(color: .pink, radius: 4, x: 0, y: 0)
+                    }
                 }
             }
             .frame(height: 90)
             .chartYAxisLabel("MiB/s", position: .leading)
             .chartXAxis(.hidden)
+            .chartYAxis { tideGrid }
             .chartForegroundStyleScale([
                 "read": .teal, "write": .pink,
             ])
@@ -363,7 +482,10 @@ struct WorkspaceStatsSidebar: View {
     }
 
     private var powerChart: some View {
-        metricCard(
+        // Newest sample with a wattage value hosts the glowing
+        // "now" endpoint, recomputed on every pushed frame.
+        let newestID = model.samples.last(where: { $0.powerWatts != nil })?.id
+        return metricCard(
             title: "Energy",
             systemImage: "bolt",
             tint: .green,
@@ -376,23 +498,38 @@ struct WorkspaceStatsSidebar: View {
                         x: .value("time", sample.at),
                         y: .value("W", w)
                     )
-                    .foregroundStyle(.green.opacity(0.3))
+                    .foregroundStyle(tideFill(.green))
 
                     LineMark(
                         x: .value("time", sample.at),
                         y: .value("W", w)
                     )
                     .foregroundStyle(.green)
+                    .lineStyle(tideStroke)
+
+                    if sample.id == newestID {
+                        PointMark(
+                            x: .value("time", sample.at),
+                            y: .value("W", w)
+                        )
+                        .symbolSize(30)
+                        .foregroundStyle(.green)
+                        .shadow(color: .green, radius: 4, x: 0, y: 0)
+                    }
                 }
             }
             .frame(height: 90)
             .chartYAxisLabel("W", position: .leading)
             .chartXAxis(.hidden)
+            .chartYAxis { tideGrid }
         }
     }
 
     private var pageInChart: some View {
-        metricCard(
+        // Newest sample with a page-in rate hosts the glowing "now"
+        // endpoint, recomputed on every pushed frame.
+        let newestID = model.samples.last(where: { $0.pageInRatePerSec != nil })?.id
+        return metricCard(
             title: "Paging",
             systemImage: "arrow.up.arrow.down.circle",
             tint: .indigo,
@@ -405,19 +542,31 @@ struct WorkspaceStatsSidebar: View {
                         x: .value("time", sample.at),
                         y: .value("pages/s", rate)
                     )
-                    .foregroundStyle(.indigo.opacity(0.3))
+                    .foregroundStyle(tideFill(.indigo))
 
                     LineMark(
                         x: .value("time", sample.at),
                         y: .value("pages/s", rate)
                     )
                     .foregroundStyle(.indigo)
+                    .lineStyle(tideStroke)
+
+                    if sample.id == newestID {
+                        PointMark(
+                            x: .value("time", sample.at),
+                            y: .value("pages/s", rate)
+                        )
+                        .symbolSize(30)
+                        .foregroundStyle(.indigo)
+                        .shadow(color: .indigo, radius: 4, x: 0, y: 0)
+                    }
                 }
             }
             .chartYScale(domain: 0...max(10, (model.samples.compactMap { $0.pageInRatePerSec }.max() ?? 0)))
             .frame(height: 90)
             .chartYAxisLabel("p/s", position: .leading)
             .chartXAxis(.hidden)
+            .chartYAxis { tideGrid }
         }
     }
 
