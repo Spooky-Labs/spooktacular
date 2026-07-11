@@ -190,7 +190,7 @@ struct ContentView: View {
                 Button("Create Workspace") {
                     appState.showCreateSheet = true
                 }
-                .buttonStyle(.borderedProminent)
+                .glassProminentButton()
                 .controlSize(.large)
             }
         } else {

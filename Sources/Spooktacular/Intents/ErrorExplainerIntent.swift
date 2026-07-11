@@ -109,6 +109,7 @@ struct ErrorExplainerSheet: View {
                     .font(.headline)
                 Spacer()
                 Button("Done") { dismiss() }
+                    .glassProminentButton()
                     .keyboardShortcut(.defaultAction)
             }
 

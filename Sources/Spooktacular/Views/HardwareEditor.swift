@@ -194,14 +194,22 @@ struct HardwareEditor: View {
     }
 
     private var footer: some View {
-        HStack {
-            Spacer()
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Button("Save") { save() }
-                .glassButton()
-                .keyboardShortcut(.defaultAction)
-                .disabled(isRunning || !hasChanges)
+        // Cancel/primary pair grouped in a container so they morph
+        // together, matching the convention every other sheet in
+        // the app uses (`CreateVMSheet`, `CloneVMSheet`,
+        // `AddImageSheet`): Cancel on `.glassButton()`, the
+        // primary action on `.glassProminentButton()`.
+        GlassEffectContainer(spacing: 8) {
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .glassButton()
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") { save() }
+                    .glassProminentButton()
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(isRunning || !hasChanges)
+            }
         }
         .padding(16)
     }
