@@ -14,13 +14,13 @@ import SpooktacularCore
 /// load-bearing, not stylistic:
 ///
 /// 1. Downloads the latest GitHub Actions runner for macOS ARM64
-///    and configures it as the `admin` user via `sudo -u` — the
+///    and configures it as the `runner` user via `sudo -u` — the
 ///    runner's `config.sh` refuses to run as root unless
 ///    `RUNNER_ALLOW_RUNASROOT` is set, which this script never
 ///    sets.
 /// 2. Installs a `UserName`-scoped LaunchDaemon
 ///    (`com.spooktacular.github-runner`) that runs `run.sh` as the
-///    `admin` user, then `launchctl bootstrap`s it and **exits**.
+///    `runner` user, then `launchctl bootstrap`s it and **exits**.
 ///    The runner's long-lived process therefore lives under
 ///    launchd, not under the provisioner's child-process tree —
 ///    the provisioner script would block forever, and the trigger
@@ -51,11 +51,24 @@ import SpooktacularCore
 /// shell variable — including `$TOKEN` — is ever expanded into it.
 public enum GitHubRunnerTemplate {
 
+    /// The macOS account the runner is configured and run under.
+    ///
+    /// Native guest provisioning (``GuestProvisioningSpec``) creates
+    /// this account as an admin user on first boot; the generated
+    /// first-boot script and the runner LaunchDaemon must reference
+    /// the **same** name. Both derive it from this single constant
+    /// rather than hardcoding a literal — they drifted once, when the
+    /// account was renamed `admin` → `runner` as the OCR path was
+    /// replaced by native provisioning but the generated script kept
+    /// emitting `admin`, leaving the runner service pointed at a user
+    /// that no longer exists.
+    public static let runnerAccountUsername = "runner"
+
     /// Generates a GitHub Actions runner setup script.
     ///
     /// Creates a temporary shell script that downloads and
     /// configures a GitHub Actions self-hosted runner as the
-    /// `admin` user, then hands it off to a launchd LaunchDaemon
+    /// `runner` user, then hands it off to a launchd LaunchDaemon
     /// and exits without blocking.
     ///
     /// - Parameters:
@@ -166,13 +179,13 @@ public enum GitHubRunnerTemplate {
         #!/bin/bash
         # GitHub Actions runner bootstrap — executed as root by the
         # Spooktacular provisioner LaunchDaemon on first boot.
-        # Configures the runner as the admin user and hands it off
+        # Configures the runner as the runner user and hands it off
         # to launchd, then exits without blocking on run.sh.
         set -euo pipefail
 
         REPO='\(safeRepo)'
         TOKEN='\(safeToken)'
-        RUNNER_USER="admin"
+        RUNNER_USER="\(Self.runnerAccountUsername)"
         RUNNER_DIR="/Users/${RUNNER_USER}/actions-runner"
 
         # network wait: native guest provisioning has already created
@@ -206,7 +219,7 @@ public enum GitHubRunnerTemplate {
 
         # config.sh refuses to run as root by default, and this
         # script deliberately never overrides that default — run it
-        # as the admin user instead.
+        # as the runner user instead.
         sudo -u "$RUNNER_USER" ./config.sh \(configLine)
 
         # Hand the long-running runner process to launchd rather than
@@ -219,9 +232,9 @@ public enum GitHubRunnerTemplate {
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0"><dict>
             <key>Label</key><string>com.spooktacular.github-runner</string>
-            <key>UserName</key><string>admin</string>
-            <key>WorkingDirectory</key><string>/Users/admin/actions-runner</string>
-            <key>ProgramArguments</key><array><string>/Users/admin/actions-runner/run.sh</string></array>
+            <key>UserName</key><string>\(Self.runnerAccountUsername)</string>
+            <key>WorkingDirectory</key><string>/Users/\(Self.runnerAccountUsername)/actions-runner</string>
+            <key>ProgramArguments</key><array><string>/Users/\(Self.runnerAccountUsername)/actions-runner/run.sh</string></array>
             <key>RunAtLoad</key><true/>
             <key>KeepAlive</key>
             \(keepAliveTag)

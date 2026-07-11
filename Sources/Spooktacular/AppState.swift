@@ -1538,7 +1538,7 @@ final class AppState {
             //    persisted.
             let provisioningSpec = GuestProvisioningSpec(
                 fullName: "Spooktacular Runner",
-                username: "runner",
+                username: GitHubRunnerTemplate.runnerAccountUsername,
                 password: EphemeralCredential.generatePassword()
             )
 
