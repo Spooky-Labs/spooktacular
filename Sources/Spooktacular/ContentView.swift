@@ -99,7 +99,7 @@ struct ContentView: View {
     private var sidebar: some View {
         let images = appState.imageLibrary.images
         List(selection: $selection) {
-            Section("Virtual Machines") {
+            Section {
                 // Pending creations render above the live VM list
                 // so the user sees the row they just asked for
                 // immediately (not buried below alphabetical
@@ -127,10 +127,21 @@ struct ContentView: View {
                             }
                         }
                 }
+            } header: {
+                // Counts reflect the rows actually beneath the
+                // header (search-filtered), so the number never
+                // contradicts what the user sees. The running
+                // summary is global state — it stays truthful
+                // even when a running VM is filtered out.
+                SidebarSectionHeader(
+                    title: "Virtual Machines",
+                    count: filteredVMs.count + pendingCreations.count,
+                    runningCount: appState.runningVMs.count
+                )
             }
-            Section("Images") {
+            Section {
                 ForEach(images) { image in
-                    Label(image.name, systemImage: "photo.stack")
+                    ImageRow(image: image)
                         .tag(SidebarSelection.image(image.id))
                         .contextMenu {
                             Button("Create VM from this image…") {
@@ -160,6 +171,8 @@ struct ContentView: View {
                         .hoverSymbolBounce()
                 }
                 .buttonStyle(.plain)
+            } header: {
+                SidebarSectionHeader(title: "Images", count: images.count)
             }
         }
         .listStyle(.sidebar)
@@ -252,5 +265,122 @@ struct ContentView: View {
         return searchText.isEmpty
             ? all
             : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+}
+
+// MARK: - Section Header
+
+/// Sidebar section header with a live trailing count — and, when
+/// any workspace is alive, a vital-colored "N running" summary so
+/// fleet health reads from the header without scanning rows.
+///
+/// Both numbers roll with `.contentTransition(.numericText())`
+/// scoped by `.animation(_:value:)` to exactly those two values;
+/// under Reduce Motion the animation is `nil`, so counts snap.
+/// Digits are monospaced so the header doesn't shimmy as counts
+/// change width.
+private struct SidebarSectionHeader: View {
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let title: String
+    let count: Int
+    var runningCount: Int = 0
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+            Spacer(minLength: 4)
+            if runningCount > 0 {
+                Text("\(runningCount) running")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Apparition.vital)
+                    .contentTransition(.numericText())
+            }
+            Text("\(count)")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .contentTransition(.numericText())
+        }
+        .animation(reduceMotion ? nil : Apparition.quick, value: count)
+        .animation(reduceMotion ? nil : Apparition.quick, value: runningCount)
+    }
+}
+
+// MARK: - Image Row
+
+/// Sidebar row for one library image — kind medallion, name, and
+/// a size + added-date caption, mirroring ``VMRow``'s
+/// medallion-title-caption anatomy so the two sections read as
+/// one system.
+///
+/// The medallion is the kind cue: local restore media (`.ipsw`)
+/// gets **cyan**, OCI references get **brown**. Chosen against
+/// the Apparition palette on night grounds: cyan is blue-leaning
+/// where ``Apparition/vital`` teal is green-leaning (and no image
+/// row ever carries a vital state dot to collide with); brown is
+/// a muted tan where ``Apparition/lantern`` amber is bright and
+/// saturated — and both sit far from the wisp violet. Local
+/// `.iso` files ride the `.ipsw` case in the model, so the glyph
+/// borrows the detail hero's extension sniff (disc, not Apple
+/// logo) while keeping the local-file color.
+private struct ImageRow: View {
+
+    let image: VirtualMachineImage
+
+    private var isOCI: Bool {
+        if case .oci = image.source { return true }
+        return false
+    }
+
+    private var glyph: String {
+        switch image.source {
+        case .ipsw(let path):
+            path.lowercased().hasSuffix(".iso") ? "opticaldisc.fill" : "apple.logo"
+        case .oci:
+            "shippingbox.fill"
+        }
+    }
+
+    private var kindColor: Color { isOCI ? .brown : .cyan }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: glyph)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(kindColor)
+                .frame(width: 24, height: 24)
+                .background(kindColor.opacity(0.16), in: .circle)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(image.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text(caption)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// "12.4 GB · added 2 weeks ago" — `.file` byte counting to
+    /// match Finder, named relative date so recency reads without
+    /// arithmetic. Size-less entries (some OCI references) drop
+    /// straight to the date.
+    private var caption: String {
+        let added = image.addedAt.formatted(.relative(presentation: .named))
+        if let bytes = image.sizeInBytes {
+            let size = Int64(clamping: bytes).formatted(.byteCount(style: .file))
+            return "\(size) · added \(added)"
+        }
+        return "Added \(added)"
     }
 }

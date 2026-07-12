@@ -562,12 +562,13 @@ struct VMDisplayView: NSViewRepresentable {
 /// the pane floats over the aurora, so it's chrome —
 /// `.glassEffect(.regular, in:)` on a 28pt continuous rounded
 /// rect, with `.containerShape(.rect(cornerRadius: 28))` so the
-/// metadata chips inside resolve concentric corners. The
+/// metadata panel inside resolves concentric corners. The
 /// image-kind tint (IPSW = Apple blue, ISO = Tux gold,
 /// OCI = purple) carries semantic weight in exactly three
 /// places: the eyebrow text, the medallion's color fill, and a
-/// 6% tint on the pane's glass. The action bar's single
-/// `glassProminent` button carries the wisp accent via
+/// 6% tint on the pane's glass — the metadata panel stays
+/// neutral on purpose so the contract holds. The action bar's
+/// single `glassProminent` button carries the wisp accent via
 /// `glassProminentButton()`.
 struct ImageDetailView: View {
 
@@ -590,7 +591,7 @@ struct ImageDetailView: View {
         VStack(spacing: 24) {
             iconMedallion
             titleBlock
-            metadataRow
+            metadataGrid
             actionBar
         }
         .padding(.vertical, 40)
@@ -613,9 +614,9 @@ struct ImageDetailView: View {
     /// echo it.
     private var iconMedallion: some View {
         Image(systemName: iconName)
-            .font(.system(size: 56, weight: .regular))
+            .font(.system(size: 62, weight: .regular))
             .foregroundStyle(.white)
-            .frame(width: 120, height: 120)
+            .frame(width: 132, height: 132)
             .background(tintColor.gradient, in: .circle)
             .accessibilityHidden(true)
     }
@@ -633,55 +634,61 @@ struct ImageDetailView: View {
         }
     }
 
-    /// Two glass chips: source detail + size — the exact
-    /// counterpart of ``VMDetailView``'s spec chips:
-    /// `ConcentricRectangle` glass chips grouped in a
-    /// `GlassEffectContainer` whose spacing (**8**) stays BELOW
-    /// the HStack's **12** so the chips never merge at rest.
-    /// Truncates the source detail in the middle so long IPSW
-    /// hashes don't dominate the hero — Apple's `.middle`
-    /// truncation mode preserves both ends (build + extension).
-    private var metadataRow: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 12) {
-                metadataChip(
-                    systemImage: sourceIcon,
-                    text: sourceDetailLabel,
-                    truncation: .middle
-                )
-                if let bytes = image.sizeInBytes {
-                    metadataChip(
-                        systemImage: "internaldrive",
-                        text: ByteCountFormatter.string(
-                            fromByteCount: Int64(bytes),
-                            countStyle: .file
-                        ),
-                        truncation: .tail
-                    )
+    /// Structured metadata panel — one nested glass chip (a
+    /// `ConcentricRectangle` resolving against the hero's 28pt
+    /// container shape) holding a two-column `Grid`:
+    ///
+    /// - **Source** — the IPSW's `lastPathComponent` or the full
+    ///   OCI reference, monospaced and selectable so it can be
+    ///   copied into a terminal; `.middle` truncation preserves
+    ///   both ends (build number + extension) of long names.
+    /// - **Size** — `ByteCountFormatStyle`, `.file` counting so
+    ///   the number matches Finder.
+    /// - **Added** — absolute date with a relative caption
+    ///   underneath ("May 3, 2026" / "2 months ago"): the
+    ///   absolute answers audits, the relative answers "is this
+    ///   stale?" at a glance.
+    ///
+    /// A single glass shape needs no `GlassEffectContainer` (the
+    /// container exists to negotiate fusion between siblings);
+    /// the action bar below keeps its own. The panel carries NO
+    /// kind tint — the three-places tint contract lives in the
+    /// eyebrow, medallion, and pane wash only.
+    private var metadataGrid: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 20, verticalSpacing: 12) {
+            GridRow {
+                metadataLabel("Source", systemImage: sourceIcon)
+                Text(sourceDetailLabel)
+                    .font(.system(.callout, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let bytes = image.sizeInBytes {
+                GridRow {
+                    metadataLabel("Size", systemImage: "internaldrive")
+                    Text(Int64(clamping: bytes), format: .byteCount(style: .file))
+                        .font(.callout)
+                        .monospacedDigit()
+                        .gridColumnAlignment(.leading)
                 }
             }
+            GridRow {
+                metadataLabel("Added", systemImage: "calendar")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(image.addedAt, format: .dateTime.day().month(.wide).year())
+                        .font(.callout)
+                        .monospacedDigit()
+                    Text(image.addedAt, format: .relative(presentation: .named))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .gridColumnAlignment(.leading)
+            }
         }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func metadataChip(
-        systemImage: String,
-        text: String,
-        truncation: Text.TruncationMode
-    ) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(text)
-                .font(.system(.caption, design: .monospaced))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .truncationMode(truncation)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .glassEffect(
             .regular,
             in: ConcentricRectangle(
@@ -689,6 +696,13 @@ struct ImageDetailView: View {
                 isUniform: true
             )
         )
+    }
+
+    private func metadataLabel(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .gridColumnAlignment(.leading)
     }
 
     /// Action bar — container spacing **8** stays BELOW the
@@ -819,38 +833,146 @@ struct ImageDetailView: View {
     }
 }
 
-/// Sidebar row for one VM — name, specs, running dot.
+/// Sidebar row for one VM — state medallion, name, spec caption,
+/// hover quick-action.
 ///
 /// `name` is the `vms` dictionary key (the bundle's UUID string),
 /// not a label — it's only used to look up the bundle and to
 /// drive lifecycle actions. Everything actually rendered comes
 /// from ``VirtualMachineBundle/displayName``.
+///
+/// The row leads with state: a compact circle-family medallion
+/// whose color speaks the Apparition state language —
+/// ``Apparition/vital`` running, ``Apparition/lantern``
+/// transitioning (pulsing), quiet secondary stopped. The glyph
+/// swap animates with `.contentTransition(.symbolEffect(.replace))`
+/// scoped to the glyph value; the pulse is state-bound via
+/// `.symbolEffect(.pulse, isActive:)`. Both are Reduce-Motion
+/// gated.
+///
+/// Hovering the row fades in a trailing quick-action glyph —
+/// play when stopped, stop when running — that calls the same
+/// ``AppState/startVM(_:recovery:guestProvisioning:)`` /
+/// ``AppState/stopVM(_:)`` methods the detail view uses. The
+/// fade is the only hover motion and is skipped under Reduce
+/// Motion (the button still appears, instantly).
 struct VMRow: View {
 
     let name: String
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
 
     private var bundle: VirtualMachineBundle? { appState.vms[name] }
     private var isRunning: Bool { appState.isRunning(name) }
+    private var isTransitioning: Bool { appState.transitioningVMs.contains(name) }
+
+    /// One family of circle glyphs so `.replace` reads as a
+    /// state change, not an icon swap: dotted while
+    /// materializing (transitioning), inset-filled while alive,
+    /// hollow at rest.
+    private var stateGlyph: String {
+        if isTransitioning {
+            "circle.dotted"
+        } else if isRunning {
+            "circle.inset.filled"
+        } else {
+            "circle"
+        }
+    }
+
+    private var stateColor: Color {
+        if isTransitioning {
+            Apparition.lantern
+        } else if isRunning {
+            Apparition.vital
+        } else {
+            Color.secondary.opacity(0.45)
+        }
+    }
+
+    private var stateLabel: String {
+        if isTransitioning {
+            "transitioning"
+        } else if isRunning {
+            "running"
+        } else {
+            "stopped"
+        }
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 7))
-                .foregroundStyle(isRunning ? Apparition.vital : .secondary.opacity(0.3))
+        HStack(spacing: 10) {
+            Image(systemName: stateGlyph)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(stateColor)
+                .frame(width: 16)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.pulse, isActive: isTransitioning && !reduceMotion)
+                .animation(reduceMotion ? nil : Apparition.quick, value: stateGlyph)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(bundle?.displayName ?? name).font(.body)
                 if let bundle {
-                    Text("\(bundle.spec.cpuCount) CPU · \(bundle.spec.memorySizeInGigabytes) GB")
+                    Text(specCaption(for: bundle))
                         .font(.caption)
+                        .monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
             }
-            Spacer()
+
+            Spacer(minLength: 0)
+
+            // Quick action: hidden while transitioning (both
+            // lifecycle methods no-op mid-transition anyway, so
+            // showing a dead control would lie). Opacity keeps
+            // the row layout stable; hit-testing follows
+            // visibility so an invisible button can't steal the
+            // selection click.
+            if !isTransitioning {
+                Button {
+                    if isRunning {
+                        Task { await appState.stopVM(name) }
+                    } else {
+                        Task { await appState.startVM(name) }
+                    }
+                } label: {
+                    Image(systemName: isRunning ? "stop.fill" : "play.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.plain)
+                .help(isRunning ? "Stop this workspace" : "Start this workspace")
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
+                .animation(reduceMotion ? nil : Apparition.quick, value: isHovering)
+                .animation(reduceMotion ? nil : Apparition.quick, value: isRunning)
+                .accessibilityLabel(
+                    isRunning
+                        ? "Stop \(bundle?.displayName ?? name)"
+                        : "Start \(bundle?.displayName ?? name)"
+                )
+            }
         }
         .padding(.vertical, 2)
+        .onHover { isHovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(stateLabel)
+    }
+
+    /// "macOS · 4 vCPU · 8 GB" — guest OS first so heterogeneous
+    /// fleets scan by platform, then the two numbers people
+    /// actually compare (monospaced digits keep columns steady
+    /// across rows).
+    private func specCaption(for bundle: VirtualMachineBundle) -> String {
+        let os: String
+        switch bundle.spec.guestOS {
+        case .macOS: os = "macOS"
+        case .linux: os = "Linux"
+        }
+        return "\(os) · \(bundle.spec.cpuCount) vCPU · \(bundle.spec.memorySizeInGigabytes) GB"
     }
 }
 
@@ -877,6 +999,7 @@ struct PendingVMRow: View {
 
     let pending: AppState.PendingCreation
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var hasError: Bool { pending.errorMessage != nil }
 
@@ -894,6 +1017,12 @@ struct PendingVMRow: View {
             Image(systemName: "circle.fill")
                 .font(.system(size: 7))
                 .foregroundStyle(hasError ? .red : Apparition.lantern)
+                // The lantern breathes while work is in flight —
+                // the same in-progress pulse `VMRow` uses for its
+                // transitioning state. State-bound (stops the
+                // moment the row flips to errored) and skipped
+                // under Reduce Motion.
+                .symbolEffect(.pulse, isActive: !hasError && !reduceMotion)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {

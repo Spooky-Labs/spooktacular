@@ -29,24 +29,24 @@ enum Apparition {
     /// Will-o'-the-wisp — the séance's cool glow: spectral, moonlit,
     /// deliberately distinct from ``vital``'s teal. Reserved for the
     /// primary action on a surface and for brand moments (the one
-    /// `glassProminent` button). Dark: `#9D8FFF`, luminous on night
-    /// grounds; light ("Fog"): `#5646D6`, deepened so it holds AA
-    /// contrast on fog grounds.
+    /// `glassProminent` button). Dark: `#7C5CFF`, a deep royal
+    /// violet that still glows on night grounds; light ("Fog"):
+    /// `#4A38C8`, deepened so it holds AA contrast on fog grounds.
     static let wisp = dynamic(
         name: "wisp",
-        dark: rgb(0x9D8FFF),
-        light: rgb(0x5646D6)
+        dark: rgb(0x7C5CFF),
+        light: rgb(0x4A38C8)
     )
 
     /// Deep wisp — the accent's low register.
     ///
     /// A darker sibling of ``wisp`` for gradient stops, pressed
     /// states, and moments where full wisp would shout. Dark:
-    /// `#7C6AE8`; light: `#4334A8`.
+    /// `#5E42E0`; light: `#35279B`.
     static let wispDeep = dynamic(
         name: "wispDeep",
-        dark: rgb(0x7C6AE8),
-        light: rgb(0x4334A8)
+        dark: rgb(0x5E42E0),
+        light: rgb(0x35279B)
     )
 
     // MARK: - Semantic lifecycle colors
