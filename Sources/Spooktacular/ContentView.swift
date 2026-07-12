@@ -176,6 +176,12 @@ struct ContentView: View {
             }
         }
         .listStyle(.sidebar)
+        // Scoped accent for the selection highlight only — without
+        // it the sidebar selects in the system accent (blue on most
+        // Macs), which reads off-brand against the wisp identity.
+        // Deliberately NOT applied at the window root: a root tint
+        // cascades into every glass button fill (the candy-bar bug).
+        .tint(Apparition.wisp)
         .navigationTitle("Workspaces")
         // Placing the search field explicitly in the sidebar
         // (`.sidebar`) renders it inside the sidebar's title
@@ -306,6 +312,11 @@ private struct SidebarSectionHeader: View {
         }
         .animation(reduceMotion ? nil : Apparition.quick, value: count)
         .animation(reduceMotion ? nil : Apparition.quick, value: runningCount)
+        // Section headers get less trailing inset than list rows on
+        // macOS sidebars, so without this the counts hug the window
+        // edge instead of respecting the same margin as the filter
+        // field and row content.
+        .padding(.trailing, 12)
     }
 }
 

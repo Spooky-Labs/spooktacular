@@ -19,8 +19,13 @@ struct VMDetailView: View {
     /// Namespace shared by the hero's Liquid Glass shapes — the
     /// status pill and the Start/Resume action — so their glass
     /// morphs between each other on lifecycle changes. See
-    /// ``statusAndActions``.
+    /// ``heroPane``.
     @Namespace private var heroGlass
+
+    /// Drives the wisp halo's light-mode halving in
+    /// ``paneAtmosphere`` — the same fog-wants-a-hint rule as
+    /// `WorkspaceWindow.wispHalo`.
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var stats = WorkspaceStatsModel()
 
@@ -34,7 +39,13 @@ struct VMDetailView: View {
                 }
                 ProvisioningPane(bundle: bundle)
             }
-            .frame(maxWidth: 560)
+            // 680, up from the old totem-pole's 560: the
+            // editorial banner earns its keep by putting the
+            // identity cluster and the instrument panel side by
+            // side, which needs the extra column width. Purely a
+            // presentation cap — `ViewThatFits` in ``heroPane``
+            // owns narrow windows.
+            .frame(maxWidth: 680)
             .padding(24)
             .frame(maxWidth: .infinity)
             // Bound to the running-state flip (user pressed
@@ -63,87 +74,195 @@ struct VMDetailView: View {
 
     // MARK: - Hero card
     //
-    // One floating pane over the aurora mesh. The pane hovers
-    // above the ground rather than sitting in a reading column,
-    // so it reads as chrome and carries Liquid Glass:
-    // `.glassEffect(.regular, in:)` on a 28pt continuous rounded
-    // rect (`.rect(cornerRadius:)` defaults to `.continuous`).
-    // `.containerShape(.rect(cornerRadius: 28))` publishes that
-    // radius to descendants so nested chips resolve macOS 26
-    // concentric corners — shared center points with the pane —
-    // via `ConcentricRectangle` (see ``specChip(systemImage:text:)``).
-    // Lifecycle state is carried by the tinted eyebrow (2) and
-    // the status pill (4) — vital when running, lantern while
-    // suspended or mid-transition — so the pane itself stays
-    // neutral chrome. Inside, a top-to-bottom stack:
+    // One floating pane over the aurora mesh — no longer a
+    // centered totem pole. The hero is an *editorial banner*
+    // (leading-aligned identity cluster) facing an *instrument
+    // panel* (labeled readouts), the composition this year's ADA
+    // winners established: Tide Guide's data-forward readouts
+    // under translucent depth, Moonlitt's subject-with-atmosphere
+    // framing. Anatomy:
     //
-    //   1. Icon medallion — keeps the user's custom icon front
-    //      and center.
-    //   2. Title + uppercased, state-tinted eyebrow.
-    //   3. Spec chips (CPU / RAM / Disk) — glass
-    //      `ConcentricRectangle` chips with SF-Symbol leading
-    //      glyphs.
-    //   4. Status pill + action bar in one `GlassEffectContainer`
-    //      (``statusAndActions``): the Start/Resume button and the
-    //      pill share the ``heroGlass`` namespace so starting the
-    //      VM morphs the button's glass into the pill.
+    //   LEFT    identity cluster — the workspace icon (96 pt,
+    //           with a static wisp halo glowing beneath the glass
+    //           while the VM runs), the VM name in leading-aligned
+    //           rounded `.largeTitle`, the small-caps guest-OS
+    //           eyebrow BELOW the name, and the status pill
+    //           inline under that.
+    //   RIGHT   instrument panel — PROCESSOR / MEMORY / STORAGE
+    //           (+ GUEST TOOLS on macOS guests) as small-caps
+    //           labels over large monospaced values, separated by
+    //           hairline `.separator` strokes. Replaces the old
+    //           glass spec chips: readouts are content, not
+    //           chrome, so they carry no glass.
+    //   BOTTOM  the action bar, leading-aligned, spanning the
+    //           pane — same buttons, same semantics as ever.
     //
-    // The whole pane follows the same aesthetic as
-    // `ImageDetailView.heroCard`, so the library feels
-    // coherent across selection types (VM vs Image).
+    // `ViewThatFits(in: .horizontal)` (Apple: "selects the first
+    // child whose ideal size on the constrained axes fits within
+    // the proposed size") steps the banner down at narrow widths
+    // instead of clipping — see ``editorialBanner``.
+    //
+    // The pane itself is unchanged chrome: `.glassEffect(.regular,
+    // in:)` on a 28 pt continuous rounded rect, with
+    // `.containerShape(.rect(cornerRadius: 28))` still published
+    // to descendants — the pane-geometry contract every hero in
+    // the app shares, and the anchor any future nested
+    // `ConcentricRectangle` resolves against. Behind the glass,
+    // ``paneAtmosphere`` adds a
+    // top-leading night-wash gradient for depth plus the
+    // running-VM wisp halo — both drawn in `.background` so the
+    // glass refracts them, the same beneath-the-glass treatment
+    // as `WorkspaceWindow`'s wispHalo (whose earlier icon-backed
+    // placement bled past the pane bounds).
+    //
+    // Morph-pair geometry — the WHOLE hero interior now lives in
+    // ONE `GlassEffectContainer`, so the status pill (identity
+    // cluster, `glassEffectID("status")`) and the Start/Resume
+    // button (action bar, `glassEffectID("primaryAction")`)
+    // remain shapes of the same container and keep morphing into
+    // each other on lifecycle flips. Per Apple's container
+    // semantics, glass shapes closer together than the container
+    // spacing blend at rest, so:
+    //
+    //   - container spacing **20** > outer VStack spacing **18**
+    //     → the banner (holding the pill) and the action bar stay
+    //     inside blending range — the intended Start ⇄ pill
+    //     `.matchedGeometry` morph pair, on the same 20/18/24
+    //     numbers as before the redesign.
+    //   - the action bar's HStack spacing is **24** (see
+    //     ``actionBar``), ABOVE the container spacing → adjacent
+    //     buttons never merge at rest.
+    //   - every other interior stack (banner variants, identity
+    //     cluster, instrument panel) holds AT MOST ONE glass
+    //     shape — the pill; readouts and text carry no glass —
+    //     and blending needs two glass neighbors, so those
+    //     tighter spacings cannot fuse anything.
 
     private var heroPane: some View {
-        VStack(spacing: 24) {
-            iconMedallion
-            titleBlock
-            specChips
-            statusAndActions
+        GlassEffectContainer(spacing: 20) {
+            VStack(alignment: .leading, spacing: 18) {
+                editorialBanner
+                actionBar
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 40)
+        .padding(.vertical, 32)
         .padding(.horizontal, 32)
-        .frame(maxWidth: 640)
         .glassEffect(.regular, in: .rect(cornerRadius: 28))
         .containerShape(.rect(cornerRadius: 28))
+        .background { paneAtmosphere }
+        // Motion bindings — nothing here loops:
+        // - `Apparition.spring` fires on ``lifecyclePhase`` changes
+        //   (the start/stop/suspend flip): drives the glass morph
+        //   and the action-bar button swap.
+        // - `Apparition.quick` fires on ``isTransitioning`` changes
+        //   (button label ↔ spinner swap while the VM is mid-work).
+        // - Reduce Motion replaces both with instant updates.
+        .animation(reduceMotion ? nil : Apparition.spring, value: lifecyclePhase)
+        .animation(reduceMotion ? nil : Apparition.quick, value: isTransitioning)
         .frame(maxWidth: .infinity)
     }
 
-    /// The hero's Liquid Glass cluster — status pill above the
-    /// action bar, wrapped in **one** `GlassEffectContainer` so
-    /// the two shapes that carry `glassEffect` (the pill and the
-    /// Start/Resume button, see ``actionBar``) can morph into each
-    /// other. Both carry a `glassEffectID(_:in:)` in ``heroGlass``,
-    /// mirroring Apple's pencil/note example for
-    /// `glassEffectTransition(_:)`.
+    /// The responsive identity ⟷ instrument composition.
     ///
-    /// Spacing geometry — per Apple's `GlassEffectContainer`
-    /// semantics, glass shapes closer together than the container
-    /// spacing blend at rest, so a container spacing LARGER than
-    /// an interior stack's spacing fuses that stack's shapes into
-    /// one blob (exactly the fused action-bar bug this fixes):
-    /// - container spacing **20** > VStack spacing **18** → the
-    ///   pill and the action bar stay inside blending range, which
-    ///   is what lets the Start ⇄ pill `.matchedGeometry` morph
-    ///   pair across the lifecycle flip.
-    /// - the action bar's HStack spacing is **24** (see
-    ///   ``actionBar``), ABOVE the container spacing → adjacent
-    ///   buttons never merge at rest.
+    /// `ViewThatFits(in: .horizontal)` tries, in order of
+    /// preference:
+    /// 1. identity cluster leading, instrument panel trailing;
+    /// 2. identity above the panel's row form;
+    /// 3. identity above the panel's stacked column form (for the
+    ///    narrowest windows).
     ///
-    /// Motion bindings — nothing here loops:
-    /// - `Apparition.spring` fires on ``lifecyclePhase`` changes
-    ///   (the start/stop/suspend flip): drives the glass morph and
-    ///   the action-bar button swap.
-    /// - `Apparition.quick` fires on ``isTransitioning`` changes
-    ///   (button label ↔ spinner swap while the VM is mid-work).
-    /// - Reduce Motion replaces both with instant updates.
-    private var statusAndActions: some View {
-        GlassEffectContainer(spacing: 20) {
-            VStack(spacing: 18) {
-                statusPill
-                actionBar
+    /// Every candidate contains exactly one glass shape — the
+    /// status pill inside ``identityCluster`` — so the layout
+    /// swap can never fuse or orphan glass, and the pill's
+    /// `glassEffectID` stays stable across variants. The swap is
+    /// driven by window resizing only (no animation bound to it),
+    /// so it is Reduce-Motion-neutral.
+    private var editorialBanner: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 24) {
+                identityCluster
+                Spacer(minLength: 0)
+                instrumentRow
+            }
+            VStack(alignment: .leading, spacing: 24) {
+                identityCluster
+                instrumentRow
+            }
+            VStack(alignment: .leading, spacing: 24) {
+                identityCluster
+                instrumentColumn
             }
         }
-        .animation(reduceMotion ? nil : Apparition.spring, value: lifecyclePhase)
-        .animation(reduceMotion ? nil : Apparition.quick, value: isTransitioning)
+    }
+
+    /// LEFT — the identity cluster, a leading-aligned editorial
+    /// column: icon, name, small-caps eyebrow, status pill. State
+    /// meaning still lives on the tinted eyebrow and the pill
+    /// (the HIG's "color carries meaning once" pattern); the wisp
+    /// halo behind the icon is a brand moment, not a state color,
+    /// and rides the pane background (see ``paneAtmosphere``).
+    private var identityCluster: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            WorkspaceIconView(
+                spec: bundle.metadata.iconSpec ?? .defaultSpec,
+                size: 96
+            )
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(bundle.displayName)
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .multilineTextAlignment(.leading)
+                Text(guestOSLabel)
+                    .font(.caption.weight(.semibold).smallCaps())
+                    .tracking(1.2)
+                    .foregroundStyle(stateTint)
+            }
+
+            statusPill
+        }
+    }
+
+    /// Depth + atmosphere beneath the pane's glass. Two static
+    /// layers, clipped to the pane's 28 pt shape so nothing
+    /// bleeds past the chrome:
+    ///
+    /// - a night-wash `LinearGradient` — ``Apparition/night0`` at
+    ///   low alpha, deepest at the top-leading corner — giving
+    ///   the editorial banner a light direction. No new glass, no
+    ///   new colors: night0 is the system's own ground tint.
+    /// - the wisp halo — a heavily blurred wisp circle centered
+    ///   beneath the workspace icon, visible only while the VM
+    ///   runs. Same beneath-the-glass treatment and light-mode
+    ///   halving as `WorkspaceWindow.wispHalo`. Static: it holds
+    ///   one opacity per state and never loops, so Reduce Motion
+    ///   needs no gate here — its appear/disappear rides the
+    ///   running-state animation in ``body``, which already swaps
+    ///   to a short fade under Reduce Motion.
+    private var paneAtmosphere: some View {
+        ZStack(alignment: .topLeading) {
+            LinearGradient(
+                colors: [Apparition.night0.opacity(0.30), .clear],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Circle()
+                .fill(Apparition.wisp)
+                .frame(width: 180, height: 180)
+                .blur(radius: 56)
+                // Centers the glow under the icon: the icon's
+                // center sits at (32 pt padding + 48 pt half-icon)
+                // from the pane's top-leading corner; the 180 pt
+                // circle's center sits at 90, so nudge by -10.
+                .offset(x: -10, y: -10)
+                .opacity(
+                    isRunning
+                        ? (colorScheme == .dark ? 0.18 : 0.10)
+                        : 0
+                )
+        }
+        .clipShape(.rect(cornerRadius: 28))
     }
 
     /// Entrance/exit for the live-stats pane, bound to the
@@ -156,96 +275,130 @@ struct VMDetailView: View {
             : .opacity.combined(with: .move(edge: .bottom))
     }
 
-    /// The user's custom `WorkspaceIconView`. State meaning lives
-    /// on the tinted eyebrow and the status pill — per the HIG's
-    /// "color carries meaning once" pattern, adding a colored glow
-    /// shadow on the icon itself would just repeat the same signal.
-    private var iconMedallion: some View {
-        WorkspaceIconView(
-            spec: bundle.metadata.iconSpec ?? .defaultSpec,
-            size: 140
-        )
-        .accessibilityHidden(true)
-    }
+    // MARK: - Instrument panel
 
-    private var titleBlock: some View {
-        VStack(spacing: 6) {
-            Text(bundle.displayName)
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                .multilineTextAlignment(.center)
-            Text(guestOSLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(stateTint)
-                .textCase(.uppercase)
-                .tracking(1.2)
-        }
-    }
-
-    /// CPU / RAM / Disk spec chips — three Liquid Glass
-    /// `ConcentricRectangle` chips. Each chip carries a
-    /// category-specific SF Symbol so the scanning eye reads the
-    /// numbers + their meaning simultaneously. The chips float on
-    /// the hero's glass pane, so they are glass too — grouped in
-    /// their own `GlassEffectContainer` for blending/perf, with
-    /// container spacing **8** BELOW the HStack's **12** so the
-    /// three chips never merge at rest (larger container spacing
-    /// than the interior stack would fuse them — the blob bug).
-    private var specChips: some View {
-        GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 12) {
-                specChip(
-                    systemImage: "cpu",
-                    text: "\(bundle.spec.cpuCount) CPU"
-                )
-                specChip(
-                    systemImage: "memorychip",
-                    text: "\(bundle.spec.memorySizeInGigabytes) GB"
-                )
-                specChip(
-                    systemImage: "internaldrive",
-                    text: "\(bundle.spec.diskSizeInGigabytes) GB"
-                )
+    /// RIGHT — the instrument panel, row form. Labeled readouts —
+    /// a small-caps caption over a large monospaced value —
+    /// separated by hairline `.separator` strokes. This replaces
+    /// the old glass spec chips: readouts are *content*, so they
+    /// carry no glass, and no semantic color (values speak in
+    /// neutral primary; only the Guest Tools installed seal earns
+    /// vital as success confirmation).
+    private var instrumentRow: some View {
+        HStack(alignment: .top, spacing: 22) {
+            readout("Processor", value: "\(bundle.spec.cpuCount)", unit: "vCPU")
+            hairline(.vertical)
+            readout("Memory", value: "\(bundle.spec.memorySizeInGigabytes)", unit: "GB")
+            hairline(.vertical)
+            readout("Storage", value: "\(bundle.spec.diskSizeInGigabytes)", unit: "GB")
+            if bundle.spec.guestOS == .macOS {
+                hairline(.vertical)
+                guestToolsReadout
             }
         }
     }
 
-    /// One spec chip. The shape is a `ConcentricRectangle` whose
-    /// corners share center points with the hero pane's 28pt
-    /// container shape (`.containerShape` on ``heroPane``) — the
-    /// macOS 26 concentric-geometry contract. A chip sits far from
-    /// the pane's corners, where pure concentric resolution
-    /// (container radius minus inset) would go square, so
-    /// `.concentric(minimum: .fixed(12))` keeps a 12pt floor;
-    /// `isUniform: true` applies the largest resolved radius to
-    /// all four corners for a symmetric chip.
-    private func specChip(systemImage: String, text: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(text)
-                .font(.system(.caption, design: .monospaced).weight(.medium))
-                .foregroundStyle(.primary)
-                .monospacedDigit()
+    /// The panel's stacked form for the narrowest windows — the
+    /// same readouts as ``instrumentRow``, one per line, with
+    /// horizontal hairlines between them.
+    private var instrumentColumn: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            readout("Processor", value: "\(bundle.spec.cpuCount)", unit: "vCPU")
+            hairline(.horizontal)
+            readout("Memory", value: "\(bundle.spec.memorySizeInGigabytes)", unit: "GB")
+            hairline(.horizontal)
+            readout("Storage", value: "\(bundle.spec.diskSizeInGigabytes)", unit: "GB")
+            if bundle.spec.guestOS == .macOS {
+                hairline(.horizontal)
+                guestToolsReadout
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .glassEffect(
-            .regular,
-            in: ConcentricRectangle(
-                corners: .concentric(minimum: .fixed(12)),
-                isUniform: true
-            )
-        )
     }
 
-    /// Action bar inside the hero's shared `GlassEffectContainer`
-    /// (see ``statusAndActions``). Its HStack spacing is **24** —
-    /// deliberately ABOVE the container's spacing of 20 — so
-    /// adjacent buttons never blend into one fused shape at rest.
-    /// Every button label carries ``hoverSymbolBounce()`` (a
-    /// one-shot, Reduce-Motion-gated symbol bounce on pointer
-    /// entry).
+    /// One labeled readout: a small-caps `.caption2` label above
+    /// a large monospaced value, with the unit hung off the
+    /// value's first baseline in a smaller monospaced size — the
+    /// big-number/small-unit idiom of data-forward instrument
+    /// UIs. VoiceOver reads the pair as one element
+    /// ("Processor, 4 vCPU").
+    private func readout(_ label: String, value: String, unit: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption2.weight(.semibold).smallCaps())
+                .tracking(0.8)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
+                Text(value)
+                    .font(.system(.title2, design: .monospaced).weight(.medium))
+                Text(unit)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Guest Tools joins the panel as a fourth readout on macOS
+    /// guests, so install state stays *visible* in every
+    /// lifecycle state (the old layout only surfaced it through
+    /// the install button, which exists only while stopped). The
+    /// install BUTTON itself still lives in the action bar,
+    /// exactly as before — info here, action there. The filled
+    /// seal is the panel's one vital moment: success
+    /// confirmation, per the "Night & Wisp" contract.
+    private var guestToolsReadout: some View {
+        let installed = appState.guestToolsInstalled.contains(name)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("Guest Tools")
+                .font(.caption2.weight(.semibold).smallCaps())
+                .tracking(0.8)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 5) {
+                Image(systemName: installed ? "checkmark.seal.fill" : "seal")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(
+                        installed
+                            ? AnyShapeStyle(Apparition.vital)
+                            : AnyShapeStyle(.secondary)
+                    )
+                Text(installed ? "Installed" : "Not Installed")
+                    .font(.system(.title3, design: .rounded, weight: .medium))
+                    .foregroundStyle(
+                        installed
+                            ? AnyShapeStyle(.primary)
+                            : AnyShapeStyle(.secondary)
+                    )
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Divider orientation for ``hairline(_:)``.
+    private enum HairlineAxis { case horizontal, vertical }
+
+    /// A fine `.separator` stroke — the instrument panel's
+    /// divider language. 1 pt, in SwiftUI's semantic separator
+    /// style ("a style appropriate for foreground separator or
+    /// border lines"), so it adapts to both appearances for free.
+    /// Vertical hairlines take a fixed 40 pt run (the height of a
+    /// label + value pair); horizontal ones span the column.
+    private func hairline(_ axis: HairlineAxis) -> some View {
+        Rectangle()
+            .fill(.separator)
+            .frame(
+                width: axis == .vertical ? 1 : nil,
+                height: axis == .vertical ? 40 : 1
+            )
+    }
+
+    /// BOTTOM — the action bar, leading-aligned under the banner
+    /// (the enclosing VStack in ``heroPane`` is leading-aligned),
+    /// inside the hero's shared `GlassEffectContainer`. Its
+    /// HStack spacing is **24** — deliberately ABOVE the
+    /// container's spacing of 20 — so adjacent buttons never
+    /// blend into one fused shape at rest. Every button label
+    /// carries ``hoverSymbolBounce()`` (a one-shot,
+    /// Reduce-Motion-gated symbol bounce on pointer entry).
     ///
     /// The Start/Resume button is the Apparition signature. It
     /// carries an explicit wisp-tinted `glassEffect(_:in:)` plus
@@ -490,10 +643,11 @@ struct VMDetailView: View {
         return AnyShapeStyle(.secondary)
     }
 
-    /// Uppercased eyebrow under the title — "macOS VIRTUAL
-    /// MACHINE" or "LINUX VIRTUAL MACHINE". Gives the hero a
-    /// secondary readable label that doesn't compete with the
-    /// VM name for visual weight.
+    /// Small-caps eyebrow below the title — "macOS Virtual
+    /// Machine" or "Linux Virtual Machine", rendered in all small
+    /// capitals by `Font.smallCaps()`. Gives the hero a secondary
+    /// readable label that doesn't compete with the VM name for
+    /// visual weight.
     private var guestOSLabel: String {
         switch bundle.spec.guestOS {
         case .macOS: "macOS Virtual Machine"
@@ -558,18 +712,22 @@ struct VMDisplayView: NSViewRepresentable {
 
 /// Detail view for a selected image in the Images section.
 ///
-/// A Liquid Glass "hero card" mirroring ``VMDetailView``'s hero:
-/// the pane floats over the aurora, so it's chrome —
-/// `.glassEffect(.regular, in:)` on a 28pt continuous rounded
-/// rect, with `.containerShape(.rect(cornerRadius: 28))` so the
-/// metadata panel inside resolves concentric corners. The
-/// image-kind tint (IPSW = Apple blue, ISO = Tux gold,
-/// OCI = purple) carries semantic weight in exactly three
-/// places: the eyebrow text, the medallion's color fill, and a
-/// 6% tint on the pane's glass — the metadata panel stays
-/// neutral on purpose so the contract holds. The action bar's
-/// single `glassProminent` button carries the wisp accent via
-/// `glassProminentButton()`.
+/// A Liquid Glass "hero card" sharing ``VMDetailView``'s
+/// editorial anatomy so the two detail surfaces read as one
+/// system: identity cluster leading (medallion, name, small-caps
+/// kind eyebrow), instrument-style metadata readouts trailing,
+/// actions leading-aligned below, with `ViewThatFits` stacking
+/// identity above the readouts at narrow widths. The pane floats
+/// over the aurora, so it's chrome — `.glassEffect(.regular,
+/// in:)` on a 28pt continuous rounded rect, with
+/// `.containerShape(.rect(cornerRadius: 28))` still published to
+/// descendants. The image-kind tint (IPSW = Apple blue,
+/// ISO = Tux gold, OCI = purple) carries semantic weight in
+/// exactly three places: the eyebrow text, the medallion's color
+/// fill, and a 6% tint on the pane's glass — the metadata
+/// readouts stay neutral on purpose so the contract holds. The
+/// action bar's single `glassProminent` button carries the wisp
+/// accent via `glassProminentButton()`.
 struct ImageDetailView: View {
 
     let image: VirtualMachineImage
@@ -588,15 +746,29 @@ struct ImageDetailView: View {
     // MARK: - Hero
 
     private var heroCard: some View {
-        VStack(spacing: 24) {
-            iconMedallion
-            titleBlock
-            metadataGrid
+        VStack(alignment: .leading, spacing: 24) {
+            // Same responsive step-down as the VM hero: identity
+            // beside the readouts when the name and source both
+            // fit, identity above them otherwise. Neither
+            // candidate holds any glass shape, so the swap has no
+            // blending consequences.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    identityCluster
+                    Spacer(minLength: 0)
+                    metadataPanel
+                }
+                VStack(alignment: .leading, spacing: 24) {
+                    identityCluster
+                    metadataPanel
+                }
+            }
             actionBar
         }
-        .padding(.vertical, 40)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 32)
         .padding(.horizontal, 32)
-        .frame(maxWidth: 640)
+        .frame(maxWidth: 680)
         .glassEffect(
             .regular.tint(tintColor.opacity(0.06)),
             in: .rect(cornerRadius: 28)
@@ -605,38 +777,47 @@ struct ImageDetailView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// LEFT — the identity cluster, matching ``VMDetailView``'s:
+    /// medallion, leading-aligned name, small-caps kind eyebrow
+    /// below it. The eyebrow is tint place 1 of 3.
+    private var identityCluster: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            iconMedallion
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(image.name)
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .multilineTextAlignment(.leading)
+                Text(sourceKindLabel)
+                    .font(.caption.weight(.semibold).smallCaps())
+                    .tracking(1.2)
+                    .foregroundStyle(tintColor)
+            }
+        }
+    }
+
     /// Circular medallion around the SF Symbol. A plain
     /// color-gradient fill (`Color.gradient` — "the standard
     /// gradient for the color") in the hero's kind tint: the
     /// medallion is content-layer imagery, so it gets a color
     /// fill, not Liquid Glass. The saturated disc is where the
-    /// kind color speaks loudest; the pane wash and eyebrow only
-    /// echo it.
+    /// kind color speaks loudest (tint place 2 of 3); the pane
+    /// wash and eyebrow only echo it. 96 pt — the same identity
+    /// scale as the VM hero's workspace icon.
     private var iconMedallion: some View {
         Image(systemName: iconName)
-            .font(.system(size: 62, weight: .regular))
+            .font(.system(size: 46, weight: .regular))
             .foregroundStyle(.white)
-            .frame(width: 132, height: 132)
+            .frame(width: 96, height: 96)
             .background(tintColor.gradient, in: .circle)
             .accessibilityHidden(true)
     }
 
-    private var titleBlock: some View {
-        VStack(spacing: 6) {
-            Text(image.name)
-                .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                .multilineTextAlignment(.center)
-            Text(sourceKindLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(tintColor)
-                .textCase(.uppercase)
-                .tracking(1.2)
-        }
-    }
-
-    /// Structured metadata panel — one nested glass chip (a
-    /// `ConcentricRectangle` resolving against the hero's 28pt
-    /// container shape) holding a two-column `Grid`:
+    /// RIGHT — the metadata, reshaped into the labeled-readout
+    /// language shared with ``VMDetailView``'s instrument panel:
+    /// a small-caps caption label (keeping its original SF
+    /// Symbol) above each value, hairline `.separator` strokes
+    /// between rows. The content is exactly the old grid's:
     ///
     /// - **Source** — the IPSW's `lastPathComponent` or the full
     ///   OCI reference, monospaced and selectable so it can be
@@ -649,63 +830,67 @@ struct ImageDetailView: View {
     ///   absolute answers audits, the relative answers "is this
     ///   stale?" at a glance.
     ///
-    /// A single glass shape needs no `GlassEffectContainer` (the
-    /// container exists to negotiate fusion between siblings);
-    /// the action bar below keeps its own. The panel carries NO
-    /// kind tint — the three-places tint contract lives in the
-    /// eyebrow, medallion, and pane wash only.
-    private var metadataGrid: some View {
-        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 20, verticalSpacing: 12) {
-            GridRow {
-                metadataLabel("Source", systemImage: sourceIcon)
+    /// Readouts are content — no glass (the old nested glass chip
+    /// is gone; chips are chrome, data is not) and NO kind tint:
+    /// the three-places tint contract lives in the eyebrow,
+    /// medallion, and pane wash only.
+    private var metadataPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                panelLabel("Source", systemImage: sourceIcon)
                 Text(sourceDetailLabel)
                     .font(.system(.callout, design: .monospaced))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .accessibilityElement(children: .combine)
+
             if let bytes = image.sizeInBytes {
-                GridRow {
-                    metadataLabel("Size", systemImage: "internaldrive")
+                panelHairline
+                VStack(alignment: .leading, spacing: 4) {
+                    panelLabel("Size", systemImage: "internaldrive")
                     Text(Int64(clamping: bytes), format: .byteCount(style: .file))
-                        .font(.callout)
-                        .monospacedDigit()
-                        .gridColumnAlignment(.leading)
+                        .font(.system(.title3, design: .monospaced).weight(.medium))
                 }
+                .accessibilityElement(children: .combine)
             }
-            GridRow {
-                metadataLabel("Added", systemImage: "calendar")
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(image.addedAt, format: .dateTime.day().month(.wide).year())
-                        .font(.callout)
-                        .monospacedDigit()
-                    Text(image.addedAt, format: .relative(presentation: .named))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .gridColumnAlignment(.leading)
+
+            panelHairline
+            VStack(alignment: .leading, spacing: 4) {
+                panelLabel("Added", systemImage: "calendar")
+                Text(image.addedAt, format: .dateTime.day().month(.wide).year())
+                    .font(.callout)
+                    .monospacedDigit()
+                Text(image.addedAt, format: .relative(presentation: .named))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .combine)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .glassEffect(
-            .regular,
-            in: ConcentricRectangle(
-                corners: .concentric(minimum: .fixed(12)),
-                isUniform: true
-            )
-        )
     }
 
-    private func metadataLabel(_ title: String, systemImage: String) -> some View {
+    /// A readout label — small-caps `.caption2`, secondary, with
+    /// the row's original SF Symbol riding along at label scale.
+    private func panelLabel(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
-            .font(.caption.weight(.semibold))
+            .font(.caption2.weight(.semibold).smallCaps())
+            .tracking(0.8)
             .foregroundStyle(.secondary)
-            .gridColumnAlignment(.leading)
     }
 
-    /// Action bar — container spacing **8** stays BELOW the
+    /// A fine `.separator` hairline between readout rows. Fixed
+    /// 220 pt run so the readout column keeps its natural width
+    /// instead of greedily stretching across the pane.
+    private var panelHairline: some View {
+        Rectangle()
+            .fill(.separator)
+            .frame(width: 220, height: 1)
+    }
+
+    /// Action bar — leading-aligned under the banner (the hero's
+    /// enclosing VStack is leading-aligned), matching the VM
+    /// hero's anatomy. Container spacing **8** stays BELOW the
     /// HStack's **12**, so the two buttons never merge at rest
     /// (this pane never had the blob bug; keep it that way).
     private var actionBar: some View {
