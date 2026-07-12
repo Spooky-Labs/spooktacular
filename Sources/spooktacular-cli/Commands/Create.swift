@@ -570,6 +570,14 @@ extension Spooktacular {
                     spec: spec
                 )
 
+                // Capacity pre-flight BEFORE the long install —
+                // VZMacOSInstaller boots the VM internally, so a
+                // host at the concurrent-VM limit would otherwise
+                // burn the whole install and fail with the
+                // framework's opaque installation error instead of
+                // CapacityError's actionable one.
+                try CapacityCheck.ensureCapacity(in: SpooktacularPaths.vms)
+
                 if !json { print(Style.info("Installing macOS (10-20 minutes)...")) }
                 try await manager.install(
                     bundle: bundle,

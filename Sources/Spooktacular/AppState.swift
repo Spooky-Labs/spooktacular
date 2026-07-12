@@ -103,6 +103,25 @@ enum SpooktacularError: LocalizedError, Equatable, Sendable {
     /// into the generic "file a bug" text.
     static func classify(_ error: Error) -> SpooktacularError {
         if let already = error as? SpooktacularError { return already }
+        // Capacity errors get GUI-flavored recovery wording — the
+        // type's own recoverySuggestion says "spook stop <name>",
+        // which is the right fix in a terminal but not in the app.
+        if let capacity = error as? CapacityError {
+            let description = capacity.errorDescription
+                ?? "The concurrent virtual machine limit has been reached."
+            switch capacity {
+            case .limitReached:
+                return .detailed(
+                    description: description,
+                    recovery: "Stop one of the running workspaces, then try again."
+                )
+            case .insufficientMemory:
+                return .detailed(
+                    description: description,
+                    recovery: "Lower this VM's memory in Hardware, or stop another workspace to free memory."
+                )
+            }
+        }
         let ns = error as NSError
         if ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError {
             return .diskFull(requested: 0, available: 0)
@@ -120,7 +139,14 @@ enum SpooktacularError: LocalizedError, Equatable, Sendable {
            !recovery.isEmpty {
             return .detailed(description: description, recovery: recovery)
         }
-        return .internalError(reason: error.localizedDescription)
+        // Last resort: never present a framework's opaque top-level
+        // text when the real cause is sitting in its underlying-error
+        // chain. Virtualization's "An error occurred during
+        // installation." carries the actual reason (e.g. "The
+        // maximum number of running virtual machines has been
+        // reached.") one or two levels down NSUnderlyingErrorKey —
+        // ErrorCauseChain digs it out.
+        return .internalError(reason: ErrorCauseChain.composedMessage(for: error))
     }
 }
 
@@ -529,6 +555,17 @@ final class AppState {
         defer { transitioningVMs.remove(name) }
 
         do {
+            // Typed capacity pre-flight — without it the framework
+            // rejects the third concurrent boot with an opaque
+            // VZError. Unions in-process VMs (this GUI writes no
+            // PID files) with CLI-launched ones. Throws
+            // CapacityError, which classify() renders with a
+            // "stop one of the running workspaces" recovery.
+            try CapacityCheck.ensureCapacity(
+                alsoRunning: Array(runningVMs.keys),
+                in: vmsDirectory
+            )
+
             // Post-release-tolerant construction: this method is
             // called by `provisionGitHubRunnerForCreate` for the
             // bundle's actual first boot (no prior VM boot on this
@@ -1161,6 +1198,19 @@ final class AppState {
             )
             try Task.checkCancellation()
 
+            // Capacity pre-flight BEFORE the long install:
+            // VZMacOSInstaller boots the VM internally, so a host
+            // already at the concurrent-VM limit fails 15 minutes in
+            // with Virtualization's opaque "An error occurred during
+            // installation." Failing here is instant and the typed
+            // CapacityError names the running VMs and the fix. The
+            // GUI's VMs run in-process (no PID files), so they're
+            // passed explicitly and unioned with CLI-launched VMs.
+            try CapacityCheck.ensureCapacity(
+                alsoRunning: Array(runningVMs.keys),
+                in: vmsDirectory
+            )
+
             updateCreation(name: name, progress: 0.55, status: "Installing macOS…")
             try await manager.install(bundle: bundle, from: ipswURL) { [weak self] fraction in
                 Task { @MainActor in
@@ -1283,8 +1333,19 @@ final class AppState {
             if let url = bundleURL {
                 try? FileManager.default.removeItem(at: url)
             }
-            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            failCreation(name: name, message: msg)
+            // Route through classify() so the pending row's error
+            // matches the centralized alert: typed description +
+            // recovery step, with underlying-error chains unwrapped
+            // instead of collapsing to a framework's generic text.
+            let categorized = SpooktacularError.classify(error)
+            let msg = [categorized.errorDescription, categorized.suggestedAction]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            failCreation(
+                name: name,
+                message: msg.isEmpty ? error.localizedDescription : msg
+            )
         }
 
         // GitHub Actions runner provisioning — mirrors Create.swift's
@@ -1360,8 +1421,19 @@ final class AppState {
             pendingCreations.removeValue(forKey: name)
         } catch {
             try? FileManager.default.removeItem(at: target)
-            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            failCreation(name: name, message: msg)
+            // Route through classify() so the pending row's error
+            // matches the centralized alert: typed description +
+            // recovery step, with underlying-error chains unwrapped
+            // instead of collapsing to a framework's generic text.
+            let categorized = SpooktacularError.classify(error)
+            let msg = [categorized.errorDescription, categorized.suggestedAction]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            failCreation(
+                name: name,
+                message: msg.isEmpty ? error.localizedDescription : msg
+            )
         }
     }
 
@@ -1652,8 +1724,19 @@ final class AppState {
             pendingCreations.removeValue(forKey: name)
         } catch {
             transitioningVMs.remove(key)
-            let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            failCreation(name: name, message: msg)
+            // Route through classify() so the pending row's error
+            // matches the centralized alert: typed description +
+            // recovery step, with underlying-error chains unwrapped
+            // instead of collapsing to a framework's generic text.
+            let categorized = SpooktacularError.classify(error)
+            let msg = [categorized.errorDescription, categorized.suggestedAction]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            failCreation(
+                name: name,
+                message: msg.isEmpty ? error.localizedDescription : msg
+            )
         }
     }
 

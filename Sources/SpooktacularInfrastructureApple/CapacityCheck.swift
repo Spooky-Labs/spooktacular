@@ -97,13 +97,43 @@ public enum CapacityCheck {
         in directory: URL,
         log: any LogProvider = SilentLogProvider()
     ) throws {
+        try ensureCapacity(alsoRunning: [], in: directory, log: log)
+    }
+
+    /// Throws if the concurrent VM limit has been reached, counting
+    /// both PID-file VMs and caller-tracked in-process VMs.
+    ///
+    /// PID files only cover CLI-launched VMs — the GUI runs its VMs
+    /// in-process and writes no PID files, so a PID-only check would
+    /// let a GUI with two running workspaces sail past the limit and
+    /// hand the user Virtualization.framework's opaque failure
+    /// instead of a typed, actionable one. The union of both sources
+    /// (deduplicated by name — the same VM must not count twice) is
+    /// the host-wide picture this process can see.
+    ///
+    /// - Parameters:
+    ///   - alsoRunning: Names of VMs the calling process knows are
+    ///     running in-process (the GUI's `runningVMs` keys). Pass
+    ///     `[]` when the caller has no in-process VMs (the CLI).
+    ///   - directory: The directory containing `.vm` bundles.
+    ///   - log: Logger for diagnostic messages. Defaults to a
+    ///     silent provider.
+    /// - Throws: ``CapacityError/limitReached(running:)`` naming
+    ///   every running VM from both sources when the union meets
+    ///   ``maxConcurrentVMs``.
+    public static func ensureCapacity(
+        alsoRunning: [String],
+        in directory: URL,
+        log: any LogProvider = SilentLogProvider()
+    ) throws {
         log.info("Checking VM capacity in \(directory.lastPathComponent)")
-        let running = runningVMs(in: directory, log: log)
-        guard running.count < maxConcurrentVMs else {
-            log.error("Capacity check failed: \(running.count) VMs running (limit \(maxConcurrentVMs))")
-            throw CapacityError.limitReached(running: running)
+        let pidBacked = runningVMs(in: directory, log: log)
+        let union = Set(pidBacked).union(alsoRunning).sorted()
+        guard union.count < maxConcurrentVMs else {
+            log.error("Capacity check failed: \(union.count) VMs running (limit \(maxConcurrentVMs))")
+            throw CapacityError.limitReached(running: union)
         }
-        log.debug("Capacity OK: \(running.count)/\(maxConcurrentVMs) slots used")
+        log.debug("Capacity OK: \(union.count)/\(maxConcurrentVMs) slots used")
     }
 
     /// Default reserve subtracted from host physical memory before
