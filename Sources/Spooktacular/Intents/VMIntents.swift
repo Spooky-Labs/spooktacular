@@ -179,6 +179,17 @@ struct CloneVMIntent: AppIntent {
 ///
 /// Phrases need at least one `.applicationName` placeholder to
 /// avoid false-positive activation of other apps' intents.
+///
+/// - Note: The `systemImageName:` arguments below are the only raw
+///   SF Symbol literals left in the GUI. They cannot go through
+///   `String.SFSymbols` (as every other call site does), because
+///   `AppShortcut.init` declares the parameter as
+///   `systemImageName: _const String` — the compiler requires a
+///   compile-time constant *literal* so the symbol name can be
+///   extracted into the app's static App Intents metadata at build
+///   time. A `static let` is not a literal, so any reference to one
+///   fails with "expect a compile-time constant literal". Keep these
+///   three in sync with `playFill` / `stopFill` / `cameraFill`.
 struct SpooktacularShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(

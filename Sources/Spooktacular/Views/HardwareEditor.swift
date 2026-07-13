@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Post-create hardware editor.
@@ -88,7 +89,7 @@ struct HardwareEditor: View {
 
     private var header: some View {
         HStack {
-            Label("Hardware", systemImage: "cpu")
+            Label("Hardware", systemImage: String.SFSymbols.cpu)
                 .font(.headline)
             Spacer()
         }
@@ -97,7 +98,7 @@ struct HardwareEditor: View {
 
     private var runningHint: some View {
         Section {
-            Label("Stop the workspace to edit hardware.", systemImage: "lock.fill")
+            Label("Stop the workspace to edit hardware.", systemImage: String.SFSymbols.lockFill)
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -175,7 +176,7 @@ struct HardwareEditor: View {
             } else {
                 ForEach($sharedFolders) { $folder in
                     HStack {
-                        Image(systemName: "folder")
+                        Image(systemName: String.SFSymbols.folder)
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(folder.hostPath)
@@ -198,7 +199,7 @@ struct HardwareEditor: View {
                         Button(role: .destructive) {
                             sharedFolders.removeAll { $0.id == folder.id }
                         } label: {
-                            Image(systemName: "minus.circle")
+                            Image(systemName: String.SFSymbols.minusCircle)
                                 // Interactive control — the symbol
                                 // bounces once on pointer entry
                                 // (Reduce-Motion-gated).
@@ -213,7 +214,7 @@ struct HardwareEditor: View {
             Button {
                 addSharedFolder()
             } label: {
-                Label("Add Folder…", systemImage: "plus")
+                Label("Add Folder…", systemImage: String.SFSymbols.plus)
                     .hoverSymbolBounce()
             }
         }
@@ -240,7 +241,7 @@ struct HardwareEditor: View {
                 Button {
                     save()
                 } label: {
-                    Label("Save", systemImage: "checkmark")
+                    Label("Save", systemImage: String.SFSymbols.checkmark)
                         // Hover delight: the checkmark bounces once
                         // on pointer entry (Reduce-Motion-gated
                         // inside the modifier).

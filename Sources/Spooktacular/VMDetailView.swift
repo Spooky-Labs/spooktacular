@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 @preconcurrency import Virtualization
 
@@ -354,7 +355,7 @@ struct VMDetailView: View {
                 .tracking(0.8)
                 .foregroundStyle(.secondary)
             HStack(spacing: 5) {
-                Image(systemName: installed ? "checkmark.seal.fill" : "seal")
+                Image(systemName: installed ? String.SFSymbols.checkmarkSealFill : String.SFSymbols.seal)
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(
                         installed
@@ -437,7 +438,7 @@ struct VMDetailView: View {
                     if transitioning {
                         ProgressView().controlSize(.small)
                     } else {
-                        Label("Suspend", systemImage: "pause.circle")
+                        Label("Suspend", systemImage: String.SFSymbols.pauseCircle)
                             .hoverSymbolBounce()
                     }
                 }
@@ -449,7 +450,7 @@ struct VMDetailView: View {
                 Button {
                     Task { await appState.stopVM(name) }
                 } label: {
-                    Label("Stop", systemImage: "stop.circle")
+                    Label("Stop", systemImage: String.SFSymbols.stopCircle)
                         .hoverSymbolBounce()
                 }
                 .glassButton()
@@ -466,7 +467,9 @@ struct VMDetailView: View {
                         } else {
                             Label(
                                 suspended ? "Resume" : "Start",
-                                systemImage: suspended ? "play.circle.fill" : "play.circle"
+                                systemImage: suspended
+                                    ? String.SFSymbols.playCircleFill
+                                    : String.SFSymbols.playCircle
                             )
                             .hoverSymbolBounce()
                         }
@@ -495,10 +498,10 @@ struct VMDetailView: View {
                         if transitioning {
                             ProgressView().controlSize(.small)
                         } else if installed {
-                            Label("Guest Tools Installed", systemImage: "checkmark.seal.fill")
+                            Label("Guest Tools Installed", systemImage: String.SFSymbols.checkmarkSealFill)
                                 .hoverSymbolBounce()
                         } else {
-                            Label("Install Guest Tools", systemImage: "arrow.down.to.line.circle")
+                            Label("Install Guest Tools", systemImage: String.SFSymbols.arrowDownToLineCircle)
                                 .hoverSymbolBounce()
                         }
                     }
@@ -526,7 +529,7 @@ struct VMDetailView: View {
         let button = Button {
             openWindow(id: "workspace", value: name)
         } label: {
-            Label("Open Workspace", systemImage: "macwindow")
+            Label("Open Workspace", systemImage: String.SFSymbols.macwindow)
                 .hoverSymbolBounce()
         }
         .controlSize(.large)
@@ -596,9 +599,9 @@ struct VMDetailView: View {
     /// drives the `.symbolEffect(.replace)` content transition.
     private var statusSymbol: String {
         switch lifecyclePhase {
-        case .running: "circle.fill"
-        case .suspended: "pause.circle.fill"
-        case .stopped: "circle"
+        case .running: String.SFSymbols.circleFill
+        case .suspended: String.SFSymbols.pauseCircleFill
+        case .stopped: String.SFSymbols.circle
         }
     }
 
@@ -849,7 +852,7 @@ struct ImageDetailView: View {
             if let bytes = image.sizeInBytes {
                 panelHairline
                 VStack(alignment: .leading, spacing: 4) {
-                    panelLabel("Size", systemImage: "internaldrive")
+                    panelLabel("Size", systemImage: String.SFSymbols.internaldrive)
                     Text(Int64(clamping: bytes), format: .byteCount(style: .file))
                         .font(.system(.title3, design: .monospaced).weight(.medium))
                 }
@@ -858,7 +861,7 @@ struct ImageDetailView: View {
 
             panelHairline
             VStack(alignment: .leading, spacing: 4) {
-                panelLabel("Added", systemImage: "calendar")
+                panelLabel("Added", systemImage: String.SFSymbols.calendar)
                 Text(image.addedAt, format: .dateTime.day().month(.wide).year())
                     .font(.callout)
                     .monospacedDigit()
@@ -915,7 +918,7 @@ struct ImageDetailView: View {
                     }
                     appState.showCreateSheet = true
                 } label: {
-                    Label("Create VM from image", systemImage: "plus.square.on.square")
+                    Label("Create VM from image", systemImage: String.SFSymbols.plusSquareOnSquare)
                         .hoverSymbolBounce()
                         .padding(.horizontal, 8)
                 }
@@ -925,7 +928,7 @@ struct ImageDetailView: View {
                 Button(role: .destructive) {
                     try? appState.imageLibrary.remove(id: image.id)
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label("Delete", systemImage: String.SFSymbols.trash)
                         .hoverSymbolBounce()
                 }
                 .glassButton()
@@ -955,25 +958,25 @@ struct ImageDetailView: View {
         }
     }
 
-    /// The large white glyph inside the medallion. `applelogo`
+    /// The large white glyph inside the medallion. `apple.logo`
     /// for macOS IPSWs (unambiguous Apple-provenance cue);
     /// `opticaldisc.fill` for Linux ISOs (thematic — ISO is
     /// literally a disc image); `cube.transparent` for OCI
     /// references (container ecosystem iconography).
     private var iconName: String {
         switch kind {
-        case .macOS: "applelogo"
-        case .linux: "opticaldisc.fill"
-        case .oci: "cube.transparent"
+        case .macOS: String.SFSymbols.appleLogo
+        case .linux: String.SFSymbols.opticaldiscFill
+        case .oci: String.SFSymbols.cubeTransparent
         }
     }
 
     /// Small SF Symbol in the source-detail chip.
     private var sourceIcon: String {
         switch kind {
-        case .macOS: "doc.zipper"
-        case .linux: "opticaldisc"
-        case .oci: "shippingbox"
+        case .macOS: String.SFSymbols.zipperPage
+        case .linux: String.SFSymbols.opticaldisc
+        case .oci: String.SFSymbols.shippingbox
         }
     }
 
@@ -1000,7 +1003,7 @@ struct ImageDetailView: View {
     /// generic system palette:
     ///
     /// - **macOS IPSW** → Apple's system blue (`Color.blue`).
-    ///   Matches Apple's own marketing + the `applelogo`
+    ///   Matches Apple's own marketing + the `apple.logo`
     ///   glyph's canonical default color.
     /// - **Linux ISO** → Tux-gold `#FFCC33`. The color of
     ///   Tux the Penguin's beak and feet — the only Linux
@@ -1058,11 +1061,11 @@ struct VMRow: View {
     /// hollow at rest.
     private var stateGlyph: String {
         if isTransitioning {
-            "circle.dotted"
+            String.SFSymbols.circleDotted
         } else if isRunning {
-            "circle.inset.filled"
+            String.SFSymbols.insetFilledCircle
         } else {
-            "circle"
+            String.SFSymbols.circle
         }
     }
 
@@ -1123,7 +1126,7 @@ struct VMRow: View {
                         Task { await appState.startVM(name) }
                     }
                 } label: {
-                    Image(systemName: isRunning ? "stop.fill" : "play.fill")
+                    Image(systemName: isRunning ? String.SFSymbols.stopFill : String.SFSymbols.playFill)
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.secondary)
                         .contentTransition(.symbolEffect(.replace))
@@ -1199,7 +1202,7 @@ struct PendingVMRow: View {
             // color, matching the transitioning / suspended
             // convention); red when errored so the row reads as
             // a failure at a glance.
-            Image(systemName: "circle.fill")
+            Image(systemName: String.SFSymbols.circleFill)
                 .font(.system(size: 7))
                 .foregroundStyle(hasError ? .red : Apparition.lantern)
                 // The lantern breathes while work is in flight —
@@ -1261,7 +1264,7 @@ struct PendingVMRow: View {
                     appState.cancelPending(pending.name)
                 }
             } label: {
-                Image(systemName: hasError ? "xmark.circle.fill" : "stop.circle")
+                Image(systemName: hasError ? String.SFSymbols.xmarkCircleFill : String.SFSymbols.stopCircle)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)

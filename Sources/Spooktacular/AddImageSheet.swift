@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Sheet for adding a VM image to the local library.
@@ -177,7 +178,7 @@ struct AddImageSheet: View {
                 }
 
                 if let error = errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                    Label(error, systemImage: String.SFSymbols.exclamationmarkTriangleFill)
                         .font(.callout)
                         .foregroundStyle(.red)
                         .padding(.horizontal, 14)
@@ -219,7 +220,7 @@ struct AddImageSheet: View {
                     Button {
                         addImage()
                     } label: {
-                        Label("Add", systemImage: "plus")
+                        Label("Add", systemImage: String.SFSymbols.plus)
                             // Hover delight: the plus bounces once
                             // on pointer entry (Reduce-Motion-gated
                             // inside the modifier).

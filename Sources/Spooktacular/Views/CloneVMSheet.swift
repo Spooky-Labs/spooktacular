@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Modal sheet for cloning a virtual machine.
@@ -47,7 +48,7 @@ struct CloneVMSheet: View {
 
             if let error = errorMessage {
                 Divider()
-                Label(error, systemImage: "exclamationmark.triangle.fill")
+                Label(error, systemImage: String.SFSymbols.exclamationmarkTriangleFill)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .padding(.horizontal, 14)
@@ -85,7 +86,7 @@ struct CloneVMSheet: View {
 
     private var header: some View {
         HStack {
-            Label("Clone Virtual Machine", systemImage: "doc.on.doc")
+            Label("Clone Virtual Machine", systemImage: String.SFSymbols.documentOnDocument)
                 .font(.headline)
                 // Display headings speak in SF Pro Rounded — the
                 // Apparition type voice.
@@ -155,7 +156,7 @@ struct CloneVMSheet: View {
                 Button {
                     performClone()
                 } label: {
-                    Label("Clone", systemImage: "doc.on.doc")
+                    Label("Clone", systemImage: String.SFSymbols.documentOnDocument)
                         // Hover delight: the clone glyph bounces
                         // once on pointer entry (Reduce-Motion-
                         // gated inside the modifier).

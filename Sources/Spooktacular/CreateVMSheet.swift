@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 import UniformTypeIdentifiers
 import Virtualization
@@ -427,7 +428,7 @@ struct CreateVMSheet: View {
                     Button {
                         submitCreate()
                     } label: {
-                        Label("Create", systemImage: "plus")
+                        Label("Create", systemImage: String.SFSymbols.plus)
                             // Hover delight: the plus bounces once
                             // when the pointer enters the primary
                             // action. Reduce-Motion-gated inside
@@ -707,7 +708,7 @@ struct CreateVMSheet: View {
     private var sharedFoldersControls: some View {
         ForEach($sharedFolders) { $folder in
             HStack {
-                Image(systemName: "folder").foregroundStyle(.secondary)
+                Image(systemName: String.SFSymbols.folder).foregroundStyle(.secondary)
                 Text(folder.hostPath).lineLimit(1).truncationMode(.middle)
                 Spacer()
                 Text(folder.readOnly ? "ro" : "rw")
@@ -716,7 +717,7 @@ struct CreateVMSheet: View {
                 Button(role: .destructive) {
                     sharedFolders.removeAll { $0.id == folder.id }
                 } label: {
-                    Image(systemName: "minus.circle")
+                    Image(systemName: String.SFSymbols.minusCircle)
                         // Interactive control — the symbol bounces
                         // once on pointer entry (Reduce-Motion-gated).
                         .hoverSymbolBounce()
@@ -727,7 +728,7 @@ struct CreateVMSheet: View {
         Button {
             addSharedFolder()
         } label: {
-            Label("Add Folder…", systemImage: "plus")
+            Label("Add Folder…", systemImage: String.SFSymbols.plus)
                 .hoverSymbolBounce()
         }
     }
@@ -826,7 +827,7 @@ struct CreateVMSheet: View {
     @ViewBuilder
     private var errorBar: some View {
         if let error = errorMessage {
-            Label(error, systemImage: "exclamationmark.triangle.fill")
+            Label(error, systemImage: String.SFSymbols.exclamationmarkTriangleFill)
                 .font(.caption)
                 .foregroundStyle(.red)
                 .padding(.horizontal, 14)
@@ -1130,7 +1131,7 @@ struct RitualSectionHeader: View {
         HStack(spacing: 5) {
             Text(title)
             if complete {
-                Image(systemName: "checkmark.seal")
+                Image(systemName: String.SFSymbols.checkmarkSeal)
                     .foregroundStyle(Apparition.vital)
                     .imageScale(.small)
                     .transition(

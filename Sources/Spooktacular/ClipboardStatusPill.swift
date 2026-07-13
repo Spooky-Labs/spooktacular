@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Toolbar pill that renders the guest's SPICE clipboard
@@ -36,10 +37,10 @@ struct ClipboardStatusPill: View {
 
     private var symbol: String {
         switch snapshot.state {
-        case .notStarted:  "clipboard"
-        case .connecting:  "clipboard.fill"
-        case .connected:   "clipboard.fill"
-        case .failed:      "exclamationmark.triangle.fill"
+        case .notStarted:  String.SFSymbols.clipboard
+        case .connecting:  String.SFSymbols.clipboardFill
+        case .connected:   String.SFSymbols.clipboardFill
+        case .failed:      String.SFSymbols.exclamationmarkTriangleFill
         }
     }
 

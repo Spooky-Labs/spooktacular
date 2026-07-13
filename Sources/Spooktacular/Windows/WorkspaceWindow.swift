@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SFSymbolsKit
 @preconcurrency import Virtualization
 import SpooktacularInfrastructureApple
 import SpooktacularKit
@@ -153,7 +154,7 @@ struct WorkspaceWindow: View {
     private var missingWorkspace: some View {
         ContentUnavailableView(
             "Workspace Unavailable",
-            systemImage: "questionmark.folder",
+            systemImage: String.SFSymbols.questionmarkFolder,
             description: Text("The VM was removed or is not loaded.")
         )
         .padding()
@@ -184,7 +185,7 @@ struct WorkspaceWindow: View {
             Button {
                 Task { await appState.suspendVM(vmName) }
             } label: {
-                Label("Suspend", systemImage: "pause.fill")
+                Label("Suspend", systemImage: String.SFSymbols.pauseFill)
                     // Hover delight: one-shot symbol bounce on pointer
                     // entry (Reduce-Motion-gated inside the modifier).
                     // Attached to the Label so only the symbol animates.
@@ -195,7 +196,7 @@ struct WorkspaceWindow: View {
             Button {
                 Task { await appState.stopVM(vmName) }
             } label: {
-                Label("Stop", systemImage: "stop.fill")
+                Label("Stop", systemImage: String.SFSymbols.stopFill)
                     .hoverSymbolBounce()
             }
             .help("Stop this workspace")
@@ -209,7 +210,7 @@ struct WorkspaceWindow: View {
             Button {
                 showSnapshots = true
             } label: {
-                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                Label("Snapshots", systemImage: String.SFSymbols.clockArrowTriangleheadCounterclockwiseRotate90)
                     .hoverSymbolBounce()
             }
             .help("Manage snapshots for this workspace (⇧⌘S)")
@@ -222,13 +223,15 @@ struct WorkspaceWindow: View {
                 Button {
                     Task { await launchSSH() }
                 } label: {
-                    Label("SSH in Terminal…", systemImage: "terminal")
+                    Label("SSH in Terminal…", systemImage: String.SFSymbols.appleTerminal)
                 }
                 .help("Resolve the workspace's IP and open an ssh session in Terminal.app.")
             } label: {
                 Label(
                     lastCopiedIP ?? "Copy IP",
-                    systemImage: lastCopiedIP != nil ? "checkmark.circle.fill" : "number"
+                    systemImage: lastCopiedIP != nil
+                        ? String.SFSymbols.checkmarkCircleFill
+                        : String.SFSymbols.number
                 )
                 // Morph number → checkmark on copy + a one-shot bounce so
                 // the copy registers without a modal toast.
@@ -334,11 +337,11 @@ struct WorkspaceWindow: View {
                 Button {
                     Task { await appState.startVM(vmName, recovery: true) }
                 } label: {
-                    Label("Start in Recovery Mode", systemImage: "wrench.and.screwdriver")
+                    Label("Start in Recovery Mode", systemImage: String.SFSymbols.wrenchAndScrewdriver)
                 }
                 .help("Boot into macOS Recovery (Disk Utility, Startup Security Utility, reinstall).")
             } label: {
-                Label("Start", systemImage: "play.fill")
+                Label("Start", systemImage: String.SFSymbols.playFill)
                     // Hover delight: one-shot symbol bounce on pointer
                     // entry (Reduce-Motion-gated inside the modifier).
                     .hoverSymbolBounce()
@@ -357,7 +360,7 @@ struct WorkspaceWindow: View {
             Button {
                 showHardware = true
             } label: {
-                Label("Hardware", systemImage: "cpu")
+                Label("Hardware", systemImage: String.SFSymbols.cpu)
                     .hoverSymbolBounce()
             }
             .help("Edit CPU, memory, and disk (⇧⌘H)")
@@ -366,7 +369,7 @@ struct WorkspaceWindow: View {
             Button {
                 showSnapshots = true
             } label: {
-                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                Label("Snapshots", systemImage: String.SFSymbols.clockArrowTriangleheadCounterclockwiseRotate90)
                     .hoverSymbolBounce()
             }
             .help("Manage snapshots for this workspace (⇧⌘S)")
@@ -483,7 +486,7 @@ struct WorkspaceLaunchView: View {
             Button {
                 Task { await appState.startVM(name) }
             } label: {
-                Label("Start Workspace", systemImage: "play.fill")
+                Label("Start Workspace", systemImage: String.SFSymbols.playFill)
                     .font(.system(.headline, design: .rounded))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)

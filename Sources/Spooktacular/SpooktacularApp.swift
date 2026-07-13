@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import UniformTypeIdentifiers
 import SpooktacularInfrastructureApple
 
@@ -29,10 +30,10 @@ struct SpooktacularApp: App {
     @State private var showImporter: Bool = false
 
     private var menuBarSymbol: String {
-        if appState.isAnyVMTransitioning { return "hourglass.circle" }
+        if appState.isAnyVMTransitioning { return String.SFSymbols.hourglassCircle }
         return appState.runningVMs.isEmpty
-            ? "square.stack.3d.up"
-            : "square.stack.3d.up.fill"
+            ? String.SFSymbols.squareStack3dUp
+            : String.SFSymbols.squareStack3dUpFill
     }
 
     var body: some Scene {

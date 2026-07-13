@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Shows the per-VM first-boot provisioning status inline in
@@ -42,7 +43,7 @@ struct ProvisioningPane: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Label("Provisioning", systemImage: "gearshape.2")
+            Label("Provisioning", systemImage: String.SFSymbols.gearshape2)
                 .font(.headline)
 
             Spacer()
@@ -82,7 +83,7 @@ struct ProvisioningPane: View {
                 // The first-boot.sh step is active for exactly as
                 // long as it stays pending, so the clock pulses
                 // while the guest hasn't yet consumed the script.
-                Image(systemName: "clock")
+                Image(systemName: String.SFSymbols.clock)
                     .foregroundStyle(.orange)
                     .symbolEffect(.pulse, isActive: model.activity.scriptPending)
                 Text("first-boot.sh")
@@ -142,8 +143,8 @@ struct ProvisioningPane: View {
                     // the pane is open, `completedAt` changes and the
                     // result glyph bounces once to draw the eye.
                     Image(systemName: run.succeeded
-                        ? "checkmark.circle.fill"
-                        : "xmark.octagon.fill")
+                        ? String.SFSymbols.checkmarkCircleFill
+                        : String.SFSymbols.xmarkOctagonFill)
                         .foregroundStyle(run.succeeded ? .green : .red)
                         .symbolEffect(.bounce, value: run.completedAt)
                     Text(run.succeeded ? "Completed" : "Failed")
@@ -180,7 +181,7 @@ struct ProvisioningPane: View {
             Button {
                 NSWorkspace.shared.open(url)
             } label: {
-                Label("Open", systemImage: "arrow.up.right.square")
+                Label("Open", systemImage: String.SFSymbols.arrowUpRightSquare)
                     .labelStyle(.iconOnly)
                     .font(.caption)
             }

@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// ⌘K command palette — one place to trigger any app action.
@@ -31,7 +32,7 @@ struct CommandPalette: View {
         result.append(PaletteCommand(
             title: "New Virtual Machine…",
             subtitle: "Create a new workspace",
-            systemImage: "plus.square.on.square",
+            systemImage: String.SFSymbols.plusSquareOnSquare,
             shortcut: "⌘N",
             // Wisp marks the app's ONE primary action in this
             // list; every other row icon stays neutral.
@@ -41,7 +42,7 @@ struct CommandPalette: View {
         result.append(PaletteCommand(
             title: "Add Image…",
             subtitle: "Import an IPSW or OCI reference",
-            systemImage: "square.and.arrow.down",
+            systemImage: String.SFSymbols.squareAndArrowDown,
             shortcut: "⌘⇧I",
             action: { appState.showAddImage = true }
         ))
@@ -54,7 +55,7 @@ struct CommandPalette: View {
             result.append(PaletteCommand(
                 title: "Open Workspace · \(displayName)",
                 subtitle: "Open '\(displayName)' in its own window",
-                systemImage: "macwindow",
+                systemImage: String.SFSymbols.macwindow,
                 shortcut: nil,
                 action: { openWindow(id: "workspace", value: name) }
             ))
@@ -62,7 +63,7 @@ struct CommandPalette: View {
                 result.append(PaletteCommand(
                     title: "Stop · \(displayName)",
                     subtitle: "Stop the running workspace",
-                    systemImage: "stop.fill",
+                    systemImage: String.SFSymbols.stopFill,
                     shortcut: nil,
                     action: { Task { await appState.stopVM(name) } }
                 ))
@@ -70,7 +71,7 @@ struct CommandPalette: View {
                 result.append(PaletteCommand(
                     title: "Start · \(displayName)",
                     subtitle: "Boot the workspace",
-                    systemImage: "play.fill",
+                    systemImage: String.SFSymbols.playFill,
                     shortcut: nil,
                     action: { Task { await appState.startVM(name) } }
                 ))
@@ -78,7 +79,7 @@ struct CommandPalette: View {
             result.append(PaletteCommand(
                 title: "Clone · \(displayName)",
                 subtitle: "APFS clone under '\(displayName)-clone'",
-                systemImage: "doc.on.doc",
+                systemImage: String.SFSymbols.documentOnDocument,
                 shortcut: nil,
                 action: { appState.cloneVM(name, to: "\(displayName)-clone") }
             ))
@@ -134,7 +135,7 @@ struct CommandPalette: View {
 
     private var searchField: some View {
         HStack(spacing: 10) {
-            Image(systemName: "command")
+            Image(systemName: String.SFSymbols.command)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.secondary)
             TextField("Type a command or VM name", text: $query)
@@ -151,7 +152,7 @@ struct CommandPalette: View {
         if filtered.isEmpty {
             ContentUnavailableView(
                 "No matches",
-                systemImage: "magnifyingglass",
+                systemImage: String.SFSymbols.magnifyingglass,
                 description: Text("Try 'start', 'snapshot', or a VM name.")
             )
         } else {

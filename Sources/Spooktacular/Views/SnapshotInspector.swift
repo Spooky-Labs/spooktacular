@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Snapshot management UI surfaced as a glass sheet on the
@@ -77,7 +78,10 @@ struct SnapshotInspector: View {
 
     private var header: some View {
         HStack {
-            Label("Snapshots", systemImage: "clock.arrow.circlepath")
+            Label(
+                "Snapshots",
+                systemImage: String.SFSymbols.clockArrowTriangleheadCounterclockwiseRotate90
+            )
                 .font(.headline)
             Spacer()
             Button("Done") { dismiss() }
@@ -92,7 +96,7 @@ struct SnapshotInspector: View {
         if snapshots.isEmpty {
             ContentUnavailableView(
                 "No Snapshots",
-                systemImage: "camera.aperture",
+                systemImage: String.SFSymbols.cameraAperture,
                 description: Text("Save a snapshot before making risky changes.")
             )
             .padding(32)
@@ -124,7 +128,7 @@ struct SnapshotInspector: View {
             Button {
                 save(label: newLabel)
             } label: {
-                Label("Save", systemImage: "camera.fill")
+                Label("Save", systemImage: String.SFSymbols.cameraFill)
                     // Bounces the camera the instant a snapshot lands
                     // — `save()` calls `reload()` and the sheet stays
                     // open, so `snapshots.count` ticks up while the
@@ -238,7 +242,7 @@ struct SnapshotRow: View {
             // lives on the header/footer CTAs where one prominent
             // action reads clearly.
             Button(action: onRestore) {
-                Label("Restore", systemImage: "arrow.uturn.backward")
+                Label("Restore", systemImage: String.SFSymbols.arrowUturnBackward)
                     // Hover delight: the symbol bounces once on
                     // pointer entry (Reduce-Motion-gated inside
                     // the modifier).
@@ -251,7 +255,7 @@ struct SnapshotRow: View {
                   : "Restore the workspace to this snapshot")
 
             Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
+                Image(systemName: String.SFSymbols.trash)
                     .hoverSymbolBounce()
             }
             .buttonStyle(.borderless)

@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// The menu bar dropdown for quick VM management.
@@ -12,7 +13,7 @@ struct MenuBarView: View {
 
     var body: some View {
         if appState.vms.isEmpty {
-            Label("No Virtual Machines", systemImage: "square.stack.3d.up.slash")
+            Label("No Virtual Machines", systemImage: String.SFSymbols.squareStack3dUpSlash)
                 .foregroundStyle(.secondary)
             Divider()
         } else {
@@ -27,7 +28,7 @@ struct MenuBarView: View {
             let isBooting = !appState.transitioningVMs.isEmpty
             Label(
                 "\(running) of \(total) running",
-                systemImage: "gauge.with.dots.needle.33percent"
+                systemImage: String.SFSymbols.gaugeWithDotsNeedle33percent
             )
             .font(.caption)
             // Machine-speak counts get tabular digits so the line
@@ -49,14 +50,14 @@ struct MenuBarView: View {
             appState.showCreateSheet = true
             NSApplication.shared.activate(ignoringOtherApps: true)
         } label: {
-            Label("New Virtual Machine…", systemImage: "plus.square.on.square")
+            Label("New Virtual Machine…", systemImage: String.SFSymbols.plusSquareOnSquare)
         }
         .keyboardShortcut("n", modifiers: [.command])
 
         Button {
             NSApplication.shared.activate(ignoringOtherApps: true)
         } label: {
-            Label("Open Spooktacular", systemImage: "macwindow")
+            Label("Open Spooktacular", systemImage: String.SFSymbols.macwindow)
         }
         .keyboardShortcut("o", modifiers: [.command])
 
@@ -68,7 +69,7 @@ struct MenuBarView: View {
                 from: nil
             )
         } label: {
-            Label("Settings…", systemImage: "gear")
+            Label("Settings…", systemImage: String.SFSymbols.gear)
         }
         .keyboardShortcut(",", modifiers: [.command])
 
@@ -77,7 +78,7 @@ struct MenuBarView: View {
         Button {
             NSApplication.shared.terminate(nil)
         } label: {
-            Label("Quit Spooktacular", systemImage: "power")
+            Label("Quit Spooktacular", systemImage: String.SFSymbols.power)
         }
         .keyboardShortcut("q", modifiers: [.command])
     }
@@ -99,18 +100,18 @@ struct MenuBarView: View {
                     Text("…").foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: "hourglass")
+                Image(systemName: String.SFSymbols.hourglass)
                     // Lantern = materializing / in-progress in the
                     // Apparition palette.
                     .foregroundStyle(Apparition.lantern)
             }
         } else if isRunning {
             Menu {
-                Button("Stop", systemImage: "stop.fill") {
+                Button("Stop", systemImage: String.SFSymbols.stopFill) {
                     Task { await appState.stopVM(name) }
                 }
                 Divider()
-                Button("Show in Window", systemImage: "macwindow") {
+                Button("Show in Window", systemImage: String.SFSymbols.macwindow) {
                     appState.selectedVM = name
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
@@ -123,23 +124,23 @@ struct MenuBarView: View {
                         Text("Running").foregroundStyle(Apparition.vital)
                     }
                 } icon: {
-                    Image(systemName: "play.circle.fill")
+                    Image(systemName: String.SFSymbols.playCircleFill)
                         .foregroundStyle(Apparition.vital)
                 }
             }
         } else {
             Menu {
-                Button("Start", systemImage: "play.fill") {
+                Button("Start", systemImage: String.SFSymbols.playFill) {
                     Task { await appState.startVM(name) }
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
                 Divider()
-                Button("Show in Window", systemImage: "macwindow") {
+                Button("Show in Window", systemImage: String.SFSymbols.macwindow) {
                     appState.selectedVM = name
                     NSApplication.shared.activate(ignoringOtherApps: true)
                 }
             } label: {
-                Label(displayName, systemImage: "stop.circle")
+                Label(displayName, systemImage: String.SFSymbols.stopCircle)
             }
         }
     }

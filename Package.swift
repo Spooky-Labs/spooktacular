@@ -53,6 +53,17 @@ let package = Package(
         // extracted to its own public repo post-launch — see
         // Packages/SpiceProtocol/docs/SPEC_ATTRIBUTION.md).
         .package(path: "Packages/SpiceGuestAgent"),
+        // Type-safe SF Symbols. `Image(systemName: "clock.arrow.circlepth")`
+        // is a silent failure — a typo'd symbol renders as a blank
+        // frame with no compiler error and no runtime warning. Every
+        // symbol reference in the GUI goes through this package's
+        // generated properties instead, so a bad name is a build
+        // error. Generated from Apple's SF Symbols 7.2 catalog;
+        // MIT-licensed.
+        .package(
+            url: "https://github.com/WikipediaBrown/SFSymbolsKit.git",
+            from: "1.0.9"
+        ),
     ],
     targets: [
         // ──────────────────────────────────────────────
@@ -111,7 +122,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "Spooktacular",
-            dependencies: ["SpooktacularKit"],
+            dependencies: [
+                "SpooktacularKit",
+                .product(name: "SFSymbolsKit", package: "SFSymbolsKit"),
+            ],
             path: "Sources/Spooktacular"
         ),
         // VM lifecycle helper (Track J). Depends on
@@ -179,6 +193,10 @@ let package = Package(
             name: "SpooktacularKitTests",
             dependencies: [
                 "SpooktacularKit",
+                // Pins the three AppShortcut symbol literals that
+                // `_const String` forbids from being type-safe —
+                // see AppShortcutSymbolTests.
+                .product(name: "SFSymbolsKit", package: "SFSymbolsKit"),
             ],
             path: "Tests/SpooktacularKitTests"
         ),

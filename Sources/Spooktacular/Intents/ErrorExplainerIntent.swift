@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import SFSymbolsKit
 
 /// WWDC 2025 headline: **on-device error explanation via
 /// Foundation Models**.
@@ -113,7 +114,7 @@ struct ErrorExplainerSheet: View {
                 Label {
                     Text("Explain this error")
                 } icon: {
-                    Image(systemName: "sparkles")
+                    Image(systemName: String.SFSymbols.sparkles)
                         // Wisp marks the brand moment of the
                         // surface (on-device intelligence).
                         .foregroundStyle(Apparition.wisp)

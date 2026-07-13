@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Compact Swift Charts panel shown in the workspace inspector.
@@ -194,7 +195,7 @@ struct WorkspaceStatsSidebar: View {
         // 10 < 14 keeps every card a crisp, separate pane.
         GlassEffectContainer(spacing: 10) {
             VStack(alignment: .leading, spacing: 14) {
-                Label("Live metrics", systemImage: "waveform.path.ecg")
+                Label("Live metrics", systemImage: String.SFSymbols.waveformPathEcg)
                     .font(.headline)
                     .padding(.leading, 4)
 
@@ -332,7 +333,7 @@ struct WorkspaceStatsSidebar: View {
         let newestID = model.samples.last(where: { $0.cpuUsage != nil })?.id
         return metricCard(
             title: "CPU",
-            systemImage: "cpu",
+            systemImage: String.SFSymbols.cpu,
             tint: Apparition.vital,
             value: readout(model.samples.last?.cpuUsage.map { $0 * 100 }, unit: "%"),
             description: "How much of this virtual machine's processing power is in use. The horizontal axis is the last 60 seconds; the vertical axis is the percent of allocated virtual CPUs currently busy. Zero means the guest is idle; 100% means every virtual CPU you've allocated is fully saturated. Brief spikes are normal — they happen when the guest launches an app or renders a page. A line that stays at 100% for minutes means the guest is compute-bound and could use more vCPUs. The measurement comes from ps(1), which reports the CPU time accumulated by the VM's backing process the same way Activity Monitor does."
@@ -377,7 +378,7 @@ struct WorkspaceStatsSidebar: View {
         let newestID = model.samples.last(where: { $0.memoryUsage != nil })?.id
         return metricCard(
             title: "Memory",
-            systemImage: "memorychip",
+            systemImage: String.SFSymbols.memorychip,
             tint: Apparition.vital,
             value: readout(model.samples.last?.memoryUsage.map { $0 * 100 }, unit: "%"),
             description: "The share of this virtual machine's memory that's actively held in your Mac's RAM right now. The horizontal axis is the last 60 seconds; the vertical axis is the percent of allocated memory in active use. A rising value means the guest is doing more; a falling value means macOS is compressing pages the guest hasn't touched recently, which frees up real RAM for your Mac. Don't worry if it settles at a moderate number — that's normal caching behavior. Sourced from the VM backing process's resident memory footprint as reported by the macOS kernel."
@@ -436,7 +437,7 @@ struct WorkspaceStatsSidebar: View {
         let newestWrite = model.samples.last(where: { $0.diskWriteRateMiBPerSec != nil })?.id
         return metricCard(
             title: "Disk Activity",
-            systemImage: "internaldrive",
+            systemImage: String.SFSymbols.internaldrive,
             tint: .teal,
             value: readout(total, unit: "MiB/s"),
             description: "How fast the virtual machine is reading from and writing to its disk. The horizontal axis is the last 60 seconds; the vertical axis is megabytes per second. The teal line tracks reads (loading apps, opening files); the pink line tracks writes (saving work, updates). Short spikes are normal app-launch or boot activity; a steady high read rate suggests the guest is streaming a large file, while a steady high write rate often means a system update or build is running. The measurement comes from your Mac's kernel accounting for every block operation the guest's virtual disk performs."
@@ -498,7 +499,7 @@ struct WorkspaceStatsSidebar: View {
         let newestID = model.samples.last(where: { $0.powerWatts != nil })?.id
         return metricCard(
             title: "Energy",
-            systemImage: "bolt",
+            systemImage: String.SFSymbols.bolt,
             tint: .green,
             value: readout(model.samples.last?.powerWatts, unit: "W", digits: 2),
             description: "How much power the virtual machine is drawing from your Mac. The horizontal axis is the last 60 seconds; the vertical axis is watts. A fraction of a watt is typical for an idle guest; a sustained couple of watts usually means the guest is compiling, transcoding, or running something compute-heavy. Lower numbers mean longer battery life when you're unplugged. Sourced from the same power-accounting counters that Apple's powermetrics command-line tool reports."
@@ -542,7 +543,7 @@ struct WorkspaceStatsSidebar: View {
         let newestID = model.samples.last(where: { $0.pageInRatePerSec != nil })?.id
         return metricCard(
             title: "Paging",
-            systemImage: "arrow.up.arrow.down.circle",
+            systemImage: String.SFSymbols.arrowUparrowDownCircle,
             tint: .indigo,
             value: readout(model.samples.last?.pageInRatePerSec, unit: "/s", digits: 0),
             description: "How often pages of the virtual machine's memory are being re-read from storage because macOS compressed them out of active RAM. The horizontal axis is the last 60 seconds; the vertical axis is page-ins per second. Zero is the healthy resting value — a flat line at the bottom means your Mac has plenty of room and isn't swapping the VM. Sustained non-zero activity suggests the VM could use more allocated RAM, or the Mac is under memory pressure overall. Reported by your Mac's kernel via ri_pageins on the VM's backing process."

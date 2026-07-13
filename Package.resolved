@@ -1,6 +1,15 @@
 {
-  "originHash" : "69761a9dd841f9852cb29a0fa602e209325fcfa82a2fb7bd9ed3eb82571daf42",
+  "originHash" : "168a929d1c9954fddfb06612e2ea7e8b69cb946275465a5ef0cdad703f71130d",
   "pins" : [
+    {
+      "identity" : "sfsymbolskit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/WikipediaBrown/SFSymbolsKit.git",
+      "state" : {
+        "revision" : "673c440d2ed9045caa09450840a67ced28dabd61",
+        "version" : "1.0.9"
+      }
+    },
     {
       "identity" : "swift-argument-parser",
       "kind" : "remoteSourceControl",

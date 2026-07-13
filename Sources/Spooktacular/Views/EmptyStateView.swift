@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 
 /// Library empty state — replaces the default `ContentUnavailable`
 /// look with a tinted hero symbol and a gentle one-shot drift.
@@ -24,7 +25,7 @@ struct EmptyStateView: View {
         VStack(spacing: 28) {
             Spacer()
 
-            Image(systemName: "sparkles")
+            Image(systemName: String.SFSymbols.sparkles)
                 .font(.system(size: 72, weight: .light))
                 // `ShapeStyle.tint` reflects the app's accent
                 // color (or an explicit `.tint(_:)` if a view
@@ -54,7 +55,7 @@ struct EmptyStateView: View {
             Button {
                 onCreate()
             } label: {
-                Label("Create Workspace", systemImage: "plus.square.on.square")
+                Label("Create Workspace", systemImage: String.SFSymbols.plusSquareOnSquare)
                     .font(.headline)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)

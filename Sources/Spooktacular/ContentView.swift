@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Library window — pure `NavigationSplitView`. Sidebar on the
@@ -51,7 +52,7 @@ struct ContentView: View {
                 Button {
                     appState.showCreateSheet = true
                 } label: {
-                    Label("New Virtual Machine", systemImage: "plus")
+                    Label("New Virtual Machine", systemImage: String.SFSymbols.plus)
                         // Hover delight on the label (not the
                         // button) so only the symbol bounces;
                         // one-shot + Reduce-Motion-gated inside
@@ -123,7 +124,7 @@ struct ContentView: View {
                                 appState.deleteVM(name)
                                 if selection == .vm(name) { selection = nil }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("Delete", systemImage: String.SFSymbols.trash)
                             }
                         }
                 }
@@ -157,14 +158,14 @@ struct ContentView: View {
                                 try? appState.imageLibrary.remove(id: image.id)
                                 if selection == .image(image.id) { selection = nil }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("Delete", systemImage: String.SFSymbols.trash)
                             }
                         }
                 }
                 Button {
                     appState.showAddImage = true
                 } label: {
-                    Label("Add Image…", systemImage: "plus")
+                    Label("Add Image…", systemImage: String.SFSymbols.plus)
                         // Same hover-bounce contract as the
                         // toolbar action — the row is interactive,
                         // so its symbol responds to the pointer.
@@ -237,7 +238,7 @@ struct ContentView: View {
         } else {
             ContentUnavailableView(
                 "Select a workspace",
-                systemImage: "sidebar.left",
+                systemImage: String.SFSymbols.sidebarLeft,
                 description: Text("Choose one from the sidebar.")
             )
         }
@@ -349,9 +350,11 @@ private struct ImageRow: View {
     private var glyph: String {
         switch image.source {
         case .ipsw(let path):
-            path.lowercased().hasSuffix(".iso") ? "opticaldisc.fill" : "apple.logo"
+            path.lowercased().hasSuffix(".iso")
+                ? String.SFSymbols.opticaldiscFill
+                : String.SFSymbols.appleLogo
         case .oci:
-            "shippingbox.fill"
+            String.SFSymbols.shippingboxFill
         }
     }
 
