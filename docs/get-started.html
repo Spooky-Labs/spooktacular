@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Get Started — Spooktacular</title>
 <meta name="description" content="Step-by-step guide to getting started with Spooktacular. Create your first VM, clone it, and run your CI pipeline in minutes.">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0f0a1a">
+<meta property="og:title" content="Get Started — Spooktacular">
+<meta property="og:description" content="Step-by-step guide to getting started with Spooktacular. Create your first VM, clone it, and run your CI pipeline in minutes.">
+<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://spooktacular.app/get-started.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
 <style>
 :root { --bg: #09090b; --surface: #18181b; --surface2: #1f1f23; --border: #27272a; --border-hover: #3f3f46; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -23,6 +33,7 @@ nav .inner { display: flex; align-items: center; justify-content: space-between;
 nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
 nav .logo:hover { text-decoration: none; }
 nav .logo svg { width: 24px; height: 24px; }
+nav .logo img { width: 28px; height: 28px; }
 nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
 nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
 nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
@@ -141,7 +152,7 @@ nav, .container, .page-header, footer, main { position: relative; z-index: 1; }
 <nav role="navigation" aria-label="Main navigation">
 <div class="inner">
 <a href="index.html" class="logo" aria-label="Spooktacular home">
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+<img src="/img/icon.svg" width="28" height="28" alt="Spooktacular" style="image-rendering:pixelated;border-radius:6px;">
 Spooktacular
 </a>
 <input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">

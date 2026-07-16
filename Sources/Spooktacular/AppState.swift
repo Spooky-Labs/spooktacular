@@ -322,6 +322,32 @@ final class AppState {
         }
     }
 
+    /// User's custom sidebar order for VM rows, by bundle-key (the `.vm`
+    /// directory name — the same key `vms` is keyed on). Persisted across
+    /// launches. Drives the drag-to-reorder affordance (macOS 27's
+    /// `reorderable()`); on older hosts the sidebar simply stays sorted.
+    ///
+    /// May contain stale keys (a VM deleted out from under it) or omit new
+    /// ones (a VM created since the last drag) — ``SidebarOrder/arrange(_:by:fallback:)``
+    /// reconciles both against the live key set, so this need not be kept
+    /// perfectly in lockstep with `vms`.
+    var vmSidebarOrder: [String] = UserDefaults.standard.stringArray(
+        forKey: "spook.vmSidebarOrder"
+    ) ?? [] {
+        didSet {
+            UserDefaults.standard.set(vmSidebarOrder, forKey: "spook.vmSidebarOrder")
+        }
+    }
+
+    /// Applies a sidebar drag (macOS 27 `reorderContainer` payload): moves
+    /// `ids` as a block before `target` (or to the end when `nil`). Seeds
+    /// the persisted order from the live key set on first drag so the very
+    /// first reorder has a full list to rearrange rather than an empty one.
+    func reorderVMs(_ ids: [String], before target: String?) {
+        let seed = vmSidebarOrder.isEmpty ? Array(vms.keys) : vmSidebarOrder
+        vmSidebarOrder = SidebarOrder.moving(ids, before: target, in: seed)
+    }
+
     // MARK: - Sheet Presentation
 
     /// Whether the "Create VM" sheet is showing.
