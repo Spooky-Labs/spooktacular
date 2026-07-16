@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Post-create hardware editor.
@@ -19,6 +20,7 @@ struct HardwareEditor: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var cpu: Int = 4
     @State private var memoryGB: Int = 8
@@ -45,11 +47,28 @@ struct HardwareEditor: View {
                 sharedFoldersRow
             }
             .formStyle(.grouped)
+            // Let the night wash behind the sheet ground the form
+            // instead of its own opaque backdrop.
+            .scrollContentBackground(.hidden)
             .disabled(isRunning)
+            // Animates the "Stop the workspace…" lock hint sliding
+            // in/out when the VM's running state flips while the
+            // sheet is open; off under Reduce Motion.
+            .animation(reduceMotion ? nil : Apparition.spring, value: isRunning)
             Divider()
             footer
         }
         .frame(minWidth: 460, idealWidth: 520, minHeight: 340)
+        // Faint night wash over the sheet's opaque background —
+        // ambient tint layered over system chrome, not a
+        // replacement, and no glass in the content layer.
+        .background(Apparition.night1.opacity(0.3))
+        // Declare the sheet as a 26pt continuous rounded container
+        // so any nested `ConcentricRectangle` resolves corners that
+        // share center points with the sheet's own — the macOS 26
+        // concentric-geometry contract (matches the creation-flow
+        // sheets' `apparitionSheetGround()`).
+        .containerShape(.rect(cornerRadius: 26))
         // Inherit the `.switch` style to every Toggle in the sheet.
         .toggleStyle(.switch)
         .task(id: vmName) { loadInitialValues() }
@@ -70,7 +89,7 @@ struct HardwareEditor: View {
 
     private var header: some View {
         HStack {
-            Label("Hardware", systemImage: "cpu")
+            Label("Hardware", systemImage: String.SFSymbols.cpu)
                 .font(.headline)
             Spacer()
         }
@@ -79,7 +98,7 @@ struct HardwareEditor: View {
 
     private var runningHint: some View {
         Section {
-            Label("Stop the workspace to edit hardware.", systemImage: "lock.fill")
+            Label("Stop the workspace to edit hardware.", systemImage: String.SFSymbols.lockFill)
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -157,7 +176,7 @@ struct HardwareEditor: View {
             } else {
                 ForEach($sharedFolders) { $folder in
                     HStack {
-                        Image(systemName: "folder")
+                        Image(systemName: String.SFSymbols.folder)
                             .foregroundStyle(.secondary)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(folder.hostPath)
@@ -165,7 +184,10 @@ struct HardwareEditor: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Text("tag: \(folder.tag)")
-                                .font(.caption)
+                                // VirtIO FS mount tags are
+                                // machine-speak — mono per the
+                                // Apparition type contract.
+                                .font(.system(.caption, design: .monospaced))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -177,7 +199,11 @@ struct HardwareEditor: View {
                         Button(role: .destructive) {
                             sharedFolders.removeAll { $0.id == folder.id }
                         } label: {
-                            Image(systemName: "minus.circle")
+                            Image(systemName: String.SFSymbols.minusCircle)
+                                // Interactive control — the symbol
+                                // bounces once on pointer entry
+                                // (Reduce-Motion-gated).
+                                .hoverSymbolBounce()
                         }
                         .buttonStyle(.plain)
                         .help("Remove this shared folder. Takes effect next start.")
@@ -188,20 +214,43 @@ struct HardwareEditor: View {
             Button {
                 addSharedFolder()
             } label: {
-                Label("Add Folder…", systemImage: "plus")
+                Label("Add Folder…", systemImage: String.SFSymbols.plus)
+                    .hoverSymbolBounce()
             }
         }
     }
 
     private var footer: some View {
-        HStack {
-            Spacer()
-            Button("Cancel") { dismiss() }
-                .keyboardShortcut(.cancelAction)
-            Button("Save") { save() }
-                .glassButton()
+        // Cancel/primary pair grouped in a container so they morph
+        // together, matching the convention every other sheet in
+        // the app uses (`CreateVMSheet`, `CloneVMSheet`,
+        // `AddImageSheet`): Cancel on `.glassButton()`, the
+        // primary action on `.glassProminentButton()`.
+        // Interior spacing (10) is deliberately LARGER than the
+        // container spacing (8): per Apple's GlassEffectContainer
+        // semantics, container spacing >= interior stack spacing
+        // makes adjacent shapes merge at rest — the fused-blob
+        // failure mode. 10 > 8 keeps the pair distinct at rest
+        // while still blending mid-morph.
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 10) {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .glassButton()
+                    .keyboardShortcut(.cancelAction)
+                Button {
+                    save()
+                } label: {
+                    Label("Save", systemImage: String.SFSymbols.checkmark)
+                        // Hover delight: the checkmark bounces once
+                        // on pointer entry (Reduce-Motion-gated
+                        // inside the modifier).
+                        .hoverSymbolBounce()
+                }
+                .glassProminentButton()
                 .keyboardShortcut(.defaultAction)
                 .disabled(isRunning || !hasChanges)
+            }
         }
         .padding(16)
     }

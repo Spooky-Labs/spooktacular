@@ -243,4 +243,66 @@ struct CapacityCheckTests {
             }
         }
     }
+
+    // MARK: - In-Process Union (GUI Pre-Flight)
+
+    /// The GUI tracks its running VMs in-process and writes no PID
+    /// files, so its capacity pre-flight must union both sources —
+    /// PID-file VMs (CLI-launched) and the caller-supplied
+    /// in-process names — before comparing against the limit.
+    @Suite("ensureCapacity(alsoRunning:)", .tags(.infrastructure))
+    struct InProcessUnionTests {
+
+        private var outer: CapacityCheckTests { CapacityCheckTests() }
+
+        @Test("PID-file VM plus a distinct in-process VM reaches the limit", .timeLimit(.minutes(1)))
+        func unionReachesLimit() throws {
+            let tmp = TempDirectory()
+            // One live "CLI" VM: a bundle whose PID file points at
+            // this test process (always alive while the test runs).
+            try outer.createBundle(
+                named: "cli-vm", in: tmp.url,
+                withPID: ProcessInfo.processInfo.processIdentifier
+            )
+            do {
+                try CapacityCheck.ensureCapacity(
+                    alsoRunning: ["gui-vm"], in: tmp.url
+                )
+                Issue.record("Expected limitReached — 2 distinct running VMs")
+            } catch let CapacityError.limitReached(running) {
+                #expect(running.contains("cli-vm"))
+                #expect(running.contains("gui-vm"))
+            }
+        }
+
+        @Test("the same VM seen by both sources counts once", .timeLimit(.minutes(1)))
+        func unionDeduplicates() throws {
+            let tmp = TempDirectory()
+            try outer.createBundle(
+                named: "shared-vm", in: tmp.url,
+                withPID: ProcessInfo.processInfo.processIdentifier
+            )
+            // Same name from the in-process side: union count is 1
+            // (< limit 2), so this must NOT throw.
+            try CapacityCheck.ensureCapacity(
+                alsoRunning: ["shared-vm"], in: tmp.url
+            )
+        }
+
+        @Test("two in-process VMs alone reach the limit", .timeLimit(.minutes(1)))
+        func inProcessOnlyReachesLimit() throws {
+            let tmp = TempDirectory()
+            #expect(throws: CapacityError.self) {
+                try CapacityCheck.ensureCapacity(
+                    alsoRunning: ["a", "b"], in: tmp.url
+                )
+            }
+        }
+
+        @Test("empty everything passes", .timeLimit(.minutes(1)))
+        func emptyPasses() throws {
+            let tmp = TempDirectory()
+            try CapacityCheck.ensureCapacity(alsoRunning: [], in: tmp.url)
+        }
+    }
 }

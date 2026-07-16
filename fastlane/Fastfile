@@ -248,40 +248,6 @@ platform :mac do
     )
   end
 
-  desc "Sync Developer ID certs (app + installer) for notarized direct distribution"
-  #
-  # Developer ID distribution is the correct channel for
-  # Spooktacular's shape: a system-level tool that installs a
-  # LaunchDaemon via an embedded `.pkg`, which App Store Review
-  # 2.5.2 forbids ("apps may not download, install, or execute
-  # code which introduces or changes features or functionality").
-  # Keeping the App Store-oriented `signing` lane for TestFlight
-  # internal beta, this lane powers the public release flow.
-  #
-  # Pulls two certs in one match call, the idiomatic pattern:
-  #
-  # - `type: developer_id` — Developer ID Application, used by
-  #   `codesign` on the outer `.app` and every nested Mach-O.
-  # - `additional_cert_types: ["developer_id_installer"]` — the
-  #   pkg-signing counterpart used by `productsign` on the
-  #   embedded `Spooktacular Provisioner.pkg`.
-  #
-  # After this lane runs, `build-app.sh` auto-detects the
-  # installer cert in the keychain and signs the nested pkg.
-  # The outer `.app` + the nested pkg should subsequently be
-  # notarized via the `notarize_app` lane (outer) + `xcrun
-  # notarytool submit` on the pkg (inner — wired into
-  # build-app.sh directly).
-  lane :signing_dev_id do
-    api_key = get_api_key
-    match(
-      api_key: api_key,
-      type: "developer_id",
-      additional_cert_types: ["developer_id_installer"],
-      readonly: is_ci
-    )
-  end
-
   desc "Sync development cert + profile for local builds"
   #
   # Local builds need a *development* provisioning profile

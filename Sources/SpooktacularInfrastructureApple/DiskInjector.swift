@@ -6,22 +6,26 @@ import os
 /// Stages host-side artifacts into a VM bundle so the guest's
 /// Spooktacular provisioner picks them up at boot.
 ///
-/// Two responsibilities:
+/// Three responsibilities:
 ///
 /// 1. ``installGuestTools(appBundle:into:)`` — mounts the
 ///    guest's APFS data volume and `ditto`s
 ///    `Spooktacular Guest Tools.app` into `/Applications/`.
-///    This is the only path that touches the guest filesystem
-///    directly; everything else writes into a virtio-fs share
-///    that the guest mounts at runtime.
-/// 2. ``inject(script:into:)`` /
+/// 2. ``installProvisionerDaemon(into:plist:runner:privileged:)`` —
+///    mounts the guest's APFS data volume and installs the
+///    provisioner LaunchDaemon (plist + runner script,
+///    `root:wheel`) directly onto disk, before first boot.
+///    Both of these touch the guest filesystem directly;
+///    everything else writes into a virtio-fs share that the
+///    guest mounts at runtime.
+/// 3. ``inject(script:into:)`` /
 ///    ``inject(scriptBytes:into:)`` — writes
 ///    `first-boot.sh` into the bundle's `provision/`
 ///    subdirectory. On next boot the guest's Spooktacular
 ///    Provisioner LaunchDaemon (installed once via
-///    ``ProvisionerInstaller``) picks the file up via the
-///    virtio-fs share and runs it as root. No host-side mount
-///    needed for the script path.
+///    ``installProvisionerDaemon(into:plist:runner:privileged:)``)
+///    picks the file up via the virtio-fs share and runs it as
+///    root. No host-side mount needed for the script path.
 ///
 /// ## Thread safety
 ///
@@ -129,6 +133,84 @@ public enum DiskInjector {
         Log.provision.notice(
             "Installed guest tools on guest data volume (destination=\(destinationApp, privacy: .public))"
         )
+    }
+
+    /// Injects the Spooktacular provisioner LaunchDaemon into a guest image so
+    /// it runs `first-boot.sh` locally as root on first boot — replacing the
+    /// pkg-via-Setup-Assistant install.
+    ///
+    /// Writes the runner script to `/usr/local/libexec/spook-provision-runner.sh`
+    /// (0755) and the plist to
+    /// `/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist`
+    /// (0644), both owned `root:wheel` via `privileged`. Must be called on a
+    /// **stopped** VM before its first boot (the Data volume is plain APFS at
+    /// that point — FileVault isn't enabled until the setup this design skips).
+    ///
+    /// - Parameters:
+    ///   - bundle: The VM bundle whose `disk.img` to inject into.
+    ///   - plist: Source URL of the provisioner plist (see ``ProvisionerAssets``).
+    ///   - runner: Source URL of the runner script.
+    ///   - privileged: Performs the `root:wheel` file operations.
+    /// - Throws: ``PrivilegedOpsError/notPrivileged`` if `privileged` can't set
+    ///   root ownership (checked first, before any disk work), or
+    ///   ``DiskInjectorError`` on mount/copy failure.
+    public static func installProvisionerDaemon(
+        into bundle: VirtualMachineBundle,
+        plist: URL,
+        runner: URL,
+        privileged: PrivilegedFileOps
+    ) throws {
+        // Fail fast before mounting anything if we can't set root ownership.
+        try privileged.preflight()
+
+        let diskPath = bundle.url
+            .appendingPathComponent(VirtualMachineBundle.diskImageFileName)
+            .path
+        guard FileManager.default.fileExists(atPath: diskPath) else {
+            throw DiskInjectorError.diskImageNotFound(path: diskPath)
+        }
+
+        Log.provision.info(
+            "Injecting provisioner LaunchDaemon into VM disk: \(diskPath, privacy: .public)"
+        )
+
+        let attachOutput = try runProcess("/usr/sbin/diskutil", arguments: [
+            "image", "attach", "--nomount", "--plist", diskPath,
+        ])
+        guard let devicePath = parseDeviceFromPlist(attachOutput) else {
+            throw DiskInjectorError.mountFailed(
+                reason: "Could not parse device path from diskutil image attach output"
+            )
+        }
+        defer {
+            _ = try? runProcess(
+                "/usr/bin/hdiutil",
+                arguments: ["detach", devicePath, "-force"]
+            )
+            Log.provision.debug("Detached disk image")
+        }
+
+        let volumePath = try ensureDataVolume(devicePath: devicePath)
+
+        let libexecDir = URL(fileURLWithPath: "\(volumePath)/usr/local/libexec")
+        try privileged.makeDirectory(at: libexecDir)
+        try privileged.installFile(
+            from: runner,
+            to: libexecDir.appendingPathComponent("spook-provision-runner.sh"),
+            mode: 0o755
+        )
+
+        let launchDaemonsDir = URL(fileURLWithPath: "\(volumePath)/Library/LaunchDaemons")
+        try privileged.makeDirectory(at: launchDaemonsDir)
+        try privileged.installFile(
+            from: plist,
+            to: launchDaemonsDir.appendingPathComponent(
+                "com.spookylabs.spooktacular.provisioner.plist"
+            ),
+            mode: 0o644
+        )
+
+        Log.provision.notice("Injected provisioner LaunchDaemon (root:wheel) into guest image")
     }
 
     /// Writes a user-data script to the VM bundle's provisioning
@@ -459,10 +541,11 @@ public enum DiskInjector {
 
     // Host-side user-data delivery writes a single
     // `first-boot.sh` to the bundle's `provision/` share.
-    // The guest's Guest Tools LaunchDaemon mounts that share
-    // via `mount_virtiofs` on boot and runs the script once.
-    // See `ProvisionerInstaller` in `SpooktacularGuestTools`
-    // and `applyProvisioning` in `VirtualMachineConfiguration`.
+    // The guest's provisioner LaunchDaemon (injected via
+    // `installProvisionerDaemon(into:plist:runner:privileged:)`)
+    // mounts that share via `mount_virtiofs` on boot and runs
+    // the script once. See `applyProvisioning` in
+    // `VirtualMachineConfiguration`.
 }
 
 // MARK: - Errors

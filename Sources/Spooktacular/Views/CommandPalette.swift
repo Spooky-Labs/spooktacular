@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// ⌘K command palette — one place to trigger any app action.
@@ -17,6 +18,7 @@ struct CommandPalette: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var query: String = ""
     @FocusState private var focused: Bool
@@ -30,14 +32,17 @@ struct CommandPalette: View {
         result.append(PaletteCommand(
             title: "New Virtual Machine…",
             subtitle: "Create a new workspace",
-            systemImage: "plus.square.on.square",
+            systemImage: String.SFSymbols.plusSquareOnSquare,
             shortcut: "⌘N",
+            // Wisp marks the app's ONE primary action in this
+            // list; every other row icon stays neutral.
+            iconTint: Apparition.wisp,
             action: { appState.showCreateSheet = true }
         ))
         result.append(PaletteCommand(
             title: "Add Image…",
             subtitle: "Import an IPSW or OCI reference",
-            systemImage: "square.and.arrow.down",
+            systemImage: String.SFSymbols.squareAndArrowDown,
             shortcut: "⌘⇧I",
             action: { appState.showAddImage = true }
         ))
@@ -50,7 +55,7 @@ struct CommandPalette: View {
             result.append(PaletteCommand(
                 title: "Open Workspace · \(displayName)",
                 subtitle: "Open '\(displayName)' in its own window",
-                systemImage: "macwindow",
+                systemImage: String.SFSymbols.macwindow,
                 shortcut: nil,
                 action: { openWindow(id: "workspace", value: name) }
             ))
@@ -58,7 +63,7 @@ struct CommandPalette: View {
                 result.append(PaletteCommand(
                     title: "Stop · \(displayName)",
                     subtitle: "Stop the running workspace",
-                    systemImage: "stop.fill",
+                    systemImage: String.SFSymbols.stopFill,
                     shortcut: nil,
                     action: { Task { await appState.stopVM(name) } }
                 ))
@@ -66,7 +71,7 @@ struct CommandPalette: View {
                 result.append(PaletteCommand(
                     title: "Start · \(displayName)",
                     subtitle: "Boot the workspace",
-                    systemImage: "play.fill",
+                    systemImage: String.SFSymbols.playFill,
                     shortcut: nil,
                     action: { Task { await appState.startVM(name) } }
                 ))
@@ -74,7 +79,7 @@ struct CommandPalette: View {
             result.append(PaletteCommand(
                 title: "Clone · \(displayName)",
                 subtitle: "APFS clone under '\(displayName)-clone'",
-                systemImage: "doc.on.doc",
+                systemImage: String.SFSymbols.documentOnDocument,
                 shortcut: nil,
                 action: { appState.cloneVM(name, to: "\(displayName)-clone") }
             ))
@@ -98,12 +103,39 @@ struct CommandPalette: View {
             resultsList
         }
         .frame(width: 520, height: 420)
+        // Content is clipped to the same 24pt continuous shape the
+        // glass uses, so scrolled rows can't poke square corners
+        // past the panel's rounded edge. Clip BEFORE the glass so
+        // the glass rim highlight itself is never cut.
+        .clipShape(.rect(cornerRadius: 24, style: .continuous))
+        // The palette is floating chrome over the library window,
+        // so it carries Liquid Glass rather than a color wash.
+        // `.regular` — not `.clear` — because the panel can sit
+        // over light content in light mode and `.clear` needs a
+        // dimming layer to stay legible (per the `Glass.clear`
+        // docs); `.regular` keeps text readable everywhere.
+        // Single glass surface, so no `GlassEffectContainer`.
+        .glassEffect(.regular, in: .rect(cornerRadius: 24, style: .continuous))
+        // Container shape so nested shapes — the row selection
+        // highlight's `ConcentricRectangle` — resolve their corner
+        // radii concentrically with the panel's 24pt corner
+        // (shared center points, per the macOS 26 geometry).
+        .containerShape(.rect(cornerRadius: 24, style: .continuous))
+        // The panel supplies its own glass surface; clear the
+        // sheet's opaque backdrop so the palette actually floats
+        // over the window instead of sitting on system chrome.
+        // No-op until a presenter wires `showCommandPalette`.
+        .presentationBackground(.clear)
+        // Animates the results ↔ "No matches" swap as the user
+        // types (bound to the filter crossing empty); disabled
+        // entirely under Reduce Motion.
+        .animation(reduceMotion ? nil : Apparition.quick, value: filtered.isEmpty)
         .task { focused = true }
     }
 
     private var searchField: some View {
         HStack(spacing: 10) {
-            Image(systemName: "command")
+            Image(systemName: String.SFSymbols.command)
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(.secondary)
             TextField("Type a command or VM name", text: $query)
@@ -120,7 +152,7 @@ struct CommandPalette: View {
         if filtered.isEmpty {
             ContentUnavailableView(
                 "No matches",
-                systemImage: "magnifyingglass",
+                systemImage: String.SFSymbols.magnifyingglass,
                 description: Text("Try 'start', 'snapshot', or a VM name.")
             )
         } else {
@@ -131,6 +163,9 @@ struct CommandPalette: View {
                 })
             }
             .listStyle(.plain)
+            // Let the panel's glass show through the rows instead
+            // of the list's own opaque backdrop.
+            .scrollContentBackground(.hidden)
         }
     }
 
@@ -148,6 +183,10 @@ struct PaletteCommand: Identifiable {
     let subtitle: String
     let systemImage: String
     let shortcut: String?
+    /// Semantic tint for the row icon. `nil` renders the icon in
+    /// `.secondary` — only the surface's single primary command
+    /// carries the wisp accent.
+    var iconTint: Color?
     let action: () -> Void
 }
 
@@ -156,13 +195,20 @@ struct PaletteRow: View {
     let command: PaletteCommand
     let onRun: () -> Void
 
+    /// Pointer-over state driving the row's selection highlight.
+    /// A plain state flip — the highlight appears/disappears with
+    /// no animation, so no Reduce Motion gating is needed.
+    @State private var isHovering = false
+
     var body: some View {
         Button(action: onRun) {
             HStack(spacing: 12) {
                 Image(systemName: command.systemImage)
                     .font(.system(size: 18))
                     .frame(width: 24)
-                    .foregroundStyle(.tint)
+                    // Neutral by default; wisp is reserved for the
+                    // one primary command per the palette contract.
+                    .foregroundStyle(command.iconTint ?? Color.secondary)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(command.title)
@@ -176,16 +222,44 @@ struct PaletteRow: View {
                 Spacer()
 
                 if let shortcut = command.shortcut {
+                    // Keyboard-shortcut hint pill. This lives in the
+                    // content layer (a list row), so per HIG "Don't use
+                    // Liquid Glass in the content layer" it uses a
+                    // standard material instead of `.glassEffect`. The
+                    // 14/5 inset reproduces the former badge's padding
+                    // (6/2 here + 8/3 inside the old modifier) so the
+                    // pill's size stays identical.
                     Text(shortcut)
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .glassStatusBadge()
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .background(.regularMaterial, in: .capsule)
                 }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
+            // Applied to the button's content (not the button) so
+            // pointer entry anywhere on the row bounces the row's
+            // one SF Symbol — the icon — exactly once.
+            // Reduce-Motion-gated inside the modifier.
+            .hoverSymbolBounce()
         }
         .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .background {
+            if isHovering {
+                // Selection highlight nests concentrically inside
+                // the panel's 24pt `containerShape`. Mid-list rows
+                // sit far from the panel corners, where a pure
+                // concentric resolution would collapse to square —
+                // `minimum: 8` floors the radius, and `isUniform`
+                // keeps all four corners symmetric even when their
+                // distances to the container edge differ.
+                ConcentricRectangle(corners: .concentric(minimum: 8), isUniform: true)
+                    .fill(.quaternary)
+            }
+        }
     }
 }

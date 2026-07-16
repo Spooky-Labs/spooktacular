@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Snapshot management UI surfaced as a glass sheet on the
@@ -19,6 +20,7 @@ struct SnapshotInspector: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var snapshots: [SnapshotInfo] = []
     @State private var newLabel: String = ""
@@ -42,6 +44,20 @@ struct SnapshotInspector: View {
             footer
         }
         .frame(minWidth: 420, idealWidth: 480, minHeight: 360, idealHeight: 440)
+        // Faint night wash over the sheet's opaque background —
+        // ambient tint layered over system chrome, not a
+        // replacement, and no glass in the content layer.
+        .background(Apparition.night1.opacity(0.3))
+        // Declare the sheet as a 26pt continuous rounded container
+        // so any nested `ConcentricRectangle` resolves corners that
+        // share center points with the sheet's own — the macOS 26
+        // concentric-geometry contract (matches the creation-flow
+        // sheets' `apparitionSheetGround()`).
+        .containerShape(.rect(cornerRadius: 26))
+        // Animates the empty-state ↔ list swap when the first
+        // snapshot lands or the last one is deleted (bound to
+        // `snapshots` crossing empty); off under Reduce Motion.
+        .animation(reduceMotion ? nil : Apparition.spring, value: snapshots.isEmpty)
         .task(id: vmName) { reload() }
         .alert(
             "Snapshot error",
@@ -62,7 +78,10 @@ struct SnapshotInspector: View {
 
     private var header: some View {
         HStack {
-            Label("Snapshots", systemImage: "clock.arrow.circlepath")
+            Label(
+                "Snapshots",
+                systemImage: String.SFSymbols.clockArrowTriangleheadCounterclockwiseRotate90
+            )
                 .font(.headline)
             Spacer()
             Button("Done") { dismiss() }
@@ -77,7 +96,7 @@ struct SnapshotInspector: View {
         if snapshots.isEmpty {
             ContentUnavailableView(
                 "No Snapshots",
-                systemImage: "camera.aperture",
+                systemImage: String.SFSymbols.cameraAperture,
                 description: Text("Save a snapshot before making risky changes.")
             )
             .padding(32)
@@ -94,6 +113,9 @@ struct SnapshotInspector: View {
                 }
             }
             .listStyle(.inset)
+            // Let the night wash behind the sheet ground the rows
+            // instead of the list's own opaque backdrop.
+            .scrollContentBackground(.hidden)
         }
     }
 
@@ -106,7 +128,21 @@ struct SnapshotInspector: View {
             Button {
                 save(label: newLabel)
             } label: {
-                Label("Save", systemImage: "camera.fill")
+                Label("Save", systemImage: String.SFSymbols.cameraFill)
+                    // Bounces the camera the instant a snapshot lands
+                    // — `save()` calls `reload()` and the sheet stays
+                    // open, so `snapshots.count` ticks up while the
+                    // footer (and this symbol) remain mounted, which
+                    // is exactly the state change a discrete bounce
+                    // needs. Persona A gets a "captured" beat without
+                    // a modal.
+                    .symbolEffect(.bounce, value: snapshots.count)
+                    // Hover delight: a second, independent discrete
+                    // bounce keyed to pointer entry — composes with
+                    // the capture bounce above because each keys off
+                    // its own value. Reduce-Motion-gated inside the
+                    // modifier.
+                    .hoverSymbolBounce()
             }
             .glassButton()
             .disabled(newLabel.trimmingCharacters(in: .whitespaces).isEmpty
@@ -191,7 +227,9 @@ struct SnapshotRow: View {
                     Text("·")
                     Text(humanBytes(info.sizeInBytes))
                 }
-                .font(.caption)
+                // Machine-speak (timestamps, byte sizes) is set in
+                // mono per the Apparition type contract.
+                .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
             }
 
@@ -203,15 +241,22 @@ struct SnapshotRow: View {
             // into stacked panes and cost render time). Glass
             // lives on the header/footer CTAs where one prominent
             // action reads clearly.
-            Button("Restore", systemImage: "arrow.uturn.backward", action: onRestore)
-                .buttonStyle(.borderless)
-                .disabled(running)
-                .help(running
-                      ? "Stop the workspace to restore this snapshot"
-                      : "Restore the workspace to this snapshot")
+            Button(action: onRestore) {
+                Label("Restore", systemImage: String.SFSymbols.arrowUturnBackward)
+                    // Hover delight: the symbol bounces once on
+                    // pointer entry (Reduce-Motion-gated inside
+                    // the modifier).
+                    .hoverSymbolBounce()
+            }
+            .buttonStyle(.borderless)
+            .disabled(running)
+            .help(running
+                  ? "Stop the workspace to restore this snapshot"
+                  : "Restore the workspace to this snapshot")
 
             Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
+                Image(systemName: String.SFSymbols.trash)
+                    .hoverSymbolBounce()
             }
             .buttonStyle(.borderless)
             .help("Delete this snapshot")

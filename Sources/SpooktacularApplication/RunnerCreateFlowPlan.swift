@@ -1,49 +1,11 @@
 import Foundation
 
-/// Decides whether the zero-touch `--github-runner` create flow may
-/// proceed given `--skip-setup` / `--no-start`, and whether the VM
-/// should be started (and polled for the runner coming online)
-/// once the runner script is injected.
+/// Validates the `--github-runner` create flow's flag combinations.
 ///
-/// Extracted out of `Create.swift`'s `run()` as a small pure
-/// function so the skip-setup/no-start interaction is unit
-/// testable without driving the full `ParsableCommand`.
-///
-/// ## Why `--skip-setup` conflicts with `--github-runner`
-///
-/// Zero-touch runner registration depends on the Spooktacular
-/// Provisioner LaunchDaemon inside the guest, which is only ever
-/// installed by ``SetupAutomation`` automation (see
-/// `SetupAutomation.installProvisionerSteps(password:)`). Passing
-/// `--skip-setup` skips that automation entirely, so an injected
-/// runner script would sit on the provisioning share with nothing
-/// to ever execute it — a silent dead end. `--no-start` is the
-/// documented advanced escape hatch: it tells the planner the
-/// operator already knows this and intends to boot + register the
-/// runner by hand.
+/// Extracted out of `Create.swift`'s `run()` as small pure functions
+/// so these checks are unit testable without driving the full
+/// `ParsableCommand`.
 public enum RunnerCreateFlowPlan {
-
-    /// Validates the flag combination and decides whether to
-    /// auto-start the VM after the runner script is injected.
-    ///
-    /// - Parameters:
-    ///   - skipSetup: Whether `--skip-setup` was passed.
-    ///   - noStart: Whether `--no-start` was passed.
-    /// - Returns: `true` if the VM should be started headless and
-    ///   polled for the runner coming online after injection;
-    ///   `false` if the operator opted out via `--no-start`.
-    /// - Throws: ``RunnerCreateFlowError/zeroTouchRequiresSetupAutomation``
-    ///   when `--skip-setup` is combined with `--github-runner`
-    ///   without also passing `--no-start`.
-    public static func autoStartDecision(
-        skipSetup: Bool,
-        noStart: Bool
-    ) throws -> Bool {
-        if skipSetup && !noStart {
-            throw RunnerCreateFlowError.zeroTouchRequiresSetupAutomation
-        }
-        return !noStart
-    }
 
     /// Rejects `--github-runner` combined with any other flag that
     /// produces a first-boot provisioning script.
@@ -131,158 +93,41 @@ public enum RunnerCreateFlowPlan {
         }
     }
 
-    /// Rejects `--github-runner` when the resolved restore image's
-    /// macOS major version has no ``SetupAutomation`` sequence.
+    /// Rejects a `--github-runner` create whose resolved guest image is
+    /// older than the macOS 27 native-guest-provisioning floor.
     ///
-    /// Zero-touch runner registration depends on Setup Assistant
-    /// automation to install the Spooktacular Provisioner
-    /// LaunchDaemon (see ``setupAutomationFailureIsFatal(githubRunner:)``'s
-    /// doc comment for the full dependency chain). When
-    /// ``SetupAutomation/isSupported(macOSVersion:)`` is `false` for
-    /// the version this create is about to install — a macOS major
-    /// that predates the mapped sequences, or a future major that
-    /// hasn't been mapped yet — there is no automation to run at
-    /// all, so `setupAutomationFailureIsFatal` never gets a chance
-    /// to fire: the create flow would silently skip straight to
-    /// "no automated Setup Assistant sequence, complete setup
-    /// manually" and then still mint a token, inject the runner
-    /// script, boot headless, and poll for up to 10 minutes for a
-    /// runner that can never come online. Calling this BEFORE the
-    /// IPSW install begins (not just before minting) means an
-    /// operator who passes an unsupported `--from-ipsw` gets an
-    /// immediate, actionable error instead of losing 10-20 minutes
-    /// to an install whose runner phase was always going to fail.
+    /// The runner flow always builds a `GuestProvisioningSpec` (see
+    /// ``VirtualMachine/start(guestProvisioning:)``) to create the
+    /// unattended admin account the runner script needs. Apple's
+    /// `VZMacGuestProvisioningOptions` is silently ignored by guests
+    /// older than macOS 27: no account is created, Setup Assistant
+    /// stalls waiting for interactive input, and the flow's 10-minute
+    /// online poll times out with a generic "runner never came online"
+    /// error that gives no hint the guest OS was the problem. `spook
+    /// create --github-runner` defaults `--from-ipsw` to `"latest"`,
+    /// and `VZMacOSRestoreImage.latestSupported` can resolve to a
+    /// release below the floor — so the default invocation must be
+    /// caught here rather than left to fail opaquely 10-20 minutes
+    /// into the install.
     ///
-    /// - Parameters:
-    ///   - githubRunner: Whether `--github-runner` was passed.
-    ///   - macOSMajorVersion: The resolved restore image's major
-    ///     version (`VZMacOSRestoreImage.operatingSystemVersion.majorVersion`).
-    /// - Throws: ``RunnerCreateFlowError/unsupportedMacOSVersion(macOSMajorVersion:supportedVersions:)``
-    ///   naming every supported major so the operator knows exactly
-    ///   which restore image to use instead.
-    public static func validateMacOSVersionSupport(
-        githubRunner: Bool,
-        macOSMajorVersion: Int
-    ) throws {
-        guard githubRunner else { return }
-        guard SetupAutomation.isSupported(macOSVersion: macOSMajorVersion) else {
-            throw RunnerCreateFlowError.unsupportedMacOSVersion(
-                macOSMajorVersion: macOSMajorVersion,
-                supportedVersions: SetupAutomation.supportedVersions
+    /// - Parameter majorVersion: The resolved restore image's
+    ///   `operatingSystemVersion.majorVersion`.
+    /// - Throws: ``RunnerCreateFlowError/guestOSBelowFloor(found:required:)``
+    ///   when `majorVersion` is below 27.
+    public static func validateGuestOSFloor(majorVersion: Int) throws {
+        let requiredMajorVersion = 27
+        guard majorVersion >= requiredMajorVersion else {
+            throw RunnerCreateFlowError.guestOSBelowFloor(
+                found: majorVersion,
+                required: requiredMajorVersion
             )
         }
     }
 
-    /// Decides whether a Setup Assistant automation failure must
-    /// abort the create flow rather than being swallowed so a
-    /// desktop VM can still be used with setup finished by hand.
-    ///
-    /// Zero-touch runner registration depends on the Spooktacular
-    /// Provisioner LaunchDaemon inside the guest, which is only
-    /// ever installed by ``SetupAutomation`` automation (see
-    /// `SetupAutomation.installProvisionerSteps(password:)`). If
-    /// that automation fails under `--github-runner`, the
-    /// provisioner never lands, so the runner script that's about
-    /// to be disk-injected would sit on the provisioning share with
-    /// nothing to ever execute it — a guaranteed ~10-minute online
-    /// poll timeout with no actionable diagnostic. Failing fast
-    /// instead — before minting a registration token, injecting the
-    /// script, or booting — surfaces the real failure immediately
-    /// and keeps the (fully macOS-installed) VM bundle so the
-    /// operator can finish Setup Assistant by hand.
-    ///
-    /// For a plain desktop create (no `--github-runner`), nothing
-    /// downstream depends on the provisioner, so a failed automation
-    /// is safe to swallow: the VM is still a perfectly usable
-    /// desktop VM once the operator completes Setup Assistant
-    /// manually via `spook start`.
-    ///
-    /// - Parameter githubRunner: Whether `--github-runner` was
-    ///   passed to `create`.
-    /// - Returns: `true` when a Setup Assistant automation failure
-    ///   must abort the create flow instead of being swallowed.
-    public static func setupAutomationFailureIsFatal(githubRunner: Bool) -> Bool {
-        githubRunner
-    }
-
-    /// Decides what a macOS create with a first-boot script should
-    /// do about staging the Spooktacular Provisioner and running
-    /// Setup Assistant automation — for ANY first-boot script
-    /// source, not just `--github-runner`.
-    ///
-    /// Every first-boot script (GitHub runner, `--remote-desktop`,
-    /// `--openclaw`, `--user-data`) lands at the same fixed
-    /// destination in the VM bundle's provisioning share
-    /// (`first-boot.sh`, "last write wins" — see
-    /// ``validateTemplateExclusivity(remoteDesktop:openclaw:hasUserData:)``),
-    /// and is only ever executed by the guest's Spooktacular
-    /// Provisioner LaunchDaemon — which itself is only ever
-    /// installed by ``SetupAutomation`` automation (see
-    /// `SetupAutomation.installProvisionerSteps(password:)`). A
-    /// script with nothing to run it is a silent dead end that
-    /// looks identical to a script that ran and did nothing; this
-    /// decision exists so callers can tell the difference and warn
-    /// instead of silently no-op'ing — see
-    /// ``FirstBootProvisioningPlan/unsupportedMacOSVersion(_:)``.
-    ///
-    /// Mirrors `Create.swift`'s `willInjectFirstBootScript` check
-    /// (`provision == .diskInject && (githubRunner || remoteDesktop
-    /// || openclaw || userData != nil)`), generalized: that gate
-    /// only fires when a first-boot script is actually about to be
-    /// disk-injected — not, say, a plain Guest Tools install with
-    /// no script at all — so `hasFirstBootScript` should be `true`
-    /// only when the caller is about to call
-    /// `DiskInjector.inject(script:into:)`.
-    ///
-    /// - Parameters:
-    ///   - hasFirstBootScript: Whether a first-boot script (runner,
-    ///     template-generated, or `--user-data`/operator-supplied)
-    ///     is about to be disk-injected.
-    ///   - macOSMajorVersion: The macOS major version the VM was
-    ///     just installed with.
-    /// - Returns: The plan the caller should follow.
-    public static func firstBootProvisioningPlan(
-        hasFirstBootScript: Bool,
-        macOSMajorVersion: Int
-    ) -> FirstBootProvisioningPlan {
-        guard hasFirstBootScript else { return .noScript }
-        guard SetupAutomation.isSupported(macOSVersion: macOSMajorVersion) else {
-            return .unsupportedMacOSVersion(macOSMajorVersion)
-        }
-        return .stageProvisionerAndAutomate
-    }
-}
-
-/// The plan returned by
-/// ``RunnerCreateFlowPlan/firstBootProvisioningPlan(hasFirstBootScript:macOSMajorVersion:)``.
-public enum FirstBootProvisioningPlan: Equatable, Sendable {
-    /// No first-boot script is being injected — nothing to stage.
-    case noScript
-
-    /// Stage `Spooktacular Provisioner.pkg` into the bundle's
-    /// provisioning share and run Setup Assistant automation
-    /// (with `installProvisioner: true`) before injecting the
-    /// script, so the guest's provisioner LaunchDaemon is in place
-    /// to execute it on first boot.
-    case stageProvisionerAndAutomate
-
-    /// A first-boot script is being injected, but this macOS major
-    /// has no ``SetupAutomation`` sequence at all — there is no
-    /// automation to run, so nothing will install the provisioner
-    /// LaunchDaemon. The script should still be injected (it may
-    /// be useful later), but the caller MUST surface this to the
-    /// operator rather than silently no-op'ing: the script will
-    /// not run until Setup Assistant is completed by hand and the
-    /// provisioner package is installed manually.
-    case unsupportedMacOSVersion(Int)
 }
 
 /// Errors surfaced by ``RunnerCreateFlowPlan``.
 public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
-    /// `--skip-setup` was combined with `--github-runner` without
-    /// the `--no-start` escape hatch.
-    case zeroTouchRequiresSetupAutomation
-
     /// `--github-runner` was combined with another flag that
     /// produces a first-boot script (`flag` names it) — both would
     /// write the same `first-boot.sh` and the last write silently
@@ -300,17 +145,14 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
     /// never a valid outcome for this flow.
     case noProvisionIncompatible
 
-    /// `--github-runner` was combined with a restore image whose
-    /// macOS major version has no ``SetupAutomation`` sequence —
-    /// there is nothing to install the provisioner LaunchDaemon,
-    /// so the runner could never come online.
-    case unsupportedMacOSVersion(macOSMajorVersion: Int, supportedVersions: Set<Int>)
+    /// The resolved guest image's major version is below the
+    /// macOS 27 native-guest-provisioning floor the runner flow
+    /// requires. `found` is the resolved image's major version;
+    /// `required` is the floor (27).
+    case guestOSBelowFloor(found: Int, required: Int)
 
     public var errorDescription: String? {
         switch self {
-        case .zeroTouchRequiresSetupAutomation:
-            return "--github-runner with --skip-setup has nothing to execute the injected runner "
-                + "script — zero-touch registration requires Setup Assistant automation."
         case .conflictingTemplate(let flag):
             return "--github-runner cannot be combined with \(flag): both produce a first-boot "
                 + "script and they would silently overwrite each other."
@@ -321,18 +163,16 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
         case .noProvisionIncompatible:
             return "--no-provision is incompatible with --github-runner because the runner "
                 + "requires the injected first-boot script to execute."
-        case .unsupportedMacOSVersion(let macOSMajorVersion, let supportedVersions):
-            let supported = supportedVersions.sorted().map(String.init).joined(separator: ", ")
-            return "--github-runner requires a macOS version with a Setup Assistant automation "
-                + "sequence. macOS \(macOSMajorVersion) has none — supported majors: \(supported)."
+        case .guestOSBelowFloor(let found, let required):
+            return "GitHub runner provisioning requires a macOS \(required)+ guest image "
+                + "(native provisioning). This image is macOS \(found). The default "
+                + "--from-ipsw 'latest' resolves to macOS 26.x; pass --from-ipsw <path to a "
+                + "macOS \(required)+ .ipsw>."
         }
     }
 
     public var recoverySuggestion: String? {
         switch self {
-        case .zeroTouchRequiresSetupAutomation:
-            return "Drop --skip-setup so Setup Assistant automation installs the provisioner, "
-                + "or add --no-start to confirm you'll boot and register the runner by hand."
         case .conflictingTemplate(let flag):
             return "Drop \(flag), or create a separate VM for it — each VM runs exactly one "
                 + "first-boot provisioning script."
@@ -343,10 +183,10 @@ public enum RunnerCreateFlowError: Error, LocalizedError, Sendable, Equatable {
             return "Drop --no-provision. If you need manual control over provisioning, drop "
                 + "--github-runner too and inject the runner script yourself later via "
                 + "spook start --user-data <path>."
-        case .unsupportedMacOSVersion(_, let supportedVersions):
-            let supported = supportedVersions.sorted().map { "macOS \($0)" }.joined(separator: " or ")
-            return "Use --from-ipsw with a \(supported) restore image, or drop --github-runner "
-                + "and complete Setup Assistant + provisioner install manually."
+        case .guestOSBelowFloor(_, let required):
+            return "Download a macOS \(required)+ .ipsw and pass it via --from-ipsw <path>; "
+                + "'latest' only guarantees the newest release your host supports, not the "
+                + "runner flow's floor."
         }
     }
 }

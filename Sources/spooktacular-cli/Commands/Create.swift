@@ -145,9 +145,9 @@ extension Spooktacular {
                 app; it's independent of first-boot script \
                 provisioning (--user-data, --github-runner, \
                 etc.), which always runs through the separate \
-                Spooktacular Provisioner LaunchDaemon installed \
-                during Setup Assistant automation. Ignored for \
-                Linux guests.
+                Spooktacular Provisioner LaunchDaemon injected \
+                directly onto the guest disk before first boot. \
+                Ignored for Linux guests.
                 """
         )
         var guestTools: GuestToolsInstallMode = .installed
@@ -166,7 +166,11 @@ extension Spooktacular {
         @Flag(
             help: """
                 Configure as a GitHub Actions runner. Requires \
-                --github-repo and --github-token-keychain.
+                --github-repo and --github-token-keychain and a \
+                macOS 27+ guest — provisioning (account creation, \
+                Setup Assistant skip) is done natively via \
+                VZMacGuestProvisioningOptions on first boot, with \
+                no keystroke automation or OCR involved.
                 """
         )
         var githubRunner: Bool = false
@@ -231,24 +235,13 @@ extension Spooktacular {
 
         @Flag(
             help: """
-                Skip automatic Setup Assistant automation. By \
-                default, fresh IPSW installs boot the VM and walk \
-                through Setup Assistant automatically. Use this \
-                flag to configure the VM manually instead.
-                """
-        )
-        var skipSetup: Bool = false
-
-        @Flag(
-            help: """
                 Skip auto-starting the VM after provisioning. \
                 Currently only affects --github-runner (every \
                 other template already leaves the VM stopped for \
-                a later 'spook start'). Combine with --skip-setup \
-                as an advanced escape hatch: the runner script is \
-                still generated and injected, but nothing boots or \
-                polls it automatically — you start the VM and \
-                register the runner by hand.
+                a later 'spook start'). An advanced escape hatch: \
+                the runner script is still generated and injected, \
+                but nothing boots or polls it automatically — you \
+                start the VM and register the runner by hand.
                 """
         )
         var noStart: Bool = false
@@ -358,7 +351,7 @@ extension Spooktacular {
             // --github-runner invocation BEFORE spending 10-20
             // minutes on an IPSW download and macOS install: flag
             // presence, scope shape, template exclusivity, provision
-            // mode, and the --skip-setup/--no-start interaction.
+            // mode, and the --no-start interaction.
             // Only the Keychain PAT resolution and token mint stay
             // late (the token's one-hour TTL must cover the guest's
             // first boot). See ``RunnerCreateFlowPlan`` for the pure
@@ -409,10 +402,7 @@ extension Spooktacular {
                     try RunnerCreateFlowPlan.validateNoProvisionCompatibility(
                         noProvision: noProvision
                     )
-                    runnerAutoStart = try RunnerCreateFlowPlan.autoStartDecision(
-                        skipSetup: skipSetup,
-                        noStart: noStart
-                    )
+                    runnerAutoStart = !noStart
                 } catch {
                     if json {
                         printJSONError(
@@ -430,6 +420,39 @@ extension Spooktacular {
                 }
                 runnerRepo = repo
                 runnerKeychainAccount = account
+            }
+
+            // A first-boot script is only ever executed by the
+            // Spooktacular Provisioner LaunchDaemon, which is now
+            // injected directly onto the guest's Data volume before
+            // first boot (see ``DiskInjector/installProvisionerDaemon``)
+            // — replacing the old Setup Assistant + pkg-install path.
+            // Computed from already-parsed flags, no restore image or
+            // install needed yet.
+            let willInjectFirstBootScript = provision == .diskInject
+                && (githubRunner || remoteDesktop || openclaw || userData != nil)
+            let needsProvisionerDaemon = willInjectFirstBootScript || guestTools.installsAppBundle
+
+            // Fail fast, BEFORE the 10-20 minute macOS install
+            // begins: injecting a root:wheel LaunchDaemon requires
+            // running with root privileges on the host. YAGNI: no
+            // flag to opt out of the daemon — a create that needs it
+            // and can't get it should fail loudly, not silently skip
+            // provisioning.
+            if needsProvisionerDaemon {
+                do {
+                    try DirectPrivilegedFileOps().preflight()
+                } catch {
+                    let message = "Provisioner injection requires running as root."
+                    let hint = "On an EC2 Mac, run under the root service. Otherwise, run this command with 'sudo spook create ...'."
+                    if json {
+                        printJSONError(code: "provisioner-requires-root", message: message, hint: hint)
+                    } else {
+                        print(Style.error("✗ \(message)"))
+                        print(Style.dim("  \(hint)"))
+                    }
+                    throw ExitCode(CLIExit.validation)
+                }
             }
 
             let spec = VirtualMachineSpecification(
@@ -527,37 +550,15 @@ extension Spooktacular {
                     }
                 }
 
-                // Fail fast, BEFORE the 10-20 minute macOS install
-                // begins: --github-runner depends entirely on
-                // ``SetupAutomation`` to install the Spooktacular
-                // Provisioner LaunchDaemon (see
-                // ``RunnerCreateFlowPlan/validateMacOSVersionSupport(githubRunner:macOSMajorVersion:)``'s
-                // doc comment). Checking here — right after the
-                // restore image's version is known, rather than
-                // after `manager.install()` — means an operator who
-                // passes `--from-ipsw` pointing at an unsupported
-                // macOS major gets an immediate, actionable error
-                // instead of a guaranteed ~10-minute online-poll
-                // timeout after losing the install time too.
-                do {
-                    try RunnerCreateFlowPlan.validateMacOSVersionSupport(
-                        githubRunner: githubRunner,
-                        macOSMajorVersion: restoreImage.operatingSystemVersion.majorVersion
+                // Fail fast if --github-runner resolved a guest image
+                // below the macOS 27 native-guest-provisioning floor —
+                // BEFORE the bundle is created and the 10-20 minute
+                // install begins. See
+                // ``RunnerCreateFlowPlan/validateGuestOSFloor(majorVersion:)``.
+                if githubRunner {
+                    try RunnerCreateFlowPlan.validateGuestOSFloor(
+                        majorVersion: restoreImage.operatingSystemVersion.majorVersion
                     )
-                } catch {
-                    if json {
-                        printJSONError(
-                            code: "unsupported-macos-runner",
-                            message: error.localizedDescription,
-                            hint: (error as? LocalizedError)?.recoverySuggestion
-                        )
-                    } else {
-                        print(Style.error("✗ \(error.localizedDescription)"))
-                        if let recovery = (error as? LocalizedError)?.recoverySuggestion {
-                            print(Style.dim("  \(recovery)"))
-                        }
-                    }
-                    throw ExitCode(CLIExit.validation)
                 }
 
                 if !json { print(Style.info("Creating VM bundle '\(name)' (id=\(bundleID.uuidString))...")) }
@@ -568,6 +569,14 @@ extension Spooktacular {
                     from: restoreImage,
                     spec: spec
                 )
+
+                // Capacity pre-flight BEFORE the long install —
+                // VZMacOSInstaller boots the VM internally, so a
+                // host at the concurrent-VM limit would otherwise
+                // burn the whole install and fail with the
+                // framework's opaque installation error instead of
+                // CapacityError's actionable one.
+                try CapacityCheck.ensureCapacity(in: SpooktacularPaths.vms)
 
                 if !json { print(Style.info("Installing macOS (10-20 minutes)...")) }
                 try await manager.install(
@@ -581,78 +590,31 @@ extension Spooktacular {
                 }
                 if !json { print() }
 
-                let macOSMajor = restoreImage.operatingSystemVersion.majorVersion
-                if !skipSetup && SetupAutomation.isSupported(macOSVersion: macOSMajor) {
-                    // Zero-touch provisioner install: stage
-                    // `Spooktacular Provisioner.pkg` into the
-                    // bundle's provisioning share BEFORE Setup
-                    // Assistant automation starts, so it's already
-                    // sitting on the share (mounted by every macOS
-                    // guest's `applyProvisioning` virtio-fs device)
-                    // when the automation's typed `installer`
-                    // command runs inside the guest.
-                    //
-                    // Only worth doing when something will actually
-                    // consume the provisioner daemon afterward: a
-                    // first-boot script about to be disk-injected
-                    // (only `--provision disk-inject` writes
-                    // `first-boot.sh` to the share — `--provision
-                    // ssh` never touches it) or Guest Tools being
-                    // installed. `githubRunner` / `remoteDesktop` /
-                    // `openclaw` / `userData` are the only sources
-                    // of a provisioning script later in this method
-                    // (see the `provisionScript` assignment below),
-                    // and all four are already-parsed flags at this
-                    // point, so the check doesn't need to wait for
-                    // that assignment to run.
-                    let willInjectFirstBootScript = provision == .diskInject
-                        && (githubRunner || remoteDesktop || openclaw || userData != nil)
-                    var installProvisioner = willInjectFirstBootScript || guestTools.installsAppBundle
-
-                    if installProvisioner {
-                        if let pkgURL = AppBundleBootstrapTemplate.locateProvisionerPkg() {
-                            // 0700 — this share can hold a live
-                            // GitHub Actions runner registration
-                            // token verbatim once the runner script
-                            // is injected below; see the matching
-                            // comment on `VirtualMachineBundle.create`.
-                            try FileManager.default.createDirectory(
-                                at: bundle.provisionDirectoryURL,
-                                withIntermediateDirectories: true,
-                                attributes: [.posixPermissions: 0o700]
-                            )
-                            let destination = bundle.provisionDirectoryURL
-                                .appendingPathComponent(pkgURL.lastPathComponent)
-                            try? FileManager.default.removeItem(at: destination)
-                            try FileManager.default.copyItem(at: pkgURL, to: destination)
-                            if !json { print(Style.info("Staged provisioner pkg for zero-touch install.")) }
-                        } else {
-                            // Soft warn, mirroring the Guest Tools
-                            // bundle-not-found path below — dev
-                            // builds that never ran build-app.sh
-                            // don't have a pkg to stage. Skipping
-                            // `installProvisioner` here (rather than
-                            // leaving it true) keeps the typed
-                            // `installer` command from running
-                            // against a file that was never copied.
-                            if !json { print(Style.dim("  Provisioner pkg not found — run build-app.sh to produce Spooktacular.app/Contents/Applications/Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg. Continuing without zero-touch provisioning.")) }
-                            installProvisioner = false
-                        }
-                    }
-
-                    try await automateSetupAssistant(
-                        bundle: bundle,
-                        macOSVersion: macOSMajor,
-                        macAddress: macAddress,
-                        installProvisioner: installProvisioner
-                    )
-                } else if !skipSetup {
-                    Log.provision.info("No Setup Assistant sequence for macOS \(macOSMajor, privacy: .public)")
-                    if !json {
-                        print(Style.warning(
-                            "No automated Setup Assistant sequence for macOS \(macOSMajor). "
-                            + "Run 'spook start \(name)' to complete setup manually."
-                        ))
+                // Provisioner daemon injection — replaces the old
+                // Setup Assistant + pkg-install path with a static
+                // root LaunchDaemon written directly onto the
+                // guest's Data volume before first boot (see
+                // ``DiskInjector/installProvisionerDaemon``). No OS
+                // boot needed to install it — it's a disk-level
+                // copy while the VM is stopped. `needsProvisionerDaemon`
+                // was computed earlier (before the install) from
+                // already-parsed flags, alongside the matching
+                // preflight check.
+                if needsProvisionerDaemon {
+                    if let assets = ProvisionerAssets.locate() {
+                        try DiskInjector.installProvisionerDaemon(
+                            into: bundle,
+                            plist: assets.plist,
+                            runner: assets.runner,
+                            privileged: DirectPrivilegedFileOps()
+                        )
+                        if !json { print(Style.success("✓ Provisioner daemon injected.")) }
+                    } else {
+                        // Soft warn, mirroring the Guest Tools
+                        // bundle-not-found path below — dev builds
+                        // that never ran build-app.sh don't have
+                        // the plist/runner to inject.
+                        if !json { print(Style.dim("  Provisioner assets not found — run build-app.sh to produce Resources/SpookProvisioner/. Continuing without the provisioner daemon.")) }
                     }
                 }
 
@@ -703,12 +665,12 @@ extension Spooktacular {
                 if guestTools.installsAppBundle {
                     if let appBundle = AppBundleBootstrapTemplate.locateGuestToolsBundle() {
                         if !json { print(Style.info("Installing Spooktacular Guest Tools into guest...")) }
-                        // If Setup Assistant automation just ran (the
-                        // `automateSetupAssistant` call above),
-                        // `vm.stop(graceful: false)` returned only
-                        // moments ago and Apple's VZ XPC service can
-                        // still hold this bundle's `disk.img` open for
-                        // a few seconds — the same lock
+                        // If the provisioner daemon injection just ran
+                        // (the `DiskInjector.installProvisionerDaemon`
+                        // call above), its `hdiutil detach ... -force`
+                        // returned only moments ago and Apple's disk
+                        // arbitration can still hold this bundle's
+                        // `disk.img` briefly — the same lock
                         // `RestoreImageManager.install` already waits
                         // out for its own callers (see that method's
                         // doc comment for the `lsof`-confirmed root
@@ -726,10 +688,9 @@ extension Spooktacular {
                             if !json { print(Style.success("✓ Guest Tools installed (\(guestTools.displayName)).")) }
                         } catch {
                             // Deliberately swallowed, not rethrown:
-                            // the macOS install (10-20 minutes) and
-                            // any Setup Assistant automation already
-                            // succeeded, and the VM is fully usable
-                            // without Guest Tools. Letting this
+                            // the macOS install (10-20 minutes)
+                            // already succeeded, and the VM is fully
+                            // usable without Guest Tools. Letting this
                             // propagate to the generic `catch` below
                             // would delete `bundleURL` over what,
                             // post-wait, is most likely a residual
@@ -872,23 +833,9 @@ extension Spooktacular {
 
                 createdBundle = bundle
 
-            } catch let failure as RunnerSetupAutomationFailure {
-                // --github-runner + failed Setup Assistant automation:
-                // fail fast WITHOUT deleting the bundle — the macOS
-                // install itself succeeded and the VM is fully usable
-                // once setup is finished by hand — and WITHOUT falling
-                // through to the runner-provisioning phase below,
-                // which would mint a registration token, inject the
-                // runner script, and boot into a guaranteed online-
-                // poll timeout (the Spooktacular Provisioner that
-                // would execute the script never installed). See
-                // ``RunnerSetupAutomationFailure``.
-                reportSetupAutomationFailureForRunner(failure.underlying)
-                throw ExitCode(classifyExitCode(failure.underlying))
             } catch let exit as ExitCode {
                 // A validation guard inside this do-block (IPSW not
-                // found, or --github-runner with a macOS version
-                // that has no Setup Assistant automation sequence)
+                // found, or the provisioner-daemon preflight check)
                 // already printed its own single, clean error
                 // message and picked its own documented exit code
                 // before throwing. Passing it straight through
@@ -1129,6 +1076,9 @@ extension Spooktacular {
                 case .downloadFailed:           return "download-failed"
                 }
             }
+            if case .guestOSBelowFloor = error as? RunnerCreateFlowError {
+                return "guest-os-below-floor"
+            }
             return "create-failed"
         }
 
@@ -1142,6 +1092,9 @@ extension Spooktacular {
                 case .downloadFailed:
                     return CLIExit.generalFailure
                 }
+            }
+            if case .guestOSBelowFloor = error as? RunnerCreateFlowError {
+                return CLIExit.validation
             }
             let ns = error as NSError
             if ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError {
@@ -1169,13 +1122,13 @@ extension Spooktacular {
 
             logger.info("Creating VM instance from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
             if !json { print(Style.info("Booting VM for provisioning...")) }
-            // Post-release construction: this runs either right
-            // after `RestoreImageManager.install()` (when Setup
-            // Assistant automation was skipped or unsupported) or
-            // right after `automateSetupAssistant` stopped its VM —
-            // in both cases a prior VZVirtualMachine on this same
-            // bundle was just released and its XPC service may still
-            // hold the file lock. See `VirtualMachine.makeAfterInstall`.
+            // Post-release construction: this runs right after
+            // `RestoreImageManager.install()` and any provisioner
+            // daemon / Guest Tools disk injection above — a prior
+            // VZVirtualMachine or disk attach on this same bundle may
+            // have just released and its XPC service or disk
+            // arbitration can still hold the file lock briefly. See
+            // `VirtualMachine.makeAfterInstall`.
             let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle) { [json] attempt, maxAttempts in
                 if !json { print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))...")) }
             }
@@ -1218,202 +1171,6 @@ extension Spooktacular {
             if !json { print(Style.success("✓ VM stopped.")) }
         }
 
-        // MARK: - Setup Assistant Automation
-
-        /// Thrown by ``automateSetupAssistant(bundle:macOSVersion:macAddress:installProvisioner:)``
-        /// when Setup Assistant automation fails under
-        /// `--github-runner`, per
-        /// ``RunnerCreateFlowPlan/setupAutomationFailureIsFatal(githubRunner:)``.
-        ///
-        /// `run()`'s outer catch matches this type specifically —
-        /// see the comment at that catch site — so it can report the
-        /// failure and exit non-zero WITHOUT deleting the VM bundle
-        /// (the macOS install itself succeeded) and WITHOUT falling
-        /// through to mint a registration token, inject the runner
-        /// script, or boot again.
-        private struct RunnerSetupAutomationFailure: Error {
-            /// The underlying error `SetupAutomationExecutor.run` (or
-            /// the SSH-confirmation step) threw.
-            let underlying: Error
-        }
-
-        /// Boots the VM, automates Setup Assistant, waits for SSH,
-        /// and marks ``VirtualMachineMetadata/setupCompleted``.
-        ///
-        /// The method creates the VM, boots it, runs the keyboard
-        /// automation sequence for the detected macOS version, then
-        /// polls until SSH is reachable (confirming that the setup
-        /// finished and Remote Login was enabled). Once SSH is
-        /// confirmed, the metadata is updated and the VM is stopped.
-        ///
-        /// - Parameters:
-        ///   - bundle: The newly created VM bundle.
-        ///   - macOSVersion: The macOS major version (e.g., 15 for Sequoia).
-        ///   - macAddress: The VM's MAC address for IP resolution.
-        ///   - installProvisioner: Forwarded to
-        ///     ``SetupAutomation/sequence(for:username:password:installProvisioner:)``.
-        ///     Pass `true` only once `Spooktacular Provisioner.pkg`
-        ///     has actually been copied into `bundle`'s
-        ///     provisioning share — see the call site in `run()`.
-        ///
-        /// - Throws: ``RunnerSetupAutomationFailure`` if automation
-        ///   fails and ``RunnerCreateFlowPlan/setupAutomationFailureIsFatal(githubRunner:)``
-        ///   says the failure is fatal for this create (always true
-        ///   when `--github-runner` is active) — the VM is still
-        ///   stopped first, exactly as in the swallowed case, so the
-        ///   caller never has to. For a plain desktop create the
-        ///   failure is logged and swallowed, matching prior
-        ///   behavior.
-        @MainActor
-        private func automateSetupAssistant(
-            bundle: VirtualMachineBundle,
-            macOSVersion: Int,
-            macAddress: MACAddress,
-            installProvisioner: Bool = false
-        ) async throws {
-            let logger = Log.provision
-
-            logger.info("Starting Setup Assistant automation for macOS \(macOSVersion, privacy: .public)")
-            if !json { print(Style.info("Automating Setup Assistant for macOS \(macOSVersion)...")) }
-
-            // Captured on failure so the fail-fast decision below can
-            // run AFTER the VM is stopped (same shutdown as the
-            // swallowed case) rather than duplicating the stop
-            // sequence in a second catch. `vm` is optional because
-            // construction/boot themselves can fail — in that case
-            // there is nothing to stop, but the failure must still
-            // flow through this same capture-and-report path rather
-            // than escaping uncaught, which would skip straight to
-            // `run()`'s generic catch and delete the freshly-installed
-            // bundle (see the doc comment on
-            // ``RunnerSetupAutomationFailure``: any failure at this
-            // stage must preserve the bundle, since macOS install
-            // itself already succeeded).
-            var automationFailure: Error?
-            var vm: VirtualMachine?
-
-            do {
-                // `RestoreImageManager.install()` already waits for
-                // the just-finished installer's XPC-backed file lock
-                // on `auxiliary.bin` / `disk.img` to clear before
-                // returning — see that method's doc comment for why
-                // the lock is held by a separate
-                // `com.apple.Virtualization.VirtualMachine.xpc`
-                // process (confirmed via `ps` / `lsof`), not by
-                // anything in our own object graph, and so can't be
-                // released any faster by dropping a Swift reference
-                // sooner on our end. `makeAfterInstall` below only
-                // covers the small residual TOCTOU gap between that
-                // wait and this construction call.
-                let constructedVM = try await VirtualMachine.makeAfterInstall(bundle: bundle) { [json] attempt, maxAttempts in
-                    if !json { print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))...")) }
-                }
-                vm = constructedVM
-                guard let underlyingVM = constructedVM.vzVM else {
-                    throw NSError(
-                        domain: "com.spooktacular",
-                        code: 1,
-                        userInfo: [
-                            NSLocalizedDescriptionKey: "Failed to create virtual machine instance for setup."
-                        ]
-                    )
-                }
-
-                try await constructedVM.start()
-                logger.notice("VM booted for Setup Assistant automation")
-                if !json { print(Style.success("✓ VM booted.")) }
-
-                let driver = VZKeyboardDriver(virtualMachine: underlyingVM)
-                let screenReader = VZScreenReader(vmView: driver.vmView)
-                let steps = try SetupAutomation.sequence(
-                    for: macOSVersion,
-                    installProvisioner: installProvisioner
-                )
-                logger.info("Executing \(steps.count, privacy: .public) Setup Assistant steps")
-                if !json { print(Style.info("Running Setup Assistant automation (\(steps.count) steps)...")) }
-                // Diagnostics land in the same `provision/` directory
-                // first-boot provisioning evidence already uses, so a
-                // failed run and a failed gate show up side by side.
-                try await SetupAutomationExecutor.run(
-                    steps: steps,
-                    using: driver,
-                    screenReader: screenReader,
-                    diagnosticsDirectory: bundle.provisionDirectoryURL
-                )
-                // NOT "automation complete" / "succeeded": every
-                // keystroke sent and every screen gate along the way
-                // was satisfied, but that only means the sequence
-                // ran — it doesn't confirm Setup Assistant actually
-                // finished on the guest. The SSH confirmation below
-                // is the real success gate; this line just reports
-                // that the keystroke phase is over.
-                logger.notice("Setup Assistant keystroke sequence completed (guest state unverified until SSH confirm)")
-                if !json { print(Style.info("Keystroke sequence completed — verifying guest state via SSH...")) }
-
-                logger.info("Resolving IP for MAC \(macAddress, privacy: .public)")
-                if !json { print(Style.info("Waiting for SSH to confirm setup completed...")) }
-                guard let ip = try await IPResolver.resolveIPWithRetry(macAddress: macAddress, timeout: 120) else {
-                    logger.error("Could not resolve IP — SSH unreachable, setup cannot be verified")
-                    throw NSError(
-                        domain: "com.spooktacular",
-                        code: 1,
-                        userInfo: [
-                            NSLocalizedDescriptionKey: "Could not resolve VM IP address within timeout.",
-                            NSLocalizedRecoverySuggestionErrorKey:
-                                "The VM is not usable for template provisioning without SSH. "
-                                + "Run 'spook start \(name)' to complete setup manually."
-                        ]
-                    )
-                }
-                logger.info("Resolved IP \(ip, privacy: .public), waiting for SSH")
-                try await SSHExecutor.waitForSSH(ip: ip)
-                logger.notice("SSH confirmed on \(ip, privacy: .public)")
-                if !json { print(Style.success("✓ SSH available at \(ip). Setup confirmed.")) }
-
-                var metadata = bundle.metadata
-                metadata.setupCompleted = true
-                try VirtualMachineBundle.writeMetadata(metadata, to: bundle.url)
-                logger.notice("setupCompleted = true written to metadata")
-                if !json { print(Style.success("✓ Setup marked complete.")) }
-
-            } catch {
-                logger.error("Setup Assistant automation failed: \(error.localizedDescription, privacy: .public)")
-                // Not printed in --json mode: the message is
-                // reported once, cleanly, via `printJSONError` in
-                // `reportSetupAutomationFailureForRunner` (fatal
-                // case) or would otherwise corrupt stdout with a
-                // second, free-text line (swallowed case — see the
-                // `else` branch below, also gated).
-                if !json { print(Style.error("✗ Setup Assistant automation failed: \(error.localizedDescription)")) }
-                if RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: githubRunner) {
-                    automationFailure = error
-                } else if !json {
-                    print(Style.dim("  The VM was created. Run 'spook start \(name)' to complete setup manually."))
-                }
-            }
-
-            if let vm {
-                logger.info("Stopping VM after Setup Assistant automation")
-                if !json { print(Style.info("Stopping VM...")) }
-                try? await vm.stop(graceful: false)
-                logger.notice("VM stopped after Setup Assistant automation")
-                if !json { print(Style.success("✓ VM stopped.")) }
-            }
-
-            // Fail fast under --github-runner: the Spooktacular
-            // Provisioner never installed, so minting a registration
-            // token, injecting the runner script, and booting again
-            // below would be a guaranteed ~10-minute online-poll
-            // timeout with nothing useful to diagnose. Thrown AFTER
-            // the VM is stopped above so the caller doesn't have to
-            // stop it again; caught by `run()`'s outer catch, which
-            // reports it without deleting the (fully macOS-installed)
-            // bundle — see ``RunnerSetupAutomationFailure``.
-            if let automationFailure {
-                throw RunnerSetupAutomationFailure(underlying: automationFailure)
-            }
-        }
-
         // MARK: - GitHub Actions Runner Provisioning
 
         /// Reports a runner-provisioning failure without touching
@@ -1445,61 +1202,22 @@ extension Spooktacular {
             }
         }
 
-        /// Reports a fatal Setup Assistant automation failure that
-        /// aborted a `--github-runner` create before minting a
-        /// registration token, injecting the runner script, or
-        /// booting again.
-        ///
-        /// Distinct from ``reportRunnerProvisioningFailure(_:)``:
-        /// that one reports failures AFTER the runner phase already
-        /// started (mint/inject/start), whose `--json` success
-        /// payload has already been written to stdout, so it writes
-        /// failure text to stderr only. This one fires before any of
-        /// that — the create flow's own success summary was never
-        /// printed either — so in `--json` mode it still owes callers
-        /// a single machine-parsable error document on stdout via
-        /// `printJSONError`, same as every other pre-success failure
-        /// in this command. `automateSetupAssistant`'s own catch
-        /// suppresses its "what failed" line in `--json` mode (like
-        /// every other progress line in that function), so the
-        /// message is reported exactly once, here, via
-        /// `printJSONError` — this method then adds the "kept + how
-        /// to recover" guidance on stderr.
-        private func reportSetupAutomationFailureForRunner(_ error: Error) {
-            let keepNote = "The VM '\(name)' was created and macOS installed successfully — it has been kept."
-            let nextSteps = "Run 'spook start \(name)' to boot it and complete Setup Assistant by hand. "
-                + "Once setup is done, either register a self-hosted GitHub Actions runner manually "
-                + "inside the guest, or delete this VM ('spook delete \(name)') and re-run "
-                + "'spook create --github-runner ...' once the automation failure above is fixed."
-            if json {
-                printJSONError(
-                    code: classifyErrorCode(error),
-                    message: "Setup Assistant automation failed: \(error.localizedDescription)",
-                    hint: (error as? LocalizedError)?.recoverySuggestion
-                )
-                let text = "  " + keepNote + "\n  " + nextSteps + "\n"
-                FileHandle.standardError.write(Data(text.utf8))
-            } else {
-                print(Style.dim("  \(keepNote)"))
-                print(Style.dim("  \(nextSteps)"))
-            }
-        }
-
         /// Mints a fresh registration token, injects the runner
         /// setup script, and — unless the operator opted out via
-        /// `--no-start` — boots the VM headless and polls GitHub
-        /// until the runner reports online.
+        /// `--no-start` — boots the VM headless (applying native
+        /// guest provisioning on this, its first boot after install)
+        /// and polls GitHub until the runner reports online.
         ///
-        /// Called AFTER Setup Assistant automation (which installs
-        /// the Spooktacular Provisioner LaunchDaemon that will
-        /// actually execute the injected script) and after the
-        /// create flow's usual success summary has already printed.
+        /// Called after the provisioner daemon has already been
+        /// injected onto the guest disk (see the daemon-injection
+        /// block in `run()`) and after the create flow's usual
+        /// success summary has already printed.
         ///
         /// The registration token is minted here — seconds before
         /// boot — rather than earlier, because GitHub's registration
         /// tokens expire after one hour: minting it before the
-        /// 10-20 minute macOS install + Setup Assistant automation
-        /// would routinely hand the guest an already-expired token.
+        /// 10-20 minute macOS install would routinely hand the guest
+        /// an already-expired token.
         ///
         /// - Parameters:
         ///   - bundle: The newly created VM bundle.
@@ -1580,12 +1298,24 @@ extension Spooktacular {
                 return
             }
 
+            // Native guest provisioning account for this VM's first
+            // boot — the framework creates this admin account and
+            // skips Setup Assistant (macOS 27+ guests only; see
+            // ``GuestProvisioningSpec``). The password is ephemeral,
+            // generated fresh per VM, and never persisted.
+            let provisioningSpec = GuestProvisioningSpec(
+                fullName: "Spooktacular Runner",
+                username: GitHubRunnerTemplate.runnerAccountUsername,
+                password: EphemeralCredential.generatePassword()
+            )
+
             try await bootRunnerAndAwaitOnline(
                 bundle: bundle,
                 bundleURL: bundleURL,
                 service: service,
                 scope: scope,
-                issuedHandle: issued.handle
+                issuedHandle: issued.handle,
+                guestProvisioning: provisioningSpec
             )
         }
 
@@ -1617,7 +1347,8 @@ extension Spooktacular {
             bundleURL: URL,
             service: GitHubRunnerService,
             scope: GitHubRunnerScope,
-            issuedHandle: UUID
+            issuedHandle: UUID,
+            guestProvisioning: GuestProvisioningSpec
         ) async throws {
             var bundle = bundle
             if ephemeral && !bundle.metadata.isEphemeral {
@@ -1628,11 +1359,12 @@ extension Spooktacular {
             }
 
             if !json { print(Style.info("Starting VM '\(name)' headless for runner registration...")) }
-            // Post-release construction: `automateSetupAssistant`
-            // stopped its VM on this same bundle just before this
-            // runs (token mint + script injection in between are
-            // fast), so the stopped VM's XPC service may still hold
-            // the file lock. See `VirtualMachine.makeAfterInstall`.
+            // Post-release construction: the provisioner daemon
+            // injection attached/detached this same bundle's disk
+            // image just before this runs (token mint + script
+            // injection in between are fast), so disk arbitration
+            // may still hold the file lock briefly. See
+            // `VirtualMachine.makeAfterInstall`.
             let vm = try await VirtualMachine.makeAfterInstall(bundle: bundle) { attempt, maxAttempts in
                 if !json { print(Style.dim("  Retrying VM construction (attempt \(attempt)/\(maxAttempts))...")) }
             }
@@ -1690,7 +1422,12 @@ extension Spooktacular {
             // `VirtualMachine.suspend()`.
             signal(SIGUSR1, SIG_IGN)
 
-            try await vm.startOrResume()
+            // This is the freshly-installed VM's actual first boot,
+            // so `guestProvisioning` is honored: the framework
+            // creates the `runner` admin account and skips Setup
+            // Assistant (macOS 27+ guests; silently ignored on
+            // older guests — see `VirtualMachine.start`).
+            try await vm.startOrResume(guestProvisioning: guestProvisioning)
             if !json { print(Style.success("✓ VM '\(name)' is running.")) }
 
             if !json { print(Style.info("Waiting for runner '\(name)' to come online (up to 10 minutes)...")) }

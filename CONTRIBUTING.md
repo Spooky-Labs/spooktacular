@@ -48,7 +48,7 @@ We follow [GitHub Flow](https://docs.github.com/en/get-started/quickstart/github
 - **No force unwraps** in production code
 - **Every error** must have `errorDescription` + `recoverySuggestion`
 - **Every public type** must have DocC documentation
-- **SpooktacularKit** must not import AppKit (use `KeyboardDriver` protocol)
+- **SpooktacularKit** must not import AppKit (define protocols in SpooktacularCore, put Apple-framework conformances in SpooktacularInfrastructureApple)
 - **CLI commands** must be thin wrappers — business logic lives in SpooktacularKit
 - **Tests** must verify behavior, not just string contents
 

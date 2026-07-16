@@ -6,6 +6,12 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — native macOS 27 guest provisioning (replaces Setup Assistant OCR automation)
+
+`--github-runner` now requires a macOS 27+ guest and provisions it natively via Apple's `VZMacGuestProvisioningOptions` (e71d99512): the framework creates the admin account and skips Setup Assistant with zero keystroke automation, screen-reading, or OCR. A root LaunchDaemon is written directly onto the guest's Data volume before first boot (`DiskInjector.installProvisionerDaemon`, eaee16d71) and runs the disk-injected setup script once the account exists; `VirtualMachine.start(guestProvisioning:)` applies the options on the bundle's actual first boot (745018444). Both the CLI (4fef56f36) and GUI (d8c819a66) create flows use this path, which fails fast with an actionable error if the resolved guest image is below the macOS 27 floor (6c7c67d05) instead of timing out 10-20 minutes into the install.
+
+The entire keystroke-automation/OCR/pkg-install surface this replaces — `SetupAutomation`, `SetupAutomationExecutor`, `VZKeyboardDriver`, `VZScreenReader`, `ScreenReader`, `KeyboardDriver`, `KeyCode`, `ProvisionerInstaller`, and the `Spooktacular Provisioner.pkg` postinstall — has been deleted (~4600 LOC), not retained (888c3f40a).
+
 ### Added — zero-touch GitHub Actions runner pipeline
 
 `spook create --github-runner --github-repo <org/repo> --github-token-keychain <account>` is now a single, complete flow: resolve the Keychain-stored PAT, mint a fresh one-hour runner registration token right before boot, disk-inject the runner script, boot the VM headless, and poll GitHub every 10 seconds (up to 10 minutes) until the runner reports online — no separate `spook start`, no plaintext token on a flag/env-var/file (7de6933b3).

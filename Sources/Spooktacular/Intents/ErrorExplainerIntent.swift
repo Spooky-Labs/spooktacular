@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import SFSymbolsKit
 
 /// WWDC 2025 headline: **on-device error explanation via
 /// Foundation Models**.
@@ -99,16 +100,35 @@ struct ErrorExplainerSheet: View {
     let context: String?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var explanation: String = ""
     @State private var failed: Bool = false
+    /// `true` only while the on-device model round-trip is in
+    /// flight — set before the token loop in
+    /// ``streamExplanation()`` and cleared when it exits.
+    @State private var isStreaming: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Label("Explain this error", systemImage: "sparkles")
-                    .font(.headline)
+                Label {
+                    Text("Explain this error")
+                } icon: {
+                    Image(systemName: String.SFSymbols.sparkles)
+                        // Wisp marks the brand moment of the
+                        // surface (on-device intelligence).
+                        .foregroundStyle(Apparition.wisp)
+                        // Pulses only while the model is genuinely
+                        // streaming tokens — an indefinite effect
+                        // bound to real in-flight work, never
+                        // decoration — and stays static under
+                        // Reduce Motion.
+                        .symbolEffect(.pulse, isActive: isStreaming && !reduceMotion)
+                }
+                .font(.headline)
                 Spacer()
                 Button("Done") { dismiss() }
+                    .glassProminentButton()
                     .keyboardShortcut(.defaultAction)
             }
 
@@ -131,10 +151,32 @@ struct ErrorExplainerSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
             }
-            .glassCard(cornerRadius: 12)
+            // Reading surface (long streamed prose), so material —
+            // not glass. The pane's corners resolve concentric with
+            // the sheet's 26pt container below, sharing center
+            // points with the sheet corners instead of hardcoding a
+            // small radius; `minimum:` keeps a comfortable 12pt
+            // floor since the 20pt inset would otherwise resolve
+            // the corner down to 6pt.
+            .background(
+                .regularMaterial,
+                in: ConcentricRectangle(
+                    corners: .concentric(minimum: 12.0),
+                    isUniform: true
+                )
+            )
         }
         .padding(20)
         .frame(minWidth: 460, idealWidth: 520, minHeight: 340)
+        // Faint night wash over the sheet's opaque background —
+        // ambient tint layered over system chrome (the scroll pane
+        // above keeps its standard material), no content glass.
+        .background(Apparition.night1.opacity(0.3))
+        // Declare the sheet as a 26pt continuous rounded container
+        // so the nested `ConcentricRectangle` above resolves
+        // corners that share center points with the sheet's own —
+        // the macOS 26 concentric-geometry contract.
+        .containerShape(.rect(cornerRadius: 26))
         .task(id: errorMessage) {
             await streamExplanation()
         }
@@ -181,6 +223,8 @@ struct ErrorExplainerSheet: View {
     private func streamExplanation() async {
         #if canImport(FoundationModels)
         guard ErrorExplainer.isAvailable else { return }
+        isStreaming = true
+        defer { isStreaming = false }
         do {
             // Each snapshot is the full explanation so far — replace,
             // don't append.

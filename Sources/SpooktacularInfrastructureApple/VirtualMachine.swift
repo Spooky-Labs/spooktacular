@@ -7,6 +7,13 @@ import os
 /// An error thrown when an operation is attempted on a
 /// `VirtualMachine` whose underlying `VZVirtualMachine` has
 /// been released or was never created.
+/// Errors from applying guest provisioning at VM start.
+public enum VirtualMachineProvisioningError: Error, Equatable {
+    /// The host is older than macOS 27, which is required to set
+    /// `VZMacGuestProvisioningOptions`.
+    case hostTooOld
+}
+
 public struct VirtualMachineInvalidatedError: Error, Sendable, LocalizedError {
 
     /// A human-readable description of the error.
@@ -311,7 +318,33 @@ public final class VirtualMachine: NSObject {
     /// - Throws: An error if the VM cannot be started.
     ///
     /// Doc: https://developer.apple.com/documentation/virtualization/vzmacosvirtualmachinestartoptions/startupfrommacosrecovery
-    public func start(startUpFromMacOSRecovery: Bool = false) async throws {
+    /// Builds the macOS start options, optionally carrying the guest
+    /// provisioning account. Static + pure so it can be unit-tested without
+    /// booting a VM.
+    ///
+    /// - Throws: ``VirtualMachineProvisioningError/hostTooOld`` if `provisioning`
+    ///   is non-nil on a host older than macOS 27.
+    static func makeStartOptions(
+        recovery: Bool,
+        provisioning: GuestProvisioningSpec?
+    ) throws -> VZMacOSVirtualMachineStartOptions {
+        let options = VZMacOSVirtualMachineStartOptions()
+        options.startUpFromMacOSRecovery = recovery
+        if let provisioning {
+            guard #available(macOS 27, *) else {
+                throw VirtualMachineProvisioningError.hostTooOld
+            }
+            try options.setGuestProvisioning(
+                makeGuestProvisioningOptions(from: provisioning.validated())
+            )
+        }
+        return options
+    }
+
+    public func start(
+        startUpFromMacOSRecovery: Bool = false,
+        guestProvisioning: GuestProvisioningSpec? = nil
+    ) async throws {
         guard let virtualMachine = vzVM else { throw VirtualMachineInvalidatedError() }
         guard virtualMachine.canStart else {
             throw VirtualMachineLifecycleError.invalidTransition(
@@ -323,14 +356,19 @@ public final class VirtualMachine: NSObject {
         updateState(.starting)
         nonisolated(unsafe) let unsafeVM = virtualMachine
         do {
-            if startUpFromMacOSRecovery {
+            if startUpFromMacOSRecovery || guestProvisioning != nil {
                 // Apple's `start(options:)` with
                 // `VZMacOSVirtualMachineStartOptions` only exposes
                 // a completion-handler variant (no async
                 // overload). Wrap it in a continuation so the
-                // caller gets the same async ergonomics.
-                let options = VZMacOSVirtualMachineStartOptions()
-                options.startUpFromMacOSRecovery = true
+                // caller gets the same async ergonomics. On macOS
+                // 27+, the options also carry the guest provisioning
+                // account (`VZMacGuestProvisioningOptions`), applied
+                // on the first boot after restore.
+                let options = try Self.makeStartOptions(
+                    recovery: startUpFromMacOSRecovery,
+                    provisioning: guestProvisioning
+                )
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     unsafeVM.start(options: options) { error in
                         if let error {
@@ -776,7 +814,17 @@ public final class VirtualMachine: NSObject {
     /// failure list ("the file contents are incompatible with
     /// the current configuration"):
     /// <https://developer.apple.com/documentation/virtualization/vzvirtualmachine/restoremachinestatefrom(url:)>.
-    public func startOrResume(startUpFromMacOSRecovery recovery: Bool = false) async throws {
+    ///
+    /// - Parameter guestProvisioning: Forwarded to the cold-boot path
+    ///   (``start(startUpFromMacOSRecovery:guestProvisioning:)``) when there's
+    ///   no saved state to resume from — the case that matters for a
+    ///   freshly-installed bundle's actual first boot. Ignored when a saved
+    ///   state is restored instead, since `VZMacGuestProvisioningOptions` only
+    ///   applies to a genuine first boot after restore.
+    public func startOrResume(
+        startUpFromMacOSRecovery recovery: Bool = false,
+        guestProvisioning: GuestProvisioningSpec? = nil
+    ) async throws {
         guard vzVM != nil else { throw VirtualMachineInvalidatedError() }
         let savedURL = bundle.savedStateURL
         let hasSaved = FileManager.default.fileExists(atPath: savedURL.path)
@@ -808,7 +856,7 @@ public final class VirtualMachine: NSObject {
             }
         }
 
-        try await start(startUpFromMacOSRecovery: recovery)
+        try await start(startUpFromMacOSRecovery: recovery, guestProvisioning: guestProvisioning)
     }
 
     // MARK: - Private

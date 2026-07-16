@@ -111,9 +111,8 @@ chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME"
 
 # Shared version/build stamps, injected into every embedded
 # bundle's Info.plist below (VM Helper XPC service, Guest
-# Tools) and into the provisioner pkg's version so
-# `spooktacular doctor` and diagnostics across bundles all
-# agree on one build identity.
+# Tools) so `spooktacular doctor` and diagnostics across
+# bundles all agree on one build identity.
 BUNDLE_VERSION="${MARKETING_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo '1.0.0')}"
 BUNDLE_BUILD="${BUILD_NUMBER:-$(git rev-list --count HEAD 2>/dev/null || echo '1')}"
 
@@ -163,124 +162,24 @@ cp "$BINARY_DIR/$GUEST_TOOLS_TARGET" "$GUEST_TOOLS_MACOS/$GUEST_TOOLS_TARGET"
 chmod +x "$GUEST_TOOLS_MACOS/$GUEST_TOOLS_TARGET"
 cp "$GUEST_TOOLS_INFO_PLIST" "$GUEST_TOOLS_CONTENTS/Info.plist"
 
-# Provisioner pkg. Apple's macOS-14.4 sandbox rules forbid a
-# sandboxed app from registering a LaunchDaemon via
-# SMAppService.daemon unless the daemon is itself a sandboxed
-# Mach-O — our runner is a bash script that needs to
-# `mount_virtiofs` and exec arbitrary user scripts as root,
-# which can't meet that requirement. The sanctioned escape
-# hatch for "sandboxed app installs a privileged helper" is
-# a signed `.pkg` that `Installer.app` (a system-privileged
-# app) unpacks. Guest Tools ships this pkg in its Resources
-# and opens it via `NSWorkspace.open(pkgURL)` when the user
-# clicks Enable Provisioning.
-#
-# pkgbuild layout:
-#   pkg-root/
-#     Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist
-#     usr/local/libexec/spook-provision-runner.sh
-#   pkg-scripts/
-#     postinstall  ← chown root:wheel + launchctl bootstrap
-#
-# `--install-location /` tells the installer to extract the
-# payload relative to the system root, so
-# `Library/LaunchDaemons/…` lands at `/Library/LaunchDaemons/…`.
-echo "Building provisioner pkg..."
-PKG_ROOT=$(mktemp -d)
-PKG_SCRIPTS=$(mktemp -d)
-mkdir -p "$PKG_ROOT/Library/LaunchDaemons"
-mkdir -p "$PKG_ROOT/usr/local/libexec"
+# Provisioner assets. The Spooktacular Provisioner LaunchDaemon
+# (plist + runner script) is no longer installed via a pkg —
+# native macOS 27 guest provisioning (VZMacGuestProvisioningOptions)
+# replaces the Setup-Assistant-automation + pkg-install path.
+# Instead, `DiskInjector.installProvisionerDaemon` writes these
+# two files directly onto the guest's Data volume (root:wheel)
+# before first boot. Bundle them here, in the main app's own
+# Resources/, so `ProvisionerAssets.locate()` — which resolves
+# relative to `Bundle.main` / the running `spook` executable's
+# sibling directory — finds them at runtime.
+echo "Bundling provisioner assets..."
+mkdir -p "$RESOURCES/SpookProvisioner"
 cp "$PROJECT_DIR/Resources/SpookProvisioner/com.spookylabs.spooktacular.provisioner.plist" \
-   "$PKG_ROOT/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist"
+   "$RESOURCES/SpookProvisioner/com.spookylabs.spooktacular.provisioner.plist"
 cp "$PROJECT_DIR/Resources/SpookProvisioner/spook-provision-runner.sh" \
-   "$PKG_ROOT/usr/local/libexec/spook-provision-runner.sh"
-chmod 644 "$PKG_ROOT/Library/LaunchDaemons/com.spookylabs.spooktacular.provisioner.plist"
-chmod 755 "$PKG_ROOT/usr/local/libexec/spook-provision-runner.sh"
-cp "$PROJECT_DIR/Resources/SpookProvisioner/postinstall" "$PKG_SCRIPTS/postinstall"
-chmod 755 "$PKG_SCRIPTS/postinstall"
-
-mkdir -p "$GUEST_TOOLS_CONTENTS/Resources"
-PKG_OUTPUT="$GUEST_TOOLS_CONTENTS/Resources/Spooktacular Provisioner.pkg"
-
-# Two-stage build: pkgbuild produces a *component* pkg with
-# the raw payload + scripts; productbuild then wraps it as a
-# *distribution* pkg with a Distribution.xml that
-# Installer.app accepts in its GUI. A bare component pkg
-# opens in Installer.app on macOS 14+ but the install button
-# is non-functional — Installer requires a Distribution
-# wrapper to actually run the install. That's why the
-# previous build's payload never landed on disk despite the
-# wizard appearing to complete.
-COMPONENT_PKG=$(mktemp -t provisioner-component.XXXXXX).pkg
-pkgbuild \
-    --root "$PKG_ROOT" \
-    --identifier com.spookylabs.spooktacular.provisioner \
-    --version "${BUNDLE_VERSION:-1.0.0}" \
-    --scripts "$PKG_SCRIPTS" \
-    --install-location / \
-    "$COMPONENT_PKG" \
-    >/dev/null
-
-# `--package <path>` embeds the component pkg inside the
-# distribution pkg with the same identifier. `--root /` tells
-# productbuild to synthesize a default Distribution.xml that
-# installs the component to the system root — equivalent to
-# the component pkg's `--install-location /`.
-productbuild \
-    --package "$COMPONENT_PKG" \
-    "$PKG_OUTPUT" \
-    >/dev/null
-
-rm -f "$COMPONENT_PKG"
-
-# Sign the pkg with Developer ID Installer if that cert is
-# available. Without signing, Gatekeeper blocks the pkg when
-# Guest Tools opens it via NSWorkspace on the end-user's Mac;
-# with signing + notarization below, the Installer wizard
-# launches with no warning. `bundle exec fastlane signing_dev_id`
-# syncs the cert (Developer ID Application + Developer ID
-# Installer in one match call).
-if security find-identity -v -p basic | grep -q "Developer ID Installer"; then
-    INSTALLER_IDENTITY=$(security find-identity -v -p basic \
-        | grep "Developer ID Installer" | head -1 \
-        | sed -E 's/.*"(.*)".*/\1/')
-    productsign --sign "$INSTALLER_IDENTITY" "$PKG_OUTPUT" "${PKG_OUTPUT}.signed"
-    mv "${PKG_OUTPUT}.signed" "$PKG_OUTPUT"
-    echo "Signed provisioner pkg with: $INSTALLER_IDENTITY"
-
-    # Notarize the pkg via notarytool when credentials are in
-    # place. `xcrun notarytool submit --wait` blocks until
-    # Apple's notary service returns, then `stapler staple`
-    # attaches the ticket so Gatekeeper can validate offline.
-    # On dev boxes without a notary keychain profile (the
-    # common case), we skip with a hint — the pkg still
-    # installs, just with a one-time "unidentified developer"
-    # warning the user overrides via Privacy & Security.
-    #
-    # `NOTARY_PROFILE` names an `xcrun notarytool store-credentials`
-    # entry (e.g. "spook-notary"). Set it via env or rely on CI
-    # secrets; we probe `notarytool history` to confirm the
-    # profile is actually resolvable before spending ~2 minutes
-    # on a submit that's just going to 403.
-    if [ -n "${NOTARY_PROFILE:-}" ] && xcrun notarytool history \
-            --keychain-profile "${NOTARY_PROFILE}" >/dev/null 2>&1; then
-        echo "Notarizing provisioner pkg (this may take a minute)..."
-        xcrun notarytool submit "$PKG_OUTPUT" \
-            --keychain-profile "${NOTARY_PROFILE}" \
-            --wait
-        xcrun stapler staple "$PKG_OUTPUT"
-        echo "Notarized + stapled provisioner pkg"
-    else
-        echo "Note: skipping pkg notarization — set NOTARY_PROFILE to a stored"
-        echo "  notarytool keychain profile to enable. Unsigned/unnotarized"
-        echo "  pkgs still install, but Gatekeeper shows a first-open warning."
-    fi
-else
-    echo "Warning: no 'Developer ID Installer' cert in keychain — shipping unsigned provisioner pkg."
-    echo "  Run 'bundle exec fastlane signing_dev_id' to sync the cert, then rebuild."
-fi
-
-rm -rf "$PKG_ROOT" "$PKG_SCRIPTS"
+   "$RESOURCES/SpookProvisioner/spook-provision-runner.sh"
+chmod 644 "$RESOURCES/SpookProvisioner/com.spookylabs.spooktacular.provisioner.plist"
+chmod 755 "$RESOURCES/SpookProvisioner/spook-provision-runner.sh"
 # Version-sync with the main app for consistent diagnostics
 # — same rationale as the XPC helper block above.
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BUNDLE_VERSION" "$GUEST_TOOLS_CONTENTS/Info.plist"

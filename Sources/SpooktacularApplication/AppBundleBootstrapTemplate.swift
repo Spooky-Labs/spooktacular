@@ -73,44 +73,4 @@ public enum AppBundleBootstrapTemplate {
 
         return candidates.first { fm.fileExists(atPath: $0.path) }
     }
-
-    /// The provisioner pkg's file name as it appears inside the
-    /// Guest Tools bundle's `Contents/Resources/`. Single source
-    /// of truth so ``locateProvisionerPkg()`` and
-    /// `SetupAutomation`'s typed `installer` command never drift
-    /// apart.
-    public static let provisionerPkgFileName = "Spooktacular Provisioner.pkg"
-
-    /// Resolves `Spooktacular Provisioner.pkg` on the host
-    /// filesystem.
-    ///
-    /// `build-app.sh` builds the pkg with `pkgbuild` +
-    /// `productbuild` and places it at
-    /// `Spooktacular Guest Tools.app/Contents/Resources/Spooktacular Provisioner.pkg`
-    /// (see the "Provisioner pkg" step of that script) — i.e.
-    /// alongside, not inside, the Guest Tools bundle's own
-    /// executable. Resolution therefore composes with
-    /// ``locateGuestToolsBundle()`` rather than duplicating its
-    /// three-tier search: wherever the Guest Tools `.app` is
-    /// found (env override, the host app's `Contents/Applications/`,
-    /// or a sibling of the running executable), the pkg is
-    /// looked up at that bundle's `Contents/Resources/`.
-    ///
-    /// Returns `nil` when ``locateGuestToolsBundle()`` finds
-    /// nothing, or when it finds a bundle that predates
-    /// `build-app.sh`'s pkg-assembly step (e.g. a `swift build`
-    /// developer loop that never ran the full packaging script).
-    /// Callers treat `nil` as "no zero-touch provisioner install
-    /// available, skip the step" — the same soft-fail contract
-    /// ``locateGuestToolsBundle()`` already establishes for its
-    /// callers.
-    public static func locateProvisionerPkg() -> URL? {
-        guard let guestToolsBundle = locateGuestToolsBundle() else {
-            return nil
-        }
-        let pkgURL = guestToolsBundle
-            .appendingPathComponent("Contents/Resources")
-            .appendingPathComponent(provisionerPkgFileName)
-        return FileManager.default.fileExists(atPath: pkgURL.path) ? pkgURL : nil
-    }
 }

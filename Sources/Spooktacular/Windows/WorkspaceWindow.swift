@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SFSymbolsKit
 @preconcurrency import Virtualization
 import SpooktacularInfrastructureApple
 import SpooktacularKit
@@ -27,6 +28,7 @@ struct WorkspaceWindow: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var showSnapshots: Bool = false
     @State private var showHardware: Bool = false
@@ -48,6 +50,18 @@ struct WorkspaceWindow: View {
                 missingWorkspace
             }
         }
+        // Animates exactly one thing: the séance ⇄ guest-display
+        // swap, bound to the "is this VM running?" state change.
+        // Under Reduce Motion the transitions degrade to plain
+        // crossfades, so the quick non-bouncy curve fits better
+        // than the signature spring.
+        //
+        // `animation(_:value:)` docs:
+        // https://developer.apple.com/documentation/SwiftUI/View/animation(_:value:)
+        .animation(
+            reduceMotion ? Apparition.quick : Apparition.spring,
+            value: appState.runningVMs[vmName] != nil
+        )
         .frame(minWidth: 720, minHeight: 460)
         .navigationTitle(appState.vms[vmName]?.displayName ?? vmName)
         .task(id: vmName) {
@@ -96,17 +110,51 @@ struct WorkspaceWindow: View {
                 cachedView: appState.graphicsViews[vmName]
             )
             .toolbar { runningToolbar }
+            // The guest materializes. Deliberately NOT
+            // `.blurReplace` on this branch: SwiftUI filter
+            // effects like blur don't reach into AppKit-hosted
+            // content, so on an `NSViewRepresentable` the blur
+            // half of that transition would silently no-op.
+            // Opacity + a whisper of scale are the effects that
+            // demonstrably apply to hosted views, and the swap's
+            // spring lives on the container's
+            // `animation(_:value:)` above.
+            .transition(guestMaterialize)
         } else {
             WorkspaceLaunchView(name: vmName, bundle: bundle)
                 .toolbar { stoppedToolbar }
+                // Pure SwiftUI content, so the full blur+scale
+                // materialize applies. When Reduce Motion is on
+                // the system swaps this for a plain crossfade —
+                // motion transitions carry `hasMotion`, and "that
+                // transition will be replaced by opacity when
+                // Reduce Motion is enabled":
+                // https://developer.apple.com/documentation/SwiftUI/TransitionProperties/hasMotion
+                //
+                // `blurReplace` docs:
+                // https://developer.apple.com/documentation/SwiftUI/Transition/blurReplace
+                .transition(.blurReplace)
         }
+    }
+
+    /// The guest display's materialize/dissipate transition:
+    /// opacity with a 2% scale settle. Reduce Motion drops the
+    /// scale and leaves a plain crossfade (hand-gated here because
+    /// the automatic `hasMotion` → opacity replacement is a
+    /// `Transition`-protocol behavior, and this branch uses the
+    /// type-erased `AnyTransition` combinators:
+    /// <https://developer.apple.com/documentation/SwiftUI/AnyTransition/combined(with:)>).
+    private var guestMaterialize: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .opacity.combined(with: .scale(scale: 0.98))
     }
 
     @ViewBuilder
     private var missingWorkspace: some View {
         ContentUnavailableView(
             "Workspace Unavailable",
-            systemImage: "questionmark.folder",
+            systemImage: String.SFSymbols.questionmarkFolder,
             description: Text("The VM was removed or is not loaded.")
         )
         .padding()
@@ -116,75 +164,90 @@ struct WorkspaceWindow: View {
 
     @ToolbarContentBuilder
     private var runningToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            // Leading indicator, not a button — just reports
-            // clipboard-bridge health. Placed first so users
-            // glance at the color without their eyes having to
-            // skip past the action buttons. State is pushed by
-            // the guest via `GuestEvent.spiceStatus` on every
-            // SPICE-bridge transition; no polling.
+        // Clipboard-bridge health — a status indicator, not an action.
+        // `.sharedBackgroundVisibility(.hidden)` keeps it in its own
+        // grouping so it doesn't glass-merge with the action buttons.
+        // The system applies Liquid Glass to toolbar items automatically;
+        // we never hand-roll `.glassButton()`/`.glassEffect` here — doing
+        // so double-stacked the material and broke the buttons' look.
+        ToolbarItem(placement: .primaryAction) {
             ClipboardStatusPill(
                 snapshot: appState.clipboardStatuses[vmName]
                     ?? .init(state: .notStarted)
             )
+        }
+        .sharedBackgroundVisibility(.hidden)
 
+        ToolbarSpacer(.fixed)
+
+        // Lifecycle cluster: Suspend / Stop share one glass group.
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 Task { await appState.suspendVM(vmName) }
             } label: {
-                Label("Suspend", systemImage: "pause.fill")
+                Label("Suspend", systemImage: String.SFSymbols.pauseFill)
+                    // Hover delight: one-shot symbol bounce on pointer
+                    // entry (Reduce-Motion-gated inside the modifier).
+                    // Attached to the Label so only the symbol animates.
+                    .hoverSymbolBounce()
             }
-            .glassButton()
             .help("Save VM state and quit — next start picks up where you left off")
 
             Button {
                 Task { await appState.stopVM(vmName) }
             } label: {
-                Label("Stop", systemImage: "stop.fill")
+                Label("Stop", systemImage: String.SFSymbols.stopFill)
+                    .hoverSymbolBounce()
             }
-            .glassButton()
             .help("Stop this workspace")
             .accessibilityIdentifier(AccessibilityID.stopButton)
+        }
 
+        ToolbarSpacer(.fixed)
+
+        // Utilities cluster: Snapshots + the network split-button.
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 showSnapshots = true
             } label: {
-                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                Label("Snapshots", systemImage: String.SFSymbols.clockArrowTriangleheadCounterclockwiseRotate90)
+                    .hoverSymbolBounce()
             }
-            .glassButton()
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
 
-            // Network actions grouped under a Menu: primary tap
-            // copies the IP (the most frequent action); the
-            // chevron exposes `SSH in Terminal…` (mirrors
-            // `spook ssh <vm>`). Packaging both behind a single
-            // toolbar slot keeps the chrome tight — the toolbar
-            // already has Stop / Snapshots alongside — and
-            // matches Apple's own "split-button" pattern.
+            // Network actions under a split-button Menu: primary tap
+            // copies the IP; the chevron exposes `SSH in Terminal…`.
             // Docs: https://developer.apple.com/documentation/swiftui/menu
             Menu {
                 Button {
                     Task { await launchSSH() }
                 } label: {
-                    Label("SSH in Terminal…", systemImage: "terminal")
+                    Label("SSH in Terminal…", systemImage: String.SFSymbols.appleTerminal)
                 }
                 .help("Resolve the workspace's IP and open an ssh session in Terminal.app.")
             } label: {
                 Label(
                     lastCopiedIP ?? "Copy IP",
-                    systemImage: lastCopiedIP != nil ? "checkmark.circle.fill" : "number"
+                    systemImage: lastCopiedIP != nil
+                        ? String.SFSymbols.checkmarkCircleFill
+                        : String.SFSymbols.number
                 )
+                // Morph number → checkmark on copy + a one-shot bounce so
+                // the copy registers without a modal toast.
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: lastCopiedIP)
+                // Hover bounce composes with the copy-confirmation
+                // bounce above — discrete symbol effects keyed to
+                // different values stack independently.
+                .hoverSymbolBounce()
             } primaryAction: {
                 Task { await resolveAndCopyIP() }
             }
-            .glassButton()
             .help("Resolve this workspace's IPv4 address. Tap to copy it; chevron for other network actions.")
             .accessibilityLabel(
                 lastCopiedIP.map { "Copied \($0)" } ?? "Workspace network actions"
             )
-            // Subtle transition when the label swaps between
-            // "Copy IP" and the resolved address — matches the
-            // pulse indicator pattern elsewhere in the toolbar.
             .animation(.smooth(duration: 0.2), value: lastCopiedIP)
         }
     }
@@ -263,47 +326,52 @@ struct WorkspaceWindow: View {
 
     @ToolbarContentBuilder
     private var stoppedToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            // Start button with a split-menu affordance: primary
-            // tap performs a normal boot; the chevron exposes
-            // `Start in Recovery Mode`, which boots the guest
-            // into macOS Recovery via
-            // `VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`.
-            // SwiftUI's `Menu(primaryAction:)` renders exactly
-            // this split-button shape on macOS 14+ per
-            // https://developer.apple.com/documentation/swiftui/menu.
+        // Start split-button: primary tap boots normally; the chevron
+        // exposes Recovery-mode boot
+        // (`VZMacOSVirtualMachineStartOptions.startUpFromMacOSRecovery`).
+        // Its own group + green tint mark it as the primary action. The
+        // system applies Liquid Glass automatically — no hand-rolled glass.
+        // Docs: https://developer.apple.com/documentation/swiftui/menu
+        ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button {
                     Task { await appState.startVM(vmName, recovery: true) }
                 } label: {
-                    Label("Start in Recovery Mode", systemImage: "wrench.and.screwdriver")
+                    Label("Start in Recovery Mode", systemImage: String.SFSymbols.wrenchAndScrewdriver)
                 }
                 .help("Boot into macOS Recovery (Disk Utility, Startup Security Utility, reinstall).")
             } label: {
-                Label("Start", systemImage: "play.fill")
+                Label("Start", systemImage: String.SFSymbols.playFill)
+                    // Hover delight: one-shot symbol bounce on pointer
+                    // entry (Reduce-Motion-gated inside the modifier).
+                    .hoverSymbolBounce()
             } primaryAction: {
                 Task { await appState.startVM(vmName) }
             }
-            .glassButton()
             .tint(.green)
             .help("Start this workspace. Hold the chevron for Recovery-mode boot.")
             .accessibilityIdentifier(AccessibilityID.startButton)
+        }
 
+        ToolbarSpacer(.fixed)
+
+        // Utilities cluster: Hardware + Snapshots.
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 showHardware = true
             } label: {
-                Label("Hardware", systemImage: "cpu")
+                Label("Hardware", systemImage: String.SFSymbols.cpu)
+                    .hoverSymbolBounce()
             }
-            .glassButton()
             .help("Edit CPU, memory, and disk (⇧⌘H)")
             .keyboardShortcut("h", modifiers: [.command, .shift])
 
             Button {
                 showSnapshots = true
             } label: {
-                Label("Snapshots", systemImage: "clock.arrow.circlepath")
+                Label("Snapshots", systemImage: String.SFSymbols.clockArrowTriangleheadCounterclockwiseRotate90)
+                    .hoverSymbolBounce()
             }
-            .glassButton()
             .help("Manage snapshots for this workspace (⇧⌘S)")
             .keyboardShortcut("s", modifiers: [.command, .shift])
         }
@@ -312,51 +380,161 @@ struct WorkspaceWindow: View {
 
 // MARK: - Launch view
 
-/// Glass-chromed landing view when a workspace is not running.
+/// The séance — the workspace's stopped-state landing.
 ///
-/// Shown when the user opens a workspace window for a stopped VM —
-/// think of it as the workspace's idle state. A prominent start
-/// button, a spec summary, and the workspace's custom icon.
+/// Shown when the user opens a workspace window for a stopped VM.
+/// The night-ground aurora washes the content layer, and the
+/// séance itself is a single floating Liquid Glass hero pane over
+/// that ambience — `glassEffect(.regular)` in a 28pt continuous
+/// rounded rect, the pane also declared as the concentric-corner
+/// container via `containerShape(.rect(cornerRadius: 28))` so any
+/// nested rounded element resolves its corners against the pane's
+/// geometry (macOS 27 concentric-corner contract). Inside the
+/// pane, the workspace icon *materializes* with a one-shot
+/// entrance, the spec line speaks in monospaced machine-voice,
+/// and the wisp `glassProminent` Start button is the surface's
+/// single prominent action.
+///
+/// ## Motion contract
+/// The entrance is a one-shot staggered reveal bound to the view's
+/// insertion (`onAppear` flips ``materialized`` exactly once per
+/// appearance — nothing loops). Under Reduce Motion, ``revealed``
+/// is `true` from the first frame, so the state never changes and
+/// no motion occurs at all; the content simply renders settled.
+///
+/// `accessibilityReduceMotion` docs:
+/// <https://developer.apple.com/documentation/SwiftUI/EnvironmentValues/accessibilityReduceMotion>
 struct WorkspaceLaunchView: View {
 
     let name: String
     let bundle: VirtualMachineBundle
 
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Drives the one-shot materialize entrance. Flipped to `true`
+    /// in `onAppear`, so the reveal replays each time the séance
+    /// returns (fresh `@State` on every re-insertion — e.g. after
+    /// the guest dissipates on stop).
+    @State private var materialized = false
+
+    /// The entrance's effective state: settled immediately when
+    /// Reduce Motion is on, otherwise once `onAppear` has fired.
+    private var revealed: Bool { materialized || reduceMotion }
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack {
             Spacer()
+            seanceCard
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Night ground wash — the aurora is a content-layer tint
+        // bias over the system window background, not glass. It
+        // extends under the (system-glass) toolbar so the chrome
+        // floats over ambience, not over a hard seam.
+        .background {
+            AuroraBackground()
+                .ignoresSafeArea()
+        }
+        .onAppear { materialized = true }
+    }
 
+    /// The séance's hero pane: one Liquid Glass card floating over
+    /// the aurora. `.regular` glass (not `.clear` — the aurora is a
+    /// soft tint wash, not a visually rich background that would
+    /// warrant clear + dimming). The 28pt continuous rounded rect
+    /// is also declared as the pane's `containerShape`, making it
+    /// the concentric-corner root for anything nested inside.
+    ///
+    /// This is the only glass shape on the surface (the toolbar is
+    /// system glass in a separate layer), so there's no adjacent
+    /// glass to batch — a `GlassEffectContainer` would wrap exactly
+    /// one shape and is deliberately omitted.
+    private var seanceCard: some View {
+        VStack(spacing: 28) {
+            // The apparition materializes: blur condenses, scale
+            // settles, opacity arrives — one shot, bound to the
+            // `revealed` state change (the view's appearance event).
             WorkspaceIconView(spec: bundle.metadata.iconSpec ?? .defaultSpec, size: 140)
+                .scaleEffect(revealed ? 1 : 0.85)
+                .blur(radius: revealed ? 0 : 18)
+                .opacity(revealed ? 1 : 0)
+                .animation(Apparition.spring, value: revealed)
 
             VStack(spacing: 6) {
                 Text(bundle.displayName)
                     .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Apparition.fogText)
+                // Machine-voice: the spec line is something the
+                // machine says, so it speaks fully monospaced
+                // (inherently tabular — no `monospacedDigit()`
+                // needed on top).
                 Text(specSummary)
-                    .font(.callout)
+                    .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
             }
+            .opacity(revealed ? 1 : 0)
+            .offset(y: revealed ? 0 : 6)
+            .animation(Apparition.spring.delay(0.08), value: revealed)
 
+            // The surface's ONE glassProminent, in wisp — the
+            // primary action and the only place the accent shouts
+            // (the prominent style itself carries the wisp, so no
+            // manual `.tint` here).
             Button {
                 Task { await appState.startVM(name) }
             } label: {
-                Label("Start Workspace", systemImage: "play.fill")
-                    .font(.headline)
+                Label("Start Workspace", systemImage: String.SFSymbols.playFill)
+                    .font(.system(.headline, design: .rounded))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
+                    // Hover delight: one-shot symbol bounce on
+                    // pointer entry (Reduce-Motion-gated).
+                    .hoverSymbolBounce()
             }
-            .glassButton()
-            .tint(.green)
+            .glassProminentButton()
             .controlSize(.large)
             .accessibilityIdentifier(AccessibilityID.startButton)
-
-            Spacer()
+            .opacity(revealed ? 1 : 0)
+            .offset(y: revealed ? 0 : 10)
+            .animation(Apparition.spring.delay(0.16), value: revealed)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassCard(cornerRadius: 24)
-        .padding(24)
+        .padding(.horizontal, 48)
+        .padding(.vertical, 36)
+        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        // Concentric-corner root: nested rounded elements inside
+        // this pane share corner centers with the 28pt container.
+        // Docs: https://developer.apple.com/documentation/swiftui/view/containershape(_:)
+        .containerShape(.rect(cornerRadius: 28))
+        // The wisp halo now glows *beneath* the glass — a brand
+        // moment refracted through the pane instead of a raw glow
+        // spilling past the card's edges (its old home behind the
+        // icon bled outside the pane bounds).
+        .background { wispHalo }
+        // The pane fades in with the first beat of the entrance so
+        // an empty glass slab never precedes its contents. Same
+        // state binding, same gate as the staggered reveal.
+        .opacity(revealed ? 1 : 0)
+        .animation(Apparition.spring, value: revealed)
+    }
+
+    /// A soft wisp halo beneath the séance's glass pane — the
+    /// séance's cool glow.
+    ///
+    /// A brand moment (wisp is reserved for exactly these), drawn
+    /// as a heavily blurred fill so it reads as light, not as a
+    /// shape — and layered *behind* the glass so the pane refracts
+    /// it. It appears once with the materialize entrance and then
+    /// holds perfectly still — no looping glow. Light mode halves
+    /// the strength; fog wants a hint, not a lamp.
+    private var wispHalo: some View {
+        Circle()
+            .fill(Apparition.wisp)
+            .frame(width: 240, height: 240)
+            .blur(radius: 60)
+            .opacity(revealed ? (colorScheme == .dark ? 0.20 : 0.10) : 0)
     }
 
     private var specSummary: String {

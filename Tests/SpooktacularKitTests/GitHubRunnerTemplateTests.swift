@@ -68,6 +68,26 @@ struct GitHubRunnerTemplateTests {
         #expect(!noLabels.contains("--labels"))
     }
 
+    @Test("runner account username is consistent across script + service plist")
+    func runnerAccountUsernameConsistency() {
+        // Regression: the account was renamed admin → runner when
+        // native guest provisioning (VZMacGuestProvisioningOptions)
+        // replaced the OCR path, but the generated script kept
+        // emitting RUNNER_USER="admin" and the runner LaunchDaemon
+        // kept UserName=admin / WorkingDirectory=/Users/admin —
+        // pointing the service at a user that no longer exists, so
+        // the runner never registered. The configured user, the
+        // service UserName, and its home path must all track the
+        // account GuestProvisioningSpec actually creates.
+        let user = GitHubRunnerTemplate.runnerAccountUsername
+        #expect(user == "runner")
+        #expect(script.contains("RUNNER_USER=\"\(user)\""))
+        #expect(script.contains("<key>UserName</key><string>\(user)</string>"))
+        #expect(script.contains("/Users/\(user)/actions-runner/run.sh"))
+        // No lingering reference to the retired `admin` account.
+        #expect(!script.contains("admin"))
+    }
+
     @Test("token is properly shell-escaped")
     func tokenEscaping() {
         let dangerous = GitHubRunnerTemplate.scriptContent(
@@ -110,14 +130,14 @@ struct GitHubRunnerTemplateTests {
     // The provisioner LaunchDaemon runs this script as root on
     // first boot and waits for it to exit before archiving the
     // trigger file. These tests pin the v2 contract: config.sh
-    // runs as the admin user (GitHub's runner refuses
+    // runs as the runner user (GitHub's runner refuses
     // `--unattended` as root), and `run.sh` is handed to a
     // launchd LaunchDaemon rather than run in the foreground —
     // otherwise the script would block forever and the
     // provisioner would never archive the trigger.
 
-    @Test("config.sh runs as the admin user via sudo -u, never as root")
-    func scriptRunsConfigAsAdminNotRoot() throws {
+    @Test("config.sh runs as the runner user via sudo -u, never as root")
+    func scriptRunsConfigAsRunnerNotRoot() throws {
         let url = try GitHubRunnerTemplate.generate(repo: "o/r", token: "tok")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let s = try String(contentsOf: url, encoding: .utf8)

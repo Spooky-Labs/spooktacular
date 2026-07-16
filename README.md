@@ -12,7 +12,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 26+](https://img.shields.io/badge/macOS-26+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-830_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-784_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Get Started](#quick-start) · [Build from Source](#building-from-source) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/)
 
@@ -43,7 +43,7 @@
 <table>
 <tr>
 <td align="center"><strong>SwiftUI App (Liquid Glass)</strong></td>
-<td align="center"><strong>CLI — 28 commands</strong></td>
+<td align="center"><strong>CLI — 27 commands</strong></td>
 </tr>
 <tr>
 <td><em>Screenshot coming soon</em></td>
@@ -135,7 +135,7 @@ Infrastructure wraps Apple frameworks.
 | VM Creation | [`RestoreImageManager.swift`](Sources/SpooktacularInfrastructureApple/RestoreImageManager.swift) | Auto-download latest compatible macOS IPSW, install |
 | APFS Cloning | [`CloneManager.swift`](Sources/SpooktacularInfrastructureApple/CloneManager.swift) | Copy-on-write clone with new MachineIdentifier |
 | VM Lifecycle | [`VirtualMachine.swift`](Sources/SpooktacularInfrastructureApple/VirtualMachine.swift) | Start, stop, pause, resume, save/restore state |
-| Setup Assistant | [`SetupAutomationExecutor.swift`](Sources/SpooktacularInfrastructureApple/SetupAutomationExecutor.swift) | Unattended keyboard automation (macOS 15 + 26) |
+| Guest Provisioning | [`GuestProvisioningSpec.swift`](Sources/SpooktacularCore/GuestProvisioningSpec.swift) | Native macOS 27+ account creation + Setup Assistant skip via `VZMacGuestProvisioningOptions` — no keystroke automation |
 | SSH Provisioning | [`SSHExecutor.swift`](Sources/SpooktacularInfrastructureApple/SSHExecutor.swift) | Wait for SSH, execute scripts with streaming output |
 | Disk-Inject | [`DiskInjector.swift`](Sources/SpooktacularInfrastructureApple/DiskInjector.swift) | Mount guest disk, inject LaunchDaemon — zero network |
 | Templates | [`GitHubRunnerTemplate.swift`](Sources/SpooktacularApplication/GitHubRunnerTemplate.swift) | GitHub Actions, remote desktop, OpenClaw — auto-execute |
@@ -283,7 +283,7 @@ Every release ships with:
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 830 tests (794 root + 36 SPICE packages)
+swift test               # Run 784 tests (748 root + 36 SPICE packages)
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -291,7 +291,7 @@ swift test               # Run 830 tests (794 root + 36 SPICE packages)
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (830 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (784 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [SBOM](https://github.com/Spooky-Labs/spooktacular/actions/workflows/sbom.yml) | PR (smoke test) | Validates SBOM generation produces valid SPDX JSON |
@@ -305,7 +305,7 @@ We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welco
 1. Fork the repo
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure `swift test` passes (830 tests: 794 root + 36 across Packages/)
+4. Ensure `swift test` passes (784 tests: 748 root + 36 across Packages/)
 5. Open a PR using our [PR template](.github/pull_request_template.md)
 
 ## License

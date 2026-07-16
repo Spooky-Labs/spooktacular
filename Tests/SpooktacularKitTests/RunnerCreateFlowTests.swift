@@ -5,38 +5,6 @@ import Foundation
 @Suite("RunnerCreateFlowPlan")
 struct RunnerCreateFlowPlanTests {
 
-    @Test("normal zero-touch: auto-starts")
-    func normalZeroTouch() throws {
-        let autoStart = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: false, noStart: false)
-        #expect(autoStart == true)
-    }
-
-    @Test("--no-start alone: skips auto-start, no error")
-    func noStartAlone() throws {
-        let autoStart = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: false, noStart: true)
-        #expect(autoStart == false)
-    }
-
-    @Test("--skip-setup without --no-start: hard error")
-    func skipSetupBlocked() {
-        #expect(throws: RunnerCreateFlowError.zeroTouchRequiresSetupAutomation) {
-            _ = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: true, noStart: false)
-        }
-    }
-
-    @Test("--skip-setup + --no-start: advanced escape hatch allowed, auto-start off")
-    func skipSetupWithNoStart() throws {
-        let autoStart = try RunnerCreateFlowPlan.autoStartDecision(skipSetup: true, noStart: true)
-        #expect(autoStart == false)
-    }
-
-    @Test("error has description and recovery suggestion")
-    func errorText() {
-        let error = RunnerCreateFlowError.zeroTouchRequiresSetupAutomation
-        #expect(error.errorDescription != nil)
-        #expect(error.recoverySuggestion != nil)
-    }
-
     // MARK: - Template exclusivity
 
     @Test("no conflicting template flags passes")
@@ -123,122 +91,30 @@ struct RunnerCreateFlowPlanTests {
         #expect(error.recoverySuggestion != nil)
     }
 
-    // MARK: - Setup automation failure fatality
+    // MARK: - Guest OS floor
 
-    @Test("--github-runner: a Setup Assistant automation failure is fatal")
-    func setupAutomationFailureFatalUnderRunner() {
-        let isFatal = RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: true)
-        #expect(isFatal == true)
-    }
-
-    @Test("no --github-runner: a Setup Assistant automation failure is swallowed")
-    func setupAutomationFailureSwallowedWithoutRunner() {
-        let isFatal = RunnerCreateFlowPlan.setupAutomationFailureIsFatal(githubRunner: false)
-        #expect(isFatal == false)
-    }
-
-    // MARK: - macOS version support
-
-    @Test("--github-runner with a supported macOS major passes", arguments: [15, 26])
-    func macOSVersionSupportedPasses(major: Int) throws {
-        try RunnerCreateFlowPlan.validateMacOSVersionSupport(
-            githubRunner: true,
-            macOSMajorVersion: major
-        )
-    }
-
-    @Test("--github-runner with an unsupported macOS major is a hard error")
-    func macOSVersionUnsupportedFails() {
-        #expect(throws: RunnerCreateFlowError.unsupportedMacOSVersion(
-            macOSMajorVersion: 14,
-            supportedVersions: SetupAutomation.supportedVersions
-        )) {
-            try RunnerCreateFlowPlan.validateMacOSVersionSupport(
-                githubRunner: true,
-                macOSMajorVersion: 14
-            )
+    @Test("macOS 26 guest is below the macOS 27 floor")
+    func guestOSFloorBelow() {
+        #expect(throws: RunnerCreateFlowError.guestOSBelowFloor(found: 26, required: 27)) {
+            try RunnerCreateFlowPlan.validateGuestOSFloor(majorVersion: 26)
         }
     }
 
-    @Test("--github-runner with a future unsupported macOS major is also a hard error")
-    func macOSVersionFutureUnsupportedFails() {
-        #expect(throws: RunnerCreateFlowError.unsupportedMacOSVersion(
-            macOSMajorVersion: 27,
-            supportedVersions: SetupAutomation.supportedVersions
-        )) {
-            try RunnerCreateFlowPlan.validateMacOSVersionSupport(
-                githubRunner: true,
-                macOSMajorVersion: 27
-            )
-        }
+    @Test("macOS 27 guest passes the floor")
+    func guestOSFloorAtFloor() throws {
+        try RunnerCreateFlowPlan.validateGuestOSFloor(majorVersion: 27)
     }
 
-    @Test("without --github-runner, an unsupported macOS major is not validated at all")
-    func macOSVersionSkippedWithoutRunner() throws {
-        // A plain desktop create with no --github-runner has no
-        // dependency on Setup Assistant automation succeeding —
-        // it's fine to boot into an unsupported macOS version and
-        // finish setup by hand.
-        try RunnerCreateFlowPlan.validateMacOSVersionSupport(
-            githubRunner: false,
-            macOSMajorVersion: 14
-        )
+    @Test("macOS 28 guest passes the floor")
+    func guestOSFloorAboveFloor() throws {
+        try RunnerCreateFlowPlan.validateGuestOSFloor(majorVersion: 28)
     }
 
-    @Test("unsupportedMacOSVersion error names every supported major and has recovery text")
-    func macOSVersionErrorText() {
-        let error = RunnerCreateFlowError.unsupportedMacOSVersion(
-            macOSMajorVersion: 14,
-            supportedVersions: [15, 26]
-        )
-        #expect(error.errorDescription?.contains("14") == true)
-        #expect(error.errorDescription?.contains("15") == true)
+    @Test("guestOSBelowFloor error names the found version and has recovery text")
+    func guestOSFloorErrorText() {
+        let error = RunnerCreateFlowError.guestOSBelowFloor(found: 26, required: 27)
         #expect(error.errorDescription?.contains("26") == true)
-        #expect(error.recoverySuggestion?.contains("15") == true)
-        #expect(error.recoverySuggestion?.contains("26") == true)
-    }
-
-    // MARK: - First-boot provisioning plan (any script source — GUI + CLI)
-
-    @Test(
-        "no first-boot script: no plan regardless of macOS version",
-        arguments: [14, 15, 26, 27]
-    )
-    func firstBootPlanNoScript(major: Int) {
-        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
-            hasFirstBootScript: false,
-            macOSMajorVersion: major
-        )
-        #expect(plan == .noScript)
-    }
-
-    @Test(
-        "first-boot script on a supported macOS major: stage provisioner + automate",
-        arguments: [15, 26]
-    )
-    func firstBootPlanSupported(major: Int) {
-        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
-            hasFirstBootScript: true,
-            macOSMajorVersion: major
-        )
-        #expect(plan == .stageProvisionerAndAutomate)
-    }
-
-    @Test("first-boot script on an unsupported macOS major: names the version instead of silently no-op'ing")
-    func firstBootPlanUnsupported() {
-        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
-            hasFirstBootScript: true,
-            macOSMajorVersion: 14
-        )
-        #expect(plan == .unsupportedMacOSVersion(14))
-    }
-
-    @Test("first-boot script on a future unsupported macOS major also names the version")
-    func firstBootPlanFutureUnsupported() {
-        let plan = RunnerCreateFlowPlan.firstBootProvisioningPlan(
-            hasFirstBootScript: true,
-            macOSMajorVersion: 27
-        )
-        #expect(plan == .unsupportedMacOSVersion(27))
+        #expect(error.errorDescription?.contains("27") == true)
+        #expect(error.recoverySuggestion != nil)
     }
 }

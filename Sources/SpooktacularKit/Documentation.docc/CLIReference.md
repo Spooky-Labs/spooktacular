@@ -80,7 +80,6 @@ USAGE: spook create <name> [options]
 | `--ephemeral` | false | Destroy and recreate after each job |
 | `--guest-tools <mode>` | installed | Install Spooktacular Guest Tools inside the guest: `disabled` or `installed` |
 | `--no-start` | false | Skip auto-starting the VM after provisioning (`--github-runner` only — every other template already leaves the VM stopped) |
-| `--skip-setup` | false | Skip automatic Setup Assistant automation |
 | `--json` | false | Print a machine-readable JSON result on success |
 
 **Examples:**

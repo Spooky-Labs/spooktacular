@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 import UniformTypeIdentifiers
 import Virtualization
@@ -22,6 +23,12 @@ struct CreateVMSheet: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+
+    /// Reduce Motion gate. Every animated flourish in this sheet
+    /// binds to a state change, and all of them collapse to an
+    /// instant (non-animated) state application when the user
+    /// asks the system to reduce motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // MARK: - State
 
@@ -185,6 +192,9 @@ struct CreateVMSheet: View {
             HStack {
                 Text("New Virtual Machine")
                     .font(.headline)
+                    // Display headings speak in SF Pro Rounded —
+                    // the Apparition type voice.
+                    .fontDesign(.rounded)
                 Spacer()
             }
             .padding(.horizontal, 24)
@@ -237,7 +247,7 @@ struct CreateVMSheet: View {
                         .textFieldStyle(.roundedBorder)
                         .accessibilityIdentifier(AccessibilityID.vmNameField)
                 } header: {
-                    Text("Name")
+                    RitualGlassHeader(title: "Name", complete: nameSectionComplete)
                 } footer: {
                     Text("A unique name for this virtual machine. Used in the CLI as 'spook start <name>' and shown in Kubernetes as the resource name.")
                 }
@@ -251,7 +261,9 @@ struct CreateVMSheet: View {
                     .labelsHidden()
                     .help("macOS uses Apple's IPSW installer; Linux boots an installer ISO via EFI.")
                 } header: {
-                    Text("Guest OS")
+                    // Always sealed — the segmented picker can't
+                    // hold an invalid value.
+                    RitualGlassHeader(title: "Guest OS", complete: true)
                 } footer: {
                     Text(guestOSExplanation)
                 }
@@ -261,7 +273,10 @@ struct CreateVMSheet: View {
                     Section {
                         sourceControl
                     } header: {
-                        Text("macOS Source")
+                        RitualGlassHeader(
+                            title: "macOS Source",
+                            complete: macOSSourceSectionComplete
+                        )
                     } footer: {
                         Text("Choose where to get the macOS install media. 'Latest' downloads from Apple; 'Local' uses an IPSW you already have on disk.")
                     }
@@ -276,7 +291,10 @@ struct CreateVMSheet: View {
                             Button("Browse…") { browseForInstallerISO() }
                         }
                     } header: {
-                        Text("Installer ISO")
+                        RitualGlassHeader(
+                            title: "Installer ISO",
+                            complete: isoSectionComplete
+                        )
                     } footer: {
                         Text("Path to a UEFI-bootable ARM64 installer ISO. Copied into the VM bundle at create time, then exposed to the guest firmware as a USB mass storage device so EFI's boot manager finds it first. Remove the ISO from the bundle after the guest OS is installed.")
                     }
@@ -286,7 +304,8 @@ struct CreateVMSheet: View {
                 Section {
                     hardwareControls
                 } header: {
-                    Text("Hardware")
+                    // Steppers/sliders are range-clamped — always valid.
+                    RitualGlassHeader(title: "Hardware", complete: true)
                 } footer: {
                     Text("macOS VMs require at least 4 CPU cores. Memory is allocated from your Mac's unified RAM. The disk uses APFS sparse storage — it only consumes host disk space as the guest writes data.")
                 }
@@ -303,7 +322,7 @@ struct CreateVMSheet: View {
                     Toggle("Auto-resize display", isOn: $autoResizeDisplay)
                         .help("Adjust the guest resolution automatically when you resize the window. Recommended for remote desktop.")
                 } header: {
-                    Text("Display")
+                    RitualGlassHeader(title: "Display", complete: true)
                 } footer: {
                     Text("Each display is backed by a Metal-accelerated GPU. Auto-resize adjusts the guest resolution when you resize the window — essential for remote desktop use.")
                 }
@@ -311,7 +330,10 @@ struct CreateVMSheet: View {
                 Section {
                     networkControls
                 } header: {
-                    Text("Network")
+                    RitualGlassHeader(
+                        title: "Network",
+                        complete: networkSectionComplete
+                    )
                 } footer: {
                     Text(networkExplanation)
                 }
@@ -321,7 +343,7 @@ struct CreateVMSheet: View {
                     Toggle("Microphone input", isOn: $microphoneEnabled)
                     Toggle("Clipboard sharing", isOn: $clipboardSharingEnabled)
                 } header: {
-                    Text("Audio & Sharing")
+                    RitualGlassHeader(title: "Audio & Sharing", complete: true)
                 } footer: {
                     Text("Audio uses VirtIO sound devices. Clipboard sharing enables the SPICE virtio-serial port; enabling Guest Tools below activates the guest side of the bridge.")
                 }
@@ -334,7 +356,7 @@ struct CreateVMSheet: View {
                             }
                         }
                     } header: {
-                        Text("Guest Tools")
+                        RitualGlassHeader(title: "Guest Tools", complete: true)
                     } footer: {
                         Text(guestToolsInstall.helpText)
                     }
@@ -343,7 +365,8 @@ struct CreateVMSheet: View {
                 Section {
                     sharedFoldersControls
                 } header: {
-                    Text("Shared Folders")
+                    // Optional section — an empty list is a valid choice.
+                    RitualGlassHeader(title: "Shared Folders", complete: true)
                 } footer: {
                     Text("Shared folders appear in the guest at /Volumes/My Shared Files/. Use them to pass build artifacts, training data, or configuration files between host and guest without networking.")
                 }
@@ -352,7 +375,10 @@ struct CreateVMSheet: View {
                     Section {
                         provisioningControls
                     } header: {
-                        Text("Provisioning")
+                        RitualGlassHeader(
+                            title: "Provisioning",
+                            complete: provisioningSectionComplete
+                        )
                     } footer: {
                         Text(template.explanation)
                     }
@@ -378,8 +404,16 @@ struct CreateVMSheet: View {
             // row per entry with progress + status, so the
             // user keeps the library available throughout.
             Divider()
+            // Explicit interior spacing (10) LARGER than the
+            // container spacing (8): per Apple's
+            // GlassEffectContainer semantics, container spacing
+            // >= interior stack spacing merges adjacent shapes at
+            // rest — the fused-blob failure mode. (The Spacer
+            // keeps this pair far apart anyway; the explicit
+            // value makes the contract auditable, matching the
+            // app's other sheet footers.)
             GlassEffectContainer(spacing: 8) {
-                HStack {
+                HStack(spacing: 10) {
                     Button("Cancel") { dismiss() }
                         .glassButton()
                         .keyboardShortcut(.cancelAction)
@@ -391,10 +425,22 @@ struct CreateVMSheet: View {
                     // failure so the user can fix Keychain /
                     // path issues without losing the form
                     // state they just typed.
-                    Button("Create") {
+                    Button {
                         submitCreate()
+                    } label: {
+                        Label("Create", systemImage: String.SFSymbols.plus)
+                            // Hover delight: the plus bounces once
+                            // when the pointer enters the primary
+                            // action. Reduce-Motion-gated inside
+                            // the modifier.
+                            .hoverSymbolBounce()
                     }
                     .glassProminentButton()
+                    // The ONE wisp glassProminent on this
+                    // surface — the accent marks the primary
+                    // action and nothing else; the prominent
+                    // style itself carries the wisp, so no
+                    // manual `.tint` here.
                     .disabled(!canCreate)
                     .keyboardShortcut(.defaultAction)
                     .help("Create the VM. Download + install run in the background; progress shows in the sidebar.")
@@ -404,6 +450,11 @@ struct CreateVMSheet: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 14)
         }
+        // Ground the sheet in the Apparition palette (material +
+        // faint night wash), and spring the pre-dispatch error
+        // bar in/out on the `errorMessage` state change.
+        .apparitionSheetGround()
+        .animation(reduceMotion ? nil : Apparition.spring, value: errorMessage)
         .frame(width: 680, height: 640)
         .accessibilityIdentifier(AccessibilityID.createSheet)
         // Propagate the `.switch` style to every `Toggle` in the
@@ -439,6 +490,53 @@ struct CreateVMSheet: View {
             }
         case .linux:
             return !installerISOPath.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    // MARK: - Ritual section validity
+    //
+    // Presentation-only mirrors of `canCreate`'s per-section
+    // requirements. Each drives the completion seal in its
+    // section header — sections whose controls can't hold an
+    // invalid value pass `complete: true` at the call site and
+    // render a statically sealed header.
+
+    /// The Name section seals once a non-blank name exists.
+    private var nameSectionComplete: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The macOS Source section seals on "Latest" (no input
+    /// needed) or once a local IPSW path has been provided.
+    private var macOSSourceSectionComplete: Bool {
+        ipswSource == .latest
+            || !localIpswPath.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The Installer ISO section seals once a path is present.
+    private var isoSectionComplete: Bool {
+        !installerISOPath.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The Network section seals unless bridged mode is armed
+    /// with no host interface to bridge onto.
+    private var networkSectionComplete: Bool {
+        networkKind != .bridged || !bridgedInterface.isEmpty
+    }
+
+    /// The Provisioning section seals when the selected template
+    /// has everything it needs: the GitHub-runner template wants
+    /// `owner/repo` + a Keychain account, the custom template
+    /// wants a script path, and the rest are self-contained.
+    private var provisioningSectionComplete: Bool {
+        switch template {
+        case .none, .openclaw, .remoteDesktop:
+            return true
+        case .githubRunner:
+            return !githubRepo.trimmingCharacters(in: .whitespaces).isEmpty
+                && !githubKeychainAccount.trimmingCharacters(in: .whitespaces).isEmpty
+        case .custom:
+            return !userDataPath.trimmingCharacters(in: .whitespaces).isEmpty
         }
     }
 
@@ -510,7 +608,13 @@ struct CreateVMSheet: View {
                 in: 4...Double(ProcessInfo.processInfo.processorCount),
                 step: 1
             ) {
-                Text("\(Int(cpuCount)) cores").monospacedDigit()
+                // Machine-speak: tabular digits, and the count
+                // rolls (`numericText`) as the stepper fires.
+                // Docs: <https://developer.apple.com/documentation/SwiftUI/ContentTransition/numericText(value:)>
+                Text("\(Int(cpuCount)) cores")
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: cpuCount))
+                    .animation(reduceMotion ? nil : Apparition.quick, value: cpuCount)
             }
             .accessibilityIdentifier(AccessibilityID.cpuStepper)
             .help("Number of virtual CPU cores. Minimum 4, maximum is this Mac's logical core count.")
@@ -524,6 +628,11 @@ struct CreateVMSheet: View {
                 .accessibilityValue("\(Int(memorySizeInGigabytes)) gigabytes RAM")
             Text("\(Int(memorySizeInGigabytes)) GB")
                 .monospacedDigit()
+                .contentTransition(.numericText(value: memorySizeInGigabytes))
+                .animation(
+                    reduceMotion ? nil : Apparition.quick,
+                    value: memorySizeInGigabytes
+                )
                 .frame(width: 45, alignment: .trailing)
         }
         HStack {
@@ -534,6 +643,11 @@ struct CreateVMSheet: View {
                 .accessibilityValue("\(Int(diskSizeInGigabytes)) gigabytes disk")
             Text("\(Int(diskSizeInGigabytes)) GB")
                 .monospacedDigit()
+                .contentTransition(.numericText(value: diskSizeInGigabytes))
+                .animation(
+                    reduceMotion ? nil : Apparition.quick,
+                    value: diskSizeInGigabytes
+                )
                 .frame(width: 45, alignment: .trailing)
         }
     }
@@ -594,7 +708,7 @@ struct CreateVMSheet: View {
     private var sharedFoldersControls: some View {
         ForEach($sharedFolders) { $folder in
             HStack {
-                Image(systemName: "folder").foregroundStyle(.secondary)
+                Image(systemName: String.SFSymbols.folder).foregroundStyle(.secondary)
                 Text(folder.hostPath).lineLimit(1).truncationMode(.middle)
                 Spacer()
                 Text(folder.readOnly ? "ro" : "rw")
@@ -603,7 +717,10 @@ struct CreateVMSheet: View {
                 Button(role: .destructive) {
                     sharedFolders.removeAll { $0.id == folder.id }
                 } label: {
-                    Image(systemName: "minus.circle")
+                    Image(systemName: String.SFSymbols.minusCircle)
+                        // Interactive control — the symbol bounces
+                        // once on pointer entry (Reduce-Motion-gated).
+                        .hoverSymbolBounce()
                 }
                 .buttonStyle(.plain)
             }
@@ -611,7 +728,8 @@ struct CreateVMSheet: View {
         Button {
             addSharedFolder()
         } label: {
-            Label("Add Folder…", systemImage: "plus")
+            Label("Add Folder…", systemImage: String.SFSymbols.plus)
+                .hoverSymbolBounce()
         }
     }
 
@@ -709,13 +827,29 @@ struct CreateVMSheet: View {
     @ViewBuilder
     private var errorBar: some View {
         if let error = errorMessage {
-            Label(error, systemImage: "exclamationmark.triangle.fill")
+            Label(error, systemImage: String.SFSymbols.exclamationmarkTriangleFill)
                 .font(.caption)
                 .foregroundStyle(.red)
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .glassCard(cornerRadius: 10)
+                // Reading surface (validation prose), so material —
+                // not glass. The chip's corners resolve concentric
+                // with the sheet's 26pt container (declared by
+                // `apparitionSheetGround()`), sharing center points
+                // with the sheet corners instead of hardcoding a
+                // small radius; `minimum:` keeps the corner from
+                // squaring off if the chip ever lands flush with
+                // the container edge.
+                .background(
+                    .regularMaterial,
+                    in: ConcentricRectangle(
+                        corners: .concentric(minimum: 10.0),
+                        isUniform: true
+                    )
+                )
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
         }
     }
 
@@ -778,7 +912,9 @@ struct CreateVMSheet: View {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Rosetta 2")
+            // The toggle self-corrects when Rosetta is missing —
+            // the section can't hold an invalid value.
+            RitualGlassHeader(title: "Rosetta 2", complete: true)
         } footer: {
             Text("Exposes Apple's Rosetta 2 translator to the Linux guest via a virtio-fs share. After install, x86_64 ELF binaries run natively in the guest without QEMU — great for Docker cross-arch builds, CI runners handling legacy binaries, or running x86-only tools on Apple silicon.")
         }
@@ -949,6 +1085,137 @@ struct CreateVMSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Apparition sheet chrome (shared by the creation-flow sheets)
+
+/// A section header for the creation ritual: the section title
+/// plus a completion seal that draws itself on the moment the
+/// section's requirements are met.
+///
+/// The seal is a `checkmark.seal` tinted ``Apparition/vital``
+/// (the "alive / valid" semantic color — never the wisp accent)
+/// inserted with the DrawOn symbol transition and removed with
+/// DrawOff, so a section visibly "unseals" if the user blanks a
+/// required field again.
+///
+/// Docs — `SymbolEffectTransition` "applies the Appear,
+/// Disappear, DrawOn or DrawOff symbol animation to symbol
+/// images within the inserted or removed view hierarchy":
+/// - <https://developer.apple.com/documentation/SwiftUI/SymbolEffectTransition>
+/// - <https://developer.apple.com/documentation/Symbols/SymbolEffect/drawOn>
+/// - <https://developer.apple.com/documentation/Symbols/SymbolEffect/drawOff>
+///
+/// Motion contract: the transition binds to the `complete` state
+/// flip (SwiftUI applies no transition on the sheet's initial
+/// render, so always-complete sections show a static seal), and
+/// Reduce Motion nils the animation so the seal simply appears.
+///
+/// Used by ``CreateVMSheet``, ``CloneVMSheet``, and
+/// ``AddImageSheet`` so the three creation-flow sheets read as
+/// one ritual; it lives here because this file hosts the richest
+/// use.
+struct RitualSectionHeader: View {
+
+    /// The section title — rendered exactly like the plain
+    /// `Text` header it replaces.
+    let title: String
+
+    /// Whether the section's requirements are currently met.
+    let complete: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(title)
+            if complete {
+                Image(systemName: String.SFSymbols.checkmarkSeal)
+                    .foregroundStyle(Apparition.vital)
+                    .imageScale(.small)
+                    .transition(
+                        AsymmetricTransition(
+                            insertion: .symbolEffect(.drawOn),
+                            removal: .symbolEffect(.drawOff)
+                        )
+                    )
+                    .accessibilityLabel("Section complete")
+            }
+        }
+        // Bind the seal's insertion/removal to the validity flip;
+        // `nil` under Reduce Motion applies the change instantly.
+        .animation(reduceMotion ? nil : Apparition.spring, value: complete)
+    }
+}
+
+/// A ``RitualSectionHeader`` floated on a Liquid Glass capsule
+/// chip — the Form-header presentation ``CreateVMSheet`` uses.
+///
+/// Section-header chips in the creation sheets are chrome, not
+/// content: they hover over the sheet ground announcing each step
+/// of the ritual, so they carry `.glassEffect(.regular, in:
+/// .capsule)` (capsules stay capsules — a pill needs no concentric
+/// resolution). Each chip is spatially isolated — one per Form
+/// section, nowhere near another glass surface — so there is
+/// deliberately no `GlassEffectContainer`: nothing sits close
+/// enough to blend, and at-rest merging is impossible.
+///
+/// File-scoped (`private`) on purpose: ``AddImageSheet`` inlines
+/// the same modifier chain at its call sites rather than importing
+/// a shared helper, keeping `GlassModifiers.swift` untouched.
+private struct RitualGlassHeader: View {
+
+    /// The section title, forwarded to ``RitualSectionHeader``.
+    let title: String
+
+    /// Whether the section's requirements are currently met.
+    let complete: Bool
+
+    var body: some View {
+        RitualSectionHeader(title: title, complete: complete)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .glassEffect(.regular, in: .capsule)
+    }
+}
+
+/// Grounds a sheet in the Apparition palette: a standard system
+/// material biased with a faint night/fog wash.
+///
+/// This is a content-layer treatment — deliberately **not**
+/// Liquid Glass, which the HIG reserves for floating controls.
+/// The wash layers ``Apparition/night1`` at low opacity over
+/// `.thinMaterial`, biasing the system sheet background toward
+/// the Night (dark) / Fog (light) grounds without replacing it.
+///
+/// It also declares the sheet as a 26pt continuous rounded
+/// **container shape**, so every nested `ConcentricRectangle`
+/// (error chips, floating panes) resolves a corner radius whose
+/// center point is shared with the sheet's own corners — the
+/// macOS 26 concentric-geometry contract. `containerShape(_:)`
+/// only declares geometry; the system still clips the sheet
+/// window itself.
+private struct ApparitionSheetGroundModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background {
+                Rectangle()
+                    .fill(.thinMaterial)
+                    .overlay(Apparition.night1.opacity(0.25))
+                    .ignoresSafeArea()
+            }
+            .containerShape(.rect(cornerRadius: 26))
+    }
+}
+
+extension View {
+    /// Applies the shared Apparition sheet ground — system
+    /// material plus a faint night wash (no content-layer glass)
+    /// — and declares the 26pt concentric container geometry for
+    /// nested `ConcentricRectangle` chips.
+    func apparitionSheetGround() -> some View {
+        modifier(ApparitionSheetGroundModifier())
     }
 }
 

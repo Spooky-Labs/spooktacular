@@ -12,13 +12,6 @@ struct MenuContent: View {
         Group {
             Text(controller.status.humanDescription)
                 .font(.caption)
-                .task {
-                    // User may have flipped the approval
-                    // toggle in System Settings while Guest
-                    // Tools was running. Every menu open is a
-                    // cheap chance to sync.
-                    controller.refreshProvisioningStatus()
-                }
 
             Divider()
 
@@ -37,38 +30,6 @@ struct MenuContent: View {
             Button("Restart Clipboard Bridge") {
                 controller.stop()
                 controller.start()
-            }
-
-            Divider()
-
-            // Provisioning section. When the daemon isn't yet
-            // installed, the menu opens the bundled pkg in
-            // Installer.app for a one-time admin-password
-            // install. When it is, we show a status line and
-            // an uninstall entry that hands off to Terminal
-            // for the symmetric sudo removal.
-            if controller.provisionerInstalled {
-                Text("Provisioning: enabled")
-                    .font(.caption)
-
-                Button("Disable Provisioning…") {
-                    controller.disableProvisioning()
-                }
-            } else {
-                Text("Provisioning: not enabled")
-                    .font(.caption)
-                Button("Enable Provisioning…") {
-                    controller.enableProvisioning()
-                }
-                Text("Opens a signed installer (one admin password) that registers the Spooktacular provisioner daemon so the host can run first-boot / template scripts in this VM.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(nil)
-            }
-            if let err = controller.provisionerError {
-                Text(err)
-                    .font(.caption2)
-                    .foregroundStyle(.red)
             }
 
             Divider()

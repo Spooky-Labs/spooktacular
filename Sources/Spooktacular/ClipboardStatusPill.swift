@@ -1,21 +1,25 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Toolbar pill that renders the guest's SPICE clipboard
 /// state with a filled `clipboard` SF Symbol tinted by the
 /// current ``SpiceClipboardState``.
 ///
-/// Matches the HIG pattern used by the Copy-IP button
-/// elsewhere in the workspace toolbar — glass button, label
-/// + system image, tooltip for the detail — so the new
-/// affordance reads as first-class toolbar content rather
-/// than an afterthought.
+/// A status indicator (not an action): the workspace toolbar applies
+/// the system Liquid Glass grouping around it, so this view just supplies
+/// the label + tinted symbol. Its SF Symbol animation is state-driven —
+/// the symbol morphs when the bridge changes phase, pulses while it
+/// negotiates, and gives one bounce when it comes up — never decorative.
 struct ClipboardStatusPill: View {
     let snapshot: SpiceStatusSnapshot
 
     var body: some View {
         Label(title, systemImage: symbol)
             .foregroundStyle(tint)
+            .contentTransition(.symbolEffect(.replace))
+            .symbolEffect(.pulse, isActive: snapshot.state == .connecting)
+            .symbolEffect(.bounce, value: snapshot.state == .connected)
             .help(tooltip)
             .accessibilityLabel(Text("Clipboard: \(accessibilityLabel)"))
     }
@@ -33,10 +37,10 @@ struct ClipboardStatusPill: View {
 
     private var symbol: String {
         switch snapshot.state {
-        case .notStarted:  "clipboard"
-        case .connecting:  "clipboard.fill"
-        case .connected:   "clipboard.fill"
-        case .failed:      "exclamationmark.triangle.fill"
+        case .notStarted:  String.SFSymbols.clipboard
+        case .connecting:  String.SFSymbols.clipboardFill
+        case .connected:   String.SFSymbols.clipboardFill
+        case .failed:      String.SFSymbols.exclamationmarkTriangleFill
         }
     }
 

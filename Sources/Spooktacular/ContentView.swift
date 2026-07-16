@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Library window — pure `NavigationSplitView`. Sidebar on the
@@ -26,14 +27,37 @@ struct ContentView: View {
         NavigationSplitView {
             sidebar
         } detail: {
-            detail
+            // The séance room: the ambient aurora sits behind every
+            // detail state (hero, image detail, empty state) as a
+            // bias over the system background — content renders on
+            // top, never on glass.
+            //
+            // `backgroundExtensionEffect()` mirrors + blurs the
+            // aurora into the safe areas around the detail column
+            // (under the sidebar and title bar), which is Apple's
+            // documented pattern for background content in a
+            // `NavigationSplitView` detail column:
+            // <https://developer.apple.com/documentation/SwiftUI/View/backgroundExtensionEffect()>
+            // The aurora is near-uniform ambient light, so its
+            // mirrored copies are seamless — the room reads
+            // edge-to-edge without the content layer moving.
+            ZStack {
+                AuroraBackground()
+                    .backgroundExtensionEffect()
+                detail
+            }
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     appState.showCreateSheet = true
                 } label: {
-                    Label("New Virtual Machine", systemImage: "plus")
+                    Label("New Virtual Machine", systemImage: String.SFSymbols.plus)
+                        // Hover delight on the label (not the
+                        // button) so only the symbol bounces;
+                        // one-shot + Reduce-Motion-gated inside
+                        // the modifier.
+                        .hoverSymbolBounce()
                 }
                 .help("New Virtual Machine (⌘N)")
             }
@@ -76,7 +100,7 @@ struct ContentView: View {
     private var sidebar: some View {
         let images = appState.imageLibrary.images
         List(selection: $selection) {
-            Section("Virtual Machines") {
+            Section {
                 // Pending creations render above the live VM list
                 // so the user sees the row they just asked for
                 // immediately (not buried below alphabetical
@@ -100,14 +124,25 @@ struct ContentView: View {
                                 appState.deleteVM(name)
                                 if selection == .vm(name) { selection = nil }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("Delete", systemImage: String.SFSymbols.trash)
                             }
                         }
                 }
+            } header: {
+                // Counts reflect the rows actually beneath the
+                // header (search-filtered), so the number never
+                // contradicts what the user sees. The running
+                // summary is global state — it stays truthful
+                // even when a running VM is filtered out.
+                SidebarSectionHeader(
+                    title: "Virtual Machines",
+                    count: filteredVMs.count + pendingCreations.count,
+                    runningCount: appState.runningVMs.count
+                )
             }
-            Section("Images") {
+            Section {
                 ForEach(images) { image in
-                    Label(image.name, systemImage: "photo.stack")
+                    ImageRow(image: image)
                         .tag(SidebarSelection.image(image.id))
                         .contextMenu {
                             Button("Create VM from this image…") {
@@ -123,19 +158,31 @@ struct ContentView: View {
                                 try? appState.imageLibrary.remove(id: image.id)
                                 if selection == .image(image.id) { selection = nil }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("Delete", systemImage: String.SFSymbols.trash)
                             }
                         }
                 }
                 Button {
                     appState.showAddImage = true
                 } label: {
-                    Label("Add Image…", systemImage: "plus")
+                    Label("Add Image…", systemImage: String.SFSymbols.plus)
+                        // Same hover-bounce contract as the
+                        // toolbar action — the row is interactive,
+                        // so its symbol responds to the pointer.
+                        .hoverSymbolBounce()
                 }
                 .buttonStyle(.plain)
+            } header: {
+                SidebarSectionHeader(title: "Images", count: images.count)
             }
         }
         .listStyle(.sidebar)
+        // Scoped accent for the selection highlight only — without
+        // it the sidebar selects in the system accent (blue on most
+        // Macs), which reads off-brand against the wisp identity.
+        // Deliberately NOT applied at the window root: a root tint
+        // cascades into every glass button fill (the candy-bar bug).
+        .tint(Apparition.wisp)
         .navigationTitle("Workspaces")
         // Placing the search field explicitly in the sidebar
         // (`.sidebar`) renders it inside the sidebar's title
@@ -182,21 +229,16 @@ struct ContentView: View {
     @ViewBuilder
     private var detailEmptyState: some View {
         if appState.vms.isEmpty {
-            ContentUnavailableView {
-                Label("No workspaces yet", systemImage: "sparkles")
-            } description: {
-                Text("Create your first macOS workspace to get started.")
-            } actions: {
-                Button("Create Workspace") {
-                    appState.showCreateSheet = true
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+            // First-run séance: `EmptyStateView` sits directly over
+            // the aurora (no material between them) and carries this
+            // surface's single `glassProminent` wisp action.
+            EmptyStateView {
+                appState.showCreateSheet = true
             }
         } else {
             ContentUnavailableView(
                 "Select a workspace",
-                systemImage: "sidebar.left",
+                systemImage: String.SFSymbols.sidebarLeft,
                 description: Text("Choose one from the sidebar.")
             )
         }
@@ -230,5 +272,129 @@ struct ContentView: View {
         return searchText.isEmpty
             ? all
             : all.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+}
+
+// MARK: - Section Header
+
+/// Sidebar section header with a live trailing count — and, when
+/// any workspace is alive, a vital-colored "N running" summary so
+/// fleet health reads from the header without scanning rows.
+///
+/// Both numbers roll with `.contentTransition(.numericText())`
+/// scoped by `.animation(_:value:)` to exactly those two values;
+/// under Reduce Motion the animation is `nil`, so counts snap.
+/// Digits are monospaced so the header doesn't shimmy as counts
+/// change width.
+private struct SidebarSectionHeader: View {
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let title: String
+    let count: Int
+    var runningCount: Int = 0
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+            Spacer(minLength: 4)
+            if runningCount > 0 {
+                Text("\(runningCount) running")
+                    .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Apparition.vital)
+                    .contentTransition(.numericText())
+            }
+            Text("\(count)")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+                .contentTransition(.numericText())
+        }
+        .animation(reduceMotion ? nil : Apparition.quick, value: count)
+        .animation(reduceMotion ? nil : Apparition.quick, value: runningCount)
+        // Section headers get less trailing inset than list rows on
+        // macOS sidebars, so without this the counts hug the window
+        // edge instead of respecting the same margin as the filter
+        // field and row content.
+        .padding(.trailing, 12)
+    }
+}
+
+// MARK: - Image Row
+
+/// Sidebar row for one library image — kind medallion, name, and
+/// a size + added-date caption, mirroring ``VMRow``'s
+/// medallion-title-caption anatomy so the two sections read as
+/// one system.
+///
+/// The medallion is the kind cue: local restore media (`.ipsw`)
+/// gets **cyan**, OCI references get **brown**. Chosen against
+/// the Apparition palette on night grounds: cyan is blue-leaning
+/// where ``Apparition/vital`` teal is green-leaning (and no image
+/// row ever carries a vital state dot to collide with); brown is
+/// a muted tan where ``Apparition/lantern`` amber is bright and
+/// saturated — and both sit far from the wisp violet. Local
+/// `.iso` files ride the `.ipsw` case in the model, so the glyph
+/// borrows the detail hero's extension sniff (disc, not Apple
+/// logo) while keeping the local-file color.
+private struct ImageRow: View {
+
+    let image: VirtualMachineImage
+
+    private var isOCI: Bool {
+        if case .oci = image.source { return true }
+        return false
+    }
+
+    private var glyph: String {
+        switch image.source {
+        case .ipsw(let path):
+            path.lowercased().hasSuffix(".iso")
+                ? String.SFSymbols.opticaldiscFill
+                : String.SFSymbols.appleLogo
+        case .oci:
+            String.SFSymbols.shippingboxFill
+        }
+    }
+
+    private var kindColor: Color { isOCI ? .brown : .cyan }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: glyph)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(kindColor)
+                .frame(width: 24, height: 24)
+                .background(kindColor.opacity(0.16), in: .circle)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(image.name)
+                    .font(.body)
+                    .lineLimit(1)
+                Text(caption)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// "12.4 GB · added 2 weeks ago" — `.file` byte counting to
+    /// match Finder, named relative date so recency reads without
+    /// arithmetic. Size-less entries (some OCI references) drop
+    /// straight to the date.
+    private var caption: String {
+        let added = image.addedAt.formatted(.relative(presentation: .named))
+        if let bytes = image.sizeInBytes {
+            let size = Int64(clamping: bytes).formatted(.byteCount(style: .file))
+            return "\(size) · added \(added)"
+        }
+        return "Added \(added)"
     }
 }

@@ -35,69 +35,66 @@ struct GlassButtonModifier: ViewModifier {
 /// even lighter style so the hierarchy reads cleanly.
 struct GlassProminentButtonModifier: ViewModifier {
     func body(content: Content) -> some View {
-        content.buttonStyle(.glassProminent)
+        // The prominent button IS the wisp moment ("Night & Wisp"
+        // contract: one accent, spent on the single primary action
+        // per surface). Carrying the tint here — instead of a
+        // root-level `.tint` on the window — keeps every other
+        // glass button neutral by default; a root tint cascades
+        // into every glass fill and turns secondary buttons into
+        // candy.
+        content
+            .buttonStyle(.glassProminent)
+            .tint(Apparition.wisp)
     }
 }
 
-// MARK: - Glass Card Modifier
+// MARK: - Hover Symbol Bounce
 
-/// Applies a Liquid Glass effect background for elevated
-/// content cards — hardware summaries, status panels, inspector
-/// sections. Uses the `.regular.interactive()` variant so the
-/// card picks up the subtle pressure / hover response Apple
-/// ships with interactable glass surfaces.
+/// One-shot symbol bounce when the pointer enters the control —
+/// the hover half of the "extremely responsive" contract.
 ///
-/// Apply sparingly: the macOS HIG calls out glass as a hierarchy
-/// signal, not a default treatment.
-struct GlassCardModifier: ViewModifier {
-    var cornerRadius: CGFloat = 16
+/// The bounce is the discrete `.symbolEffect(_:value:)` variant
+/// keyed off a hover counter, so it fires exactly once per pointer
+/// entry (never loops) and is skipped entirely under Reduce
+/// Motion. Apply to a `Label`/`Image` inside a button, not the
+/// button itself, so only the symbol animates.
+struct HoverSymbolBounce: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hoverCount = 0
 
     func body(content: Content) -> some View {
         content
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+            .symbolEffect(.bounce, value: hoverCount)
+            .onHover { hovering in
+                guard hovering, !reduceMotion else { return }
+                hoverCount += 1
+            }
     }
 }
 
-// MARK: - Glass Status Badge Modifier
+// MARK: - Material Section Header Modifier
 
-/// Applies a glass capsule for small status badges (running
-/// indicator, port count, etc.).
-struct GlassStatusBadgeModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .glassEffect(.regular, in: .capsule)
-    }
-}
-
-// MARK: - Glass Section Header Modifier
-
-/// Applies Liquid Glass styling to section headers in sheets
-/// and inspectors.
-struct GlassSectionHeaderModifier: ViewModifier {
+/// Backs a section header in sheets and inspectors with a
+/// standard material chip.
+///
+/// Section headers live in the content layer, and Apple's HIG is
+/// explicit — ["Don't use Liquid Glass in the content
+/// layer."](https://developer.apple.com/design/human-interface-guidelines/materials)
+/// A `.regularMaterial` fill gives the header its recessed
+/// affordance without borrowing the floating-chrome material
+/// that Liquid Glass reserves for controls and navigation.
+struct MaterialSectionHeaderModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .glassEffect(.regular, in: .rect(cornerRadius: 8))
+            .background(.regularMaterial, in: .rect(cornerRadius: 8))
     }
 }
 
 // MARK: - View Extensions
 
 extension View {
-    /// Hides the toolbar's default material so Liquid Glass
-    /// toolbar elements share a single container. Safe to call
-    /// unconditionally — on macOS 26 the standard
-    /// `NavigationSplitView` toolbar auto-adopts Liquid Glass;
-    /// this helper just removes the duplicated background.
-    @ViewBuilder
-    func toolbarApplyingGlassContainer() -> some View {
-        self.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-            .containerBackground(.clear, for: .window)
-    }
-
     /// Applies the Liquid Glass button style.
     func glassButton() -> some View {
         modifier(GlassButtonModifier())
@@ -111,34 +108,17 @@ extension View {
         modifier(GlassProminentButtonModifier())
     }
 
-    /// A Liquid Glass capsule for status pills — "Running",
-    /// "Suspended", "Stopped".
-    ///
-    /// Uses `.regular` glass (no tint) so the pill reads as a
-    /// neutral chrome affordance. Semantic color belongs on the
-    /// leading icon inside the pill, not on the pill itself —
-    /// full-strength `Glass.tint(.green)` reads as an alarming
-    /// neon wash at common font sizes and obliterates the text.
-    /// The HIG's guidance: color carries meaning once (the dot),
-    /// not twice (the whole background).
-    func glassStatusPill() -> some View {
-        padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .glassEffect(.regular, in: .capsule)
+    /// Backs a section header with a standard material chip. Kept
+    /// out of the Liquid Glass family on purpose — headers are
+    /// content, and the HIG reserves Liquid Glass for chrome.
+    func materialSectionHeader() -> some View {
+        modifier(MaterialSectionHeaderModifier())
     }
 
-    /// Applies a Liquid Glass card background.
-    func glassCard(cornerRadius: CGFloat = 16) -> some View {
-        modifier(GlassCardModifier(cornerRadius: cornerRadius))
-    }
-
-    /// Applies a Liquid Glass capsule badge.
-    func glassStatusBadge() -> some View {
-        modifier(GlassStatusBadgeModifier())
-    }
-
-    /// Applies a Liquid Glass section header.
-    func glassSectionHeader() -> some View {
-        modifier(GlassSectionHeaderModifier())
+    /// Bounces the symbol once when the pointer enters — apply to
+    /// the `Label` inside interactive controls. No-op under Reduce
+    /// Motion; never loops.
+    func hoverSymbolBounce() -> some View {
+        modifier(HoverSymbolBounce())
     }
 }

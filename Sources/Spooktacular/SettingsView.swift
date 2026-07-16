@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularInfrastructureApple
 
 /// The application settings view.
@@ -6,13 +7,13 @@ struct SettingsView: View {
     var body: some View {
         TabView {
             GeneralSettingsView()
-                .tabItem { Label("General", systemImage: "gear") }
+                .tabItem { Label("General", systemImage: String.SFSymbols.gear) }
 
             SecuritySettingsView()
-                .tabItem { Label("Security", systemImage: "lock.shield") }
+                .tabItem { Label("Security", systemImage: String.SFSymbols.lockShield) }
 
             VMHelperSettingsView()
-                .tabItem { Label("VM Helper", systemImage: "cpu") }
+                .tabItem { Label("VM Helper", systemImage: String.SFSymbols.cpu) }
         }
         .frame(width: 520, height: 380)
     }
@@ -101,9 +102,12 @@ struct SecuritySettingsView: View {
                 if envOverrideActive {
                     Label(
                         "SPOOKTACULAR_BUNDLE_PROTECTION is set — it overrides this setting until unset.",
-                        systemImage: "exclamationmark.triangle"
+                        systemImage: String.SFSymbols.exclamationmarkTriangle
                     )
-                    .foregroundStyle(.orange)
+                    // Lantern carries "needs attention" in the
+                    // Apparition palette — the semantic in-progress
+                    // gold, never the wisp accent.
+                    .foregroundStyle(Apparition.lantern)
                     .font(.caption)
                 }
             }
@@ -201,7 +205,20 @@ struct VMHelperSettingsView: View {
             Section {
                 statusRow
                 Button(action: ping) {
-                    Label("Ping Helper", systemImage: "bolt.horizontal")
+                    Label("Ping Helper", systemImage: String.SFSymbols.boltHorizontal)
+                        // Pulses only while the XPC round-trip is in
+                        // flight. `ping()` sets `.pinging` before the
+                        // `await client.ping()` and clears it in the
+                        // continuation, so this is a genuine async
+                        // window persona A can watch — an indefinite
+                        // pulse bound to real in-progress state, not
+                        // decoration.
+                        .symbolEffect(.pulse, isActive: status == .pinging)
+                        // Hover delight: one discrete bounce on
+                        // pointer entry — composes with the pulse
+                        // above (independent effects). Reduce-
+                        // Motion-gated inside the modifier.
+                        .hoverSymbolBounce()
                 }
                 .disabled(status == .pinging)
             } header: {
@@ -223,7 +240,7 @@ struct VMHelperSettingsView: View {
     private var statusRow: some View {
         switch status {
         case .idle:
-            Label("Not probed", systemImage: "circle")
+            Label("Not probed", systemImage: String.SFSymbols.circle)
                 .foregroundStyle(.secondary)
         case .pinging:
             Label {
@@ -240,9 +257,10 @@ struct VMHelperSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: "checkmark.circle.fill")
+                Image(systemName: String.SFSymbols.checkmarkCircleFill)
             }
-            .foregroundStyle(.green)
+            // Vital = alive / healthy in the Apparition palette.
+            .foregroundStyle(Apparition.vital)
         case .failed(let message):
             Label {
                 VStack(alignment: .leading, spacing: 2) {
@@ -252,7 +270,7 @@ struct VMHelperSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             } icon: {
-                Image(systemName: "exclamationmark.triangle.fill")
+                Image(systemName: String.SFSymbols.exclamationmarkTriangleFill)
             }
             .foregroundStyle(.red)
         }

@@ -1,4 +1,5 @@
 import SwiftUI
+import SFSymbolsKit
 import SpooktacularKit
 
 /// Modal sheet for cloning a virtual machine.
@@ -25,6 +26,11 @@ struct CloneVMSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
+    /// Reduce Motion gate — the header pulse, the name seal, and
+    /// the error-bar spring all collapse to instant state
+    /// application when the user asks the system to reduce motion.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @State private var destination: String = ""
     @State private var errorMessage: String?
     @State private var isCloning: Bool = false
@@ -42,17 +48,36 @@ struct CloneVMSheet: View {
 
             if let error = errorMessage {
                 Divider()
-                Label(error, systemImage: "exclamationmark.triangle.fill")
+                Label(error, systemImage: String.SFSymbols.exclamationmarkTriangleFill)
                     .font(.caption)
                     .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    // Reading surface (validation prose), so
+                    // material — not glass. Corners resolve
+                    // concentric with the sheet's 26pt container
+                    // (declared by `apparitionSheetGround()`)
+                    // instead of hardcoding a small radius.
+                    .background(
+                        .regularMaterial,
+                        in: ConcentricRectangle(
+                            corners: .concentric(minimum: 10.0),
+                            isUniform: true
+                        )
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
             }
 
             Divider()
             buttonBar
         }
+        // Ground the sheet in the Apparition palette (material +
+        // faint night wash — no content-layer glass), and spring
+        // the error bar in/out on the `errorMessage` state change.
+        .apparitionSheetGround()
+        .animation(reduceMotion ? nil : Apparition.spring, value: errorMessage)
         .frame(minWidth: 420, idealWidth: 460, minHeight: 260)
         .task(id: source) { preseedDestinationName() }
     }
@@ -61,8 +86,17 @@ struct CloneVMSheet: View {
 
     private var header: some View {
         HStack {
-            Label("Clone Virtual Machine", systemImage: "doc.on.doc")
+            Label("Clone Virtual Machine", systemImage: String.SFSymbols.documentOnDocument)
                 .font(.headline)
+                // Display headings speak in SF Pro Rounded — the
+                // Apparition type voice.
+                .fontDesign(.rounded)
+                // The doc glyph breathes only while the clone is
+                // genuinely in flight (`isCloning`) — an
+                // indefinite pulse bound to real work, gated on
+                // Reduce Motion. Docs:
+                // <https://developer.apple.com/documentation/SwiftUI/View/symbolEffect(_:options:isActive:)>
+                .symbolEffect(.pulse, isActive: isCloning && !reduceMotion)
             Spacer()
         }
         .padding(16)
@@ -77,10 +111,16 @@ struct CloneVMSheet: View {
     }
 
     private var destinationRow: some View {
-        LabeledContent("Clone name") {
+        // The label carries the ritual seal: it draws on the
+        // moment the destination name is non-blank AND free of
+        // collisions (`canClone`) — the same instant the Clone
+        // button arms.
+        LabeledContent {
             TextField("name", text: $destination)
                 .textFieldStyle(.roundedBorder)
                 .disableAutocorrection(true)
+        } label: {
+            RitualSectionHeader(title: "Clone name", complete: canClone)
         }
     }
 
@@ -100,17 +140,36 @@ struct CloneVMSheet: View {
         // Group the cancel + confirm pair in a single glass
         // container so they morph together on hover / press and
         // share one rendered material pane rather than stacking
-        // two independent glass layers.
+        // two independent glass layers. The interior spacing (10)
+        // is deliberately LARGER than the container spacing (8):
+        // per Apple's GlassEffectContainer semantics, container
+        // spacing >= interior stack spacing makes adjacent shapes
+        // merge at rest — the fused-blob failure mode. 10 > 8
+        // keeps the pair distinct at rest while still blending
+        // mid-morph.
         GlassEffectContainer(spacing: 8) {
-            HStack {
+            HStack(spacing: 10) {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .glassButton()
                     .keyboardShortcut(.cancelAction)
-                Button("Clone") { performClone() }
-                    .glassProminentButton()
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canClone || isCloning)
+                Button {
+                    performClone()
+                } label: {
+                    Label("Clone", systemImage: String.SFSymbols.documentOnDocument)
+                        // Hover delight: the clone glyph bounces
+                        // once on pointer entry (Reduce-Motion-
+                        // gated inside the modifier).
+                        .hoverSymbolBounce()
+                }
+                .glassProminentButton()
+                // The ONE wisp glassProminent on this
+                // surface — the accent marks the primary
+                // action and nothing else; the prominent
+                // style itself carries the wisp, so no
+                // manual `.tint` here.
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canClone || isCloning)
             }
         }
         .padding(16)
