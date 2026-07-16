@@ -61,7 +61,7 @@ Sync code-signing certificates and profiles via match
 [bundle exec] fastlane mac signing_dev
 ```
 
-Sync development cert + profile for local builds (NEFilter included)
+Sync development cert + profile for local builds
 
 ### mac signing_dev_force
 
