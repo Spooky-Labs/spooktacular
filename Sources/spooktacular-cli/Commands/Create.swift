@@ -161,6 +161,31 @@ extension Spooktacular {
         )
         var share: [String] = []
 
+        @Option(
+            name: .customLong("vm-user"),
+            help: """
+                Short login name for the guest admin account created on \
+                first boot (macOS 27 native provisioning). Applies to the \
+                non-runner first-boot flows — --remote-desktop, --openclaw, \
+                and --user-data. Default: admin.
+                """
+        )
+        var vmUser: String = "admin"
+
+        @Option(
+            name: .customLong("vm-password"),
+            help: """
+                Password for the guest admin account created on first \
+                boot. If omitted, a strong random password is generated \
+                and printed once at create time. The password is stashed \
+                transiently in the macOS login Keychain (service \
+                com.spooktacular.provisioning, keyed by the VM UUID), \
+                applied on the first 'spook start', and then deleted — it \
+                is never written to metadata.json. Minimum 8 characters.
+                """
+        )
+        var vmPassword: String?
+
         // MARK: - Built-in Templates
 
         @Flag(
@@ -447,6 +472,34 @@ extension Spooktacular {
                     let hint = "On an EC2 Mac, run under the root service. Otherwise, run this command with 'sudo spook create ...'."
                     if json {
                         printJSONError(code: "provisioner-requires-root", message: message, hint: hint)
+                    } else {
+                        print(Style.error("✗ \(message)"))
+                        print(Style.dim("  \(hint)"))
+                    }
+                    throw ExitCode(CLIExit.validation)
+                }
+            }
+
+            // Fail fast on a bad --vm-user / --vm-password BEFORE the
+            // 10-20 minute install — the guest-account inputs for the
+            // native-provisioning flows are fully known now, so validate
+            // them here instead of after the install (where a rejection
+            // would waste the whole restore). Only the non-runner
+            // disk-inject flows consume these; the runner mints its own
+            // spec, and --provision ssh / Linux never provision natively.
+            let willProvisionGuestAccount = willInjectFirstBootScript && !githubRunner
+            if willProvisionGuestAccount {
+                do {
+                    _ = try GuestProvisioningSpec(
+                        fullName: vmUser,
+                        username: vmUser,
+                        password: vmPassword ?? EphemeralCredential.generatePassword()
+                    ).validated()
+                } catch {
+                    let message = "Invalid guest account options for native first-boot provisioning."
+                    let hint = "--vm-user must be non-empty and --vm-password must be at least 8 characters (omit it to generate one)."
+                    if json {
+                        printJSONError(code: "vm-account-validation", message: message, hint: hint)
                     } else {
                         print(Style.error("✗ \(message)"))
                         print(Style.dim("  \(hint)"))
@@ -780,6 +833,54 @@ extension Spooktacular {
                     print(Style.yellow("⟳ Ephemeral mode: VM auto-destroys after main process exits"))
                 }
 
+                // Native first-boot provisioning (macOS 27): the
+                // non-runner disk-inject flows (--remote-desktop,
+                // --openclaw, --user-data) inject a first-boot.sh here
+                // but do NOT boot the VM during `create` — the guest is
+                // provisioned on the later `spook start`. Persist a
+                // NON-SECRET `PendingProvisioning` marker to metadata and
+                // stash the generated password in the login Keychain,
+                // keyed by the VM UUID. The password is shown once below
+                // and never written to metadata.json; `spook start` reads
+                // it from the Keychain, applies it, and deletes it.
+                //
+                // --github-runner is excluded: it boots during `create`
+                // and applies its own transient spec in
+                // `provisionGitHubRunner`. Linux returned early. SSH
+                // provisioning already booted the VM above.
+                var provisioningCredentials: (username: String, password: String)?
+                if willProvisionGuestAccount {
+                    let resolvedPassword = vmPassword ?? EphemeralCredential.generatePassword()
+                    let fullName = remoteDesktop
+                        ? "Remote Desktop"
+                        : (openclaw ? "OpenClaw Agent" : "Spooktacular User")
+                    // Inputs were already validated up-front (fail-fast,
+                    // before the install); re-validate defensively here so
+                    // the invariant is enforced at the point of storage.
+                    let provisioningSpec = try GuestProvisioningSpec(
+                        fullName: fullName,
+                        username: vmUser,
+                        password: resolvedPassword,
+                        logsInAutomatically: true,
+                        // SSH is only auto-enabled for the remote-desktop
+                        // flow; openclaw / user-data leave it to their
+                        // own scripts.
+                        enablesRemoteLogin: remoteDesktop
+                    ).validated()
+                    // Store the secret in the Keychain FIRST; only then
+                    // write the on-disk marker. If the Keychain write
+                    // fails we never leave a marker pointing at a password
+                    // that isn't there.
+                    try ProvisioningPasswordStore.store(
+                        password: provisioningSpec.password,
+                        forVM: bundle.metadata.id
+                    )
+                    var meta = bundle.metadata
+                    meta.pendingProvisioning = provisioningSpec.pendingMarker
+                    try VirtualMachineBundle.writeMetadata(meta, to: bundleURL)
+                    provisioningCredentials = (provisioningSpec.username, provisioningSpec.password)
+                }
+
                 let elapsed = Date().timeIntervalSince(startedAt)
 
                 if json {
@@ -788,6 +889,7 @@ extension Spooktacular {
                         let path: String
                         let id: String
                         let metadata: Metadata
+                        let provisioning: Provisioning?
                         let elapsedSeconds: Double
 
                         struct Metadata: Encodable {
@@ -797,6 +899,17 @@ extension Spooktacular {
                             let displayCount: Int
                             let networkMode: String
                             let macAddress: String?
+                        }
+
+                        /// First-boot account credentials, revealed once.
+                        /// Present only for the native-provisioning flows.
+                        /// Kept as a structured JSON field so stdout stays
+                        /// a single valid document — the password is never
+                        /// mixed into stdout as free text, and it is never
+                        /// written to metadata.json.
+                        struct Provisioning: Encodable {
+                            let username: String
+                            let password: String
                         }
                     }
                     let payload = CreateResult(
@@ -811,6 +924,9 @@ extension Spooktacular {
                             networkMode: spec.networkMode.serialized,
                             macAddress: macAddress.rawValue
                         ),
+                        provisioning: provisioningCredentials.map {
+                            .init(username: $0.username, password: $0.password)
+                        },
                         elapsedSeconds: elapsed
                     )
                     printJSON(payload)
@@ -823,6 +939,14 @@ extension Spooktacular {
                     Style.field("Disk", "\(disk) GB")
                     Style.field("MAC", macAddress.rawValue)
                     Style.field("Elapsed", formatElapsed(elapsed))
+                    if let credentials = provisioningCredentials {
+                        print()
+                        print(Style.warning("⚠ Save these credentials — you need them to connect (shown only once):"))
+                        Style.field("Account", credentials.username)
+                        Style.field("Password", credentials.password)
+                        print(Style.dim("  Applied on the first 'spook start \(name)' (macOS 27 native provisioning),"))
+                        print(Style.dim("  then erased from the login Keychain. Never stored in metadata.json."))
+                    }
                     print()
                     if githubRunner && runnerAutoStart {
                         print(Style.info("Provisioning GitHub Actions runner '\(name)'..."))

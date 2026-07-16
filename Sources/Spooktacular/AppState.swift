@@ -566,9 +566,17 @@ final class AppState {
     ///     `VZMacGuestProvisioningOptions` is evaluated solely on
     ///     that boot (macOS 27+ guests; silently ignored otherwise).
     ///     Passed by ``provisionGitHubRunnerForCreate(bundle:runnerSpec:displayName:cancellationTask:)``
-    ///     for the runner's own first boot; `nil` for every other
-    ///     caller (a manual sidebar Start on an existing VM is never
-    ///     a first boot).
+    ///     for the runner's own first boot. When `nil`, this method
+    ///     falls back to any spec the bundle persisted at create in
+    ///     ``SpooktacularCore/VirtualMachineMetadata/pendingProvisioning``
+    ///     — a `--remote-desktop` / `--openclaw` / `--user-data` VM
+    ///     that injected a `first-boot.sh` at create but did not boot
+    ///     then, so this GUI Start *is* its first boot and would
+    ///     otherwise stall at an undriven Setup Assistant. The
+    ///     persisted spec is consumed exactly once: it is cleared from
+    ///     metadata after a successful start so a later Start doesn't
+    ///     re-carry it. An explicitly-passed spec always wins and is
+    ///     never treated as a persisted-spec consumption.
     func startVM(
         _ name: String,
         recovery: Bool = false,
@@ -635,12 +643,96 @@ final class AppState {
             // `HostMetricsSampler.init(pidsBeforeStart:)`.
             let preStartPIDs = HostMetricsSampler.captureVirtualizationPIDs()
 
+            // Resolve the spec to drive first-boot Setup Assistant.
+            // An explicit `guestProvisioning` (the runner create flow)
+            // ALWAYS wins and is never treated as a persisted-marker
+            // consumption. Otherwise, if the bundle persisted a
+            // non-secret `PendingProvisioning` marker at create — a
+            // `--remote-desktop` / `--openclaw` / `--user-data` VM whose
+            // first boot is this GUI Start, not a `create`-time boot —
+            // pair it with the account password held in the login
+            // Keychain (written by the CLI at create, keyed by VM UUID).
+            //
+            // The GUI app is sandboxed and, without a shared
+            // keychain-access-group entitlement (which we deliberately
+            // do NOT add — it would change signing), typically CANNOT
+            // read a login-Keychain item written by the non-sandboxed
+            // CLI. So: if the password is readable, apply + clear (as the
+            // CLI does); if it is NOT readable, DO NOT fail the start —
+            // boot normally and inform the user to run `spook start`
+            // once so the CLI applies first-boot provisioning. On macOS
+            // 27 an undriven first boot stalls at Setup Assistant, which
+            // the user can also complete manually in the VM window.
+            // `markerToConsume` is non-nil only when we actually applied
+            // a persisted marker, so it doubles as the "clear it after a
+            // successful start" signal below.
+            let markerToConsume: PendingProvisioning?
+            let effectiveProvisioning: GuestProvisioningSpec?
+            if let explicitProvisioning = guestProvisioning {
+                effectiveProvisioning = explicitProvisioning
+                markerToConsume = nil
+            } else if let marker = bundle.metadata.pendingProvisioning {
+                let storedPassword: String?
+                do {
+                    storedPassword = try ProvisioningPasswordStore.readPassword(forVM: bundle.metadata.id)
+                } catch {
+                    storedPassword = nil
+                    Log.vm.warning(
+                        "Keychain read for provisioning password failed for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+                if let password = storedPassword {
+                    effectiveProvisioning = marker.spec(password: password)
+                    markerToConsume = marker
+                } else {
+                    effectiveProvisioning = nil
+                    markerToConsume = nil
+                    Log.vm.notice(
+                        "VM \(name, privacy: .public) has a first-boot provisioning marker but no readable Keychain password; starting without provisioning."
+                    )
+                    infoMessage = "'\(bundle.displayName)' was created via the CLI. Run `spook start \(name)` once in Terminal to apply its first-boot account provisioning (the account password is held in the CLI's login Keychain, which the sandboxed app can't read)."
+                    infoPresented = true
+                }
+            } else {
+                effectiveProvisioning = nil
+                markerToConsume = nil
+            }
+
             // `startOrResume` transparently restores from a saved-
             // state file when one exists (the "close the laptop"
             // workflow from Suspend), falling back to a cold boot
             // if restore fails or when booting into Recovery.
-            try await vm.startOrResume(startUpFromMacOSRecovery: recovery, guestProvisioning: guestProvisioning)
+            try await vm.startOrResume(startUpFromMacOSRecovery: recovery, guestProvisioning: effectiveProvisioning)
             runningVMs[name] = vm
+
+            // First boot consumed a persisted provisioning marker —
+            // erase the transient password from the login Keychain and
+            // clear the marker so a later Start doesn't re-apply it (the
+            // framework ignores the options after the first boot anyway;
+            // clearing keeps metadata honest). Reload the bundle so the
+            // in-memory `vms[name]` drops the marker too. Each cleanup is
+            // guarded independently: a delete/clear/reload failure must
+            // never turn an already-successful boot into a reported
+            // error.
+            if markerToConsume != nil {
+                do {
+                    try ProvisioningPasswordStore.deletePassword(forVM: bundle.metadata.id)
+                } catch {
+                    Log.vm.warning(
+                        "Could not delete provisioning password for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+                do {
+                    var metadata = bundle.metadata
+                    metadata.pendingProvisioning = nil
+                    try VirtualMachineBundle.writeMetadata(metadata, to: bundle.url)
+                    vms[name] = try VirtualMachineBundle.load(from: bundle.url)
+                } catch {
+                    Log.vm.warning(
+                        "Could not clear pending provisioning for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    )
+                }
+            }
 
             // Host-side metrics sampler. Created eagerly —
             // every macOS / Linux VM gets one. No entitlement,

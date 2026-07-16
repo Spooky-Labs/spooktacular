@@ -93,6 +93,42 @@ for other workloads — see [Features](#features) below. Cloning doesn't yet
 carry forward `--github-runner` template state, so a second runner today
 means a second `create --github-runner`.
 
+### Remote desktop & interactive VMs
+
+```bash
+# Create an interactive macOS VM with Screen Sharing (VNC) + SSH.
+spook create desktop-01 --remote-desktop \
+  --vm-user admin --vm-password 'your-strong-password'
+
+# On the first `spook start`, a macOS 27 host provisions the guest
+# natively via VZMacGuestProvisioningOptions — no Setup Assistant, no
+# keystroke automation: a guest admin account is created from --vm-user
+# (default `admin`) / --vm-password, Setup Assistant is skipped, and the
+# first-boot script enables Remote Login (SSH) and Screen Sharing (VNC).
+spook start desktop-01
+open vnc://$(spook ip desktop-01)   # log in as the account above
+```
+
+Omit `--vm-password` and Spooktacular generates a strong password and
+prints it once at create time. **Those account credentials are exactly
+what you use to connect** over VNC or SSH. `--openclaw` and `--user-data`
+provision the same guest admin account on first boot (Setup Assistant
+skipped) before running their own first-boot script — none of these flows
+touch Setup Assistant or need manual first-login setup on macOS 27.
+
+The password is **never written to `metadata.json`**. At `create` it is
+stashed transiently in the macOS **login Keychain** (service
+`com.spooktacular.provisioning`, keyed by the VM's UUID); the first
+`spook start` reads it back, applies it via `VZMacGuestProvisioningOptions`,
+and then deletes it — so the secret exists nowhere on disk once the VM has
+booted once. `metadata.json` holds only the non-secret marker (username,
+full name, auto-login / remote-login flags). Because the Keychain item is
+device- and login-scoped, run that first `spook start` on the same host and
+user account that created the VM. (The sandboxed `Spooktacular.app` can't
+read the CLI's login-Keychain item, so a VM created with `spook create`
+should have its first boot driven by `spook start`; the app will tell you
+if you start it there first.)
+
 ## Architecture
 
 ```

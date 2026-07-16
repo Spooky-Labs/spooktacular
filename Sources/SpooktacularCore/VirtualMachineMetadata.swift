@@ -84,6 +84,28 @@ public struct VirtualMachineMetadata: Sendable, Codable, Equatable {
     /// on them.
     public var provisioningStatus: ProvisioningStatus
 
+    /// A **non-secret** marker that the VM still needs native
+    /// first-boot provisioning (macOS 27 `VZMacGuestProvisioningOptions`)
+    /// applied, then cleared.
+    ///
+    /// Set at create time for VMs that provision natively but don't boot
+    /// during `create` — `--remote-desktop`, `--openclaw`,
+    /// `--user-data`. `spook start` (and the GUI's start) consumes it on
+    /// the first successful boot and nils it, so the framework's
+    /// once-only provisioning options are applied exactly when they're
+    /// honoured. `nil` once provisioned, and for VMs that never need it
+    /// (a runner VM boots during `create`, so its spec is applied and
+    /// discarded there).
+    ///
+    /// The account **password is deliberately NOT stored here**. This
+    /// marker holds only the non-secret fields (username, full name, the
+    /// auto-login / remote-login booleans). The password lives only in
+    /// the macOS login Keychain, keyed by ``id``, written at `create`,
+    /// read once at the first `start`, and deleted after a successful
+    /// boot — so `metadata.json` never carries a plaintext secret. See
+    /// ``PendingProvisioning``.
+    public var pendingProvisioning: PendingProvisioning?
+
     /// Creates new metadata with the supplied identifier and
     /// display name.
     ///
@@ -104,6 +126,7 @@ public struct VirtualMachineMetadata: Sendable, Codable, Equatable {
         self.isEphemeral = false
         self.iconSpec = nil
         self.provisioningStatus = ProvisioningStatus()
+        self.pendingProvisioning = nil
     }
 
     /// Decodes metadata with forward-compatible defaults for
@@ -125,6 +148,8 @@ public struct VirtualMachineMetadata: Sendable, Codable, Equatable {
         self.provisioningStatus =
             try container.decodeIfPresent(ProvisioningStatus.self, forKey: .provisioningStatus)
             ?? ProvisioningStatus()
+        self.pendingProvisioning =
+            try container.decodeIfPresent(PendingProvisioning.self, forKey: .pendingProvisioning)
     }
 }
 

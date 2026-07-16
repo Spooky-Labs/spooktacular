@@ -365,6 +365,45 @@ struct VirtualMachineBundleTests {
             #expect(reloaded.metadata.id == bundle.metadata.id)
         }
 
+        @Test(
+            "pendingProvisioning survives writeMetadata/load and clears on second write (create → start → clear)",
+            .timeLimit(.minutes(1))
+        )
+        func pendingProvisioningPersistThenClear() throws {
+            let tmp = TempDirectory()
+            // UUID-keyed bundle dir, exactly as the runtime lays them out
+            // (`~/.spooktacular/vms/<id>.vm/`). A non-UUID basename would
+            // make `load(from:)` migrate/rename the directory mid-test.
+            let bundleURL = tmp.file("\(UUID().uuidString).vm")
+            let bundle = try VirtualMachineBundle.create(at: bundleURL, spec: VirtualMachineSpecification(), displayName: "desktop")
+            try #require(bundle.metadata.pendingProvisioning == nil)
+
+            // Create side persists a NON-SECRET pending marker
+            // (remote-desktop shape). The password lives in the Keychain,
+            // never in metadata — see ``PendingProvisioning``.
+            var atCreate = bundle.metadata
+            atCreate.pendingProvisioning = PendingProvisioning(
+                fullName: "Desktop User",
+                username: "admin",
+                logsInAutomatically: true,
+                enablesRemoteLogin: true
+            )
+            try VirtualMachineBundle.writeMetadata(atCreate, to: bundleURL)
+
+            // First start reads it back through the real metadata.json.
+            let atFirstStart = try VirtualMachineBundle.load(from: bundleURL)
+            let pending = try #require(atFirstStart.metadata.pendingProvisioning)
+            #expect(pending.username == "admin")
+            #expect(pending.enablesRemoteLogin == true)
+
+            // Start clears it on success; a second start must see nil.
+            var afterStart = atFirstStart.metadata
+            afterStart.pendingProvisioning = nil
+            try VirtualMachineBundle.writeMetadata(afterStart, to: atFirstStart.url)
+            let atSecondStart = try VirtualMachineBundle.load(from: atFirstStart.url)
+            #expect(atSecondStart.metadata.pendingProvisioning == nil)
+        }
+
         @Test("writeSpec persists and reloads correctly", .timeLimit(.minutes(1)))
         func writeSpecRoundTrip() throws {
             let tmp = TempDirectory()

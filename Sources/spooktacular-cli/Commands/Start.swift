@@ -246,6 +246,63 @@ extension Spooktacular {
                 options.startUpFromMacOSRecovery = true
                 nonisolated(unsafe) let unsafeVM = underlyingVM
                 try await unsafeVM.start(options: options)
+            } else if let marker = bundle.metadata.pendingProvisioning {
+                // First boot of a VM created with native provisioning
+                // (`--remote-desktop`, `--openclaw`, `--user-data` —
+                // anything that injected a first-boot.sh at create but
+                // did not boot then). On macOS 27 the guest would
+                // otherwise stall at an undriven Setup Assistant, so
+                // drive it via `VZMacGuestProvisioningOptions`.
+                //
+                // The marker in metadata is NON-SECRET; the account
+                // password lives only in the login Keychain, written at
+                // create and keyed by the VM UUID. Read it back here.
+                let storedPassword: String?
+                do {
+                    storedPassword = try ProvisioningPasswordStore.readPassword(forVM: bundle.metadata.id)
+                } catch {
+                    // A Keychain read error (not a plain miss) — degrade
+                    // to a bare boot rather than crash. The account just
+                    // won't be auto-provisioned.
+                    print(Style.dim("Could not read provisioning password from Keychain: \(error.localizedDescription)"))
+                    storedPassword = nil
+                }
+
+                if let password = storedPassword {
+                    let spec = marker.spec(password: password)
+                    try await vm.startOrResume(guestProvisioning: spec)
+                    print(Style.success("✓ Applied first-boot provisioning for account '\(marker.username)'."))
+
+                    // Start succeeded — erase the transient password from
+                    // the Keychain and clear the marker so a later start
+                    // doesn't re-carry either (the framework ignores the
+                    // options after first boot anyway). Neither cleanup
+                    // failure may turn an already-successful boot into a
+                    // reported error.
+                    do {
+                        try ProvisioningPasswordStore.deletePassword(forVM: bundle.metadata.id)
+                    } catch {
+                        print(Style.dim("Could not delete provisioning password from Keychain: \(error.localizedDescription)"))
+                    }
+                    do {
+                        var meta = bundle.metadata
+                        meta.pendingProvisioning = nil
+                        try VirtualMachineBundle.writeMetadata(meta, to: bundleURL)
+                    } catch {
+                        print(Style.dim("Could not clear pending provisioning from metadata: \(error.localizedDescription)"))
+                    }
+                } else {
+                    // Marker present but no Keychain password — the VM was
+                    // most likely created on a different machine or user
+                    // account (the Keychain item is device- and
+                    // login-scoped). Don't crash: boot normally. The
+                    // marker is intentionally left in place so a `spook
+                    // start` on the originating host can still apply it.
+                    print(Style.warning("⚠ First-boot provisioning is pending, but its password isn't in this Keychain."))
+                    print(Style.dim("  This VM was likely created on another machine or user. Starting without provisioning;"))
+                    print(Style.dim("  on macOS 27 you may need to complete Setup Assistant in the VM window."))
+                    try await vm.startOrResume()
+                }
             } else {
                 // `startOrResume` transparently restores from
                 // `SavedState.vzstate` when one exists (the

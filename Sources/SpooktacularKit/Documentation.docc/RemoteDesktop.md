@@ -24,10 +24,64 @@ graphical access to any VM from anywhere on your network.
 
 ## Enabling Screen Sharing via Provisioning
 
-The most reliable way to enable VNC access is through a provisioning
-script that runs automatically when the VM boots.
+The built-in `--remote-desktop` flag is the fastest path: it provisions a
+ready-to-connect VM natively, with no Setup Assistant and no manual first-login
+steps. For fully custom setups you can still supply your own `--user-data`
+script.
 
-### Using disk-inject (Zero-Touch)
+### Using --remote-desktop (Native, macOS 27)
+
+```bash
+spook create desktop-vm --from-ipsw latest \
+    --cpu 4 --memory 8 --disk 64 --displays 1 \
+    --remote-desktop \
+    --vm-user admin --vm-password 'your-strong-password'
+```
+
+On the VM's first boot — the first `spook start` — a macOS 27 host provisions
+the guest natively via `VZMacGuestProvisioningOptions`, with no keystroke
+automation or OCR:
+
+- A guest **admin account** is created from `--vm-user` (default `admin`) and
+  `--vm-password`. Omit `--vm-password` and Spooktacular generates a strong
+  password and prints it once at create time.
+- **Setup Assistant is skipped** — the VM boots straight to a logged-in
+  desktop.
+- The injected first-boot script then enables **Remote Login (SSH)** and
+  **Screen Sharing (VNC)**.
+
+The provisioned account credentials are exactly what you use to connect over
+VNC or SSH. See <doc:Provisioning> and ``GuestProvisioningSpec`` for the
+underlying mechanism.
+
+### Where the password lives (Keychain-transient)
+
+The account password is **never written to `metadata.json`**. The design
+keeps the persistent, queryable bundle metadata secret-free:
+
+1. At `create`, the password is stored transiently in the macOS **login
+   Keychain** — a generic-password item under service
+   `com.spooktacular.provisioning`, keyed by the VM's UUID (see
+   ``ProvisioningPasswordStore``). `metadata.json` gets only a non-secret
+   ``PendingProvisioning`` marker: username, full name, and the auto-login /
+   remote-login booleans.
+2. On the first `spook start`, Spooktacular reads the password back from the
+   Keychain, pairs it with the marker to reconstitute the full
+   ``GuestProvisioningSpec``, and applies it via
+   `VZMacGuestProvisioningOptions`.
+3. After the first successful boot, both the Keychain item and the metadata
+   marker are **erased** — the password exists nowhere on disk from then on.
+
+Because the Keychain item is device- and login-scoped
+(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), drive that first boot
+with `spook start` on the same host and user account that created the VM. The
+sandboxed `Spooktacular.app` cannot read the CLI's login-Keychain item, so a
+CLI-created VM opened first in the app starts without provisioning and the app
+tells you to run `spook start` once.
+
+### Using disk-inject (Custom Script)
+
+For behavior beyond the built-in flag, inject your own first-boot script:
 
 ```bash
 spook create desktop-vm --from-ipsw latest \
@@ -82,7 +136,9 @@ spook ip desktop-vm
 open vnc://192.168.64.3
 ```
 
-3. Authenticate with the guest macOS user credentials.
+3. Authenticate with the guest macOS user credentials — for a
+   `--remote-desktop` VM these are the `--vm-user` / `--vm-password`
+   (or generated) account provisioned on first boot.
 
 ### From Any VNC Client
 
@@ -312,8 +368,10 @@ aws ec2 authorize-security-group-ingress \
 
 ### Per-VM Authentication
 
-Each VM has its own macOS user accounts and passwords. You can
-create dedicated accounts for different users:
+Each VM has its own macOS user accounts and passwords. A `--remote-desktop`
+VM starts with the single admin account provisioned on first boot from
+`--vm-user` / `--vm-password`. To add dedicated accounts for different users,
+run inside the VM:
 
 ```bash
 # Inside the VM, create a read-only viewer account
@@ -391,3 +449,6 @@ spook set qa-sequoia --network bridged:en0
 - ``VirtualMachineConfiguration``
 - ``NetworkMode``
 - ``RemoteDesktopTemplate``
+- ``GuestProvisioningSpec``
+- ``PendingProvisioning``
+- ``ProvisioningPasswordStore``
