@@ -111,22 +111,21 @@ struct ContentView: View {
                     PendingVMRow(pending: pending)
                 }
 
-                ForEach(filteredVMs, id: \.self) { name in
-                    VMRow(name: name)
-                        .tag(SidebarSelection.vm(name))
-                        // `swipeActions` on macOS 13+ surfaces the
-                        // same trailing-swipe affordance iOS users
-                        // expect. The `allowsFullSwipe: true` lets
-                        // a full trailing swipe trigger delete
-                        // without a secondary tap.
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                appState.deleteVM(name)
-                                if selection == .vm(name) { selection = nil }
-                            } label: {
-                                Label("Delete", systemImage: String.SFSymbols.trash)
-                            }
-                        }
+                // macOS 27's `reorderable()` (new this year) makes the
+                // VM list drag-orderable; the arrangement persists in
+                // ``AppState/vmSidebarOrder``. On macOS 26 the same rows
+                // render without the affordance and the list stays
+                // sorted — the app's deployment floor is 26, so the
+                // 27-only API is gated.
+                if #available(macOS 27.0, *) {
+                    ForEach(filteredVMs.map(SidebarVMEntry.init)) { entry in
+                        vmRow(entry.id)
+                    }
+                    .reorderable()
+                } else {
+                    ForEach(filteredVMs, id: \.self) { name in
+                        vmRow(name)
+                    }
                 }
             } header: {
                 // Counts reflect the rows actually beneath the
@@ -197,6 +196,29 @@ struct ContentView: View {
             placement: .sidebar,
             prompt: Text("Filter workspaces")
         )
+        // macOS 27 drag-to-reorder container for the VM rows above.
+        // Disabled while filtering (a drag target could be a hidden
+        // row); on macOS 26 the modifier is a no-op.
+        .modifier(VMReorderContainer(appState: appState, enabled: searchText.isEmpty))
+    }
+
+    /// One VM sidebar row — tagged for selection, with the trailing
+    /// swipe-to-delete. Shared by the reorderable (macOS 27) and the
+    /// plain (macOS 26) `ForEach` branches so neither duplicates it.
+    @ViewBuilder
+    private func vmRow(_ name: String) -> some View {
+        VMRow(name: name)
+            .tag(SidebarSelection.vm(name))
+            // `swipeActions` surfaces the trailing-swipe delete;
+            // `allowsFullSwipe` lets a full swipe delete in one gesture.
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) {
+                    appState.deleteVM(name)
+                    if selection == .vm(name) { selection = nil }
+                } label: {
+                    Label("Delete", systemImage: String.SFSymbols.trash)
+                }
+            }
     }
 
     // MARK: - Detail
@@ -254,12 +276,22 @@ struct ContentView: View {
         func displayName(_ key: String) -> String {
             appState.vms[key]?.displayName ?? key
         }
-        let all = appState.vms.keys.sorted {
-            displayName($0).localizedCaseInsensitiveCompare(displayName($1)) == .orderedAscending
+        // The user's drag order first (macOS 27), then any VM not yet
+        // ranked appended alphabetically — `SidebarOrder.arrange`
+        // reconciles a possibly-stale persisted order against the live
+        // key set. On macOS 26 `vmSidebarOrder` stays empty, so this is
+        // just the alphabetical fallback.
+        let ordered = SidebarOrder.arrange(
+            Array(appState.vms.keys),
+            by: appState.vmSidebarOrder
+        ) { keys in
+            keys.sorted {
+                displayName($0).localizedCaseInsensitiveCompare(displayName($1)) == .orderedAscending
+            }
         }
         return searchText.isEmpty
-            ? all
-            : all.filter { displayName($0).localizedCaseInsensitiveContains(searchText) }
+            ? ordered
+            : ordered.filter { displayName($0).localizedCaseInsensitiveContains(searchText) }
     }
 
     /// Live list of in-flight creations for the sidebar, filtered
@@ -396,5 +428,39 @@ private struct ImageRow: View {
             return "\(size) · added \(added)"
         }
         return "Added \(added)"
+    }
+}
+
+// MARK: - Reorderable sidebar (macOS 27)
+
+/// Identifiable wrapper so the VM `ForEach` and `reorderContainer(for:)`
+/// share an item type. `id` is the bundle key (the `.vm` directory name),
+/// the same key `AppState.vms` and `AppState.vmSidebarOrder` use.
+private struct SidebarVMEntry: Identifiable, Hashable {
+    let id: String
+}
+
+/// Applies macOS 27's `reorderContainer(for:move:)` to the sidebar list,
+/// translating the `ReorderDifference` into an ``AppState/reorderVMs(_:before:)``
+/// call. A plain `ViewModifier` (always available) that gates the 27-only
+/// API internally, so callers don't need their own `#available` dance.
+private struct VMReorderContainer: ViewModifier {
+    let appState: AppState
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 27.0, *) {
+            content.reorderContainer(for: SidebarVMEntry.self, isEnabled: enabled) { difference in
+                let target: String?
+                switch difference.destination.position {
+                case .before(let id): target = id
+                case .end:            target = nil
+                @unknown default:     target = nil
+                }
+                appState.reorderVMs(difference.sources, before: target)
+            }
+        } else {
+            content
+        }
     }
 }
