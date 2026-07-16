@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security &amp; Compliance — Spooktacular</title>
+<meta name="description" content="Spooktacular's security posture: host-to-control-plane mTLS, Keychain-backed credentials with per-action authentication, data-at-rest protection, code signing, and ephemeral cloud credentials.">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0f0a1a">
+<meta property="og:title" content="Security &amp; Compliance — Spooktacular">
+<meta property="og:description" content="Spooktacular's security posture: host-to-control-plane mTLS, Keychain-backed credentials with per-action authentication, data-at-rest protection, code signing, and ephemeral cloud credentials.">
+<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://spooktacular.app/security.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
+<style>
+:root { --bg: #07050f; --surface: #0f0a1a; --surface2: #1a1035; --border: rgba(139,108,224,0.15); --fg: #f0eaff; --dim: #8b7faa; --accent: #a78bfa; --accent2: #7c3aed; --green: #22c55e; --red: #ef4444; --yellow: #fbbf24; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.skip-link { position: absolute; top: -100%; left: 1rem; background: var(--accent); color: #000; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; z-index: 200; }
+.skip-link:focus { top: 0.5rem; }
+
+/* Nav */
+nav { position: fixed; top: 0; width: 100%; z-index: 100; background: rgba(7,5,15,0.7); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid rgba(139,108,224,0.1); }
+nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
+nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
+nav .logo:hover { text-decoration: none; }
+nav .logo svg { width: 24px; height: 24px; }
+nav .logo img { width: 28px; height: 28px; }
+nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
+nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
+nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
+nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
+nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
+nav .nav-links a.active { color: var(--fg); }
+nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
+nav .cta-btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
+nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
+nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
+nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
+#nav-toggle { display: none; }
+@media (max-width: 768px) {
+  nav .hamburger { display: flex; }
+  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(7,5,15,0.95); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
+  nav .nav-links a { padding: 0.6rem 0.75rem; }
+  nav .nav-links a::after { display: none; }
+  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
+  #nav-toggle:checked ~ .nav-links { display: flex; }
+  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
+  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
+  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+}
+
+.container { max-width: 700px; margin: 0 auto; padding: 2rem; }
+
+/* Page header */
+.page-header { text-align: center; padding: 7rem 0 1rem; }
+.page-header h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -0.03em; }
+.page-header h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.page-header p { color: var(--dim); font-size: 1.1rem; margin-top: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+h2 { font-size: 1.25rem; margin: 2.5rem 0 0.75rem; color: var(--accent); font-weight: 600; }
+p, li { margin-bottom: 0.75rem; color: var(--dim); font-size: 0.95rem; }
+p strong { color: var(--fg); }
+ul { padding-left: 1.5rem; }
+code { background: var(--surface); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.82em; font-family: 'SF Mono', 'Fira Code', monospace; }
+.updated { color: var(--dim); font-size: 0.85rem; }
+
+/* Zero data callout */
+.callout { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; padding: 1.25rem 1.5rem; margin: 1.5rem 0; }
+.callout p { margin: 0; color: var(--fg); font-weight: 500; }
+
+/* Footer */
+footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
+footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
+footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
+footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
+footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
+footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
+footer .foot-col .brand-desc { font-size: 0.85rem; color: var(--dim); margin-top: 0.25rem; }
+footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
+footer .foot-bottom p { margin: 0; }
+@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
+
+/* Starfield */
+.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #7c3aed33, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
+.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #7c3aed44, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
+.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #7c3aed22, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
+@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
+nav, .container, .page-header, footer { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to main content</a>
+<div class="stars" aria-hidden="true"></div><div class="stars2" aria-hidden="true"></div><div class="stars3" aria-hidden="true"></div>
+
+<nav role="navigation" aria-label="Main navigation">
+<div class="inner">
+<a href="index.html" class="logo" aria-label="Spooktacular home">
+<img src="/img/icon.svg" width="28" height="28" alt="Spooktacular" style="image-rendering:pixelated;border-radius:6px;">
+Spooktacular
+</a>
+<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
+<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
+<div class="nav-links">
+<a href="features.html">Features</a>
+<a href="compare.html">Compare</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="api/documentation/spooktacularkit/">Docs</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
+<a href="get-started.html">Get Started</a>
+<a href="download.html" class="cta-btn">Download</a>
+</div>
+</div>
+</nav>
+
+<main id="main">
+<div class="page-header">
+<h1><span class="gradient">Security</span> &amp; Compliance</h1>
+<p>Fail-closed by default. Every control below points at the code that implements it.</p>
+</div>
+
+<div class="container">
+<p class="updated">Last updated: July 15, 2026</p>
+
+<div class="callout">
+<p>Spooktacular's security controls are curated by hand in a shipped inventory (<code>SecurityControlInventory.swift</code>) and rendered verbatim by <code>spook security-controls</code>. Each control names its implementation file and, where one exists, the test that proves its behavior. Everything on this page is drawn from that inventory and the deployment guides that ship in the repo.</p>
+</div>
+
+<h2>Host-to-control-plane mTLS</h2>
+<p>The <code>spook serve</code> control plane speaks TLS with a <strong>TLS 1.3 floor enforced in code</strong>, server-side and client-side, and hot-reloading the certificate preserves that floor. Setting <code>SPOOKTACULAR_TLS_CA_PATH</code> enables <strong>mutual TLS</strong>: the server presents its certificate and a client certificate is required on every request. This maps to NIST SP 800-52 Rev 2 and OWASP ASVS V9.1.</p>
+<ul>
+<li>An operator can prove the floor is live: a <code>-tls1_2</code> handshake to port 8484 fails, and a <code>-tls1_3</code> handshake with a client cert returns <code>Verify return code: 0 (ok)</code>.</li>
+<li>Every HTTP response — regardless of status — carries OWASP ASVS V14.4 security headers (<code>X-Content-Type-Options</code>, CSP <code>default-src 'none'</code>, HSTS, <code>X-Frame-Options</code>, <code>Referrer-Policy</code>, <code>Cache-Control</code>).</li>
+</ul>
+
+<h2>Credentials in the Keychain</h2>
+<p>Secrets are held in the macOS Keychain, never exported to disk in production. API bearer tokens, TLS private keys, and GitHub PATs are stored with <code>kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly</code> (OWASP ASVS V6.4, Apple Keychain Services). The API bearer token is read from the Keychain when available; an environment variable is only a fallback, and <code>spook doctor --strict</code> flags that fallback as a warning.</p>
+<p>Signing keys go further: they are <strong>SEP-only, with no software-key fallback</strong>. Private key bytes are generated inside the Secure Enclave and never leave it, so they remain non-extractable even under full kernel compromise. The daemon resolves keys by Keychain label and fails at startup if the label is missing — silent ephemeral keys are not possible.</p>
+
+<h2>Per-action authentication (ASVS MFA)</h2>
+<p>Administrative actions require a live human, not a standing session. This satisfies OWASP ASVS controls without relying on an "operator workstation is already MFA'd" assumption.</p>
+<ul>
+<li><strong>Admin CLI gate:</strong> RBAC assign/revoke and other admin commands go through a LocalAuthentication presence gate (<code>LAContext.deviceOwnerAuthentication</code>), mapping to OWASP ASVS V4.3.1. It fails closed on headless hosts unless <code>SPOOKTACULAR_ADMIN_PRESENCE_BYPASS=1</code> is set, and every bypass is logged to OSLog at <code>.error</code>.</li>
+<li><strong>Break-glass signing:</strong> hardware-bound signing in the Secure Enclave, with each signing operation gated by Touch ID, Apple Watch, or passcode. This targets OWASP ASVS V2.7.1, NIST SP 800-63B AAL3, and FIPS 140-3 Level 2 for the SEP.</li>
+<li><strong>Signed operator-to-API requests:</strong> each request is signed with P-256 ECDSA and verified with a nonce replay cache, a &plusmn;60s clock-skew window, and canonical-string body-hash binding — no shared static tokens. The trust allowlist is <code>SPOOKTACULAR_API_PUBLIC_KEYS_DIR</code>. Maps to OWASP ASVS V2.10 and OWASP API Top 10 2023 A02.</li>
+</ul>
+
+<h2>Data at rest</h2>
+<p>VM bundles under <code>~/.spooktacular/vms/&lt;name&gt;.vm/</code> hold disk images that on a developer laptop routinely contain source code, signing material, and injected tokens. On <strong>portable Macs</strong> (detected via IOKit battery presence), bundle files are written with the <code>CompleteUntilFirstUserAuthentication</code> (CUFUA) file-protection class, applied on create and inherited across clone and snapshot writes. This maps to OWASP ASVS V6.1.1, V6.4.1, and V14.2.6.</p>
+<ul>
+<li>CUFUA closes a specific gap FileVault alone does not: a powered-off laptop with a compromised FileVault recovery key. The per-file key is derived from the user passcode at first unlock, so bundles stay encrypted until the user authenticates after boot.</li>
+<li>It is <strong>not</strong> applied on desktops, Mac minis, or EC2 Mac hosts, where headless LaunchDaemons must boot before any user login. Precedence is env var (<code>SPOOKTACULAR_BUNDLE_PROTECTION</code>) &gt; GUI Settings &rarr; Security &gt; auto-detect.</li>
+<li><code>FileProtectionType</code> is a no-op without FileVault; when FileVault is off, <code>spook doctor</code> warns that the declaration is present but unenforced.</li>
+<li><code>spook doctor --strict</code> reports every bundle's protection class, and <code>BundleProtection.verifyInheritance</code> plus a five-case test suite assert zero inheritance violations across create, clone, and snapshot paths.</li>
+<li>Provisioning scripts (runner registration tokens, remote-desktop credentials) are staged mode <code>0700</code> and deleted in a <code>defer</code> block on every exit path of <code>spook create</code>, shrinking the on-disk window from host lifetime to the duration of the command.</li>
+</ul>
+
+<h2>Ephemeral credentials</h2>
+<p>VMs never ship long-lived cloud access keys. An operator binds a VM to a cloud IAM role; the host mints short-lived ES256 JWTs from the SEP-bound workload-token issuer, and the VM exchanges them for temporary credentials via standard OIDC federation (AWS STS <code>AssumeRoleWithWebIdentity</code>). This maps to OpenID Connect Core 1.0 and OWASP ASVS V2.10 ("no unchanging credentials"). The signing key is SEP-bound, and the most common ES256 pitfall (DER vs. raw signature encoding) is pinned by a test.</p>
+<p>GitHub runner registration tokens carry a 1-hour single-use TTL, so exfiltration after the VM consumes the provisioning script yields a burned token.</p>
+
+<h2>Multi-tenant isolation &amp; warm-pool reuse</h2>
+<p>In multi-tenant deployments, every request carries a <code>TenantID</code>, and scheduler gates ensure one tenant cannot schedule onto another tenant's host pools — the control that prevents cross-tenant reuse and warm-pool leakage (<code>MultiTenantIsolation.canReuse</code>, mapping to SOC 2 CC6.1).</p>
+<ul>
+<li><strong>Tenant quotas:</strong> active VMs are counted per tenant at create and clone time; exceeding the quota returns a <code>403</code> with a denial reason.</li>
+<li><strong>Break-glass is disabled by default</strong> in multi-tenant mode. Opening a shell requires both a tenant with <code>breakGlassAllowed</code> set and a role holding <code>break-glass:invoke</code> — neither is sufficient alone.</li>
+</ul>
+
+<h2>Authorization (RBAC)</h2>
+<p>Access is <strong>deny-by-default</strong> RBAC with a runtime mutation API (OWASP ASVS V4.1, NIST SP 800-162). Assignments are persisted atomically to <code>~/.spooktacular/rbac.json</code> and survive restarts. An unassigned actor calling <code>/v1/vms</code> receives a <code>403</code> with the missing permission named (<code>vm:list</code>).</p>
+
+<h2>Audit &amp; non-repudiation</h2>
+<p>The audit trail is layered: OSLog, a JSONL file, and a kernel-enforced append-only backing file. The append-only file sets the BSD <code>UF_APPEND</code> flag, verified on init, so the kernel blocks overwrites <strong>even from root</strong> without an explicit <code>chflags nouappnd</code> first (NIST SP 800-53 AU-9). A production preflight refuses to start the daemon without an audit sink in any tenancy mode, and without RBAC plus mTLS in multi-tenant mode.</p>
+
+<h2>Code signing &amp; notarization</h2>
+<p>Release builds use Apple's Hardened Runtime and an RFC 3161 code-signing timestamp (<code>codesign --options runtime --timestamp</code>); <code>codesign -d --verbose=4</code> shows <code>flags=0x10000(runtime)</code>, a <code>TeamIdentifier</code>, and a <code>Signed Time</code>. Ad-hoc builds skip the timestamp because Apple's TSA won't sign unsigned objects.</p>
+<ul>
+<li>CI signing follows fastlane's recommended pattern: <code>match</code> stores certificates and provisioning profiles in a separate private git repo encrypted with <code>MATCH_PASSWORD</code>, App Store Connect API-key auth avoids interactive 2FA, and <code>setup_ci</code> provisions an ephemeral keychain and forces <code>match</code> into <code>readonly</code> mode so CI can never mint or revoke certs.</li>
+<li><strong>Zero third-party Swift dependencies:</strong> <code>Package.swift</code> has no <code>.package(url:)</code> entries — verified by CI — so every security primitive comes from Apple SDKs (CryptoKit, Security, Network).</li>
+</ul>
+
+<h2>Verify it yourself</h2>
+<p>None of this asks for trust. Spooktacular is open source, and the control inventory is designed for spot-checking: run <code>spook security-controls</code> to print every control with its implementation and test file, and <code>spook doctor --strict</code> to probe the live deployment (it exits non-zero if any required control is missing). The full source is at <a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">github.com/Spooky-Labs/spooktacular</a>, and the deployment guides (<code>DEPLOYMENT_HARDENING.md</code>, <code>DATA_AT_REST.md</code>, <code>SIGNING.md</code>) ship in the <code>docs/</code> directory.</p>
+
+</div>
+</main>
+
+<footer role="contentinfo">
+<div class="foot-inner">
+<div class="foot-grid">
+<div class="foot-col">
+<h4>Product</h4>
+<a href="features.html">Features</a>
+<a href="compare.html">Compare</a>
+<a href="roadmap.html">Roadmap</a>
+<a href="versioning.html">Versioning</a>
+<a href="download.html">Downloads</a>
+</div>
+<div class="foot-col">
+<h4>Resources</h4>
+<a href="api/documentation/spooktacularkit/">API Reference</a>
+<a href="get-started.html">Get Started</a>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
+</div>
+<div class="foot-col">
+<h4>Legal</h4>
+<a href="privacy.html">Privacy Policy</a>
+<a href="terms.html">Terms of Use</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
+</div>
+<div class="foot-col">
+<h4>Community</h4>
+<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
+<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
+</div>
+</div>
+<div class="foot-bottom">
+<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
+<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
+</div>
+</div>
+</footer>
+</body>
+</html>

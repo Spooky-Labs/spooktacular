@@ -55,32 +55,11 @@ nav .hamburger span { display: block; width: 20px; height: 2px; background: var(
 /* 404 Content */
 .four-oh-four { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 200px); text-align: center; padding: 2rem; padding-top: 5rem; }
 
-/* Ghost animation */
-.ghost-container { position: relative; width: 180px; height: 220px; margin-bottom: 2rem; }
-.ghost { position: relative; width: 120px; height: 140px; margin: 0 auto; animation: float 3s ease-in-out infinite; }
-.ghost-body { width: 120px; height: 110px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 60px 60px 0 0; position: relative; overflow: hidden; }
-.ghost-body::before { content: ''; position: absolute; top: 20px; left: 50%; transform: translateX(-50%); width: 80px; height: 60px; background: rgba(255,255,255,0.08); border-radius: 40px 40px 0 0; }
-.ghost-face { position: absolute; top: 35px; left: 50%; transform: translateX(-50%); display: flex; gap: 18px; }
-.ghost-eye { width: 14px; height: 18px; background: var(--bg); border-radius: 50%; position: relative; animation: blink 4s ease-in-out infinite; }
-.ghost-eye::after { content: ''; position: absolute; top: 3px; left: 3px; width: 5px; height: 5px; background: rgba(255,255,255,0.6); border-radius: 50%; }
-.ghost-mouth { position: absolute; top: 65px; left: 50%; transform: translateX(-50%); width: 14px; height: 10px; border-radius: 0 0 10px 10px; background: var(--bg); }
-.ghost-tail { display: flex; position: relative; top: -1px; }
-.ghost-tail-piece { width: 30px; height: 30px; background: linear-gradient(135deg, var(--accent), var(--accent2)); }
-.ghost-tail-piece:nth-child(1) { border-radius: 0 0 0 30px; }
-.ghost-tail-piece:nth-child(2) { border-radius: 0 0 30px 0; }
-.ghost-tail-piece:nth-child(3) { border-radius: 0 0 0 30px; }
-.ghost-tail-piece:nth-child(4) { border-radius: 0 0 30px 0; }
-.ghost-tail-piece:nth-child(even) { transform: translateY(-12px); }
-.ghost-shadow { width: 80px; height: 14px; background: radial-gradient(ellipse, rgba(167,139,250,0.3) 0%, transparent 70%); border-radius: 50%; margin: 20px auto 0; animation: shadow-pulse 3s ease-in-out infinite; }
-.sparkle { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); opacity: 0; }
-.sparkle:nth-child(1) { top: 20px; left: 10px; animation: sparkle 2.5s ease-in-out 0s infinite; }
-.sparkle:nth-child(2) { top: 60px; right: 5px; animation: sparkle 2.5s ease-in-out 0.8s infinite; }
-.sparkle:nth-child(3) { top: 10px; right: 20px; animation: sparkle 2.5s ease-in-out 1.6s infinite; }
+/* 404 brand mark */
+.ghost-logo { width: 180px; height: 180px; margin-bottom: 2rem; image-rendering: pixelated; border-radius: 32px; animation: float 3s ease-in-out infinite; }
 
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
-@keyframes shadow-pulse { 0%, 100% { transform: scaleX(1); opacity: 1; } 50% { transform: scaleX(0.7); opacity: 0.5; } }
-@keyframes blink { 0%, 42%, 44%, 100% { transform: scaleY(1); } 43% { transform: scaleY(0.1); } }
-@keyframes sparkle { 0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(180deg); } }
+@media (prefers-reduced-motion: reduce) { .ghost-logo { animation: none; } }
 
 .error-code { font-size: 8rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 0.5rem; }
 .error-message { font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem; }
@@ -138,27 +117,7 @@ Spooktacular
 
 <main>
 <div class="four-oh-four" role="main">
-<div class="ghost-container" aria-hidden="true">
-<span class="sparkle"></span>
-<span class="sparkle"></span>
-<span class="sparkle"></span>
-<div class="ghost">
-<div class="ghost-body">
-<div class="ghost-face">
-<div class="ghost-eye"></div>
-<div class="ghost-eye"></div>
-</div>
-<div class="ghost-mouth"></div>
-</div>
-<div class="ghost-tail">
-<div class="ghost-tail-piece"></div>
-<div class="ghost-tail-piece"></div>
-<div class="ghost-tail-piece"></div>
-<div class="ghost-tail-piece"></div>
-</div>
-</div>
-<div class="ghost-shadow"></div>
-</div>
+<img src="/img/icon.svg" width="180" height="180" alt="Spooktacular" class="ghost-logo" aria-hidden="true">
 
 <div class="error-code">404</div>
 <div class="error-message">This page has been ghosted</div>
