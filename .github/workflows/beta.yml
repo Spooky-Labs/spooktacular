@@ -54,7 +54,28 @@ jobs:
           # and match's Git remote can cache-resolve.
           fetch-depth: 0
 
+      # ── macOS 27 SDK gate ─────────────────────────────────
+      # Native guest provisioning needs the macOS 27 SDK; the
+      # package no longer compiles on Xcode 26.x. Same gate as
+      # ci.yml (see the comment there): use Xcode 27 when the
+      # image ships it, otherwise skip the TestFlight lane with
+      # a warning instead of failing every push to main. Delete
+      # once GitHub images carry Xcode 27.
+      - name: Select Xcode 27 (or skip — macOS 27 SDK required)
+        id: xcode27
+        run: |
+          XCODE27="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -n "$XCODE27" ]; then
+            sudo xcode-select -s "$XCODE27/Contents/Developer"
+            xcodebuild -version
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Skipped — macOS 27 SDK unavailable::TestFlight build skipped; the package requires the macOS 27 SDK and this runner image tops out at Xcode 26.x. Resumes automatically once the image ships Xcode 27."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: ruby/setup-ruby@v1
+        if: steps.xcode27.outputs.available == 'true'
         with:
           bundler-cache: true
 
@@ -68,6 +89,7 @@ jobs:
       # stays ASCII-clean and describes what the app DOES, which
       # is what internal testers actually want to see.
       - name: fastlane beta
+        if: steps.xcode27.outputs.available == 'true'
         run: bundle exec fastlane beta
 
   # Runs the XCUITest screenshot lane on every merge to `main`,
@@ -94,14 +116,31 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      # Same macOS 27 SDK gate as the `testflight` job above.
+      - name: Select Xcode 27 (or skip — macOS 27 SDK required)
+        id: xcode27
+        run: |
+          XCODE27="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -n "$XCODE27" ]; then
+            sudo xcode-select -s "$XCODE27/Contents/Developer"
+            xcodebuild -version
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=Skipped — macOS 27 SDK unavailable::UI-test screenshot lane skipped; requires the macOS 27 SDK. Resumes automatically once the image ships Xcode 27."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: ruby/setup-ruby@v1
+        if: steps.xcode27.outputs.available == 'true'
         with:
           bundler-cache: true
 
       - name: Install xcodegen
+        if: steps.xcode27.outputs.available == 'true'
         run: brew install xcodegen
 
       - name: fastlane ui_tests
+        if: steps.xcode27.outputs.available == 'true'
         run: bundle exec fastlane ui_tests
 
       - name: Upload screenshots
