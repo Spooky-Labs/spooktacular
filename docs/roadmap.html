@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Roadmap — Spooktacular</title>
 <meta name="description" content="Spooktacular development roadmap. See what's shipped, what's in progress, and what's planned for enterprise macOS virtualization.">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0f0a1a">
+<meta property="og:title" content="Roadmap — Spooktacular">
+<meta property="og:description" content="Spooktacular development roadmap. See what's shipped, what's in progress, and what's planned for enterprise macOS virtualization.">
+<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://spooktacular.app/roadmap.html">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
 <style>
 :root { --bg: #07050f; --surface: #0f0a1a; --surface2: #1a1035; --border: rgba(139,108,224,0.15); --fg: #f0eaff; --dim: #8b7faa; --accent: #a78bfa; --accent2: #7c3aed; --green: #22c55e; --red: #ef4444; --yellow: #fbbf24; --blue: #60a5fa; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -23,6 +33,7 @@ nav .inner { display: flex; align-items: center; justify-content: space-between;
 nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
 nav .logo:hover { text-decoration: none; }
 nav .logo svg { width: 24px; height: 24px; }
+nav .logo img { width: 28px; height: 28px; }
 nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
 nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
 nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
@@ -156,7 +167,7 @@ nav, .container, .page-header, footer, main { position: relative; z-index: 1; }
 <nav role="navigation" aria-label="Main navigation">
 <div class="inner">
 <a href="index.html" class="logo" aria-label="Spooktacular home">
-<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" width="24" height="24"><path d="M12 2C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V22h2v-2h4v2h2v-7.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7zm-2 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>
+<img src="/img/icon.svg" width="28" height="28" alt="Spooktacular" style="image-rendering:pixelated;border-radius:6px;">
 Spooktacular
 </a>
 <input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
@@ -240,7 +251,7 @@ Spooktacular
 <div class="phase">
 <h3>Interfaces</h3>
 <ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-cli/Commands">15+ CLI commands (25+ including subcommands)</a></li>
+<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-cli/Commands">27 CLI commands</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift">HTTP REST API: VM lifecycle, IAM, RBAC, tenants; Network.framework</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">SwiftUI GUI: NavigationSplitView, inspector, create sheet</a></li>
 <li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">Menu bar extra</a></li>
@@ -259,7 +270,7 @@ Spooktacular
 <li><span class="check" aria-hidden="true">&#10003;</span> VirtIO shared folders</li>
 </ul>
 <div class="shipped-stats">
-<span class="shipped-stat"><strong>328</strong> tests</span>
+<span class="shipped-stat"><strong>784</strong> tests</span>
 <span class="shipped-stat"><strong>43</strong> test suites</span>
 <span class="shipped-stat"><strong>15+</strong> CLI commands</span>
 <span class="shipped-stat"><strong>9</strong> API endpoints</span>
