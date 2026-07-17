@@ -36,6 +36,13 @@ struct SpooktacularApp: App {
             : String.SFSymbols.squareStack3dUpFill
     }
 
+    /// Opens a web URL in the user's default browser. No-op on a
+    /// malformed string — avoids force-unwrapping `URL(string:)`.
+    private static func open(_ string: String) {
+        guard let url = URL(string: string) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     var body: some Scene {
 
         // ────────────── Library window ──────────────
@@ -129,27 +136,21 @@ struct SpooktacularApp: App {
 
             CommandGroup(replacing: .help) {
                 Button("Spooktacular Help") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.app/")!
-                    )
+                    Self.open("https://spooktacular.app/")
                 }
                 .keyboardShortcut("?", modifiers: .command)
                 Divider()
-                Button("CLI Reference") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.app/features.html")!
-                    )
+                // The published SpooktacularKit DocC — the actual API/CLI
+                // reference, not the marketing feature page.
+                Button("CLI & API Reference") {
+                    Self.open("https://spooktacular.app/api/documentation/spooktacularkit/")
                 }
                 Button("Security & Compliance") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://spooktacular.app/security.html")!
-                    )
+                    Self.open("https://spooktacular.app/security.html")
                 }
                 Divider()
                 Button("Report an Issue…") {
-                    NSWorkspace.shared.open(
-                        URL(string: "https://github.com/Spooky-Labs/spooktacular/issues")!
-                    )
+                    Self.open("https://github.com/Spooky-Labs/spooktacular/issues")
                 }
             }
         }

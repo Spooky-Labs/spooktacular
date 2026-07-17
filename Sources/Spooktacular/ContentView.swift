@@ -111,21 +111,14 @@ struct ContentView: View {
                     PendingVMRow(pending: pending)
                 }
 
-                // macOS 27's `reorderable()` (new this year) makes the
-                // VM list drag-orderable; the arrangement persists in
-                // ``AppState/vmSidebarOrder``. On macOS 26 the same rows
-                // render without the affordance and the list stays
-                // sorted — the app's deployment floor is 26, so the
-                // 27-only API is gated.
-                if #available(macOS 27.0, *) {
-                    ForEach(filteredVMs.map(SidebarVMEntry.init)) { entry in
-                        vmRow(entry.id)
-                    }
-                    .reorderable()
-                } else {
-                    ForEach(filteredVMs, id: \.self) { name in
-                        vmRow(name)
-                    }
+                // NOTE: macOS 27's `reorderable()` swallows the row's
+                // primary selection click in the current SDK, so tapping
+                // a VM to open its detail did nothing. Row selection is a
+                // core interaction; drag-to-reorder is not. Use the plain,
+                // always-selectable list until `reorderable()` can coexist
+                // with `List(selection:)` on a shipping SDK.
+                ForEach(filteredVMs, id: \.self) { name in
+                    vmRow(name)
                 }
             } header: {
                 // Counts reflect the rows actually beneath the
@@ -158,7 +151,9 @@ struct ContentView: View {
                                 if selection == .image(image.id) { selection = nil }
                             } label: {
                                 Label("Delete", systemImage: String.SFSymbols.trash)
+                                    .foregroundStyle(.background)
                             }
+                            .tint(.red)
                         }
                 }
                 Button {
@@ -196,10 +191,6 @@ struct ContentView: View {
             placement: .sidebar,
             prompt: Text("Filter workspaces")
         )
-        // macOS 27 drag-to-reorder container for the VM rows above.
-        // Disabled while filtering (a drag target could be a hidden
-        // row); on macOS 26 the modifier is a no-op.
-        .modifier(VMReorderContainer(appState: appState, enabled: searchText.isEmpty))
     }
 
     /// One VM sidebar row — tagged for selection, with the trailing
@@ -217,7 +208,14 @@ struct ContentView: View {
                     if selection == .vm(name) { selection = nil }
                 } label: {
                     Label("Delete", systemImage: String.SFSymbols.trash)
+                        // Glyph + text in the background color so they
+                        // read as a knockout — dark in dark mode, light
+                        // in light mode.
+                        .foregroundStyle(.background)
                 }
+                // Red destructive fill — overrides the sidebar's wisp
+                // `.tint`, which would otherwise colour this violet.
+                .tint(.red)
             }
     }
 
@@ -428,39 +426,5 @@ private struct ImageRow: View {
             return "\(size) · added \(added)"
         }
         return "Added \(added)"
-    }
-}
-
-// MARK: - Reorderable sidebar (macOS 27)
-
-/// Identifiable wrapper so the VM `ForEach` and `reorderContainer(for:)`
-/// share an item type. `id` is the bundle key (the `.vm` directory name),
-/// the same key `AppState.vms` and `AppState.vmSidebarOrder` use.
-private struct SidebarVMEntry: Identifiable, Hashable {
-    let id: String
-}
-
-/// Applies macOS 27's `reorderContainer(for:move:)` to the sidebar list,
-/// translating the `ReorderDifference` into an ``AppState/reorderVMs(_:before:)``
-/// call. A plain `ViewModifier` (always available) that gates the 27-only
-/// API internally, so callers don't need their own `#available` dance.
-private struct VMReorderContainer: ViewModifier {
-    let appState: AppState
-    let enabled: Bool
-
-    func body(content: Content) -> some View {
-        if #available(macOS 27.0, *) {
-            content.reorderContainer(for: SidebarVMEntry.self, isEnabled: enabled) { difference in
-                let target: String?
-                switch difference.destination.position {
-                case .before(let id): target = id
-                case .end:            target = nil
-                @unknown default:     target = nil
-                }
-                appState.reorderVMs(difference.sources, before: target)
-            }
-        } else {
-            content
-        }
     }
 }
