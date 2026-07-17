@@ -319,7 +319,7 @@ Every release ships with:
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 793 tests (757 root + 36 SPICE packages)
+swift test               # Run 805 tests (769 root + 36 SPICE packages)
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -327,7 +327,7 @@ swift test               # Run 793 tests (757 root + 36 SPICE packages)
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (793 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (805 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [SBOM](https://github.com/Spooky-Labs/spooktacular/actions/workflows/sbom.yml) | PR (smoke test) | Validates SBOM generation produces valid SPDX JSON |
@@ -341,7 +341,7 @@ We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welco
 1. Fork the repo
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure `swift test` passes (793 tests: 757 root + 36 across Packages/)
+4. Ensure `swift test` passes (805 tests: 769 root + 36 across Packages/)
 5. Open a PR using our [PR template](.github/pull_request_template.md)
 
 ## License
