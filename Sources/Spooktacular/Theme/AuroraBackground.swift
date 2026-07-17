@@ -38,6 +38,22 @@ struct AuroraBackground: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
+    /// `true` while any AppKit menu is tracking — the main menu bar
+    /// (File, Edit, …), a right-click context menu, or the
+    /// ``MenuBarExtra`` dropdown.
+    ///
+    /// While a menu tracks, AppKit runs a *modal* event loop
+    /// (`NSEventTrackingRunLoopMode`). A window-level
+    /// `TimelineView(.animation)` that commits a redraw every frame
+    /// invalidates the window during that loop, which AppKit treats
+    /// as an interrupting event and ends menu tracking — so an open
+    /// menu dismisses the instant it appears. Pausing the ~12 fps
+    /// drift for the fraction of a second a menu is open is visually
+    /// imperceptible (the orbits move fractions of a point per
+    /// frame) and lets menus stay open. Driven by
+    /// `NSMenu.didBeginTracking` / `didEndTracking`.
+    @State private var menuIsTracking = false
+
     var body: some View {
         Group {
             if reduceMotion {
@@ -46,7 +62,11 @@ struct AuroraBackground: View {
                 // there is no per-frame work to suppress.
                 mesh(at: 0)
             } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { context in
+                // `paused:` freezes the schedule while a menu tracks;
+                // see ``menuIsTracking``.
+                TimelineView(
+                    .animation(minimumInterval: 1.0 / 12.0, paused: menuIsTracking)
+                ) { context in
                     mesh(at: context.date.timeIntervalSinceReferenceDate)
                 }
             }
@@ -54,6 +74,12 @@ struct AuroraBackground: View {
         .opacity(opacity)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)) { _ in
+            menuIsTracking = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)) { _ in
+            menuIsTracking = false
+        }
     }
 
     // MARK: - Mesh
