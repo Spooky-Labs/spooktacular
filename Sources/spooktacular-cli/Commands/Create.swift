@@ -178,7 +178,7 @@ extension Spooktacular {
                 Password for the guest admin account created on first \
                 boot. If omitted, a strong random password is generated \
                 and printed once at create time. The password is stashed \
-                transiently in the macOS login Keychain (service \
+                transiently in the macOS System Keychain (service \
                 com.spooktacular.provisioning, keyed by the VM UUID), \
                 applied on the first 'spook start', and then deleted — it \
                 is never written to metadata.json. Minimum 8 characters.
@@ -839,7 +839,7 @@ extension Spooktacular {
                 // but do NOT boot the VM during `create` — the guest is
                 // provisioned on the later `spook start`. Persist a
                 // NON-SECRET `PendingProvisioning` marker to metadata and
-                // stash the generated password in the login Keychain,
+                // stash the generated password in the System Keychain,
                 // keyed by the VM UUID. The password is shown once below
                 // and never written to metadata.json; `spook start` reads
                 // it from the Keychain, applies it, and deletes it.
@@ -945,7 +945,7 @@ extension Spooktacular {
                         Style.field("Account", credentials.username)
                         Style.field("Password", credentials.password)
                         print(Style.dim("  Applied on the first 'spook start \(name)' (macOS 27 native provisioning),"))
-                        print(Style.dim("  then erased from the login Keychain. Never stored in metadata.json."))
+                        print(Style.dim("  then erased from the System Keychain. Never stored in metadata.json."))
                     }
                     print()
                     if githubRunner && runnerAutoStart {

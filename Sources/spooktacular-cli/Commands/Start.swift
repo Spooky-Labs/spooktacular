@@ -255,7 +255,7 @@ extension Spooktacular {
                 // drive it via `VZMacGuestProvisioningOptions`.
                 //
                 // The marker in metadata is NON-SECRET; the account
-                // password lives only in the login Keychain, written at
+                // password lives only in the System Keychain, written at
                 // create and keyed by the VM UUID. Read it back here.
                 let storedPassword: String?
                 do {
@@ -292,15 +292,16 @@ extension Spooktacular {
                         print(Style.dim("Could not clear pending provisioning from metadata: \(error.localizedDescription)"))
                     }
                 } else {
-                    // Marker present but no Keychain password — the VM was
-                    // most likely created on a different machine or user
-                    // account (the Keychain item is device- and
-                    // login-scoped). Don't crash: boot normally. The
-                    // marker is intentionally left in place so a `spook
-                    // start` on the originating host can still apply it.
-                    print(Style.warning("⚠ First-boot provisioning is pending, but its password isn't in this Keychain."))
-                    print(Style.dim("  This VM was likely created on another machine or user. Starting without provisioning;"))
-                    print(Style.dim("  on macOS 27 you may need to complete Setup Assistant in the VM window."))
+                    // Marker present but no Keychain password — the item
+                    // lives in the root-owned System keychain, so a non-root
+                    // `start` (or a VM created on another host/user) can't
+                    // read it. Don't crash: boot normally. The marker is left
+                    // in place so a `sudo spook start` on the originating host
+                    // can still apply it.
+                    print(Style.warning("⚠ First-boot provisioning is pending, but its password isn't readable here."))
+                    print(Style.dim("  Run `sudo spook start \(name)` if this host created the VM — the password is in the"))
+                    print(Style.dim("  root-owned System keychain. Starting without provisioning; on macOS 27 you may then"))
+                    print(Style.dim("  need to complete Setup Assistant in the VM window."))
                     try await vm.startOrResume()
                 }
             } else {

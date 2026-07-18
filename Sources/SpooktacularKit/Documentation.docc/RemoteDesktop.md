@@ -54,15 +54,15 @@ The provisioned account credentials are exactly what you use to connect over
 VNC or SSH. See <doc:Provisioning> and ``GuestProvisioningSpec`` for the
 underlying mechanism.
 
-### Where the password lives (Keychain-transient)
+### Where the password lives (Keychain-transient, System keychain)
 
 The account password is **never written to `metadata.json`**. The design
 keeps the persistent, queryable bundle metadata secret-free:
 
-1. At `create`, the password is stored transiently in the macOS **login
-   Keychain** — a generic-password item under service
-   `com.spooktacular.provisioning`, keyed by the VM's UUID (see
-   ``ProvisioningPasswordStore``). `metadata.json` gets only a non-secret
+1. At `create`, the password is stored transiently in the macOS **System
+   Keychain** (`/Library/Keychains/System.keychain`) — a generic-password
+   item under service `com.spooktacular.provisioning`, keyed by the VM's UUID
+   (see ``ProvisioningPasswordStore``). `metadata.json` gets only a non-secret
    ``PendingProvisioning`` marker: username, full name, and the auto-login /
    remote-login booleans.
 2. On the first `spook start`, Spooktacular reads the password back from the
@@ -72,12 +72,19 @@ keeps the persistent, queryable bundle metadata secret-free:
 3. After the first successful boot, both the Keychain item and the metadata
    marker are **erased** — the password exists nowhere on disk from then on.
 
-Because the Keychain item is device- and login-scoped
+> Important: `spook create --remote-desktop` injects a provisioner into the
+> guest disk, which requires **root** — so both `create` and the first `start`
+> run under `sudo`. The secret lives in the root-owned System keychain
+> precisely so a `sudo create` write is readable by a `sudo start`: "root
+> can't read the login keychain", the same reason the runner PAT uses the
+> System keychain.
+
+Because the item is root-owned and device-scoped
 (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`), drive that first boot
-with `spook start` on the same host and user account that created the VM. The
-sandboxed `Spooktacular.app` cannot read the CLI's login-Keychain item, so a
-CLI-created VM opened first in the app starts without provisioning and the app
-tells you to run `spook start` once.
+with `sudo spook start` on the same host that created the VM. The sandboxed
+`Spooktacular.app` cannot read a System-keychain item, so a CLI-created VM
+opened first in the app starts without provisioning and the app tells you to
+run `sudo spook start` once.
 
 ### Using disk-inject (Custom Script)
 

@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Transient store for a VM's first-boot account password in the macOS
-/// **login Keychain**.
+/// **System keychain** (`/Library/Keychains/System.keychain`).
 ///
 /// This is the secret half of the native-provisioning design. The
 /// non-secret fields (username, full name, setup preferences) live in
@@ -19,6 +19,25 @@ import Security
 ///    ``deletePassword(forVM:)`` — the password exists nowhere after
 ///    the first boot.
 ///
+/// ## Why the System keychain (not login)
+///
+/// The `--remote-desktop` / `--openclaw` / `--user-data` flows inject a
+/// provisioner into the guest disk, which requires **root** — so
+/// `spook create` runs under `sudo` (or the EC2 Mac root service). A
+/// secret written to the *login* keychain under `sudo` lands in root's
+/// login-keychain domain, which is unavailable in a non-interactive root
+/// context and unreadable by a later non-root `start` — the same reason
+/// the GitHub runner PAT lives in the System keychain ("root can't read
+/// the login keychain"). The System keychain is root-writable, shared
+/// across login sessions, and ACL-controllable, so a `sudo spook create`
+/// write is readable by a `sudo spook start`.
+///
+/// Consequence: **both `create` and `start` must run as root** for the
+/// account to be provisioned. A non-root `start` (or the sandboxed GUI)
+/// can't read the item; ``readPassword(forVM:)`` returns `nil` and the
+/// caller boots without provisioning — see `AppState.startVM` and
+/// `Start.swift`, which surface a "run under sudo" hint rather than fail.
+///
 /// ## Accessibility
 ///
 /// Items are written with
@@ -27,15 +46,6 @@ import Security
 /// password back on a headless first boot (no live user gesture), so a
 /// `WhenUnlocked` gate is too strict, and `ThisDeviceOnly` keeps the
 /// secret off iCloud Keychain.
-///
-/// ## Sandboxing note
-///
-/// The `Spooktacular.app` GUI is sandboxed and, absent a shared
-/// keychain-access-group entitlement (which we intentionally do not
-/// add), cannot read a login-Keychain item written by the non-sandboxed
-/// CLI. ``readPassword(forVM:)`` returns `nil` (or throws) in that case;
-/// the GUI treats a missing password as "provisioning deferred to the
-/// CLI" rather than a failure. See `AppState.startVM`.
 public enum ProvisioningPasswordStore {
 
     /// Keychain service name for transient first-boot passwords.
@@ -43,27 +53,97 @@ public enum ProvisioningPasswordStore {
     /// ``GitHubKeychain`` and ``P256KeyStore/Service``.
     public static let service = "com.spooktacular.provisioning"
 
+    // MARK: - Public API (System keychain)
+
     /// Stores `password` for the VM identified by `id`, replacing any
-    /// existing item for that VM.
+    /// existing item for that VM. Requires root (writes the System
+    /// keychain).
     ///
-    /// - Parameters:
-    ///   - password: The account password to hold until first boot.
-    ///     Must be non-empty.
-    ///   - id: The VM's stable UUID (the Keychain account key).
     /// - Throws: ``ProvisioningPasswordStoreError/emptyPassword`` when
     ///   `password` is empty, or
     ///   ``ProvisioningPasswordStoreError/keychainStatus(_:operation:)``
-    ///   when the Keychain rejects the write.
+    ///   when the Keychain rejects the write (e.g. `errSecAuthFailed`
+    ///   when not run as root).
     public static func store(password: String, forVM id: UUID) throws {
+        try store(password: password, forVM: id, in: .system)
+    }
+
+    /// Reads the stored password for the VM identified by `id`.
+    ///
+    /// - Returns: The password, or `nil` when no item exists for `id`
+    ///   (never created, already consumed, or unreadable from this
+    ///   process's Keychain domain — e.g. a non-root `start` or the
+    ///   sandboxed GUI, neither of which can read the System keychain).
+    public static func readPassword(forVM id: UUID) throws -> String? {
+        try readPassword(forVM: id, in: .system)
+    }
+
+    /// Removes the stored password for the VM identified by `id`.
+    /// Idempotent: a missing item is treated as success.
+    public static func deletePassword(forVM id: UUID) throws {
+        try deletePassword(forVM: id, in: .system)
+    }
+
+    // MARK: - Keychain target (a testable seam)
+
+    /// Which keychain an operation runs against.
+    enum Target {
+        /// `/Library/Keychains/System.keychain` — the production target
+        /// (root-writable, session-independent). See the type doc.
+        case system
+        /// The process's default (login) keychain — no root required.
+        /// Used **only** by unit tests so the store/read/delete
+        /// round-trip runs under `swift test`; the System-keychain path
+        /// is exercised by the on-hardware `--remote-desktop` smoke test.
+        case login
+    }
+
+    /// SecItem query additions that scope a *write* to `target`.
+    private static func addScope(_ target: Target) throws -> [String: Any] {
+        switch target {
+        case .login:  return [:]
+        case .system: return [kSecUseKeychain as String: try systemKeychain()]
+        }
+    }
+
+    /// SecItem query additions that scope a *search / delete* to `target`.
+    private static func searchScope(_ target: Target) throws -> [String: Any] {
+        switch target {
+        case .login:  return [:]
+        case .system: return [kSecMatchSearchList as String: [try systemKeychain()] as CFArray]
+        }
+    }
+
+    /// Opens a reference to the System keychain.
+    ///
+    /// `SecKeychainOpen` / `kSecUseKeychain` / `kSecMatchSearchList` are
+    /// deprecated, but they are the only API that targets a specific
+    /// file-based keychain — the data-protection keychain has no
+    /// System-domain equivalent, and shelling out to `security(1)` would
+    /// leak the password through `argv`. Opening only builds a ref (it
+    /// does not verify the file or require privileges); a permissions
+    /// error surfaces later, at the `SecItemAdd`.
+    private static func systemKeychain() throws -> SecKeychain {
+        var keychain: SecKeychain?
+        let status = SecKeychainOpen("/Library/Keychains/System.keychain", &keychain)
+        guard status == errSecSuccess, let keychain else {
+            throw ProvisioningPasswordStoreError.keychainStatus(status, operation: "SecKeychainOpen(System)")
+        }
+        return keychain
+    }
+
+    // MARK: - Implementation
+
+    static func store(password: String, forVM id: UUID, in target: Target) throws {
         guard !password.isEmpty else {
             throw ProvisioningPasswordStoreError.emptyPassword
         }
         // Delete-then-add keeps the item single-valued: a re-`create`
         // that reuses a UUID (or a retried create) overwrites cleanly
         // instead of failing with errSecDuplicateItem.
-        try deletePassword(forVM: id)
+        try deletePassword(forVM: id, in: target)
 
-        let attributes: [String: Any] = [
+        var attributes: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: id.uuidString,
@@ -72,30 +152,22 @@ public enum ProvisioningPasswordStore {
             kSecAttrDescription as String: "Spooktacular first-boot provisioning password",
             kSecAttrLabel as String: "Spooktacular provisioning (\(id.uuidString))",
         ]
+        attributes.merge(try addScope(target)) { _, new in new }
         let status = SecItemAdd(attributes as CFDictionary, nil)
         guard status == errSecSuccess else {
             throw ProvisioningPasswordStoreError.keychainStatus(status, operation: "SecItemAdd")
         }
     }
 
-    /// Reads the stored password for the VM identified by `id`.
-    ///
-    /// - Parameter id: The VM's stable UUID.
-    /// - Returns: The password, or `nil` when no item exists for `id`
-    ///   (never created, already consumed, or unreadable from this
-    ///   process's Keychain domain — e.g. the sandboxed GUI).
-    /// - Throws: ``ProvisioningPasswordStoreError/malformedData`` when
-    ///   the stored bytes are not valid UTF-8, or
-    ///   ``ProvisioningPasswordStoreError/keychainStatus(_:operation:)``
-    ///   on any non-`errSecItemNotFound` failure.
-    public static func readPassword(forVM id: UUID) throws -> String? {
-        let query: [String: Any] = [
+    static func readPassword(forVM id: UUID, in target: Target) throws -> String? {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: id.uuidString,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
+        query.merge(try searchScope(target)) { _, new in new }
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         switch status {
@@ -118,22 +190,13 @@ public enum ProvisioningPasswordStore {
         }
     }
 
-    /// Removes the stored password for the VM identified by `id`.
-    ///
-    /// Idempotent: a missing item is treated as success, so this is
-    /// safe to call after a successful first boot regardless of whether
-    /// the item was ever written.
-    ///
-    /// - Parameter id: The VM's stable UUID.
-    /// - Throws:
-    ///   ``ProvisioningPasswordStoreError/keychainStatus(_:operation:)``
-    ///   on a delete failure other than `errSecItemNotFound`.
-    public static func deletePassword(forVM id: UUID) throws {
-        let query: [String: Any] = [
+    static func deletePassword(forVM id: UUID, in target: Target) throws {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: id.uuidString,
         ]
+        query.merge(try searchScope(target)) { _, new in new }
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw ProvisioningPasswordStoreError.keychainStatus(status, operation: "SecItemDelete")
@@ -153,7 +216,7 @@ public enum ProvisioningPasswordStoreError: Error, LocalizedError, Equatable {
     /// The Keychain item's data was not valid UTF-8.
     case malformedData
 
-    /// A `SecItem*` call returned a non-success `OSStatus`.
+    /// A `SecItem*` / `SecKeychain*` call returned a non-success `OSStatus`.
     case keychainStatus(OSStatus, operation: String)
 
     public var errorDescription: String? {
@@ -172,10 +235,13 @@ public enum ProvisioningPasswordStoreError: Error, LocalizedError, Equatable {
         case .emptyPassword:
             "Supply a non-empty --vm-password, or omit it to have one generated."
         case .malformedData:
-            "Delete the Keychain item and recreate the VM: "
-            + "`security delete-generic-password -s com.spooktacular.provisioning`."
+            "Delete the item and recreate the VM: `sudo security "
+            + "delete-generic-password -s com.spooktacular.provisioning "
+            + "/Library/Keychains/System.keychain`."
         case .keychainStatus:
-            "Inspect the OSStatus via `security error <status>` on the command line."
+            "Run `spook create`/`spook start` under sudo (the provisioning "
+            + "password lives in the root-owned System keychain), and inspect "
+            + "the OSStatus via `security error <status>`."
         }
     }
 }

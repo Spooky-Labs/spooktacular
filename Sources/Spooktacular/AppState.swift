@@ -690,7 +690,7 @@ final class AppState {
                     Log.vm.notice(
                         "VM \(name, privacy: .public) has a first-boot provisioning marker but no readable Keychain password; starting without provisioning."
                     )
-                    infoMessage = "'\(bundle.displayName)' was created via the CLI. Run `spook start \(name)` once in Terminal to apply its first-boot account provisioning (the account password is held in the CLI's login Keychain, which the sandboxed app can't read)."
+                    infoMessage = "'\(bundle.displayName)' was created via the CLI. Run `sudo spook start \(name)` once in Terminal to apply its first-boot account provisioning (the password is held in the root-owned System Keychain, which the sandboxed app can't read)."
                     infoPresented = true
                 }
             } else {
@@ -706,7 +706,7 @@ final class AppState {
             runningVMs[name] = vm
 
             // First boot consumed a persisted provisioning marker —
-            // erase the transient password from the login Keychain and
+            // erase the transient password from the System Keychain and
             // clear the marker so a later Start doesn't re-apply it (the
             // framework ignores the options after the first boot anyway;
             // clearing keeps metadata honest). Reload the bundle so the

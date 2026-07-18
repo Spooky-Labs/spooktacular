@@ -117,17 +117,18 @@ skipped) before running their own first-boot script — none of these flows
 touch Setup Assistant or need manual first-login setup on macOS 27.
 
 The password is **never written to `metadata.json`**. At `create` it is
-stashed transiently in the macOS **login Keychain** (service
+stashed transiently in the macOS **System Keychain** (root-owned; service
 `com.spooktacular.provisioning`, keyed by the VM's UUID); the first
-`spook start` reads it back, applies it via `VZMacGuestProvisioningOptions`,
+`sudo spook start` reads it back, applies it via `VZMacGuestProvisioningOptions`,
 and then deletes it — so the secret exists nowhere on disk once the VM has
 booted once. `metadata.json` holds only the non-secret marker (username,
-full name, auto-login / remote-login flags). Because the Keychain item is
-device- and login-scoped, run that first `spook start` on the same host and
-user account that created the VM. (The sandboxed `Spooktacular.app` can't
-read the CLI's login-Keychain item, so a VM created with `spook create`
-should have its first boot driven by `spook start`; the app will tell you
-if you start it there first.)
+full name, auto-login / remote-login flags). Because provisioner injection
+needs root, `create` **and** the first `start` run under `sudo`, and the
+secret lives in the root-owned **System keychain** — so drive that first
+`sudo spook start` on the same host that created the VM. (The sandboxed
+`Spooktacular.app` can't read a System-keychain item, so a VM created with
+`sudo spook create` should have its first boot driven by `sudo spook start`;
+the app will tell you if you start it there first.)
 
 ## Architecture
 
