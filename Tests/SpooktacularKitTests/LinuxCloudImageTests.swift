@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 @Suite("LinuxCloudImage")
 struct LinuxCloudImageTests {

@@ -109,7 +109,7 @@ public struct CloudInitSeed {
     ///
     /// - Parameter isoURL: Destination for the ISO (conventionally the
     ///   bundle's `seed.iso`).
-    /// - Throws: ``CloudInitSeedError/isoBuildFailed(status:stderr:)``
+    /// - Throws: ``ProcessRunnerError/processFailed(command:stdout:stderr:exitCode:)``
     ///   when `hdiutil` exits non-zero.
     public func writeISO(to isoURL: URL) throws {
         let fm = FileManager.default
@@ -125,40 +125,13 @@ public struct CloudInitSeed {
         try Data(metaData.utf8).write(to: stage.appendingPathComponent("meta-data"))
         try? fm.removeItem(at: isoURL)
 
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        proc.arguments = [
-            "makehybrid", "-iso", "-joliet",
-            "-default-volume-name", "cidata",
-            "-o", isoURL.path, stage.path,
-        ]
-        let errPipe = Pipe()
-        proc.standardError = errPipe
-        proc.standardOutput = Pipe()
-        try proc.run()
-        proc.waitUntilExit()
-        guard proc.terminationStatus == 0 else {
-            let err = String(
-                data: errPipe.fileHandleForReading.readDataToEndOfFile(),
-                encoding: .utf8
-            ) ?? ""
-            throw CloudInitSeedError.isoBuildFailed(
-                status: proc.terminationStatus, stderr: err
-            )
-        }
-    }
-}
-
-/// Errors from ``CloudInitSeed``.
-public enum CloudInitSeedError: Error, LocalizedError, Equatable {
-
-    /// `hdiutil makehybrid` exited non-zero.
-    case isoBuildFailed(status: Int32, stderr: String)
-
-    public var errorDescription: String? {
-        switch self {
-        case .isoBuildFailed(let status, let stderr):
-            "Building the cloud-init seed ISO failed (hdiutil exit \(status)): \(stderr)"
-        }
+        try ProcessRunner.run(
+            "/usr/bin/hdiutil",
+            arguments: [
+                "makehybrid", "-iso", "-joliet",
+                "-default-volume-name", "cidata",
+                "-o", isoURL.path, stage.path,
+            ]
+        )
     }
 }

@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import SpooktacularCore
-@testable import SpooktacularApplication
+@testable import SpooktacularInfrastructureApple
 
 @Suite("CloudInitSeed")
 struct CloudInitSeedTests {
@@ -60,7 +60,7 @@ struct CloudInitSeedTests {
         // ISO9660 primary volume descriptor magic: "CD001" at 0x8001.
         try #require(data.count > 0x8006)
         #expect(Array(data[0x8001...0x8005]) == Array("CD001".utf8))
-        let text = String(decoding: data, as: UTF8.self)
+        let text = try #require(String(bytes: data, encoding: .isoLatin1))
         #expect(text.contains("cidata") || text.contains("CIDATA"))
     }
 }

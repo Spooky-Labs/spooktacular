@@ -1,5 +1,5 @@
 import Testing
-@testable import SpooktacularCore
+@testable import SpooktacularInfrastructureApple
 
 @Suite("SHA512Crypt")
 struct SHA512CryptTests {
