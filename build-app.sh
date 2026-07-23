@@ -109,6 +109,19 @@ cp "$BINARY_DIR/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 cp "$BINARY_DIR/$CLI_TARGET" "$MACOS_DIR/$CLI_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/$CLI_NAME"
 
+# Privileged helper daemon (SMAppService). Its executable lives in
+# Contents/MacOS/ (so its Bundle.main is the app bundle — it resolves
+# the same signed provisioner/Guest-Tools assets the app would), and
+# its launchd plist goes in Contents/Library/LaunchDaemons/ per
+# SMAppService.daemon(plistName:).
+HELPER_TARGET="spooktacular-helper"
+LAUNCH_DAEMONS_DIR="$CONTENTS/Library/LaunchDaemons"
+mkdir -p "$LAUNCH_DAEMONS_DIR"
+cp "$BINARY_DIR/$HELPER_TARGET" "$MACOS_DIR/$HELPER_TARGET"
+chmod +x "$MACOS_DIR/$HELPER_TARGET"
+cp "$PROJECT_DIR/Resources/com.spooktacular.app.helper.plist" \
+   "$LAUNCH_DAEMONS_DIR/com.spooktacular.app.helper.plist"
+
 # Shared version/build stamps, injected into every embedded
 # bundle's Info.plist below (VM Helper XPC service, Guest
 # Tools) so `spooktacular doctor` and diagnostics across
@@ -407,6 +420,13 @@ fi
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG \
     -i "com.spooktacular.app.cli" \
     --entitlements "$CLI_ENTITLEMENTS" "$MACOS_DIR/$CLI_NAME"
+# Privileged helper: signed with the same identity as the app (so the
+# system tracks the app as its responsible code), Hardened Runtime, and
+# its own signing identifier "spooktacular-helper" — the identifier the
+# app's XPC code-signing requirement pins. Must be signed before the
+# outer bundle so the enclosing signature seals it.
+codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG \
+    -i "spooktacular-helper" "$MACOS_DIR/$HELPER_TARGET"
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$ENTITLEMENTS" "$MACOS_DIR/$APP_NAME"
 codesign --force --sign "$SIGN_IDENTITY" --options runtime $TIMESTAMP_FLAG --entitlements "$ENTITLEMENTS" "$BUNDLE_DIR"
 
