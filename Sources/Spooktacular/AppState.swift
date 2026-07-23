@@ -671,6 +671,15 @@ final class AppState {
             if let explicitProvisioning = guestProvisioning {
                 effectiveProvisioning = explicitProvisioning
                 markerToConsume = nil
+            } else if let marker = bundle.metadata.pendingProvisioning,
+                      bundle.spec.guestOS == .linux {
+                // Linux: the attached cidata seed carries everything
+                // (account hash, SSH, script) and cloud-init applies it
+                // in-guest — no Keychain, no root, fully sandbox-safe.
+                // Boot plainly and consume the marker on success (the
+                // cleanup below also scrubs the seed).
+                effectiveProvisioning = nil
+                markerToConsume = marker
             } else if let marker = bundle.metadata.pendingProvisioning {
                 let storedPassword: String?
                 do {
@@ -715,12 +724,25 @@ final class AppState {
             // never turn an already-successful boot into a reported
             // error.
             if markerToConsume != nil {
-                do {
-                    try ProvisioningPasswordStore.deletePassword(forVM: bundle.metadata.id)
-                } catch {
-                    Log.vm.warning(
-                        "Could not delete provisioning password for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
-                    )
+                switch bundle.spec.guestOS {
+                case .macOS:
+                    do {
+                        try ProvisioningPasswordStore.deletePassword(forVM: bundle.metadata.id)
+                    } catch {
+                        Log.vm.warning(
+                            "Could not delete provisioning password for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
+                case .linux:
+                    // The seed ISO carried the (hashed) credentials —
+                    // scrub it now that cloud-init has consumed it.
+                    do {
+                        try bundle.scrubSeed()
+                    } catch {
+                        Log.vm.warning(
+                            "Could not remove seed.iso for \(name, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                        )
+                    }
                 }
                 do {
                     var metadata = bundle.metadata

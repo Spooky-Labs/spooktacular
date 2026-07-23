@@ -392,32 +392,49 @@ public enum VirtualMachineConfiguration {
         from bundle: VirtualMachineBundle,
         to configuration: VZVirtualMachineConfiguration
     ) throws {
-        guard bundle.spec.guestOS == .macOS else { return }
-
-        // Ensure the per-VM provision directory exists. No
-        // subdirectories — the first-boot layout is flat; the
-        // daemon looks for a single `first-boot.sh` file at
-        // this level.
-        try FileManager.default.createDirectory(
-            at: bundle.provisionDirectoryURL,
-            withIntermediateDirectories: true
-        )
-
-        let share = VZSingleDirectoryShare(
-            directory: VZSharedDirectory(
-                url: bundle.provisionDirectoryURL,
-                readOnly: false
+        switch bundle.spec.guestOS {
+        case .macOS:
+            // Ensure the per-VM provision directory exists. No
+            // subdirectories — the first-boot layout is flat; the
+            // daemon looks for a single `first-boot.sh` file at
+            // this level.
+            try FileManager.default.createDirectory(
+                at: bundle.provisionDirectoryURL,
+                withIntermediateDirectories: true
             )
-        )
-        let device = VZVirtioFileSystemDeviceConfiguration(
-            tag: VirtualMachineBundle.provisionShareTag
-        )
-        device.share = share
-        configuration.directorySharingDevices.append(device)
 
-        Log.config.info(
-            "Provisioning share attached: tag=\(VirtualMachineBundle.provisionShareTag, privacy: .public) hostPath=\(bundle.provisionDirectoryURL.path, privacy: .public)"
-        )
+            let share = VZSingleDirectoryShare(
+                directory: VZSharedDirectory(
+                    url: bundle.provisionDirectoryURL,
+                    readOnly: false
+                )
+            )
+            let device = VZVirtioFileSystemDeviceConfiguration(
+                tag: VirtualMachineBundle.provisionShareTag
+            )
+            device.share = share
+            configuration.directorySharingDevices.append(device)
+
+            Log.config.info(
+                "Provisioning share attached: tag=\(VirtualMachineBundle.provisionShareTag, privacy: .public) hostPath=\(bundle.provisionDirectoryURL.path, privacy: .public)"
+            )
+        case .linux:
+            // cloud-init NoCloud seed: attach read-only when present.
+            // The guest's cloud-init finds the `cidata` volume on its
+            // first boot; afterwards `scrubSeed()` removes the file and
+            // this attach naturally disappears from later boots.
+            guard FileManager.default.fileExists(atPath: bundle.seedISOURL.path) else { return }
+            let attachment = try VZDiskImageStorageDeviceAttachment(
+                url: bundle.seedISOURL,
+                readOnly: true
+            )
+            configuration.storageDevices.append(
+                VZVirtioBlockDeviceConfiguration(attachment: attachment)
+            )
+            Log.config.info(
+                "cloud-init seed attached: \(bundle.seedISOURL.path, privacy: .public)"
+            )
+        }
     }
 
     /// Builds VirtIO file-system devices for shared folders.

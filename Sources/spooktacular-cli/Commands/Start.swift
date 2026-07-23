@@ -246,13 +246,37 @@ extension Spooktacular {
                 options.startUpFromMacOSRecovery = true
                 nonisolated(unsafe) let unsafeVM = underlyingVM
                 try await unsafeVM.start(options: options)
+            } else if let marker = bundle.metadata.pendingProvisioning,
+                      bundle.spec.guestOS == .linux {
+                // First boot of a provisioned Linux VM: the attached
+                // `cidata` seed already carries everything (account as a
+                // SHA-512-crypt hash, SSH, first-boot script), and
+                // cloud-init inside the guest applies it — no host-side
+                // secret, no root. Boot plainly, then scrub the seed and
+                // clear the marker so the hash doesn't outlive first
+                // boot. Cleanup failures must not fail a successful boot.
+                try await vm.startOrResume()
+                print(Style.success("✓ First boot with cloud-init provisioning (account '\(marker.username)')."))
+                do {
+                    try bundle.scrubSeed()
+                } catch {
+                    print(Style.dim("Could not remove seed.iso: \(error.localizedDescription)"))
+                }
+                do {
+                    var meta = bundle.metadata
+                    meta.pendingProvisioning = nil
+                    try VirtualMachineBundle.writeMetadata(meta, to: bundleURL)
+                } catch {
+                    print(Style.dim("Could not clear pending provisioning from metadata: \(error.localizedDescription)"))
+                }
             } else if let marker = bundle.metadata.pendingProvisioning {
-                // First boot of a VM created with native provisioning
-                // (`--remote-desktop`, `--openclaw`, `--user-data` —
-                // anything that injected a first-boot.sh at create but
-                // did not boot then). On macOS 27 the guest would
-                // otherwise stall at an undriven Setup Assistant, so
-                // drive it via `VZMacGuestProvisioningOptions`.
+                // First boot of a macOS VM created with native
+                // provisioning (`--remote-desktop`, `--openclaw`,
+                // `--user-data` — anything that injected a first-boot.sh
+                // at create but did not boot then). On macOS 27 the
+                // guest would otherwise stall at an undriven Setup
+                // Assistant, so drive it via
+                // `VZMacGuestProvisioningOptions`.
                 //
                 // The marker in metadata is NON-SECRET; the account
                 // password lives only in the System Keychain, written at

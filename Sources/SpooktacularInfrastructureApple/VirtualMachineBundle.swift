@@ -94,6 +94,12 @@ public struct VirtualMachineBundle: Sendable {
     /// after the installer reports success in a future pass).
     public static let installerISOFileName = "installer.iso"
 
+    /// cloud-init NoCloud seed ISO (`cidata`), present only between a
+    /// provisioned Linux create and its first successful start —
+    /// ``scrubSeed()`` removes it once cloud-init has consumed it, so
+    /// the account's SHA-512-crypt hash doesn't outlive provisioning.
+    public static let seedISOFileName = "seed.iso"
+
     /// Directory name for the per-VM provisioning share.
     ///
     /// Exposed to the guest via `VZVirtioFileSystemDeviceConfiguration`
@@ -341,6 +347,26 @@ public struct VirtualMachineBundle: Sendable {
     /// device so the EFI firmware boots from it.
     public var hasInstallerISO: Bool {
         FileManager.default.fileExists(atPath: installerISOURL.path)
+    }
+
+    /// Location of the cloud-init NoCloud seed ISO, when present.
+    ///
+    /// Written by a provisioned Linux create, attached read-only by
+    /// ``VirtualMachineConfiguration/applyProvisioning(from:to:)``, and
+    /// removed by ``scrubSeed()`` after the first successful boot.
+    public var seedISOURL: URL {
+        url.appendingPathComponent(Self.seedISOFileName)
+    }
+
+    /// Removes the cloud-init seed after the first successful boot —
+    /// the hash-bearing `user-data` must not outlive provisioning.
+    ///
+    /// Idempotent: a missing file is success, so callers may invoke it
+    /// unconditionally in their post-boot cleanup.
+    public func scrubSeed() throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: seedISOURL.path) else { return }
+        try fm.removeItem(at: seedISOURL)
     }
 
     // MARK: - Creating Bundles

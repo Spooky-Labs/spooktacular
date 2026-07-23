@@ -461,6 +461,23 @@ struct VirtualMachineBundleTests {
             #expect(FileManager.default.fileExists(atPath: bundle.efiVariableStoreURL.path))
         }
 
+        @Test("Linux bundle exposes seedISOURL and scrubs it idempotently", .timeLimit(.minutes(1)))
+        func seedLifecycle() throws {
+            let tmp = TempDirectory()
+            let bundleURL = tmp.file("linux-seed.vm")
+            let bundle = try VirtualMachineBundle.create(
+                at: bundleURL,
+                spec: VirtualMachineSpecification(cpuCount: 1, guestOS: .linux),
+                displayName: "linux-seed"
+            )
+            #expect(bundle.seedISOURL.lastPathComponent == "seed.iso")
+            try Data("iso".utf8).write(to: bundle.seedISOURL)
+            #expect(FileManager.default.fileExists(atPath: bundle.seedISOURL.path))
+            try bundle.scrubSeed()
+            #expect(!FileManager.default.fileExists(atPath: bundle.seedISOURL.path))
+            try bundle.scrubSeed()   // idempotent — missing file is success
+        }
+
         @Test("macOS bundle does NOT provision an EFI NVRAM file", .timeLimit(.minutes(1)))
         func macOSBundleSkipsNVRAM() throws {
             let tmp = TempDirectory()
