@@ -413,6 +413,14 @@ struct CreateVMSheet: View {
                             ? template.explanation + " Remote Desktop and GitHub Runner templates are macOS-only in the app today (the CLI supports Linux runners)."
                             : template.explanation)
                     }
+
+                    // A macOS template injects a provisioner into the
+                    // guest disk — root-only. On EC2 Mac the CLI is
+                    // already root; in the app, escalate once through
+                    // the approved privileged helper.
+                    if guestOS == .macOS && macOSTemplateNeedsRoot {
+                        privilegedHelperRow
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -530,6 +538,52 @@ struct CreateVMSheet: View {
     /// walkthrough.
     private var linuxUsesCloudImage: Bool {
         !cloudImagePath.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// `true` when the selected macOS template injects a provisioner
+    /// into the guest disk (root-only). `.none` provisions nothing.
+    private var macOSTemplateNeedsRoot: Bool {
+        switch template {
+        case .none: false
+        case .githubRunner, .openclaw, .remoteDesktop, .custom: true
+        }
+    }
+
+    /// One-time approval affordance for the privileged helper: shows
+    /// live `SMAppService` status and, until approved, a button that
+    /// registers the daemon and deep-links System Settings. The
+    /// always-available fallback (the `sudo spook create …` command)
+    /// is named in the footer so a user who declines is never stuck.
+    @ViewBuilder
+    private var privilegedHelperRow: some View {
+        Section {
+            switch PrivilegedHelper.shared.status {
+            case .enabled:
+                Label("Privileged helper approved — provisioning runs in-app.",
+                      systemImage: String.SFSymbols.checkmarkSealFill)
+                    .foregroundStyle(Apparition.vital)
+            case .requiresApproval:
+                Button("Approve in System Settings…") {
+                    PrivilegedHelper.shared.openApprovalSettings()
+                }
+            default:
+                Button("Enable macOS provisioning (approve once)…") {
+                    do {
+                        try PrivilegedHelper.shared.registerIfNeeded()
+                        PrivilegedHelper.shared.openApprovalSettings()
+                    } catch {
+                        errorMessage = "Couldn't register the privileged helper: \(error.localizedDescription). Use `sudo spook create …` instead."
+                    }
+                }
+            }
+        } header: {
+            RitualGlassHeader(
+                title: "Root access",
+                complete: PrivilegedHelper.shared.isEnabled
+            )
+        } footer: {
+            Text("macOS templates inject a provisioner into the guest disk, which needs root. Approve Spooktacular's helper once in System Settings → Login Items, or run the equivalent `sudo spook create …` in Terminal.")
+        }
     }
 
     // MARK: - Ritual section validity
