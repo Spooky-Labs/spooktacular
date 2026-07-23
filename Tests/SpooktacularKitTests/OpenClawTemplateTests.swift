@@ -8,40 +8,66 @@ import Foundation
 @Suite("OpenClaw Template", .tags(.template))
 struct OpenClawTemplateTests {
 
-    let script = OpenClawTemplate.scriptContent()
-
     @Suite("Script Structure")
     struct Structure {
-        let script = OpenClawTemplate.scriptContent()
+        @Test("starts with bash shebang", arguments: [GuestOS.macOS, .linux])
+        func shebang(os: GuestOS) {
+            #expect(OpenClawTemplate.scriptContent(for: os, username: "admin")
+                .hasPrefix("#!/bin/bash"))
+        }
 
-        @Test("starts with bash shebang")
-        func shebang() { #expect(script.hasPrefix("#!/bin/bash")) }
-
-        @Test("uses set -euo pipefail for safety")
-        func strictMode() { #expect(script.contains("set -euo pipefail")) }
+        @Test("uses set -euo pipefail for safety", arguments: [GuestOS.macOS, .linux])
+        func strictMode(os: GuestOS) {
+            #expect(OpenClawTemplate.scriptContent(for: os, username: "admin")
+                .contains("set -euo pipefail"))
+        }
     }
 
-    @Test("script includes all required elements",
-          arguments: [
-              "Homebrew/install/HEAD/install.sh",
-              "/opt/homebrew/bin/brew shellenv",
-              "brew install node@24",
-              "/opt/homebrew/opt/node@24/bin",
-              "npm install -g openclaw@latest",
-              "openclaw onboard --install-daemon",
-              "NONINTERACTIVE=1",
-              "if ! command -v brew",
-          ])
-    func requiredElement(expected: String) {
-        #expect(script.contains(expected), "Script missing: \(expected)")
+    // The provisioner daemon (macOS) and cloud-init (Linux) run this
+    // script AS ROOT on first boot — before any user session exists.
+    // The old template began with the Homebrew installer, which refuses
+    // to run as root: the flow died at step 1. These tests pin the
+    // root-context-safe design.
+
+    @Test("macOS script is root-context safe: no Homebrew, drops privileges for user steps")
+    func macOSRootSafe() {
+        let script = OpenClawTemplate.scriptContent(for: .macOS, username: "admin")
+        #expect(!script.contains("brew"))
+        #expect(!script.contains("Homebrew"))
+        #expect(script.contains("installer -pkg"))
+        #expect(script.contains("nodejs.org/dist/index.json"))   // latest 24.x at runtime
+        #expect(script.contains("OPENCLAW_USER=\"admin\""))
+        #expect(script.contains("sudo -u \"$OPENCLAW_USER\""))
+        #expect(script.contains("launchctl"))
+        #expect(script.contains("/Library/LaunchDaemons/"))
+    }
+
+    @Test("linux script installs official arm64 tarball + systemd unit")
+    func linuxShape() {
+        let script = OpenClawTemplate.scriptContent(for: .linux, username: "admin")
+        #expect(script.contains("linux-arm64.tar.xz"))
+        #expect(script.contains("/usr/local"))
+        #expect(script.contains("systemctl enable"))
+        #expect(script.contains("User=admin"))
+        #expect(!script.contains("brew"))
+        #expect(!script.contains("launchctl"))
+    }
+
+    @Test("both scripts install openclaw and wait for the provisioned account")
+    func commonShape() {
+        for os in [GuestOS.macOS, .linux] {
+            let script = OpenClawTemplate.scriptContent(for: os, username: "admin")
+            #expect(script.contains("npm install -g openclaw@latest"), "\(os)")
+            #expect(script.contains("id \"$OPENCLAW_USER\""), "missing account wait for \(os)")
+        }
     }
 
     @Suite("File Generation")
     struct FileGeneration {
 
-        @Test("generates an executable file whose content matches scriptContent()")
+        @Test("generates an executable file whose content matches scriptContent(for:username:)")
         func generatesExecutableFile() throws {
-            let url = try OpenClawTemplate.generate()
+            let url = try OpenClawTemplate.generate(for: .macOS, username: "admin")
             defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
             #expect(FileManager.default.fileExists(atPath: url.path))
@@ -53,7 +79,7 @@ struct OpenClawTemplateTests {
             #expect(permissions == 0o700)
 
             let fileContent = try String(contentsOf: url, encoding: .utf8)
-            #expect(fileContent == OpenClawTemplate.scriptContent())
+            #expect(fileContent == OpenClawTemplate.scriptContent(for: .macOS, username: "admin"))
         }
     }
 }

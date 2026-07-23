@@ -979,7 +979,9 @@ struct CreateVMSheet: View {
         case .none, .githubRunner:
             return (nil, false)
         case .openclaw:
-            return (try OpenClawTemplate.generate(), true)
+            // The GUI create provisions the default "admin" account
+            // (native provisioning); the gateway runs as that user.
+            return (try OpenClawTemplate.generate(for: .macOS, username: "admin"), true)
         case .remoteDesktop:
             return (try RemoteDesktopTemplate.generate(), true)
         case .custom:

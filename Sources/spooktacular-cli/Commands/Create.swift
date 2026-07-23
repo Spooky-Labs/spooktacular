@@ -704,7 +704,7 @@ extension Spooktacular {
                     provisionScript = try RemoteDesktopTemplate.generate()
                     ownsScript = true
                 } else if openclaw {
-                    provisionScript = try OpenClawTemplate.generate()
+                    provisionScript = try OpenClawTemplate.generate(for: .macOS, username: vmUser)
                     ownsScript = true
                 } else if let path = userData {
                     provisionScript = URL(filePath: path)
