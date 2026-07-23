@@ -39,7 +39,12 @@ echo "  bundle: $BUNDLE (account: $VM_USER)"
 test -f "$BUNDLE/seed.iso"; check "seed.iso present after create" "$?"
 python3 -c "import json,sys;m=json.load(open('$BUNDLE/metadata.json'));sys.exit(0 if m.get('pendingProvisioning') else 1)"
 check "pendingProvisioning marker present" "$?"
-! grep -rq "$VM_PASS" "$BUNDLE"; check "plaintext password NOT in bundle" "$?"
+# Scan only the text artifacts — the password never goes near the
+# disk image, and grepping a multi-GB disk.img is minutes of noise.
+! grep -q "$VM_PASS" "$BUNDLE/metadata.json" "$BUNDLE/config.json"
+check "plaintext password NOT in metadata/config" "$?"
+! strings "$BUNDLE/seed.iso" | grep -q "$VM_PASS"
+check "plaintext password NOT in seed.iso (hash only)" "$?"
 
 echo "== first start (cloud-init applies account + SSH + script) =="
 "$SPOOK" start "$NAME" --headless &
