@@ -120,6 +120,17 @@ let package = Package(
             ],
             path: "Sources/spooktacular-cli"
         ),
+        // Privileged helper daemon (SMAppService) — embedded at
+        // Spooktacular.app/Contents/MacOS/, approved once by an admin,
+        // services the two root-only disk-inject operations over XPC.
+        .executableTarget(
+            name: "spooktacular-helper",
+            dependencies: [
+                "SpooktacularApplication",
+                "SpooktacularInfrastructureApple",
+            ],
+            path: "Sources/spooktacular-helper"
+        ),
         .executableTarget(
             name: "Spooktacular",
             dependencies: [

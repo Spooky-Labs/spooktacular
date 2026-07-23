@@ -1038,7 +1038,32 @@ spook start linux-runner
 
 ---
 
+### Task 10: SMAppService privileged helper (GUI macOS disk-inject)
+
+**Design (doc-verified 2026-07-22):** `SMAppService.daemon(plistName:)` with the
+plist + helper executable inside the signed app bundle; admin approves once in
+System Settings (`.requiresApproval` → `openSystemSettingsLoginItems()`), then
+the root daemon bootstraps on every boot. App ↔ helper over `NSXPCConnection`
+(mach service, `.privileged`), **both sides pinned** with
+`setCodeSigningRequirement` / `setConnectionCodeSigningRequirement` derived at
+runtime from the app's own team identifier (`SecCodeCopySigningInformation`) —
+never hardcoded, never PID-trust. Helper: two verbs only
+(`installProvisionerDaemon(vmBundlePath:)`, `installGuestTools(vmBundlePath:)`),
+asset paths derived from the helper's own `Bundle.main` so clients cannot
+retarget the root process; `dispatchPrecondition` root assert per DTS guidance.
+Script injection stays in-app (provision share is a host-side rootless write).
+
+**Files:** `Sources/SpooktacularInfrastructureApple/HelperInterface.swift`
+(protocol + mach name + requirement builder), `Sources/spooktacular-helper/main.swift`
+(new executable target), `Resources/com.spooktacular.app.helper.plist`,
+`Sources/Spooktacular/PrivilegedHelper.swift` (SMAppService + XPC client),
+`build-app.sh` assembly/signing, sheet approval row. Tests: requirement-string
+builder against the live test-host signature; plist key assertions.
+
+**Verify:** build + lint + suite green; `status` reports `.requiresApproval`
+after `register()`; full approve-and-inject e2e requires the user's one-time
+System Settings approval (hand-off step).
+
 ## Follow-ups explicitly out of this plan
 1. **Greyed provisioning picker** — live systematic-debugging session against the running GUI (unknown root cause; blocks nothing above on the CLI path).
-2. **SMAppService privileged helper** for GUI macOS disk-inject (runtime root escalation) — needs doc verification + signing/approval UX design.
-3. Ubuntu qcow2; Remote Desktop on Linux; MFA-under-root for `spook delete`.
+2. Ubuntu qcow2; Remote Desktop on Linux; MFA-under-root for `spook delete`.
