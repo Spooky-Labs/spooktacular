@@ -41,7 +41,7 @@ public enum LinuxCloudImage {
     ///     unreleased codenames).
     public static func resolve(
         _ argument: String,
-        fetch: (URL) async throws -> Data
+        fetch: @Sendable (URL) async throws -> Data
     ) async throws -> Resolution {
         switch argument.lowercased() {
         case "fedora":

@@ -303,6 +303,20 @@ extension Spooktacular {
         )
         var installerISO: String?
 
+        @Option(
+            name: .customLong("from-image"),
+            help: """
+                Linux cloud image to boot from: a local raw image \
+                (.raw or .img, optionally .xz-compressed) or an alias — \
+                'fedora' / 'debian' — resolved at create time to the \
+                distro's latest aarch64 cloud image. Enables first-boot \
+                provisioning via cloud-init (account, SSH, first-boot \
+                script) with no installer walkthrough and no root on \
+                the host. Mutually exclusive with --installer-iso.
+                """
+        )
+        var fromImage: String?
+
         @Flag(
             name: .customLong("rosetta"),
             help: """
@@ -1059,6 +1073,28 @@ extension Spooktacular {
             macAddress: MACAddress,
             network: NetworkMode
         ) async throws {
+            if fromImage != nil, installerISO != nil {
+                if json {
+                    printJSONError(
+                        code: "conflicting-image-sources",
+                        message: "--from-image and --installer-iso are mutually exclusive.",
+                        hint: "Cloud images boot ready-made; installer ISOs run an interactive install."
+                    )
+                } else {
+                    print(Style.error("✗ --from-image and --installer-iso are mutually exclusive."))
+                    print(Style.dim("  Cloud images boot ready-made; installer ISOs run an interactive install."))
+                }
+                throw ExitCode(CLIExit.validation)
+            }
+            if let fromImage {
+                try await runLinuxCloudImageCreate(
+                    fromImage: fromImage,
+                    bundleURL: bundleURL,
+                    macAddress: macAddress,
+                    network: network
+                )
+                return
+            }
             guard let isoPath = installerISO else {
                 if json {
                     printJSONError(
@@ -1184,6 +1220,229 @@ extension Spooktacular {
                 print(Style.dim("  Bundle: \(bundleURL.path)"))
                 print(Style.dim("  Next:   spooktacular start \(name)"))
                 print(Style.dim("          (boots into the installer — follow the Fedora prompts)"))
+            }
+        }
+
+        /// Provisioned Linux create: cloud image + cloud-init seed.
+        ///
+        /// The rootless counterpart to the macOS disk-inject flow —
+        /// nothing here mounts a guest disk or touches a Keychain:
+        ///
+        /// 1. Resolve `--from-image` (local raw / `fedora` / `debian`
+        ///    latest via ``LinuxCloudImage``), downloading to
+        ///    `~/.spooktacular/cache/images/` when an alias.
+        /// 2. Create the bundle; materialize the image as `disk.img`
+        ///    (xz-decoding if needed) and grow it to `--disk` GiB —
+        ///    cloud-init's growpart expands the root filesystem on
+        ///    first boot.
+        /// 3. Render the `cidata` seed (account as SHA-512-crypt hash,
+        ///    SSH on, optional `--user-data` script) into `seed.iso`
+        ///    and persist the non-secret ``PendingProvisioning``
+        ///    marker; the first `spook start` scrubs both.
+        @MainActor
+        private func runLinuxCloudImageCreate(
+            fromImage: String,
+            bundleURL: URL,
+            macAddress: MACAddress,
+            network: NetworkMode
+        ) async throws {
+            // Templates that need per-OS scripts land separately; fail
+            // fast on the ones a Linux guest can't honor yet rather
+            // than silently producing an unprovisioned VM.
+            if remoteDesktop || openclaw || githubRunner {
+                let unsupported = remoteDesktop
+                    ? "--remote-desktop" : (openclaw ? "--openclaw" : "--github-runner")
+                if json {
+                    printJSONError(
+                        code: "template-not-supported-linux",
+                        message: "\(unsupported) is not yet supported for Linux cloud images.",
+                        hint: "Use --user-data <script> for custom first-boot provisioning."
+                    )
+                } else {
+                    print(Style.error("✗ \(unsupported) is not yet supported for Linux cloud images."))
+                    print(Style.dim("  Use --user-data <script> for custom first-boot provisioning."))
+                }
+                throw ExitCode(CLIExit.validation)
+            }
+
+            // Optional first-boot script, read up-front so a bad path
+            // fails before any download.
+            var runScript: String?
+            if let userData {
+                let scriptURL = URL(filePath: (userData as NSString).expandingTildeInPath)
+                guard let script = try? String(contentsOf: scriptURL, encoding: .utf8) else {
+                    if json {
+                        printJSONError(
+                            code: "user-data-not-found",
+                            message: "Could not read user-data script at '\(scriptURL.path)'.",
+                            hint: "Verify the path exists and is a UTF-8 shell script."
+                        )
+                    } else {
+                        print(Style.error("✗ Could not read user-data script at '\(scriptURL.path)'."))
+                    }
+                    throw ExitCode(CLIExit.validation)
+                }
+                runScript = script
+            }
+
+            // 1. Resolve the image source (runtime-latest for aliases).
+            if !json { print(Style.info("Resolving Linux cloud image '\(fromImage)'...")) }
+            let resolution: LinuxCloudImage.Resolution
+            do {
+                resolution = try await LinuxCloudImage.resolve(fromImage) { url in
+                    let (data, response) = try await URLSession.shared.data(from: url)
+                    if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                        throw URLError(.fileDoesNotExist)
+                    }
+                    return data
+                }
+            } catch {
+                if json {
+                    printJSONError(
+                        code: "image-resolution-failed",
+                        message: error.localizedDescription,
+                        hint: (error as? LocalizedError)?.recoverySuggestion
+                    )
+                } else {
+                    print(Style.error("✗ \(error.localizedDescription)"))
+                }
+                throw ExitCode(CLIExit.validation)
+            }
+
+            let localImage: URL
+            let xzCompressed: Bool
+            switch resolution {
+            case .localFile(let url, let xz):
+                localImage = url
+                xzCompressed = xz
+            case .download(let url, let suggestedFileName, let xz):
+                let cacheDir = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".spooktacular/cache/images")
+                try FileManager.default.createDirectory(
+                    at: cacheDir, withIntermediateDirectories: true
+                )
+                let cached = cacheDir.appendingPathComponent(suggestedFileName)
+                if !FileManager.default.fileExists(atPath: cached.path) {
+                    if !json {
+                        print(Style.info("Downloading \(suggestedFileName) (latest \(fromImage) cloud image)..."))
+                    }
+                    let (temp, _) = try await URLSession.shared.download(from: url)
+                    try? FileManager.default.removeItem(at: cached)
+                    try FileManager.default.moveItem(at: temp, to: cached)
+                } else if !json {
+                    print(Style.dim("  Using cached image \(cached.lastPathComponent)."))
+                }
+                localImage = cached
+                xzCompressed = xz
+            }
+
+            // 2. Bundle + disk.
+            let spec = VirtualMachineSpecification(
+                cpuCount: cpu,
+                memorySizeInBytes: .gigabytes(memory),
+                diskSizeInBytes: .gigabytes(disk),
+                displayCount: displays,
+                networkMode: network,
+                audioEnabled: audio,
+                microphoneEnabled: microphone,
+                macAddress: macAddress,
+                autoResizeDisplay: autoResize,
+                guestOS: .linux,
+                rosettaEnabled: rosetta,
+                guestToolsInstall: .disabled
+            )
+            if !json { print(Style.info("Creating Linux VM bundle '\(name)'...")) }
+            let bundle = try VirtualMachineBundle.create(
+                at: bundleURL,
+                spec: spec,
+                displayName: name
+            )
+            let diskURL = bundleURL.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
+            if xzCompressed {
+                if !json { print(Style.info("Decompressing image into bundle...")) }
+                try LinuxCloudImage.decompressXZ(at: localImage, to: diskURL)
+            } else {
+                if !json { print(Style.info("Copying image into bundle...")) }
+                try FileManager.default.copyItem(at: localImage, to: diskURL)
+            }
+            // Grow the file to the requested size; growpart inside the
+            // guest expands the root filesystem to fill it.
+            let handle = try FileHandle(forWritingTo: diskURL)
+            defer { try? handle.close() }
+            let target = UInt64(disk) * 1_073_741_824
+            if try handle.seekToEnd() < target {
+                try handle.truncate(atOffset: target)
+            }
+
+            // 3. Seed + marker.
+            let resolvedPassword = vmPassword ?? EphemeralCredential.generatePassword()
+            let provisioningSpec = try GuestProvisioningSpec(
+                fullName: "Spooktacular User",
+                username: vmUser,
+                password: resolvedPassword,
+                logsInAutomatically: false,
+                // sshd is enabled via the seed's ssh_pwauth; record it.
+                enablesRemoteLogin: true
+            ).validated()
+            var authorizedKeys: [String] = []
+            let sshDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".ssh")
+            for keyName in ["id_ed25519.pub", "id_rsa.pub"] {
+                let keyURL = sshDir.appendingPathComponent(keyName)
+                if let key = try? String(contentsOf: keyURL, encoding: .utf8) {
+                    authorizedKeys.append(key.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+            }
+            let seed = try CloudInitSeed(
+                spec: provisioningSpec,
+                instanceID: bundle.metadata.id,
+                hostname: name,
+                runScript: runScript,
+                authorizedKeys: authorizedKeys
+            )
+            try seed.writeISO(to: bundle.seedISOURL)
+            var meta = bundle.metadata
+            meta.pendingProvisioning = provisioningSpec.pendingMarker
+            try VirtualMachineBundle.writeMetadata(meta, to: bundleURL)
+            try? BundleProtection.propagate(to: bundleURL)
+
+            if json {
+                struct LinuxCreateResult: Encodable {
+                    let status: String
+                    let name: String
+                    let path: String
+                    let id: String
+                    let guestOS: String
+                    let provisioning: Provisioning
+                    struct Provisioning: Encodable {
+                        let username: String
+                        let password: String
+                    }
+                }
+                printJSON(LinuxCreateResult(
+                    status: "created",
+                    name: name,
+                    path: bundleURL.path,
+                    id: bundle.metadata.id.uuidString,
+                    guestOS: "linux",
+                    provisioning: .init(
+                        username: provisioningSpec.username,
+                        password: provisioningSpec.password
+                    )
+                ))
+            } else {
+                print()
+                print(Style.success("✓ Linux VM '\(name)' created (cloud-init provisioned)."))
+                Style.field("Bundle", Style.dim(bundleURL.path))
+                Style.field("Image", localImage.lastPathComponent)
+                print()
+                print(Style.warning("⚠ Save these credentials — you need them to connect (shown only once):"))
+                Style.field("Account", provisioningSpec.username)
+                Style.field("Password", provisioningSpec.password)
+                print(Style.dim("  Applied by cloud-init on the first 'spook start \(name)' (account, SSH,"))
+                print(Style.dim("  first-boot script); the seed is erased after that boot. No sudo needed."))
+                print()
+                print("Run '\(Style.bold("spook start \(name)"))' to boot the VM.")
             }
         }
 
