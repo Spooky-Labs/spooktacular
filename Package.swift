@@ -198,7 +198,12 @@ let package = Package(
                 // see AppShortcutSymbolTests.
                 .product(name: "SFSymbolsKit", package: "SFSymbolsKit"),
             ],
-            path: "Tests/SpooktacularKitTests"
+            path: "Tests/SpooktacularKitTests",
+            resources: [
+                // Recorded distro release-index fixtures for the
+                // LinuxCloudImage parser tests (Bundle.module).
+                .copy("Fixtures")
+            ]
         ),
         // UI tests — XCUITest-based, capture App Store
         // screenshots via `XCTAttachment` (see
