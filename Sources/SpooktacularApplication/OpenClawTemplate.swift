@@ -25,9 +25,12 @@ import SpooktacularCore
 ///   boot) before any per-user step, then drops privileges with
 ///   `sudo -u` — the same pattern ``GitHubRunnerTemplate`` uses
 ///   because `config.sh` refuses root.
-/// - The **gateway** runs under the service manager (launchd
-///   LaunchDaemon with a `UserName` key / systemd unit with `User=`),
-///   not as a child of the provisioning script.
+/// - The **gateway** is installed by OpenClaw's own
+///   `onboard --install-daemon` as a per-user launchd/systemd service
+///   (the documented mechanism), not by a hand-rolled unit. On Linux
+///   the script enables user lingering so that service can run
+///   headless. Fully activating the gateway (port 18789) needs channel
+///   credentials, supplied out-of-band via `--share`.
 ///
 /// ## Security
 ///
@@ -96,27 +99,17 @@ public enum OpenClawTemplate {
         # Install OpenClaw.
         npm install -g openclaw@latest
 
-        # One-time onboarding as the provisioned user; non-fatal —
-        # the LaunchDaemon below owns the gateway lifecycle.
-        sudo -u "$OPENCLAW_USER" /usr/local/bin/openclaw onboard --install-daemon || true
+        # OpenClaw's own onboarding installs the gateway as a per-user
+        # launchd service (`--install-daemon`, per its docs — it's the
+        # documented way to keep the gateway running). Run it as the
+        # provisioned user; the service activates when that user has a
+        # session (e.g. connecting via Screen Sharing on a
+        # remote-desktop VM). Non-interactive here (`</dev/null`) —
+        # channel credentials, supplied via `--share`, are what fully
+        # bring the gateway up on port 18789.
+        sudo -u "$OPENCLAW_USER" /usr/local/bin/openclaw onboard --install-daemon </dev/null || true
 
-        # Gateway runs as the provisioned user via launchd (UserName
-        # key), not as root and not as a child of this script.
-        cat > /Library/LaunchDaemons/com.spookylabs.openclaw.gateway.plist <<PLIST
-        <?xml version="1.0" encoding="UTF-8"?>
-        <plist version="1.0"><dict>
-            <key>Label</key><string>com.spookylabs.openclaw.gateway</string>
-            <key>UserName</key><string>\(username)</string>
-            <key>ProgramArguments</key><array>
-                <string>/usr/local/bin/openclaw</string><string>gateway</string>
-            </array>
-            <key>RunAtLoad</key><true/>
-            <key>KeepAlive</key><true/>
-        </dict></plist>
-        PLIST
-        launchctl load -w /Library/LaunchDaemons/com.spookylabs.openclaw.gateway.plist
-
-        echo "OpenClaw installed; gateway running as ${OPENCLAW_USER} on port 18789"
+        echo "OpenClaw installed for ${OPENCLAW_USER}; run 'openclaw onboard' with credentials to activate the gateway (port 18789)"
         """
     }
 
@@ -150,29 +143,20 @@ public enum OpenClawTemplate {
         # Install OpenClaw.
         npm install -g openclaw@latest
 
-        # One-time onboarding as the provisioned user; non-fatal —
-        # the systemd unit below owns the gateway lifecycle.
-        sudo -u "$OPENCLAW_USER" /usr/local/bin/openclaw onboard --install-daemon || true
+        # Enable lingering so the provisioned user's systemd services
+        # run at boot without an interactive login (headless cloud VM).
+        loginctl enable-linger "$OPENCLAW_USER" || true
 
-        # Gateway runs as the provisioned user under systemd.
-        cat > /etc/systemd/system/openclaw-gateway.service <<UNIT
-        [Unit]
-        Description=OpenClaw gateway
-        After=network-online.target
-        Wants=network-online.target
+        # OpenClaw's onboarding installs the gateway as a per-user
+        # systemd service (`--install-daemon`, per its docs — the
+        # documented way to keep it running). Non-interactive here
+        # (`</dev/null`); channel credentials, supplied via `--share`,
+        # are what fully bring the gateway up on port 18789.
+        sudo -u "$OPENCLAW_USER" \\
+            XDG_RUNTIME_DIR="/run/user/$(id -u "$OPENCLAW_USER")" \\
+            /usr/local/bin/openclaw onboard --install-daemon </dev/null || true
 
-        [Service]
-        User=\(username)
-        ExecStart=/usr/local/bin/openclaw gateway
-        Restart=always
-
-        [Install]
-        WantedBy=multi-user.target
-        UNIT
-        systemctl daemon-reload
-        systemctl enable --now openclaw-gateway.service
-
-        echo "OpenClaw installed; gateway running as ${OPENCLAW_USER} on port 18789"
+        echo "OpenClaw installed for ${OPENCLAW_USER}; run 'openclaw onboard' with credentials to activate the gateway (port 18789)"
         """
     }
 }

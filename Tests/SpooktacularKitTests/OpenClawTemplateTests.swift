@@ -29,7 +29,7 @@ struct OpenClawTemplateTests {
     // to run as root: the flow died at step 1. These tests pin the
     // root-context-safe design.
 
-    @Test("macOS script is root-context safe: no Homebrew, drops privileges for user steps")
+    @Test("macOS script is root-context safe and uses OpenClaw's documented daemon install")
     func macOSRootSafe() {
         let script = OpenClawTemplate.scriptContent(for: .macOS, username: "admin")
         #expect(!script.contains("brew"))
@@ -38,17 +38,22 @@ struct OpenClawTemplateTests {
         #expect(script.contains("nodejs.org/dist/index.json"))   // latest 24.x at runtime
         #expect(script.contains("OPENCLAW_USER=\"admin\""))
         #expect(script.contains("sudo -u \"$OPENCLAW_USER\""))
-        #expect(script.contains("launchctl"))
-        #expect(script.contains("/Library/LaunchDaemons/"))
+        // Uses OpenClaw's own `onboard --install-daemon` (documented),
+        // not a hand-rolled LaunchDaemon running a `gateway` subcommand.
+        #expect(script.contains("openclaw onboard --install-daemon"))
+        #expect(!script.contains("/Library/LaunchDaemons/"))
     }
 
-    @Test("linux script installs official arm64 tarball + systemd unit")
+    @Test("linux script installs official arm64 tarball + documented daemon + headless linger")
     func linuxShape() {
         let script = OpenClawTemplate.scriptContent(for: .linux, username: "admin")
         #expect(script.contains("linux-arm64.tar.xz"))
         #expect(script.contains("/usr/local"))
-        #expect(script.contains("systemctl enable"))
-        #expect(script.contains("User=admin"))
+        // Headless: user services need lingering; the daemon is
+        // installed by OpenClaw itself, not a hand-rolled systemd unit.
+        #expect(script.contains("loginctl enable-linger"))
+        #expect(script.contains("openclaw onboard --install-daemon"))
+        #expect(!script.contains("/etc/systemd/system/openclaw"))
         #expect(!script.contains("brew"))
         #expect(!script.contains("launchctl"))
     }
