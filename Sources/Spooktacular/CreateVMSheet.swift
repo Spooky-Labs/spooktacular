@@ -54,6 +54,14 @@ struct CreateVMSheet: View {
     /// `--installer-iso` flag.
     @State private var installerISOPath: String = ""
 
+    /// Cloud-image source for provisioned Linux VMs: a distro alias
+    /// (`fedora` / `debian`, resolved to the latest aarch64 cloud
+    /// image at create time) or a local raw image path. Preferred
+    /// over ``installerISOPath`` when non-empty — cloud images boot
+    /// ready-made with cloud-init provisioning, no installer
+    /// walkthrough, no root.
+    @State private var cloudImagePath: String = "fedora"
+
     /// Expose Rosetta 2 to the Linux guest as a virtio-fs
     /// share.  Only shown when ``guestOS`` is
     /// ``GuestOS/linux``; disabled when Rosetta is not
@@ -282,21 +290,37 @@ struct CreateVMSheet: View {
                     }
                 case .linux:
                     Section {
-                        HStack {
-                            TextField(
-                                "~/Downloads/Fedora-Workstation-Live-43.aarch64.iso",
-                                text: $installerISOPath
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            Button("Browse…") { browseForInstallerISO() }
-                        }
+                        TextField(
+                            "fedora, debian, or /path/to/image.raw(.xz)",
+                            text: $cloudImagePath
+                        )
+                        .textFieldStyle(.roundedBorder)
                     } header: {
                         RitualGlassHeader(
-                            title: "Installer ISO",
-                            complete: isoSectionComplete
+                            title: "Cloud Image",
+                            complete: !cloudImagePath.trimmingCharacters(in: .whitespaces).isEmpty
                         )
                     } footer: {
-                        Text("Path to a UEFI-bootable ARM64 installer ISO. Copied into the VM bundle at create time, then exposed to the guest firmware as a USB mass storage device so EFI's boot manager finds it first. Remove the ISO from the bundle after the guest OS is installed.")
+                        Text("A distro alias ('fedora' or 'debian' — resolved to the latest aarch64 cloud image at create time) or a local raw image. Boots ready-made: cloud-init creates the account, enables SSH, and runs the first-boot script — no installer, no admin rights. Clear this field to use an installer ISO instead.")
+                    }
+                    if cloudImagePath.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Section {
+                            HStack {
+                                TextField(
+                                    "~/Downloads/Fedora-Workstation-Live-43.aarch64.iso",
+                                    text: $installerISOPath
+                                )
+                                .textFieldStyle(.roundedBorder)
+                                Button("Browse…") { browseForInstallerISO() }
+                            }
+                        } header: {
+                            RitualGlassHeader(
+                                title: "Installer ISO",
+                                complete: isoSectionComplete
+                            )
+                        } footer: {
+                            Text("Path to a UEFI-bootable ARM64 installer ISO. Copied into the VM bundle at create time, then exposed to the guest firmware as a USB mass storage device so EFI's boot manager finds it first. Remove the ISO from the bundle after the guest OS is installed.")
+                        }
                     }
                     rosettaSection
                 }
@@ -371,7 +395,12 @@ struct CreateVMSheet: View {
                     Text("Shared folders appear in the guest at /Volumes/My Shared Files/. Use them to pass build artifacts, training data, or configuration files between host and guest without networking.")
                 }
 
-                if guestOS == .macOS {
+                // Provisioning renders for BOTH guest OSes. Linux
+                // (cloud-image flow) provisions via cloud-init —
+                // rootless, so every offered template works from the
+                // sandboxed app; templates without a Linux variant
+                // are filtered out in `provisioningControls`.
+                if guestOS == .macOS || linuxUsesCloudImage {
                     Section {
                         provisioningControls
                     } header: {
@@ -380,7 +409,9 @@ struct CreateVMSheet: View {
                             complete: provisioningSectionComplete
                         )
                     } footer: {
-                        Text(template.explanation)
+                        Text(guestOS == .linux
+                            ? template.explanation + " Remote Desktop and GitHub Runner templates are macOS-only in the app today (the CLI supports Linux runners)."
+                            : template.explanation)
                     }
                 }
             }
@@ -489,8 +520,16 @@ struct CreateVMSheet: View {
                 return true
             }
         case .linux:
-            return !installerISOPath.trimmingCharacters(in: .whitespaces).isEmpty
+            return linuxUsesCloudImage
+                || !installerISOPath.trimmingCharacters(in: .whitespaces).isEmpty
         }
+    }
+
+    /// `true` when the Linux create should take the cloud-image
+    /// (cloud-init provisioned) path rather than the installer-ISO
+    /// walkthrough.
+    private var linuxUsesCloudImage: Bool {
+        !cloudImagePath.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: - Ritual section validity
@@ -733,16 +772,30 @@ struct CreateVMSheet: View {
         }
     }
 
+    /// Templates offered for the current guest OS. Linux (cloud-init)
+    /// covers OpenClaw + custom scripts in-app; Remote Desktop has no
+    /// Linux variant and the Linux runner flow is CLI-only for now.
+    private var offeredTemplates: [ProvisioningTemplate] {
+        guestOS == .macOS
+            ? ProvisioningTemplate.allCases
+            : [.none, .openclaw, .custom]
+    }
+
     @ViewBuilder
     private var provisioningControls: some View {
         Picker("Template", selection: $template) {
-            ForEach(ProvisioningTemplate.allCases, id: \.self) { kind in
+            ForEach(offeredTemplates, id: \.self) { kind in
                 Text(kind.label).tag(kind)
             }
         }
         .pickerStyle(.menu)
         .labelsHidden()
         .help("Pick a built-in first-boot template or provide a custom script.")
+        // Switching guest OS can strand a selection the new OS
+        // doesn't offer (e.g. Remote Desktop → Linux); reset it.
+        .onChange(of: guestOS) { _, _ in
+            if !offeredTemplates.contains(template) { template = .none }
+        }
 
         switch template {
         case .none, .openclaw, .remoteDesktop:
@@ -1055,10 +1108,39 @@ struct CreateVMSheet: View {
 
         switch guestOS {
         case .linux:
+            // Cloud-image creates carry their first-boot script as
+            // rendered content (cloud-init runcmd); installer-ISO
+            // creates provision nothing.
+            var userDataScript: String?
+            if linuxUsesCloudImage {
+                switch template {
+                case .openclaw:
+                    userDataScript = OpenClawTemplate.scriptContent(
+                        for: .linux, username: "admin"
+                    )
+                case .custom:
+                    let trimmed = userDataPath.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        let expanded = (trimmed as NSString).expandingTildeInPath
+                        guard let script = try? String(
+                            contentsOfFile: expanded, encoding: .utf8
+                        ) else {
+                            errorMessage = "Could not read user-data script at '\(expanded)'."
+                            return
+                        }
+                        userDataScript = script
+                    }
+                case .none, .githubRunner, .remoteDesktop:
+                    userDataScript = nil
+                }
+            }
             let request = AppState.LinuxCreationRequest(
                 name: trimmedName,
                 spec: spec,
-                installerISOPath: installerISOPath
+                installerISOPath: installerISOPath,
+                cloudImagePath: linuxUsesCloudImage ? cloudImagePath : "",
+                userDataScript: userDataScript,
+                vmUsername: "admin"
             )
             appState.beginCreateLinuxVM(request)
             dismiss()

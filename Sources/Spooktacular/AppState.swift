@@ -1144,7 +1144,34 @@ final class AppState {
     struct LinuxCreationRequest: Sendable {
         let name: String
         let spec: VirtualMachineSpecification
+        /// Installer-ISO flow (manual install). Ignored when
+        /// ``cloudImagePath`` is non-empty.
         let installerISOPath: String
+        /// Cloud-image flow: a local raw image path or a distro
+        /// alias (`fedora` / `debian`). Empty = installer flow.
+        let cloudImagePath: String
+        /// Optional first-boot script content, delivered via the
+        /// cloud-init seed's `runcmd` (cloud-image flow only).
+        let userDataScript: String?
+        /// Account cloud-init creates on first boot (cloud-image
+        /// flow only).
+        let vmUsername: String
+
+        init(
+            name: String,
+            spec: VirtualMachineSpecification,
+            installerISOPath: String,
+            cloudImagePath: String = "",
+            userDataScript: String? = nil,
+            vmUsername: String = "admin"
+        ) {
+            self.name = name
+            self.spec = spec
+            self.installerISOPath = installerISOPath
+            self.cloudImagePath = cloudImagePath
+            self.userDataScript = userDataScript
+            self.vmUsername = vmUsername
+        }
     }
 
     /// Kicks off a macOS VM create in the background. Returns
@@ -1510,6 +1537,10 @@ final class AppState {
 
     @MainActor
     private func runLinuxCreate(request: LinuxCreationRequest) async {
+        if !request.cloudImagePath.trimmingCharacters(in: .whitespaces).isEmpty {
+            await runLinuxCloudImageCreate(request: request)
+            return
+        }
         let name = request.name
         // Mint UUID upfront — matches `runMacOSCreate`'s shape.
         let bundleID = UUID()
@@ -1565,6 +1596,151 @@ final class AppState {
             // matches the centralized alert: typed description +
             // recovery step, with underlying-error chains unwrapped
             // instead of collapsing to a framework's generic text.
+            let categorized = SpooktacularError.classify(error)
+            let msg = [categorized.errorDescription, categorized.suggestedAction]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            failCreation(
+                name: name,
+                message: msg.isEmpty ? error.localizedDescription : msg
+            )
+        }
+    }
+
+    /// Cloud-image Linux create — the GUI mirror of the CLI's
+    /// `--from-image` flow, and fully rootless (nothing here mounts
+    /// a guest disk or touches a Keychain):
+    ///
+    /// resolve (runtime-latest for aliases) → download to the shared
+    /// image cache → bundle → materialize `disk.img` (xz-decode when
+    /// needed) grown to the requested size → render the `cidata`
+    /// seed (account as SHA-512-crypt hash, SSH, optional script) →
+    /// persist the non-secret marker. The first start applies it via
+    /// cloud-init and scrubs the seed.
+    ///
+    /// The generated password is surfaced ONCE via the info banner —
+    /// the GUI's equivalent of the CLI's print-once panel.
+    @MainActor
+    private func runLinuxCloudImageCreate(request: LinuxCreationRequest) async {
+        let name = request.name
+        let bundleID = UUID()
+        let target = SpooktacularPaths.bundleURL(for: bundleID)
+
+        do {
+            try Task.checkCancellation()
+            updateCreation(name: name, progress: 0.05, status: "Resolving cloud image…")
+            let resolution = try await LinuxCloudImage.resolve(request.cloudImagePath) { url in
+                let (data, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                    throw URLError(.fileDoesNotExist)
+                }
+                return data
+            }
+
+            let localImage: URL
+            let xzCompressed: Bool
+            switch resolution {
+            case .localFile(let url, let xz):
+                localImage = url
+                xzCompressed = xz
+            case .download(let url, let suggestedFileName, let xz):
+                let cacheDir = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".spooktacular/cache/images")
+                try FileManager.default.createDirectory(
+                    at: cacheDir, withIntermediateDirectories: true
+                )
+                let cached = cacheDir.appendingPathComponent(suggestedFileName)
+                if !FileManager.default.fileExists(atPath: cached.path) {
+                    updateCreation(
+                        name: name, progress: 0.15,
+                        status: "Downloading \(suggestedFileName)…"
+                    )
+                    let (temp, _) = try await URLSession.shared.download(from: url)
+                    try? FileManager.default.removeItem(at: cached)
+                    try FileManager.default.moveItem(at: temp, to: cached)
+                }
+                localImage = cached
+                xzCompressed = xz
+            }
+            try Task.checkCancellation()
+
+            updateCreation(name: name, progress: 0.5, status: "Creating bundle…")
+            let bundle = try VirtualMachineBundle.create(
+                at: target,
+                spec: request.spec,
+                displayName: name
+            )
+
+            updateCreation(name: name, progress: 0.6, status: "Materializing disk…")
+            let diskURL = target.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
+            if xzCompressed {
+                try LinuxCloudImage.decompressXZ(at: localImage, to: diskURL)
+            } else {
+                try FileManager.default.copyItem(at: localImage, to: diskURL)
+            }
+            // Grow to the requested size; growpart inside the guest
+            // expands the root filesystem on first boot.
+            let handle = try FileHandle(forWritingTo: diskURL)
+            defer { try? handle.close() }
+            let targetBytes = request.spec.diskSizeInBytes
+            if try handle.seekToEnd() < targetBytes {
+                try handle.truncate(atOffset: targetBytes)
+            }
+            try Task.checkCancellation()
+
+            updateCreation(name: name, progress: 0.85, status: "Rendering cloud-init seed…")
+            let password = EphemeralCredential.generatePassword()
+            let provisioningSpec = try GuestProvisioningSpec(
+                fullName: "Spooktacular User",
+                username: request.vmUsername,
+                password: password,
+                logsInAutomatically: false,
+                enablesRemoteLogin: true
+            ).validated()
+            var authorizedKeys: [String] = []
+            let sshDir = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".ssh")
+            for keyName in ["id_ed25519.pub", "id_rsa.pub"] {
+                let keyURL = sshDir.appendingPathComponent(keyName)
+                if let key = try? String(contentsOf: keyURL, encoding: .utf8) {
+                    authorizedKeys.append(
+                        key.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                }
+            }
+            let seed = try CloudInitSeed(
+                spec: provisioningSpec,
+                instanceID: bundle.metadata.id,
+                hostname: name,
+                runScript: request.userDataScript,
+                authorizedKeys: authorizedKeys
+            )
+            try seed.writeISO(to: bundle.seedISOURL)
+            var meta = bundle.metadata
+            meta.pendingProvisioning = provisioningSpec.pendingMarker
+            try VirtualMachineBundle.writeMetadata(meta, to: target)
+            try? BundleProtection.propagate(to: target)
+
+            pendingCreations.removeValue(forKey: name)
+            loadVMs()
+            selectedVM = bundle.id.uuidString
+            // Print-once credential surfacing, GUI edition.
+            infoMessage = """
+            '\(name)' is ready. Save these credentials — shown only once:
+            account '\(provisioningSpec.username)', password '\(password)'.
+            cloud-init applies them (plus SSH) on the first start; the seed
+            is erased after that boot.
+            """
+            infoPresented = true
+            AccessibilityNotification.Announcement(
+                "Virtual machine \(name) created"
+            ).post()
+        } catch is CancellationError {
+            try? FileManager.default.removeItem(at: target)
+            pendingCreations.removeValue(forKey: name)
+        } catch {
+            try? FileManager.default.removeItem(at: target)
             let categorized = SpooktacularError.classify(error)
             let msg = [categorized.errorDescription, categorized.suggestedAction]
                 .compactMap { $0 }
