@@ -109,35 +109,48 @@ public enum GitHubRunnerTemplate {
         return url
     }
 
-    /// Generates the shell script content for a GitHub Actions runner.
-    ///
-    /// Extracted as a separate method for testability.
-    ///
-    /// Every interpolated value — repo, token, runner name, and
-    /// each label — is escaped individually via
-    /// ``shellEscapeSingleQuotes(_:)`` before being embedded. Labels
-    /// in particular must be escaped *before* joining: escaping the
-    /// already-joined string would let a single-quote inside one
-    /// label break out of the surrounding quoting — a classic
-    /// metacharacter bug.
+    /// OS-aware entry point: routes to the macOS (launchd) or Linux
+    /// (systemd) bootstrap. The macOS output is byte-identical to
+    /// ``scriptContent(repo:token:labels:ephemeral:runnerName:)``.
     ///
     /// - Parameters:
+    ///   - os: The guest operating system the script targets.
     ///   - repo: The GitHub repository in `owner/repo` format.
     ///   - token: The runner registration token.
     ///   - labels: Additional runner labels.
     ///   - ephemeral: Whether the runner exits after one job.
     ///   - runnerName: An optional `config.sh --name` value.
-    /// - Returns: The complete shell script as a string.
     public static func scriptContent(
+        for os: GuestOS,
         repo: String,
         token: String,
         labels: [String] = [],
         ephemeral: Bool = false,
         runnerName: String? = nil
     ) -> String {
-        let safeRepo = shellEscapeSingleQuotes(repo)
-        let safeToken = shellEscapeSingleQuotes(token)
+        switch os {
+        case .macOS:
+            scriptContent(
+                repo: repo, token: token, labels: labels,
+                ephemeral: ephemeral, runnerName: runnerName
+            )
+        case .linux:
+            linuxScriptContent(
+                repo: repo, token: token, labels: labels,
+                ephemeral: ephemeral, runnerName: runnerName
+            )
+        }
+    }
 
+    /// Builds the shared `config.sh` argument line. Every interpolated
+    /// value is escaped individually via ``shellEscapeSingleQuotes(_:)``
+    /// — labels *before* joining, so a quote inside one label can't
+    /// break out of the joined argument.
+    private static func buildConfigLine(
+        labels: [String],
+        ephemeral: Bool,
+        runnerName: String?
+    ) -> String {
         var configFlags = [
             "--url \"https://github.com/$REPO\"",
             "--token \"$TOKEN\"",
@@ -165,7 +178,38 @@ public enum GitHubRunnerTemplate {
             configFlags.append("--ephemeral")
         }
 
-        let configLine = configFlags.joined(separator: " ")
+        return configFlags.joined(separator: " ")
+    }
+
+    /// Generates the shell script content for a GitHub Actions runner
+    /// (macOS/launchd variant).
+    ///
+    /// Extracted as a separate method for testability.
+    ///
+    /// Every interpolated value — repo, token, runner name, and
+    /// each label — is escaped individually via
+    /// ``shellEscapeSingleQuotes(_:)`` before being embedded (see
+    /// ``buildConfigLine(labels:ephemeral:runnerName:)``).
+    ///
+    /// - Parameters:
+    ///   - repo: The GitHub repository in `owner/repo` format.
+    ///   - token: The runner registration token.
+    ///   - labels: Additional runner labels.
+    ///   - ephemeral: Whether the runner exits after one job.
+    ///   - runnerName: An optional `config.sh --name` value.
+    /// - Returns: The complete shell script as a string.
+    public static func scriptContent(
+        repo: String,
+        token: String,
+        labels: [String] = [],
+        ephemeral: Bool = false,
+        runnerName: String? = nil
+    ) -> String {
+        let safeRepo = shellEscapeSingleQuotes(repo)
+        let safeToken = shellEscapeSingleQuotes(token)
+        let configLine = buildConfigLine(
+            labels: labels, ephemeral: ephemeral, runnerName: runnerName
+        )
 
         // Persistent runners: launchd relaunches `run.sh` if it
         // exits, so a job crash or `run.sh` restart doesn't strand
@@ -247,6 +291,109 @@ public enum GitHubRunnerTemplate {
         chmod 644 /Library/LaunchDaemons/com.spooktacular.github-runner.plist
         launchctl bootstrap system /Library/LaunchDaemons/com.spooktacular.github-runner.plist || true
         """
+    }
+
+    /// The Linux bootstrap: same design decisions as macOS —
+    /// network wait, runtime-latest tarball from GitHub's API,
+    /// direct `sudo -u` invocations (no nested `bash -c`
+    /// re-parsing), `config.sh` never as root, and the long-running
+    /// process handed to the service manager (systemd here, launchd
+    /// there). Runs as root via cloud-init's `runcmd` on first boot.
+    private static func linuxScriptContent(
+        repo: String,
+        token: String,
+        labels: [String],
+        ephemeral: Bool,
+        runnerName: String?
+    ) -> String {
+        let safeRepo = shellEscapeSingleQuotes(repo)
+        let safeToken = shellEscapeSingleQuotes(token)
+        let configLine = buildConfigLine(
+            labels: labels, ephemeral: ephemeral, runnerName: runnerName
+        )
+        // Ephemeral runners deregister after one job — restarting
+        // run.sh would spin an unregistered process (mirrors the
+        // launchd KeepAlive choice).
+        let restart = ephemeral ? "no" : "always"
+
+        return """
+        #!/bin/bash
+        # GitHub Actions runner bootstrap — executed as root by
+        # cloud-init (runcmd) on first boot. Configures the runner as
+        # the runner user and hands it off to systemd, then exits.
+        set -euo pipefail
+
+        REPO='\(safeRepo)'
+        TOKEN='\(safeToken)'
+        RUNNER_USER="\(Self.runnerAccountUsername)"
+        RUNNER_DIR="/home/${RUNNER_USER}/actions-runner"
+
+        # DHCP may still be settling on first boot — give the network
+        # up to two minutes before hitting the GitHub API.
+        for _ in $(seq 1 60); do
+            curl -fsS --max-time 10 https://api.github.com >/dev/null 2>&1 && break
+            sleep 2
+        done
+
+        id "$RUNNER_USER" >/dev/null 2>&1 || useradd -m -s /bin/bash "$RUNNER_USER"
+        mkdir -p "$RUNNER_DIR"
+        chown "$RUNNER_USER":"$RUNNER_USER" "$RUNNER_DIR"
+        cd "$RUNNER_DIR"
+
+        TARBALL_URL=$(curl -fsSL --max-time 30 https://api.github.com/repos/actions/runner/releases/latest \\
+            | python3 -c 'import json,sys;print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if "linux-arm64" in a["name"] and a["name"].endswith(".tar.gz")))')
+        [ -n "$TARBALL_URL" ] || { echo "failed to resolve runner tarball URL" >&2; exit 1; }
+
+        sudo -u "$RUNNER_USER" curl -fsSL --max-time 300 -o runner.tar.gz "$TARBALL_URL"
+        sudo -u "$RUNNER_USER" tar xzf runner.tar.gz
+        sudo -u "$RUNNER_USER" rm -f runner.tar.gz
+
+        # Distro packages the runner needs (ships with the tarball;
+        # root is required and we have it).
+        ./bin/installdependencies.sh || true
+
+        # config.sh refuses to run as root by default, and this
+        # script deliberately never overrides that default.
+        sudo -u "$RUNNER_USER" ./config.sh \(configLine)
+
+        cat > /etc/systemd/system/actions-runner.service <<'UNIT'
+        [Unit]
+        Description=GitHub Actions runner (Spooktacular)
+        After=network-online.target
+        Wants=network-online.target
+
+        [Service]
+        User=\(Self.runnerAccountUsername)
+        WorkingDirectory=/home/\(Self.runnerAccountUsername)/actions-runner
+        ExecStart=/home/\(Self.runnerAccountUsername)/actions-runner/run.sh
+        Restart=\(restart)
+
+        [Install]
+        WantedBy=multi-user.target
+        UNIT
+        systemctl daemon-reload
+        systemctl enable --now actions-runner.service
+        """
+    }
+
+    /// Generates a Linux or macOS runner setup script staged in the
+    /// script cache — the OS-aware counterpart of
+    /// ``generate(repo:token:labels:ephemeral:runnerName:)``.
+    public static func generate(
+        for os: GuestOS,
+        repo: String,
+        token: String,
+        labels: [String] = [],
+        ephemeral: Bool = false,
+        runnerName: String? = nil
+    ) throws -> URL {
+        try ScriptFile.writeToCache(
+            script: scriptContent(
+                for: os, repo: repo, token: token, labels: labels,
+                ephemeral: ephemeral, runnerName: runnerName
+            ),
+            fileName: "github-runner-setup.sh"
+        )
     }
 
     /// Escapes a string for safe embedding inside a single-quoted

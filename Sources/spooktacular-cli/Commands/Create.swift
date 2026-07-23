@@ -1246,29 +1246,62 @@ extension Spooktacular {
             macAddress: MACAddress,
             network: NetworkMode
         ) async throws {
-            // Templates that need per-OS scripts land separately; fail
-            // fast on the ones a Linux guest can't honor yet rather
-            // than silently producing an unprovisioned VM.
-            if remoteDesktop || openclaw || githubRunner {
-                let unsupported = remoteDesktop
-                    ? "--remote-desktop" : (openclaw ? "--openclaw" : "--github-runner")
+            // Remote Desktop is the one template without a Linux
+            // variant (VNC/desktop provisioning is macOS-only today);
+            // fail fast rather than silently produce an unprovisioned
+            // VM.
+            if remoteDesktop {
                 if json {
                     printJSONError(
                         code: "template-not-supported-linux",
-                        message: "\(unsupported) is not yet supported for Linux cloud images.",
+                        message: "--remote-desktop is not yet supported for Linux cloud images.",
                         hint: "Use --user-data <script> for custom first-boot provisioning."
                     )
                 } else {
-                    print(Style.error("✗ \(unsupported) is not yet supported for Linux cloud images."))
+                    print(Style.error("✗ --remote-desktop is not yet supported for Linux cloud images."))
                     print(Style.dim("  Use --user-data <script> for custom first-boot provisioning."))
                 }
                 throw ExitCode(CLIExit.validation)
             }
 
-            // Optional first-boot script, read up-front so a bad path
-            // fails before any download.
+            // First-boot script: runner > openclaw > --user-data.
+            // The runner mints its registration token here (same
+            // resolver + service as the macOS flow), so a Keychain
+            // miss or API failure surfaces before any download.
             var runScript: String?
-            if let userData {
+            if githubRunner {
+                guard let repo = githubRepo, let keychainAccount = githubTokenKeychain else {
+                    if json {
+                        printJSONError(
+                            code: "missing-github-runner-flags",
+                            message: "--github-runner requires --github-repo and --github-token-keychain.",
+                            hint: "Example: spook create runner --os linux --from-image fedora --github-runner --github-repo org/repo --github-token-keychain e2e"
+                        )
+                    } else {
+                        print(Style.error("✗ --github-runner requires --github-repo and --github-token-keychain."))
+                        print(Style.dim("  Example: spook create runner --os linux --from-image fedora --github-runner --github-repo org/repo --github-token-keychain e2e"))
+                    }
+                    throw ExitCode(CLIExit.validation)
+                }
+                let pat = try GitHubTokenResolver.resolve(keychainAccount: keychainAccount)
+                let scope = try GitHubRunnerScope("repos/\(repo)")
+                let service = GitHubRunnerService(
+                    auth: GitHubPATAuth(token: pat),
+                    http: URLSessionHTTPClient()
+                )
+                if !json { print(Style.info("Minting GitHub Actions runner registration token...")) }
+                let issued = try await service.issueRegistrationToken(scope: scope)
+                if !json { print(Style.success("✓ Registration token minted.")) }
+                runScript = GitHubRunnerTemplate.scriptContent(
+                    for: .linux,
+                    repo: repo,
+                    token: issued.token,
+                    ephemeral: ephemeral,
+                    runnerName: name
+                )
+            } else if openclaw {
+                runScript = OpenClawTemplate.scriptContent(for: .linux, username: vmUser)
+            } else if let userData {
                 let scriptURL = URL(filePath: (userData as NSString).expandingTildeInPath)
                 guard let script = try? String(contentsOf: scriptURL, encoding: .utf8) else {
                     if json {
