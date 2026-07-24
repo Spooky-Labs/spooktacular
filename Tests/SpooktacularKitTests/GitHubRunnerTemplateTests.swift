@@ -42,6 +42,17 @@ struct GitHubRunnerTemplateTests {
         #expect(script.contains(expected), "Script missing: \(expected)")
     }
 
+    @Test("resolves the runner tarball without the CLT-gated python3 stub")
+    func tarballResolutionIsDependencyFree() {
+        // A freshly-provisioned macOS guest has no Xcode Command Line
+        // Tools, so /usr/bin/python3 is a stub that errors and pops an
+        // install prompt — it must never appear in the first-boot
+        // script. Resolution goes through grep on the API JSON instead.
+        #expect(!script.contains("python3 -c"), "runner script must not invoke python3 on a fresh guest")
+        #expect(script.contains("grep -oE"), "tarball URL should be extracted with grep")
+        #expect(script.contains("actions-runner-osx-arm64-"), "grep pattern should target the osx-arm64 asset")
+    }
+
     @Test("ephemeral flag included when ephemeral is true")
     func ephemeralFlag() {
         #expect(script.contains("--ephemeral"))

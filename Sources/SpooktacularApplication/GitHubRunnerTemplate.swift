@@ -244,8 +244,16 @@ public enum GitHubRunnerTemplate {
         sudo -u "$RUNNER_USER" mkdir -p "$RUNNER_DIR"
         cd "$RUNNER_DIR"
 
+        # Resolve the latest runner tarball URL from the GitHub API
+        # JSON with grep — deliberately NOT /usr/bin/python3, which on
+        # a freshly-provisioned macOS guest is a Command Line Tools
+        # stub that errors (and pops an install prompt) until Xcode CLT
+        # is present, tripping the guard below. The osx-arm64 `.tar.gz`
+        # is the sole asset matching this pattern (verified against the
+        # live release feed), so `head -1` is exact.
         TARBALL_URL=$(curl -fsSL --max-time 30 https://api.github.com/repos/actions/runner/releases/latest \\
-            | /usr/bin/python3 -c 'import json,sys;print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if "osx-arm64" in a["name"] and a["name"].endswith(".tar.gz")))')
+            | grep -oE '"https://[^"]*actions-runner-osx-arm64-[^"]*\\.tar\\.gz"' \\
+            | head -1 | tr -d '"')
         [ -n "$TARBALL_URL" ] || { echo "failed to resolve runner tarball URL" >&2; exit 1; }
 
         # `cd` runs once, here, in this (root) shell — the working
@@ -340,8 +348,13 @@ public enum GitHubRunnerTemplate {
         chown "$RUNNER_USER":"$RUNNER_USER" "$RUNNER_DIR"
         cd "$RUNNER_DIR"
 
+        # Same grep-based resolution as macOS (portable BSD/GNU ERE) —
+        # no assumption of a python3 in $PATH. The linux-arm64 `.tar.gz`
+        # is the sole asset matching this pattern (verified against the
+        # live release feed), so `head -1` is exact.
         TARBALL_URL=$(curl -fsSL --max-time 30 https://api.github.com/repos/actions/runner/releases/latest \\
-            | python3 -c 'import json,sys;print(next(a["browser_download_url"] for a in json.load(sys.stdin)["assets"] if "linux-arm64" in a["name"] and a["name"].endswith(".tar.gz")))')
+            | grep -oE '"https://[^"]*actions-runner-linux-arm64-[^"]*\\.tar\\.gz"' \\
+            | head -1 | tr -d '"')
         [ -n "$TARBALL_URL" ] || { echo "failed to resolve runner tarball URL" >&2; exit 1; }
 
         sudo -u "$RUNNER_USER" curl -fsSL --max-time 300 -o runner.tar.gz "$TARBALL_URL"

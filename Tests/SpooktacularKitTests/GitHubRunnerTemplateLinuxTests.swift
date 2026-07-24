@@ -21,6 +21,11 @@ struct GitHubRunnerTemplateLinuxTests {
         #expect(script.contains("User=runner"))
         #expect(script.contains("sudo -u \"$RUNNER_USER\" ./config.sh"))
         #expect(!script.contains("launchctl"))
+        // Dependency-free tarball resolution (grep, not python3) — the
+        // same robustness the macOS variant needs, kept in lockstep.
+        #expect(!script.contains("python3 -c"))
+        #expect(script.contains("grep -oE"))
+        #expect(script.contains("actions-runner-linux-arm64-"))
     }
 
     @Test("persistent linux runner restarts; ephemeral does not")
