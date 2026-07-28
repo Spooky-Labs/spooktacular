@@ -64,13 +64,29 @@ macOS bundles replace `disk.img` with:
 - per-VM identity as today: fresh `VZMacMachineIdentifier()`, clonefile'd
   `auxiliary.bin` (APFS `copyItem` — instant), generated MAC, reserved IP
 
-The overlay is created once, at bundle-create time (so a bundle is complete on
-disk), and opened on every start (DocC: `/documentation/DiskImageKit/DiskImage`;
-Apple's stacking example uses the same two `appending(_:)` forms):
+**Empirical gate (aux-storage cloning):** Apple documents only that two
+*concurrent* VMs must not share a machine identifier
+(`VZMacPlatformConfiguration.machineIdentifier`); the docs are silent on
+pairing a cloned `auxiliary.bin` with a fresh identifier. Tart ships
+aux-copying in production (with the identifier also copied), which corroborates
+aux portability but not our exact combination. The first live boot in
+implementation validates it; the documented fallback if a clone refuses to
+boot is recreating aux via `VZMacAuxiliaryStorage(creating:hardwareModel:)`
+and re-running the installer's first-boot path against the overlay — to be
+designed only if the gate fails.
+
+Layer-creation configurations "can only be used with stacking operations"
+(DocC: `ASIFLayerCreationConfiguration`) — an overlay cannot be created
+standalone. It is therefore born at bundle-create time by appending it to the
+opened base (which also records its `parentUUID` lineage), and opened +
+appended as an existing layer on every subsequent start:
 
 ```swift
-// bundle create (once): materialize the empty overlay layer
-_ = try DiskImage(creating: .asifLayer(url: bundle.overlayURL, type: .overlay))
+// bundle create (once): materialize the overlay by appending it to the base.
+// `.overlay` inherits the base's size; `.overlay(blockCount:)` resizes the
+// stack — this is how a per-VM `--disk` larger than the base is honored.
+let base  = try DiskImage(opening: .open(url: store.baseURL, mode: .readOnly))
+_ = try base.appending(.asifLayer(url: bundle.overlayURL, type: overlayType))
 
 // start (every boot): open base read-only, append the existing overlay
 let base    = try DiskImage(opening: .open(url: store.baseURL, mode: .readOnly))
@@ -115,10 +131,19 @@ attachment = VZVmnetNetworkDeviceAttachment(network: network)
 All `macos(26.0)` (SDK-verified; nothing newer exists — the 26.5→27 SDK diff of
 `vmnet.h` is empty). Works non-root with `com.apple.security.virtualization`
 (empirically verified on this host; the same single entitlement Apple's
-`container` network helper ships). Subnet allocation note (DocC,
-`vmnet_network_configuration_set_ipv4_subnet`): the framework reserves the
-first, second (host), and last addresses — the reservation allocator must pick
-from the remainder and record the choice in bundle metadata at create time.
+`container` network helper ships).
+
+Subnet allocation is **explicit, not defaulted**: without
+`vmnet_network_configuration_set_ipv4_subnet`, the framework picks its own /24
+under 192.168/16 at network-create time (DocC,
+`vmnet_network_configuration_create` defaults) — too late, because the DHCP
+reservation must name an address *before* create and "the framework doesn't
+allow modifying reservation while a network is active" (DocC,
+`add_dhcp_reservation`). So the allocator assigns each VM a distinct /24 at
+create time (recorded in bundle metadata, avoiding the system shared-NAT
+subnet), calls `set_ipv4_subnet`, and reserves an address from the usable
+range — the framework reserves the first, second (host), and last addresses of
+any subnet.
 
 Consequences:
 
