@@ -76,6 +76,26 @@ struct BaseImageStoreTests {
         #expect(again == 43)
     }
 
+    @Test("build lock survives an await inside its body")
+    func buildLockHoldsAcrossSuspension() async throws {
+        // The real body awaits a 20-minute installer. A POSIX file lock
+        // is held by the process rather than the thread, so it must
+        // remain valid across suspension points — if it didn't, two
+        // concurrent creates could both run an install.
+        let temp = TempDirectory()
+        let store = BaseImageStore(rootDirectory: temp.url)
+
+        let value = try await store.withBuildLock(forBuild: "27A5301a") { () -> Int in
+            try await Task.sleep(nanoseconds: 10_000_000)
+            return 7
+        }
+        #expect(value == 7)
+
+        // Still acquirable afterwards, so the lock was released.
+        let again = try await store.withBuildLock(forBuild: "27A5301a") { 8 }
+        #expect(again == 8)
+    }
+
     @Test("build lock releases even when the body throws")
     func buildLockReleasesOnThrow() async throws {
         struct Boom: Error {}
