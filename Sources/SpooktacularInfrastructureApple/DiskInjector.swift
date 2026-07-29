@@ -158,12 +158,14 @@ public enum DiskInjector {
         into bundle: VirtualMachineBundle,
         plist: URL,
         runner: URL,
+        signal: URL? = nil,
         privileged: PrivilegedFileOps
     ) throws {
         try installProvisionerDaemon(
             intoDiskImageAt: bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName),
             plist: plist,
             runner: runner,
+            signal: signal,
             privileged: privileged
         )
     }
@@ -189,6 +191,7 @@ public enum DiskInjector {
         intoDiskImageAt diskImageURL: URL,
         plist: URL,
         runner: URL,
+        signal: URL? = nil,
         privileged: PrivilegedFileOps
     ) throws {
         // Fail fast before mounting anything if we can't set root ownership.
@@ -228,6 +231,17 @@ public enum DiskInjector {
             to: libexecDir.appendingPathComponent("spook-provision-runner.sh"),
             mode: 0o755
         )
+
+        // The guest-side readiness reporter, invoked by the runner
+        // script's last line. Optional: without it the guest still
+        // provisions, it just can't tell the host the exit code.
+        if let signal {
+            try privileged.installFile(
+                from: signal,
+                to: libexecDir.appendingPathComponent("spook-signal"),
+                mode: 0o755
+            )
+        }
 
         let launchDaemonsDir = URL(fileURLWithPath: "\(volumePath)/Library/LaunchDaemons")
         try privileged.makeDirectory(at: launchDaemonsDir)

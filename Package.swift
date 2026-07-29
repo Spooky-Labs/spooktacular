@@ -120,6 +120,15 @@ let package = Package(
             ],
             path: "Sources/spooktacular-cli"
         ),
+        // Guest-side readiness reporter. Baked into the macOS base
+        // image; dials the host over vsock when first-boot completes so
+        // the host is told rather than left polling. No dependencies —
+        // it must run inside a freshly provisioned guest.
+        .executableTarget(
+            name: "spook-signal",
+            path: "Sources/spook-signal"
+        ),
+
         // Privileged helper daemon (SMAppService) — embedded at
         // Spooktacular.app/Contents/MacOS/, approved once by an admin,
         // services the two root-only disk-inject operations over XPC.

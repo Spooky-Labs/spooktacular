@@ -13,10 +13,17 @@ public enum ProvisionerAssets {
     public static let plistFileName = "com.spookylabs.spooktacular.provisioner.plist"
     /// The bundled provisioner runner-script file name.
     public static let runnerFileName = "spook-provision-runner.sh"
+    /// The bundled guest-side readiness reporter's file name.
+    public static let signalFileName = "spook-signal"
 
     /// Returns the URLs of the provisioner plist and runner script, or `nil`
     /// when they aren't present (e.g. a dev `swift build` without `build-app.sh`).
-    public static func locate() -> (plist: URL, runner: URL)? {
+    ///
+    /// `signal` is the guest-side readiness reporter. It is optional: a base
+    /// image built without it still provisions, it just leaves the host to
+    /// read the first-boot logs instead of receiving an exit code. Making it
+    /// non-optional would turn a missing convenience into a create failure.
+    public static func locate() -> (plist: URL, runner: URL, signal: URL?)? {
         let env = ProcessInfo.processInfo.environment
         let fm = FileManager.default
 
@@ -42,7 +49,12 @@ public enum ProvisionerAssets {
             let plist = root.appendingPathComponent(plistFileName)
             let runner = root.appendingPathComponent(runnerFileName)
             if fm.fileExists(atPath: plist.path) && fm.fileExists(atPath: runner.path) {
-                return (plist, runner)
+                let signal = root.appendingPathComponent(signalFileName)
+                return (
+                    plist,
+                    runner,
+                    fm.fileExists(atPath: signal.path) ? signal : nil
+                )
             }
         }
         return nil

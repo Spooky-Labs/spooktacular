@@ -193,6 +193,13 @@ cp "$PROJECT_DIR/Resources/SpookProvisioner/spook-provision-runner.sh" \
    "$RESOURCES/SpookProvisioner/spook-provision-runner.sh"
 chmod 644 "$RESOURCES/SpookProvisioner/com.spookylabs.spooktacular.provisioner.plist"
 chmod 755 "$RESOURCES/SpookProvisioner/spook-provision-runner.sh"
+
+# The guest-side readiness reporter, installed into the base image
+# beside the runner script and invoked by its last line. It runs INSIDE
+# a macOS guest, so it is staged as a plain binary here and signed with
+# the guest-tools identity below rather than the host app's.
+cp "$BINARY_DIR/spook-signal" "$RESOURCES/SpookProvisioner/spook-signal"
+chmod 755 "$RESOURCES/SpookProvisioner/spook-signal"
 # Version-sync with the main app for consistent diagnostics
 # — same rationale as the XPC helper block above.
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BUNDLE_VERSION" "$GUEST_TOOLS_CONTENTS/Info.plist"

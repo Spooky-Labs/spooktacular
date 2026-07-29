@@ -153,6 +153,7 @@ public final class BaseImageBuilder {
                 intoDiskImageAt: stagedImage,
                 plist: assets.plist,
                 runner: assets.runner,
+                signal: assets.signal,
                 privileged: DirectPrivilegedFileOps()
             )
 

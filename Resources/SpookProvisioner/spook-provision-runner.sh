@@ -90,3 +90,13 @@ sed "s/^TOKEN=.*/TOKEN='[REDACTED]'/" "${SCRIPT_PATH}" > "${ARCHIVE_PATH}"
 echo "${EXIT}" > "${EXIT_FILE}"
 rm -f "${SCRIPT_PATH}"
 log "first-boot completed exit=${EXIT}"
+
+# Tell the host provisioning has finished, so it learns the outcome
+# from an event carrying this exit code rather than by polling for a
+# guest IP and then for a service. Non-fatal by design: a VM whose base
+# predates the signal binary, or a host that isn't listening, simply
+# leaves the logs above as the record.
+if [ -x /usr/local/libexec/spook-signal ]; then
+    /usr/local/libexec/spook-signal "${EXIT}" ||
+        log "readiness signal not delivered (no host listener?)"
+fi
