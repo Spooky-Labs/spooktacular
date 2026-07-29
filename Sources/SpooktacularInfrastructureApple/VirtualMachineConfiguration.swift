@@ -4,6 +4,44 @@ import SpooktacularApplication
 import os
 @preconcurrency import Virtualization
 
+/// The per-VM networking facts that live in bundle metadata rather
+/// than in the hardware specification.
+///
+/// A VM's subnet, reserved address and published ports are assigned at
+/// create time and recorded in `metadata.json`, so they travel
+/// separately from ``VirtualMachineSpecification``. Passing them
+/// explicitly keeps `applySpec` usable for configurations that have no
+/// bundle behind them — notably the throwaway VM the base-image
+/// installer runs in.
+public struct GuestNetworking: Sendable, Equatable {
+
+    /// The subnet and DHCP-reserved address for this VM.
+    public let allocation: GuestNetworkAllocation
+
+    /// Host-to-guest port mappings to install as forwarding rules.
+    public let publications: [PortPublication]
+
+    /// Creates a networking descriptor.
+    ///
+    /// - Parameters:
+    ///   - allocation: The VM's subnet and reserved address.
+    ///   - publications: Host-to-guest port mappings.
+    public init(allocation: GuestNetworkAllocation, publications: [PortPublication]) {
+        self.allocation = allocation
+        self.publications = publications
+    }
+
+    /// Reads the networking facts a bundle recorded at create time.
+    ///
+    /// - Parameter bundle: The VM bundle.
+    /// - Returns: The descriptor, or `nil` when the bundle predates
+    ///   per-VM networks and should use the framework's shared NAT.
+    public init?(bundle: VirtualMachineBundle) {
+        guard let allocation = bundle.metadata.networkAllocation else { return nil }
+        self.init(allocation: allocation, publications: bundle.metadata.portPublications)
+    }
+}
+
 /// Errors that can occur when configuring network devices.
 public enum NetworkConfigurationError: Error, Sendable, Equatable, LocalizedError {
     /// The requested bridge interface was not found on the host.
@@ -105,7 +143,8 @@ public enum VirtualMachineConfiguration {
     ///   if bridged networking is requested but the interface does not exist.
     public static func applySpec(
         _ spec: VirtualMachineSpecification,
-        to configuration: VZVirtualMachineConfiguration
+        to configuration: VZVirtualMachineConfiguration,
+        networking: GuestNetworking? = nil
     ) throws {
         Log.config.info("Applying spec: \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM, \(spec.displayCount) display(s)")
 
@@ -174,7 +213,7 @@ public enum VirtualMachineConfiguration {
         }
 
         configuration.networkDevices = try makeNetworkDevices(
-            for: spec.networkMode, macAddress: spec.macAddress
+            for: spec.networkMode, macAddress: spec.macAddress, networking: networking
         )
         configuration.socketDevices = [VZVirtioSocketDeviceConfiguration()]
         configuration.entropyDevices = [VZVirtioEntropyDeviceConfiguration()]
@@ -898,7 +937,8 @@ public enum VirtualMachineConfiguration {
 
     private static func makeNetworkDevices(
         for mode: NetworkMode,
-        macAddress: MACAddress? = nil
+        macAddress: MACAddress? = nil,
+        networking: GuestNetworking? = nil
     ) throws -> [VZNetworkDeviceConfiguration] {
         let devices: [VZVirtioNetworkDeviceConfiguration]
 
@@ -933,7 +973,24 @@ public enum VirtualMachineConfiguration {
 
         case .nat:
             let device = VZVirtioNetworkDeviceConfiguration()
-            device.attachment = VZNATNetworkDeviceAttachment()
+            if let networking, let macAddress {
+                // A per-VM vmnet network: the guest's address is pinned
+                // by DHCP reservation (so `spook ip` is a metadata read
+                // rather than a lease-file scrape) and its published
+                // ports become forwarding rules. The attachment retains
+                // the network, so the wrapper may go out of scope here.
+                let configuration = try VmnetNetwork.configure(
+                    allocation: networking.allocation,
+                    macAddress: macAddress,
+                    publications: networking.publications
+                )
+                device.attachment = try VmnetNetwork.create(from: configuration).attachment
+            } else {
+                // No allocation recorded — the framework's own shared
+                // NAT. Used by the throwaway installer configuration
+                // and by bundles predating per-VM networks.
+                device.attachment = VZNATNetworkDeviceAttachment()
+            }
             devices = [device]
         }
 

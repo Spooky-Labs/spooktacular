@@ -224,7 +224,11 @@ public final class VirtualMachine: NSObject {
 
         Log.vm.info("Initializing VM from bundle '\(bundle.url.lastPathComponent, privacy: .public)'")
         let config = VZVirtualMachineConfiguration()
-        try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
+        try VirtualMachineConfiguration.applySpec(
+            bundle.spec,
+            to: config,
+            networking: GuestNetworking(bundle: bundle)
+        )
         try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
         try VirtualMachineConfiguration.applyProvisioning(from: bundle, to: config)
         let nbdMonitors = try VirtualMachineConfiguration.applyStorage(
