@@ -451,129 +451,6 @@ public final class RestoreImageManager: Sendable {
         return actual.caseInsensitiveCompare(expected) == .orderedSame
     }
 
-    // MARK: - Bundle Creation
-
-    /// Creates a VM bundle with platform artifacts from a restore image.
-    ///
-    /// This generates the hardware model, machine identifier, and
-    /// auxiliary storage required to install and boot macOS. The
-    /// disk image is created as an empty APFS sparse file.
-    ///
-    /// - Parameters:
-    ///   - name: The name for the VM bundle (used as directory name).
-    ///   - directory: The parent directory for VM bundles.
-    ///   - restoreImage: The restore image that provides the
-    ///     hardware model requirements.
-    ///   - spec: The hardware specification for the VM.
-    /// - Returns: The newly created bundle, ready for installation.
-    @MainActor
-    public func createBundle(
-        id: UUID = UUID(),
-        displayName: String,
-        in directory: URL,
-        from restoreImage: VZMacOSRestoreImage,
-        spec: VirtualMachineSpecification
-    ) async throws -> VirtualMachineBundle {
-        guard let requirements = restoreImage.mostFeaturefulSupportedConfiguration else {
-            Log.ipsw.error("No supported configuration found in restore image for this host")
-            throw RestoreImageError.unsupportedHost
-        }
-        guard requirements.hardwareModel.isSupported else {
-            Log.ipsw.error("Hardware model from restore image is not supported on this Mac")
-            throw RestoreImageError.unsupportedHardwareModel
-        }
-
-        // The bundle directory is keyed by UUID under the
-        // UUID primary-key scheme — renames of the VM no
-        // longer require moving the directory, and two VMs
-        // with the same display name don't collide on disk.
-        Log.ipsw.info("Creating bundle id=\(id.uuidString, privacy: .public) displayName='\(displayName, privacy: .public)' with platform artifacts")
-        let bundleURL = directory.appendingPathComponent("\(id.uuidString).vm")
-        let bundle = try VirtualMachineBundle.create(
-            at: bundleURL,
-            spec: spec,
-            displayName: displayName
-        )
-
-        try requirements.hardwareModel.dataRepresentation.write(
-            to: bundleURL.appendingPathComponent(VirtualMachineBundle.hardwareModelFileName)
-        )
-
-        let machineIdentifier = VZMacMachineIdentifier()
-        try machineIdentifier.dataRepresentation.write(
-            to: bundleURL.appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
-        )
-
-        _ = try VZMacAuxiliaryStorage(
-            creatingStorageAt: bundleURL.appendingPathComponent(VirtualMachineBundle.auxiliaryStorageFileName),
-            hardwareModel: requirements.hardwareModel,
-            options: []
-        )
-
-        let diskURL = bundleURL.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
-        let diskFormat = try await DiskImageAllocator.create(
-            at: diskURL,
-            sizeInBytes: spec.diskSizeInBytes
-        )
-
-        Log.ipsw.notice("Bundle id=\(id.uuidString, privacy: .public) displayName='\(displayName, privacy: .public)' created with platform artifacts (disk format: \(diskFormat.rawValue.uppercased(), privacy: .public))")
-        return bundle
-    }
-
-    // MARK: - Installation
-
-    /// Installs macOS into a VM bundle from an IPSW file.
-    ///
-    /// This boots the VM in installation mode and writes the
-    /// macOS operating system to the bundle's disk image. The
-    /// process takes 10–20 minutes depending on hardware.
-    ///
-    /// - Important: Callers **must** call ``fetchLatestSupported()``
-    ///   before invoking this method. `fetchLatestSupported` verifies
-    ///   that the host macOS version is compatible with the IPSW.
-    ///   Skipping that check may result in an opaque Virtualization
-    ///   framework error during installation.
-    ///
-    /// - Parameters:
-    ///   - bundle: The target VM bundle (must have platform
-    ///     artifacts and an empty disk image).
-    ///   - ipswURL: The local file URL of the IPSW restore image.
-    ///   - progress: A closure called periodically with the
-    ///     fraction completed (0.0–1.0).
-    @MainActor
-    public func install(
-        bundle: VirtualMachineBundle,
-        from ipswURL: URL,
-        progress: @escaping @Sendable (Double) -> Void = { _ in }
-    ) async throws {
-        Log.ipsw.info("Starting macOS installation into '\(bundle.url.lastPathComponent, privacy: .public)' from \(ipswURL.lastPathComponent, privacy: .public)")
-
-        // Scoped to its own method so the installer's configuration
-        // (aux-storage + disk attachments), `VZVirtualMachine`,
-        // `VZMacOSInstaller`, and KVO observation are ALL released by
-        // ARC the instant `runInstaller` returns — deterministically,
-        // and before `waitForPlatformArtifactsReleased` below starts
-        // polling. See that method's doc comment: releasing our
-        // references promptly is necessary but NOT sufficient on its
-        // own — the actual file lock is held by a separate OS
-        // process, not by any of these Swift objects. (Verified with
-        // a scratch probe: `lsof -F p` on `auxiliary.bin`/`disk.img`
-        // shows zero in-process holders even while a
-        // `VZMacAuxiliaryStorage` + `VZDiskImageStorageDeviceAttachment`
-        // are live — they wrap the URL; the fds only ever exist in
-        // the XPC service. Scoping `config` here is therefore
-        // defense-in-depth against that ever changing, not a load-
-        // bearing part of the fix.)
-        try await Self.runInstaller(
-            bundle: bundle,
-            ipswURL: ipswURL,
-            progress: progress
-        )
-        Log.ipsw.notice("macOS installation complete for '\(bundle.url.lastPathComponent, privacy: .public)'")
-
-        await Self.waitForPlatformArtifactsReleased(bundle: bundle)
-    }
-
     /// Public entry point onto ``waitForPlatformArtifactsReleased(bundle:ceiling:pollInterval:)``
     /// for callers outside this file that are about to attach to a
     /// bundle's `disk.img` right after force-stopping a
@@ -594,50 +471,6 @@ public final class RestoreImageManager: Sendable {
         pollInterval: TimeInterval = 0.25
     ) async {
         await waitForPlatformArtifactsReleased(bundle: bundle, ceiling: ceiling, pollInterval: pollInterval)
-    }
-
-    /// Builds the installer configuration and runs `VZMacOSInstaller`
-    /// to completion, all in its own scope.
-    ///
-    /// Extracted out of ``install(bundle:from:progress:)`` so the
-    /// `VZVirtualMachineConfiguration` (which retains the
-    /// `VZMacAuxiliaryStorage` and disk-image attachments for the
-    /// same files the caller is about to wait on), the
-    /// `VZVirtualMachine`, the `VZMacOSInstaller`, and the KVO
-    /// observation are all local to THIS method — nothing outside
-    /// references any of them, so ARC releases everything the moment
-    /// this method returns, before the caller goes on to wait for
-    /// the framework's own teardown.
-    @MainActor
-    private static func runInstaller(
-        bundle: VirtualMachineBundle,
-        ipswURL: URL,
-        progress: @escaping @Sendable (Double) -> Void
-    ) async throws {
-        let config = VZVirtualMachineConfiguration()
-        try VirtualMachineConfiguration.applySpec(bundle.spec, to: config)
-        try VirtualMachineConfiguration.applyPlatform(from: bundle, to: config)
-        try VirtualMachineConfiguration.applyStorage(from: bundle, to: config)
-        try config.validate()
-
-        let vm = VZVirtualMachine(configuration: config)
-        let installer = VZMacOSInstaller(
-            virtualMachine: vm,
-            restoringFromImageAt: ipswURL
-        )
-
-        // Observe progress. Use `defer` for the invalidation so it
-        // also runs when `install()` throws — otherwise the KVO
-        // observation leaks until `installer` deallocates.
-        let observation = installer.progress.observe(
-            \.fractionCompleted,
-            options: [.new]
-        ) { progressObj, _ in
-            progress(progressObj.fractionCompleted)
-        }
-        defer { observation.invalidate() }
-
-        try await installer.install()
     }
 
     /// Waits for the bundle's platform artifact files (auxiliary
@@ -771,10 +604,6 @@ public final class RestoreImageManager: Sendable {
 
 /// An error that occurs during restore image operations.
 public enum RestoreImageError: Error, Sendable, LocalizedError {
-    /// The host hardware does not support the requested macOS version.
-    case unsupportedHost
-    /// The hardware model from the restore image is not supported.
-    case unsupportedHardwareModel
     /// The host macOS version is too old to install this IPSW.
     ///
     /// The message includes both versions and guidance on how
@@ -787,10 +616,6 @@ public enum RestoreImageError: Error, Sendable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .unsupportedHost:
-            "This Mac's hardware does not support the requested macOS version."
-        case .unsupportedHardwareModel:
-            "The hardware model from the restore image is not supported on this Mac."
         case .incompatibleHost(let message):
             message
         case .downloadFailed(let message):
@@ -800,10 +625,6 @@ public enum RestoreImageError: Error, Sendable, LocalizedError {
 
     public var recoverySuggestion: String? {
         switch self {
-        case .unsupportedHost:
-            "Check Apple's supported hardware list. You may need a newer Apple Silicon Mac to run this macOS version."
-        case .unsupportedHardwareModel:
-            "The IPSW restore image targets hardware not present on this Mac. Try downloading a different macOS version."
         case .incompatibleHost:
             "Update your Mac to a macOS version equal to or newer than the guest version, then retry."
         case .downloadFailed:

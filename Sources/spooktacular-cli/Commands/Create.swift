@@ -667,6 +667,7 @@ extension Spooktacular {
                 do {
                     descriptor = try await builder.ensureBase(
                         restoreImage: restoreImage,
+                        installMediaURL: ipswURL,
                         sizeInBytes: spec.diskSizeInBytes
                     ) { progress in
                         guard !json else { return }
@@ -1532,8 +1533,6 @@ extension Spooktacular {
             if error is CancellationError { return "cancelled" }
             if let restore = error as? RestoreImageError {
                 switch restore {
-                case .unsupportedHost:          return "unsupported-host"
-                case .unsupportedHardwareModel: return "unsupported-hardware"
                 case .incompatibleHost:         return "incompatible-host"
                 case .downloadFailed:           return "download-failed"
                 }
@@ -1549,7 +1548,7 @@ extension Spooktacular {
         private func classifyExitCode(_ error: Error) -> Int32 {
             if let restore = error as? RestoreImageError {
                 switch restore {
-                case .unsupportedHost, .unsupportedHardwareModel, .incompatibleHost:
+                case .incompatibleHost:
                     return CLIExit.validation
                 case .downloadFailed:
                     return CLIExit.generalFailure

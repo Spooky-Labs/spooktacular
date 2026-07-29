@@ -641,7 +641,6 @@ public enum VirtualMachineConfiguration {
         to configuration: VZVirtualMachineConfiguration
     ) throws -> [NBDAttachmentMonitor] {
         Log.config.debug("Attaching disk image from \(bundle.url.lastPathComponent, privacy: .public)")
-        let diskURL = bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
 
         var devices: [VZStorageDeviceConfiguration] = []
 

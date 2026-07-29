@@ -1409,6 +1409,7 @@ final class AppState {
             )
             let descriptor = try await builder.ensureBase(
                 restoreImage: restoreImage,
+                installMediaURL: ipswURL,
                 sizeInBytes: request.spec.diskSizeInBytes
             ) { [weak self] progress in
                 Task { @MainActor in
@@ -1934,29 +1935,10 @@ final class AppState {
         transitioningVMs.insert(key)
 
         do {
-            // 1. Inject the provisioner LaunchDaemon directly onto
-            //    the guest's Data volume so it's in place before the
-            //    runner script is disk-injected below — replacing
-            //    the old Setup Assistant + pkg-install path (see
-            //    ``DiskInjector/installProvisionerDaemon``). No OS
-            //    boot needed. Unlike the non-runner scripted-template
-            //    path in `runMacOSCreate(request:)` (which swallows
-            //    and warns), a failure here IS fatal: zero-touch
-            //    runner registration has nothing to fall back to if
-            //    the daemon never lands, so the error propagates to
-            //    this method's own `catch` below.
-            updateCreation(name: name, progress: 0.05, status: "Injecting provisioner daemon…")
-            try DirectPrivilegedFileOps().preflight()
-            guard let assets = ProvisionerAssets.locate() else {
-                throw RunnerProvisioningError.provisionerAssetsNotFound
-            }
-            try DiskInjector.installProvisionerDaemon(
-                into: bundle,
-                plist: assets.plist,
-                runner: assets.runner,
-                privileged: DirectPrivilegedFileOps()
-            )
-            try Task.checkCancellation()
+            // The provisioner LaunchDaemon is already present: it was
+            // injected once into the shared base image this VM was
+            // overlaid on, so the runner path needs no per-VM injection
+            // and no privileges of its own.
 
             // 2. Native guest provisioning account for this VM's
             //    first boot — the framework creates this admin

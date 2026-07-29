@@ -89,13 +89,20 @@ public final class BaseImageBuilder {
     /// builds one.
     ///
     /// - Parameters:
-    ///   - restoreImage: The macOS restore image to install from.
+    ///   - restoreImage: The macOS restore image, used for its build
+    ///     version and hardware model.
+    ///   - installMediaURL: The **local** IPSW file to install from.
+    ///     Passed separately because a restore image obtained from
+    ///     `fetchLatestSupported()` carries Apple's remote URL, and
+    ///     installing from that would re-download the ~19 GB the
+    ///     caller has already cached.
     ///   - sizeInBytes: Logical size of the base disk.
     ///   - progress: Receives build progress. Not called on a cache hit.
     /// - Returns: The descriptor of the ready base.
     /// - Throws: ``BaseImageBuildError`` or a framework error.
     public func ensureBase(
         restoreImage: VZMacOSRestoreImage,
+        installMediaURL: URL,
         sizeInBytes: UInt64,
         progress: @escaping @Sendable (BaseBuildProgress) -> Void
     ) async throws -> BaseImageDescriptor {
@@ -154,7 +161,7 @@ public final class BaseImageBuilder {
             )
 
             try await Self.runInstaller(
-                restoreURL: restoreImage.url,
+                restoreURL: installMediaURL,
                 hardwareModelData: hardwareModel.dataRepresentation,
                 machineIdentifierData: machineIdentifier.dataRepresentation,
                 cpuCount: max(supported.minimumSupportedCPUCount, 4),
