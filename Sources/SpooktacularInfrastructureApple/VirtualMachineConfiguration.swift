@@ -619,9 +619,15 @@ public enum VirtualMachineConfiguration {
             devices.append(try makeInstallerISODevice(bundle: bundle))
         }
 
+        // macOS guests attach a base+overlay stack; Linux guests attach
+        // the standalone `disk.img` at `diskURL`. Both go through the
+        // same controller rules.
+        let baseImageURL = bundle.metadata.baseImage.map {
+            BaseImageStore(rootDirectory: SpooktacularPaths.baseImages)
+                .baseImageURL(forBuild: $0.buildVersion)
+        }
         devices.append(try makeStorageDevice(
-            url: diskURL,
-            readOnly: false,
+            attachment: try primaryDiskAttachment(for: bundle, baseImageURL: baseImageURL),
             controller: bundle.spec.storageController
         ))
         var nbdMonitors: [NBDAttachmentMonitor] = []
@@ -809,6 +815,49 @@ public enum VirtualMachineConfiguration {
     ///   error shape) on Mac platforms until Track H lands.
     ///   WWDC23 session 10007 benchmarks report 15–30 %
     ///   higher sequential I/O than virtio-blk.
+    /// Builds the attachment for a VM's primary disk.
+    ///
+    /// macOS VMs are overlay-backed: their disk is a stack of the
+    /// shared read-only base image plus this VM's own overlay, which is
+    /// why creating one costs a file operation rather than a 20-minute
+    /// install. Linux VMs keep a standalone `disk.img`.
+    ///
+    /// A stack can only be built through DiskImageKit —
+    /// `VZDiskImageStorageDeviceAttachment`'s URL-based initializer is
+    /// documented as taking a disk image "in RAW format", so ASIF and
+    /// stacked images must go through the `diskImage:` initializer.
+    ///
+    /// - Parameters:
+    ///   - bundle: The VM bundle.
+    ///   - baseImageURL: The shared base image. Required when the
+    ///     bundle records a base reference; ignored otherwise.
+    /// - Returns: The storage attachment for the primary disk.
+    /// - Throws: ``DiskStackError/baseDrift(expected:found:)`` when the
+    ///   base changed since the VM was created,
+    ///   ``BaseImageStoreError/incomplete(build:)`` when the base image
+    ///   is missing, or a framework error.
+    public static func primaryDiskAttachment(
+        for bundle: VirtualMachineBundle,
+        baseImageURL: URL?
+    ) throws -> VZStorageDeviceAttachment {
+        if let base = bundle.metadata.baseImage {
+            guard #available(macOS 27, *) else {
+                throw VirtualMachineProvisioningError.hostTooOld
+            }
+            guard let baseImageURL,
+                  FileManager.default.fileExists(atPath: baseImageURL.path) else {
+                throw BaseImageStoreError.incomplete(build: base.buildVersion)
+            }
+            return try DiskStack.attachment(
+                base: baseImageURL,
+                overlay: bundle.overlayURL,
+                expectedBaseLayerUUID: base.layerUUID
+            )
+        }
+        let diskURL = bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName)
+        return try VZDiskImageStorageDeviceAttachment(url: diskURL, readOnly: false)
+    }
+
     private static func makeStorageDevice(
         url: URL,
         readOnly: Bool,
@@ -818,6 +867,18 @@ public enum VirtualMachineConfiguration {
             url: url,
             readOnly: readOnly
         )
+        return try makeStorageDevice(attachment: attachment, controller: controller)
+    }
+
+    /// Wraps an already-built attachment in the configured controller.
+    ///
+    /// Split from the URL-taking overload so overlay-backed macOS disks
+    /// — whose attachment comes from DiskImageKit rather than a URL —
+    /// go through exactly the same controller rules.
+    private static func makeStorageDevice(
+        attachment: VZStorageDeviceAttachment,
+        controller: StorageController
+    ) throws -> VZStorageDeviceConfiguration {
         switch controller {
         case .virtio:
             return VZVirtioBlockDeviceConfiguration(attachment: attachment)
