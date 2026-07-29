@@ -41,6 +41,16 @@ public enum SpooktacularPaths {
             .appendingPathComponent("ipsw")
     }()
 
+    /// The base-image cache directory: `~/.spooktacular/cache/base/`.
+    ///
+    /// Holds one subdirectory per macOS build, each containing the
+    /// installed-once ASIF base image that every VM of that build
+    /// overlays. See ``BaseImageStore``.
+    public static let baseImages: URL = {
+        root.appendingPathComponent("cache")
+            .appendingPathComponent("base")
+    }()
+
     /// The per-VM host-API socket directory:
     /// `~/Library/Application Support/Spooktacular/api/`.
     ///
@@ -139,6 +149,7 @@ public enum SpooktacularPaths {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: vms, withIntermediateDirectories: true)
         try fileManager.createDirectory(at: ipswCache, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: baseImages, withIntermediateDirectories: true)
     }
 
     // MARK: - Selector resolution (CLI + HTTP API)
