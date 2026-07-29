@@ -12,7 +12,7 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-a78bfa.svg)](LICENSE)
   [![Swift 6](https://img.shields.io/badge/Swift-6.2-a78bfa.svg)](https://swift.org)
   [![macOS 26+](https://img.shields.io/badge/macOS-26+-a78bfa.svg)](https://developer.apple.com/macos/)
-  [![Tests](https://img.shields.io/badge/Tests-827_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
+  [![Tests](https://img.shields.io/badge/Tests-890_passing-22c55e.svg)](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml)
 
   [Website](https://spooktacular.app) · [Get Started](#quick-start) · [Build from Source](#building-from-source) · [API Docs](https://spooktacular.app/api/documentation/spooktacularkit/)
 
@@ -92,6 +92,33 @@ spook create runner-01 --github-runner --github-repo your-org/repo \
 for other workloads — see [Features](#features) below. Cloning doesn't yet
 carry forward `--github-runner` template state, so a second runner today
 means a second `create --github-runner`.
+
+### Instant creates
+
+macOS is installed **once**, into a shared base image, and every VM after that
+is a copy-on-write overlay on it. So the first create is slow and asks for
+privileges once; the rest take seconds and ask for nothing.
+
+```bash
+# First macOS create: builds the shared base image (installs macOS once and
+# injects the provisioner into it — the only step that needs root).
+sudo spook create dev --openclaw --publish 18789:18789
+
+# Every create afterwards: seconds, no privileges, no install.
+spook create dev2
+spook create dev3
+
+# Guest services are reachable on the host, docker -p style.
+open http://localhost:18789
+
+# Addresses are reserved at create time, so this is exact and immediate.
+spook ip dev
+```
+
+On an EC2 Mac, where Spooktacular runs as a root service, even the first create
+asks nothing. Locally you can approve the privileged helper once in System
+Settings instead of using `sudo`. See the `InstantCreate` article in the DocC
+documentation for how base images, overlays and published ports fit together.
 
 ### Remote desktop & interactive VMs
 
@@ -342,7 +369,7 @@ Every release ships with:
 ```bash
 swift build              # Debug build
 swift build -c release   # Release build
-swift test               # Run 827 tests (791 root + 36 SPICE packages)
+swift test               # Run 890 tests (854 root + 36 SPICE packages)
 ./build-app.sh release   # Build .app bundle
 ```
 
@@ -350,7 +377,7 @@ swift test               # Run 827 tests (791 root + 36 SPICE packages)
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (827 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
+| [CI](https://github.com/Spooky-Labs/spooktacular/actions/workflows/ci.yml) | PR + push to main | `lint` (SwiftLint --strict, App Store metadata check, Danger PR review) gates `test-and-build` (890 tests + release build + .app bundle + README-claims validation) and `xcode-build` (Xcode scheme build + UI-test compile-check), which run in parallel |
 | [Beta](https://github.com/Spooky-Labs/spooktacular/actions/workflows/beta.yml) | Push to main | Sign + package + upload to TestFlight |
 | [Release](https://github.com/Spooky-Labs/spooktacular/actions/workflows/release.yml) | Tag `v*` | GitHub Release + TestFlight + Homebrew zip |
 | [SBOM](https://github.com/Spooky-Labs/spooktacular/actions/workflows/sbom.yml) | PR (smoke test) | Validates SBOM generation produces valid SPDX JSON |
@@ -364,7 +391,7 @@ We follow [GitHub Flow](https://guides.github.com/introduction/flow/). PRs welco
 1. Fork the repo
 2. Create a feature branch
 3. Write tests for new functionality
-4. Ensure `swift test` passes (827 tests: 791 root + 36 across Packages/)
+4. Ensure `swift test` passes (890 tests: 854 root + 36 across Packages/)
 5. Open a PR using our [PR template](.github/pull_request_template.md)
 
 ## License
