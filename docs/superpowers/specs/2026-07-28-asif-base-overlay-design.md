@@ -242,6 +242,45 @@ scrub-validation story the engineering packet asked for.
 | Readiness | visible "done (exit 0)" moment | `--wait`-able creates; failures surface immediately with logs |
 | Disk footprint | N VMs ≈ 1× base + deltas | same; ASIF transfers efficiently for future fleet distribution |
 
+## Alternatives considered: watching the shared file instead of vsock
+
+The guest already writes `first-boot.exit-code` into the virtio-fs
+provisioning share, and that share is a host-side directory — so the host
+could watch that file and the `spook-signal` guest binary could be deleted
+outright. Four independent research passes (2026-07-29) rejected this
+unanimously, all at high confidence:
+
+- **No visibility contract exists.** The complete directory-sharing API is
+  `{URL, readOnly, tag, share}`: no cache mode, no sync mode, no flush, no
+  callback. A framework-wide grep for `cach|coheren|consisten|flush|fsync`
+  returns zero hits in any file-sharing header. The absence is decisive
+  rather than merely unexamined, because Apple ships explicit knobs wherever
+  it means to guarantee durability — `VZDiskImageCachingMode`,
+  `VZDiskImageSynchronizationMode` ("the same guarantees as the `fsync()`
+  system call"). Upstream virtio-fs defaults to `cache=auto` ("similar to
+  NFS with a 1 second metadata cache timeout") with writeback buffering, and
+  a shell redirect never fsyncs.
+- **vsock is the documented channel.** Socket symbols are described
+  bidirectionally ("port-based communication between the guest operating
+  system and the host computer") and the delegate is event-driven by
+  construction. Directory-sharing symbols are framed one-directionally as
+  exposing host files to a guest; the phrase "between the guest and the
+  host" appears in the socket, console, Spice and memory-balloon headers and
+  in no directory-sharing header.
+- **Production practice is unanimous.** Tart (AF_VSOCK), Lima (vsock),
+  apple/containerization (gRPC over vsock) and podman all signal over a
+  byte-stream device; UTM and VirtualBuddy use virtio-serial. No surveyed
+  tool watches a shared file for state, and apple/container has a tracked
+  limitation about filesystem events not propagating across this boundary.
+
+The host-side half was verified working independently:
+`DispatchSource.makeFileSystemObjectSource` does fire for another process's
+write. The failure is in the guest-to-host leg, not the notification.
+
+**Decision: vsock stays.** The exit-code file remains an audit artifact and
+debugging record, which is what it was before this design existed — so there
+is no duplicate mechanism to collapse.
+
 ## Out of scope / future work
 
 - **OCI registry distribution of bases** (`spook base push/pull`) — verified

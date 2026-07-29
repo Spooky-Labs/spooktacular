@@ -48,11 +48,48 @@ public struct ProvisioningSignal: Sendable, Equatable {
 
 /// Listens for the guest's end-of-provisioning signal.
 ///
-/// The alternative — poll for an IP, then for SSH, then for a marker
-/// file — is exactly the timing race this project forbids. Here the
-/// guest dials the host the moment its first-boot script exits, so
+/// The guest dials the host the moment its first-boot script exits, so
 /// "provisioning finished" is an event carrying an exit code rather
 /// than an inference drawn from a timeout.
+///
+/// ## Why vsock and not the shared directory
+///
+/// The runner script already writes `first-boot.exit-code` into the
+/// virtio-fs provisioning share, which is a host-side directory — so
+/// watching that file looks like it would make this listener (and its
+/// guest binary) unnecessary. It would not, for three reasons
+/// established by research rather than assumption:
+///
+/// 1. **Apple guarantees nothing about when a guest write lands.** The
+///    entire directory-sharing surface is `{URL, readOnly, tag, share}`
+///    — no caching mode, no synchronization mode, no flush, no
+///    completion callback. That silence is meaningful because Apple
+///    ships an explicit contract wherever it intends you to reason
+///    about durability: storage has `VZDiskImageCachingMode` and
+///    `VZDiskImageSynchronizationMode`, the latter documented as
+///    giving "the same guarantees as the `fsync()` system call".
+///    Upstream virtio-fs defaults to `cache=auto` — "similar to NFS
+///    with a 1 second metadata cache timeout" — and writeback lets the
+///    FUSE client buffer writes, while a shell redirect never fsyncs.
+///    A signal that arrives at an undefined time is the timing race
+///    this project forbids, wearing a different costume.
+/// 2. **vsock is what Apple built for this.** Every socket symbol is
+///    described bidirectionally — "port-based communication between
+///    the guest operating system and the host computer" — and the
+///    delegate is event-driven by construction: "When the guest
+///    operating system opens a connection to the port, the listener
+///    object notifies its associated delegate." Every directory-sharing
+///    symbol, by contrast, is framed one-directionally as exposing host
+///    files to a guest, and never as a channel.
+/// 3. **Nobody in production does it the other way.** Tart, Lima,
+///    apple/containerization and podman all signal guest state over
+///    vsock; UTM and VirtualBuddy use virtio-serial. No surveyed tool
+///    watches a shared file for state, and Apple's own `container`
+///    project has a tracked limitation about filesystem events not
+///    propagating across this boundary.
+///
+/// The exit-code file remains what it always was: an audit artifact and
+/// a debugging record, not the signal.
 ///
 /// Uses vsock port 9470. Port 9469 belongs to ``AgentEventListener``,
 /// which holds a single connection for the Guest Tools event stream.
