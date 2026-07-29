@@ -87,31 +87,41 @@ public enum ProvisioningPasswordStore {
     // MARK: - Keychain target (a testable seam)
 
     /// Which keychain an operation runs against.
+    ///
+    /// Every case resolves to exactly one `SecKeychain`, and both the
+    /// write and the search/delete scopes are derived from it. An
+    /// earlier `.login` case returned an empty scope for both, which
+    /// meant writes landed in the process's *default keychain* while
+    /// deletes searched the *default search list* — a divergence that
+    /// produced intermittent `errSecDuplicateItem` failures when a
+    /// delete-then-add ran against the developer's real login keychain
+    /// shared with every other keychain-touching test in the process.
     enum Target {
         /// `/Library/Keychains/System.keychain` — the production target
         /// (root-writable, session-independent). See the type doc.
         case system
-        /// The process's default (login) keychain — no root required.
-        /// Used **only** by unit tests so the store/read/delete
-        /// round-trip runs under `swift test`; the System-keychain path
-        /// is exercised by the on-hardware `--remote-desktop` smoke test.
-        case login
+        /// A specific keychain supplied by the caller. Tests pass a
+        /// throwaway keychain so a `swift test --parallel` run never
+        /// touches the developer's login keychain.
+        case keychain(SecKeychain)
+    }
+
+    /// Resolves a target to the single keychain its operations scope to.
+    private static func keychain(for target: Target) throws -> SecKeychain {
+        switch target {
+        case .system:              try systemKeychain()
+        case .keychain(let value): value
+        }
     }
 
     /// SecItem query additions that scope a *write* to `target`.
     private static func addScope(_ target: Target) throws -> [String: Any] {
-        switch target {
-        case .login:  return [:]
-        case .system: return [kSecUseKeychain as String: try systemKeychain()]
-        }
+        [kSecUseKeychain as String: try keychain(for: target)]
     }
 
     /// SecItem query additions that scope a *search / delete* to `target`.
     private static func searchScope(_ target: Target) throws -> [String: Any] {
-        switch target {
-        case .login:  return [:]
-        case .system: return [kSecMatchSearchList as String: [try systemKeychain()] as CFArray]
-        }
+        [kSecMatchSearchList as String: [try keychain(for: target)] as CFArray]
     }
 
     /// Opens a reference to the System keychain.
