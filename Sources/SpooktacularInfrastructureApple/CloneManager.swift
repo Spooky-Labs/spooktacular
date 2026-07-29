@@ -11,10 +11,12 @@ import os
 /// which creates an instant copy that shares physical blocks
 /// with the source. A 30 GB disk image clones in milliseconds.
 ///
-/// Every clone receives a **new** `VZMacMachineIdentifier` to
-/// ensure each VM has a unique identity. Reusing identifiers
-/// across VMs causes undefined behavior in the Virtualization
-/// framework.
+/// A clone inherits the source's `VZMacMachineIdentifier` because
+/// that identifier is paired with the auxiliary storage the installer
+/// personalized: Apple requires a VM loaded from disk to restore "the
+/// hardwareModel, machineIdentifier and auxiliaryStorage properties to
+/// their original values". The **MAC address is regenerated**, so
+/// clones remain distinct on the network.
 ///
 /// ## Example
 ///
@@ -23,24 +25,34 @@ import os
 /// let clone = try CloneManager.clone(source: source, to: destinationURL)
 ///
 /// // clone.spec == source.spec (preserved)
-/// // clone.metadata.id != source.metadata.id (new identity)
-/// // disk.img is a COW clone (instant, space-efficient)
-/// // machine-identifier.bin is freshly generated
+/// // clone.metadata.id != source.metadata.id (new bundle identity)
+/// // the disk is a COW clone (instant, space-efficient)
+/// // machine-identifier.bin is copied, staying paired with auxiliary.bin
 /// ```
 ///
 /// ## Important
 ///
-/// The hardware model (`hardware-model.bin`) is copied as-is
-/// because it must match the macOS version installed on the
-/// disk. The machine identifier (`machine-identifier.bin`) is
-/// always regenerated — never copied.
+/// The hardware model (`hardware-model.bin`) is copied as-is because it
+/// must match the macOS version installed on the disk, and the machine
+/// identifier is copied for the same reason. Apple warns that running
+/// two VMs concurrently with the same identifier is undefined in the
+/// guest — so a clone is a replacement for its source, not a sibling to
+/// run beside it.
 public enum CloneManager {
 
-    /// Files that are copied verbatim from source to clone.
+    /// Bundle files a clone carries over.
+    ///
+    /// Both disk shapes appear here because a bundle has exactly one of
+    /// them: Linux bundles own a standalone `disk.img`, while
+    /// overlay-backed macOS bundles own `disk-overlay.asif` and share
+    /// their base. Missing entries are skipped, so listing both is
+    /// correct rather than wasteful.
     private static let filesToCopy = [
         VirtualMachineBundle.diskImageFileName,
+        VirtualMachineBundle.overlayFileName,
         VirtualMachineBundle.auxiliaryStorageFileName,
         VirtualMachineBundle.hardwareModelFileName,
+        VirtualMachineBundle.machineIdentifierFileName,
     ]
 
     /// Clones a VM bundle to a new location.
@@ -95,27 +107,37 @@ public enum CloneManager {
                 try fileManager.copyItem(at: sourceFile, to: destinationFile)
             }
 
-            Log.clone.debug("Generating new VZMacMachineIdentifier for clone")
-            let newIdentifier = VZMacMachineIdentifier()
-            let destIdentifierURL = destination.appendingPathComponent(
+            // The machine identifier is copied with the rest of the
+            // platform files above, NOT regenerated.
+            //
+            // A clone carries the source's installed auxiliary storage,
+            // which `VZMacOSInstaller` personalized against the
+            // identifier present at install time. Apple requires that a
+            // VM loaded from disk restore "the hardwareModel,
+            // machineIdentifier and auxiliaryStorage properties to
+            // their original values", so breaking that pairing leaves
+            // the clone with boot state signed for an identity it no
+            // longer has.
+            //
+            // Apple also warns that running two VMs concurrently with
+            // the same identifier is undefined in the guest. Both
+            // statements are true at once, and the pairing wins: a
+            // clone that cannot boot is worse than one that must not
+            // run beside its source. The MAC address IS regenerated
+            // below, so clones stay distinct on the network.
+            // Only assert the copy when the source actually had an
+            // identifier: a bundle created but never installed has none
+            // yet, and a clone of it legitimately has none either.
+            let sourceIdentifierURL = source.url.appendingPathComponent(
                 VirtualMachineBundle.machineIdentifierFileName
             )
-            try newIdentifier.dataRepresentation.write(to: destIdentifierURL)
-
-            // Verify the new identifier landed on disk with non-zero
-            // bytes AND is not a byte-for-byte twin of the source's
-            // identifier. Without this check, a silent write failure
-            // (permission issue, full disk, FS race) could leave the
-            // clone pointing at the source's identifier — reuse of
-            // `VZMacMachineIdentifier` across VMs is undefined
-            // behavior per Apple's docs and presents cross-VM
-            // identity collisions at boot.
-            try Self.verifyMachineIdentifier(
-                at: destIdentifierURL,
-                differsFromSourceAt: source.url.appendingPathComponent(
-                    VirtualMachineBundle.machineIdentifierFileName
+            if FileManager.default.fileExists(atPath: sourceIdentifierURL.path) {
+                try Self.verifyMachineIdentifier(
+                    at: destination.appendingPathComponent(
+                        VirtualMachineBundle.machineIdentifierFileName
+                    )
                 )
-            )
+            }
 
             // Regenerate the MAC address on clone. Without this,
             // two simultaneously-running clones collide at the
@@ -175,56 +197,24 @@ public enum CloneManager {
     ///   clone file is missing or empty;
     ///   ``CloneManagerError/identifierMatchesSource`` when the clone
     ///   SHA-256 equals the source's.
-    static func verifyMachineIdentifier(
-        at cloneURL: URL,
-        differsFromSourceAt sourceURL: URL
-    ) throws {
-        let cloneData = try Data(contentsOf: cloneURL)
-        guard !cloneData.isEmpty else {
+    static func verifyMachineIdentifier(at cloneURL: URL) throws {
+        guard let cloneData = try? Data(contentsOf: cloneURL), !cloneData.isEmpty else {
             throw CloneManagerError.identifierNotWritten(path: cloneURL.path)
-        }
-        // If the source doesn't have an identifier file (fresh IPSW
-        // install case, or test fixture without an identifier on
-        // source), we only assert the clone bytes are present.
-        guard let sourceData = try? Data(contentsOf: sourceURL),
-              !sourceData.isEmpty else {
-            return
-        }
-        let cloneHash = SHA256.hash(data: cloneData)
-        let sourceHash = SHA256.hash(data: sourceData)
-        guard cloneHash != sourceHash else {
-            throw CloneManagerError.identifierMatchesSource
         }
     }
 }
 
-// MARK: - Errors
-
-/// Errors raised by ``CloneManager`` during clone-side verification.
-///
-/// These are returned after the APFS clonefile / identifier write path
-/// to fail the clone loudly when the write didn't actually produce a
-/// distinct VM identity.
+/// Failures raised while cloning a VM bundle.
 public enum CloneManagerError: Error, Sendable, Equatable, LocalizedError {
 
-    /// The freshly-written `machine-identifier.bin` is missing or empty.
-    ///
-    /// - Parameter path: Absolute path that was expected to contain
-    ///   the new identifier bytes.
+    /// The clone's `machine-identifier.bin` is missing or empty after
+    /// the platform files were copied.
     case identifierNotWritten(path: String)
-
-    /// The new identifier's SHA-256 equals the source's, which would
-    /// produce two VMs with the same `VZMacMachineIdentifier` — an
-    /// Apple-documented undefined-behavior scenario.
-    case identifierMatchesSource
 
     public var errorDescription: String? {
         switch self {
         case .identifierNotWritten(let path):
-            "Clone verification failed: machine-identifier.bin at '\(path)' is missing or empty."
-        case .identifierMatchesSource:
-            "Clone verification failed: the new VM identifier is byte-identical to the source. "
-            + "Reusing a VZMacMachineIdentifier across VMs is undefined behavior."
+            "The clone's machine identifier was not written to '\(path)'."
         }
     }
 
@@ -233,10 +223,6 @@ public enum CloneManagerError: Error, Sendable, Equatable, LocalizedError {
         case .identifierNotWritten:
             "Delete the partial clone directory and retry. Verify the host has free disk space "
             + "and that the destination volume is writable."
-        case .identifierMatchesSource:
-            "Delete the clone and retry. If the error persists, report a bug at "
-            + "https://github.com/spookylabs/spooktacular/issues — the Virtualization framework "
-            + "may have regressed VZMacMachineIdentifier randomness."
         }
     }
 }

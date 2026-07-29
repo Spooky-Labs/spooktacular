@@ -152,15 +152,24 @@ struct CloneManagerTests {
             #expect(cloneData == sourceData, "Hardware model must be identical to source")
         }
 
-        @Test("Writes a NEW machine identifier (not copied from source)", .timeLimit(.minutes(1)))
-        func newMachineIdentifier() throws {
+        @Test("Machine identifier is copied, staying paired with auxiliary storage", .timeLimit(.minutes(1)))
+        func machineIdentifierIsPreserved() throws {
+            // `VZMacOSInstaller` personalizes the auxiliary storage
+            // against the identifier present at install time, and Apple
+            // requires a VM loaded from disk to restore "the
+            // hardwareModel, machineIdentifier and auxiliaryStorage
+            // properties to their original values". A clone carries the
+            // source's installed aux, so regenerating the identifier
+            // would hand it boot state signed for an identity it no
+            // longer has. Uniqueness on the network comes from the
+            // regenerated MAC address instead (see macAddressRegenerated).
             let (source, destURL, _tmp) = try setup()
             let cloneMID = destURL.appendingPathComponent("machine-identifier.bin")
             let cloneData = try Data(contentsOf: cloneMID)
             let sourceData = try Data(contentsOf: source.url.appendingPathComponent("machine-identifier.bin"))
             #expect(
-                cloneData != sourceData,
-                "Machine identifier MUST differ -- reusing causes undefined behavior"
+                cloneData == sourceData,
+                "Machine identifier must be preserved so it stays paired with auxiliary.bin"
             )
         }
     }

@@ -106,6 +106,17 @@ public final class BaseImageStore: Sendable {
         directory(forBuild: build).appendingPathComponent("hardware-model.bin")
     }
 
+    /// The machine identifier the base was installed with.
+    ///
+    /// The installer personalizes the auxiliary storage against this
+    /// identity, so every VM overlaid on the base must reuse it — see
+    /// ``VirtualMachineBundle/createOverlayBacked(at:spec:displayName:base:baseImageURL:baseAuxiliaryURL:baseHardwareModelURL:baseMachineIdentifierURL:network:publications:)``.
+    ///
+    /// - Parameter build: The macOS build string.
+    public func machineIdentifierURL(forBuild build: String) -> URL {
+        directory(forBuild: build).appendingPathComponent("machine-identifier.bin")
+    }
+
     /// The descriptor file for a build.
     ///
     /// - Parameter build: The macOS build string.

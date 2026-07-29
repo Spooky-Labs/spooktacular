@@ -1447,6 +1447,7 @@ final class AppState {
                 baseImageURL: baseStore.baseImageURL(forBuild: descriptor.buildVersion),
                 baseAuxiliaryURL: baseStore.auxiliaryStorageURL(forBuild: descriptor.buildVersion),
                 baseHardwareModelURL: baseStore.hardwareModelURL(forBuild: descriptor.buildVersion),
+                baseMachineIdentifierURL: baseStore.machineIdentifierURL(forBuild: descriptor.buildVersion),
                 network: allocation,
                 publications: request.publications
             )

@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import Virtualization
 @testable import SpooktacularCore
 @testable import SpooktacularInfrastructureApple
 
@@ -12,6 +13,7 @@ struct VirtualMachineBundleOverlayTests {
         let image: URL
         let auxiliary: URL
         let hardwareModel: URL
+        let machineIdentifier: URL
         let layerUUID: UUID
     }
 
@@ -24,12 +26,15 @@ struct VirtualMachineBundleOverlayTests {
         // Stand-ins: the overlay code copies these byte-for-byte and
         // never interprets them, so real Virtualization blobs would add
         // an installer dependency without adding coverage.
+        let machineIdentifier = temp.file("machine-identifier.bin")
         try Data([0x01, 0x02]).write(to: auxiliary)
         try Data([0x03, 0x04]).write(to: hardwareModel)
+        try VZMacMachineIdentifier().dataRepresentation.write(to: machineIdentifier)
         return Base(
             image: image,
             auxiliary: auxiliary,
             hardwareModel: hardwareModel,
+            machineIdentifier: machineIdentifier,
             layerUUID: layerUUID
         )
     }
@@ -49,6 +54,7 @@ struct VirtualMachineBundleOverlayTests {
             baseImageURL: base.image,
             baseAuxiliaryURL: base.auxiliary,
             baseHardwareModelURL: base.hardwareModel,
+            baseMachineIdentifierURL: base.machineIdentifier,
             network: GuestNetworkAllocation(
                 subnetAddress: "192.168.99.0",
                 subnetMask: "255.255.255.0",
@@ -87,20 +93,30 @@ struct VirtualMachineBundleOverlayTests {
     }
 
     @available(macOS 27, *)
-    @Test("each VM gets its own machine identifier")
-    func mintsUniqueIdentifier() throws {
+    @Test("every VM inherits the identifier its base was installed with")
+    func inheritsBaseIdentifier() throws {
+        // Apple: a VM loaded from disk "must restore the hardwareModel,
+        // machineIdentifier and auxiliaryStorage properties to their
+        // original values". An overlay VM is the base's installed disk
+        // loaded again, and the installer personalized the auxiliary
+        // storage against the base's identifier — so regenerating one
+        // per VM would pair personalized boot state with an identity it
+        // was never signed for, and the guest would refuse to boot.
         let temp = TempDirectory()
         let base = try makeBase(in: temp)
+        let expected = try Data(contentsOf: base.machineIdentifier)
+
         let first = try makeBundle(in: temp, base: base, displayName: "vm-one")
         let second = try makeBundle(in: temp, base: base, displayName: "vm-two")
 
-        let firstID = try Data(
-            contentsOf: first.url.appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
-        )
-        let secondID = try Data(
-            contentsOf: second.url.appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
-        )
-        #expect(firstID != secondID, "two VMs must never share a machine identifier")
+        for bundle in [first, second] {
+            let identifier = try Data(
+                contentsOf: bundle.url.appendingPathComponent(
+                    VirtualMachineBundle.machineIdentifierFileName
+                )
+            )
+            #expect(identifier == expected, "VM must reuse the base's machine identifier")
+        }
     }
 
     @available(macOS 27, *)
@@ -129,13 +145,17 @@ struct VirtualMachineBundleOverlayTests {
         let bundle = try makeBundle(in: temp, base: base, displayName: "reset-vm")
         let identifierURL = bundle.url
             .appendingPathComponent(VirtualMachineBundle.machineIdentifierFileName)
-        let before = try Data(contentsOf: identifierURL)
+        let expected = try Data(contentsOf: base.machineIdentifier)
 
-        try bundle.resetOverlay(baseImageURL: base.image, baseAuxiliaryURL: base.auxiliary)
+        try bundle.resetOverlay(
+            baseImageURL: base.image,
+            baseAuxiliaryURL: base.auxiliary,
+            baseMachineIdentifierURL: base.machineIdentifier
+        )
 
         #expect(FileManager.default.fileExists(atPath: bundle.overlayURL.path))
         let after = try Data(contentsOf: identifierURL)
-        #expect(before != after, "reset must mint a fresh machine identifier")
+        #expect(after == expected, "reset restores the base identity, paired with the restored aux")
         #expect(
             try DiskStack.baseLayerUUID(at: base.image) == base.layerUUID,
             "the shared base must be provably unchanged by a reset"

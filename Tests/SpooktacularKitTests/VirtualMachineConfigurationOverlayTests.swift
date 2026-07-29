@@ -18,8 +18,10 @@ struct VirtualMachineConfigurationOverlayTests {
         let baseUUID = try DiskStack.createBase(at: baseImage, sizeInBytes: Self.size)
         let auxiliary = temp.file("auxiliary.bin")
         let model = temp.file("hardware-model.bin")
+        let identifier = temp.file("machine-identifier.bin")
         try Data([0x01]).write(to: auxiliary)
         try Data([0x02]).write(to: model)
+        try VZMacMachineIdentifier().dataRepresentation.write(to: identifier)
 
         let bundle = try VirtualMachineBundle.createOverlayBacked(
             at: temp.file("\(UUID().uuidString).vm"),
@@ -32,6 +34,7 @@ struct VirtualMachineConfigurationOverlayTests {
             baseImageURL: baseImage,
             baseAuxiliaryURL: auxiliary,
             baseHardwareModelURL: model,
+            baseMachineIdentifierURL: identifier,
             network: GuestNetworkAllocation(
                 subnetAddress: "192.168.98.0",
                 subnetMask: "255.255.255.0",

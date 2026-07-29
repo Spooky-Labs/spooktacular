@@ -565,6 +565,8 @@ public struct VirtualMachineBundle: Sendable {
     ///   - baseImageURL: The shared read-only base image.
     ///   - baseAuxiliaryURL: The base's auxiliary-storage template.
     ///   - baseHardwareModelURL: The base's serialized hardware model.
+    ///   - baseMachineIdentifierURL: The identifier the base was
+    ///     installed with. Copied, not regenerated — see below.
     ///   - network: The subnet and reserved address for this VM.
     ///   - publications: Host-to-guest port mappings.
     /// - Returns: The created bundle, reloaded from disk.
@@ -579,6 +581,7 @@ public struct VirtualMachineBundle: Sendable {
         baseImageURL: URL,
         baseAuxiliaryURL: URL,
         baseHardwareModelURL: URL,
+        baseMachineIdentifierURL: URL,
         network: GuestNetworkAllocation,
         publications: [PortPublication]
     ) throws -> VirtualMachineBundle {
@@ -607,9 +610,18 @@ public struct VirtualMachineBundle: Sendable {
             to: url.appendingPathComponent(hardwareModelFileName)
         )
 
-        try VZMacMachineIdentifier().dataRepresentation.write(
-            to: url.appendingPathComponent(machineIdentifierFileName),
-            options: .atomic
+        // The identifier is COPIED from the base, never regenerated.
+        // The installer personalized the base's auxiliary storage
+        // against it, and Apple requires that a VM loaded from disk
+        // restore "the hardwareModel, machineIdentifier and
+        // auxiliaryStorage properties to their original values" — an
+        // overlay VM is exactly that disk loaded again, so a fresh
+        // identifier would pair personalized boot state with an
+        // identity it was never signed for, and the guest would not
+        // boot.
+        try fileManager.copyItem(
+            at: baseMachineIdentifierURL,
+            to: url.appendingPathComponent(machineIdentifierFileName)
         )
 
         var metadata = bundle.metadata
@@ -629,8 +641,9 @@ public struct VirtualMachineBundle: Sendable {
     /// Deleting the overlay removes every byte the guest ever wrote:
     /// DiskImageKit only writes to the topmost layer of a stack, so the
     /// shared base is provably untouched rather than merely assumed
-    /// clean. A fresh auxiliary storage and a new machine identifier
-    /// make the reset VM a different machine to the guest OS.
+    /// clean. The auxiliary storage is restored from the base too, so
+    /// the reset VM boots from exactly the state the installer
+    /// produced.
     ///
     /// Network identity — MAC, reserved address, publications — is
     /// deliberately preserved: it belongs to the pool slot, not to the
@@ -639,9 +652,15 @@ public struct VirtualMachineBundle: Sendable {
     /// - Parameters:
     ///   - baseImageURL: The shared base image to re-stack on.
     ///   - baseAuxiliaryURL: The base's auxiliary-storage template.
+    ///   - baseMachineIdentifierURL: The base's machine identifier,
+    ///     restored alongside the auxiliary storage it is paired with.
     /// - Throws: A DiskImageKit or file-system error.
     @available(macOS 27, *)
-    public func resetOverlay(baseImageURL: URL, baseAuxiliaryURL: URL) throws {
+    public func resetOverlay(
+        baseImageURL: URL,
+        baseAuxiliaryURL: URL,
+        baseMachineIdentifierURL: URL
+    ) throws {
         let fileManager = FileManager.default
 
         try? fileManager.removeItem(at: overlayURL)
@@ -655,10 +674,12 @@ public struct VirtualMachineBundle: Sendable {
         try? fileManager.removeItem(at: auxiliaryURL)
         try fileManager.copyItem(at: baseAuxiliaryURL, to: auxiliaryURL)
 
-        try VZMacMachineIdentifier().dataRepresentation.write(
-            to: url.appendingPathComponent(Self.machineIdentifierFileName),
-            options: .atomic
-        )
+        // Restored from the base, not regenerated: the freshly cloned
+        // auxiliary storage is personalized against the base's
+        // identifier and the two must stay paired.
+        let identifierURL = url.appendingPathComponent(Self.machineIdentifierFileName)
+        try? fileManager.removeItem(at: identifierURL)
+        try fileManager.copyItem(at: baseMachineIdentifierURL, to: identifierURL)
 
         try? BundleProtection.propagate(to: url)
         Log.vm.notice(

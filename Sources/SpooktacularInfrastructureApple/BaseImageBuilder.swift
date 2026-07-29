@@ -126,6 +126,7 @@ public final class BaseImageBuilder {
             let stagedImage = staging.appendingPathComponent("base.asif")
             let stagedAux = staging.appendingPathComponent("auxiliary.bin")
             let stagedModel = staging.appendingPathComponent("hardware-model.bin")
+            let stagedIdentifier = staging.appendingPathComponent("machine-identifier.bin")
 
             let layerUUID = try DiskStack.createBase(at: stagedImage, sizeInBytes: sizeInBytes)
 
@@ -137,9 +138,25 @@ public final class BaseImageBuilder {
                 options: []
             )
 
+            // The installer personalizes the auxiliary storage against
+            // the machine identifier it runs with, and Apple requires
+            // that "when you save a VM to disk and load it again, you
+            // must restore the hardwareModel, machineIdentifier and
+            // auxiliaryStorage properties to their original values".
+            // An overlay VM *is* this disk loaded again, so the
+            // identifier used here must be persisted and reused by
+            // every VM built on this base — minting a fresh one per VM
+            // would pair a personalized aux with a stranger's identity.
+            let machineIdentifier = VZMacMachineIdentifier()
+            try machineIdentifier.dataRepresentation.write(
+                to: stagedIdentifier,
+                options: .atomic
+            )
+
             try await Self.runInstaller(
                 restoreURL: restoreImage.url,
                 hardwareModelData: hardwareModel.dataRepresentation,
+                machineIdentifierData: machineIdentifier.dataRepresentation,
                 cpuCount: max(supported.minimumSupportedCPUCount, 4),
                 memorySize: max(supported.minimumSupportedMemorySize, 8 * 1024 * 1024 * 1024),
                 label: "spook-base-\(build)",
@@ -181,7 +198,7 @@ public final class BaseImageBuilder {
     /// might mistake for a complete one.
     private static func promote(from staging: URL, to directory: URL) throws {
         let fileManager = FileManager.default
-        for name in ["base.asif", "auxiliary.bin", "hardware-model.bin"] {
+        for name in ["base.asif", "auxiliary.bin", "hardware-model.bin", "machine-identifier.bin"] {
             let source = staging.appendingPathComponent(name)
             let destination = directory.appendingPathComponent(name)
             try? fileManager.removeItem(at: destination)
@@ -205,6 +222,10 @@ public final class BaseImageBuilder {
     /// - Parameters:
     ///   - restoreURL: The IPSW to restore from.
     ///   - hardwareModelData: Serialized `VZMacHardwareModel`.
+    ///   - machineIdentifierData: Serialized `VZMacMachineIdentifier`. The
+    ///     installer personalizes the auxiliary storage against this
+    ///     identity, so it is persisted with the base and reused by
+    ///     every VM overlaid on it.
     ///   - cpuCount: CPU count for the installer VM.
     ///   - memorySize: Memory size for the installer VM.
     ///   - label: Configuration label, for host-side diagnostics.
@@ -216,6 +237,7 @@ public final class BaseImageBuilder {
     private static func runInstaller(
         restoreURL: URL,
         hardwareModelData: Data,
+        machineIdentifierData: Data,
         cpuCount: Int,
         memorySize: UInt64,
         label: String,
@@ -226,6 +248,11 @@ public final class BaseImageBuilder {
         guard let hardwareModel = VZMacHardwareModel(dataRepresentation: hardwareModelData) else {
             throw BaseImageBuildError.unsupportedRestoreImage(build: label)
         }
+        guard let machineIdentifier = VZMacMachineIdentifier(
+            dataRepresentation: machineIdentifierData
+        ) else {
+            throw BaseImageBuildError.unsupportedRestoreImage(build: label)
+        }
 
         let configuration = VZVirtualMachineConfiguration()
         configuration.cpuCount = cpuCount
@@ -234,7 +261,7 @@ public final class BaseImageBuilder {
 
         let platform = VZMacPlatformConfiguration()
         platform.hardwareModel = hardwareModel
-        platform.machineIdentifier = VZMacMachineIdentifier()
+        platform.machineIdentifier = machineIdentifier
         platform.auxiliaryStorage = VZMacAuxiliaryStorage(url: auxiliary)
         configuration.platform = platform
         configuration.bootLoader = VZMacOSBootLoader()
