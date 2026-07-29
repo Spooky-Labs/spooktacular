@@ -106,6 +106,28 @@ public struct VirtualMachineMetadata: Sendable, Codable, Equatable {
     /// ``PendingProvisioning``.
     public var pendingProvisioning: PendingProvisioning?
 
+    /// The shared base image this VM's overlay is stacked on.
+    ///
+    /// Present for every macOS VM: macOS guests are created as a
+    /// copy-on-write overlay over an installed-once base rather than
+    /// by running the installer per VM. `nil` for Linux VMs, which own
+    /// a standalone `disk.img`, and for bundles written before
+    /// overlay-backed creation shipped.
+    public var baseImage: BaseImageReference?
+
+    /// The private subnet and DHCP-reserved address assigned to this
+    /// VM.
+    ///
+    /// Recorded at create time, which is what makes `spook ip` a
+    /// metadata read rather than a DHCP-lease scrape, and what lets
+    /// port-forwarding rules name a destination address before the
+    /// network starts.
+    public var networkAllocation: GuestNetworkAllocation?
+
+    /// Host-to-guest port mappings applied as vmnet forwarding rules
+    /// when the VM starts.
+    public var portPublications: [PortPublication]
+
     /// Creates new metadata with the supplied identifier and
     /// display name.
     ///
@@ -127,6 +149,9 @@ public struct VirtualMachineMetadata: Sendable, Codable, Equatable {
         self.iconSpec = nil
         self.provisioningStatus = ProvisioningStatus()
         self.pendingProvisioning = nil
+        self.baseImage = nil
+        self.networkAllocation = nil
+        self.portPublications = []
     }
 
     /// Decodes metadata with forward-compatible defaults for
@@ -150,6 +175,11 @@ public struct VirtualMachineMetadata: Sendable, Codable, Equatable {
             ?? ProvisioningStatus()
         self.pendingProvisioning =
             try container.decodeIfPresent(PendingProvisioning.self, forKey: .pendingProvisioning)
+        self.baseImage = try container.decodeIfPresent(BaseImageReference.self, forKey: .baseImage)
+        self.networkAllocation =
+            try container.decodeIfPresent(GuestNetworkAllocation.self, forKey: .networkAllocation)
+        self.portPublications =
+            try container.decodeIfPresent([PortPublication].self, forKey: .portPublications) ?? []
     }
 }
 
