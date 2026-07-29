@@ -51,6 +51,13 @@ public struct VirtualMachineBundle: Sendable {
     /// File name for the APFS sparse disk image.
     public static let diskImageFileName = "disk.img"
 
+    /// The per-VM ASIF overlay layered on the shared base image.
+    ///
+    /// macOS bundles carry this instead of ``diskImageFileName``: the
+    /// guest's writes land in the overlay while the installed-once base
+    /// stays read-only and shared between every VM of that build.
+    public static let overlayFileName = "disk-overlay.asif"
+
     /// File name for the `VZMacAuxiliaryStorage` data.
     public static let auxiliaryStorageFileName = "auxiliary.bin"
 
@@ -206,6 +213,17 @@ public struct VirtualMachineBundle: Sendable {
     /// details.
     public var savedStateURL: URL {
         url.appendingPathComponent(Self.savedStateFileName)
+    }
+
+    /// The per-VM overlay image.
+    public var overlayURL: URL {
+        url.appendingPathComponent(Self.overlayFileName)
+    }
+
+    /// Whether this bundle is overlay-backed rather than owning a
+    /// standalone `disk.img`.
+    public var hasOverlay: Bool {
+        FileManager.default.fileExists(atPath: overlayURL.path)
     }
 
     /// Absolute URL of the per-VM provisioning share root
@@ -515,6 +533,137 @@ public struct VirtualMachineBundle: Sendable {
 
         Log.vm.info("Created bundle '\(url.lastPathComponent, privacy: .public)' — \(spec.cpuCount) CPU, \(spec.memorySizeInBytes / (1024*1024*1024)) GB RAM")
         return VirtualMachineBundle(url: url, spec: spec, metadata: metadata)
+    }
+
+    // MARK: - Overlay-backed Bundles (macOS)
+
+    /// Creates a macOS bundle backed by an overlay on a shared base
+    /// image.
+    ///
+    /// Everything expensive already happened when the base was built,
+    /// so this is a handful of file operations: an ASIF overlay layer,
+    /// a cloned auxiliary storage, the base's hardware model, and a
+    /// freshly minted machine identifier. No installer runs, and no
+    /// root is required — the privileged step was the base build.
+    ///
+    /// Auxiliary storage is **copied** rather than recreated because
+    /// Apple documents it as travelling with the disk image ("when
+    /// moving or performing a backup of a VM, you must move or copy
+    /// the file containing the auxiliary storage along with the main
+    /// disk image"). Its hardware model must match the platform's, so
+    /// `hardware-model.bin` is copied from the same base.
+    ///
+    /// The machine identifier is *not* copied: two VMs running
+    /// concurrently with the same identifier is undefined behaviour in
+    /// the guest, so each VM mints its own.
+    ///
+    /// - Parameters:
+    ///   - url: Destination `.vm` directory.
+    ///   - spec: Hardware specification for the VM.
+    ///   - displayName: The user-facing label.
+    ///   - base: Provenance recorded in metadata, used to detect drift.
+    ///   - baseImageURL: The shared read-only base image.
+    ///   - baseAuxiliaryURL: The base's auxiliary-storage template.
+    ///   - baseHardwareModelURL: The base's serialized hardware model.
+    ///   - network: The subnet and reserved address for this VM.
+    ///   - publications: Host-to-guest port mappings.
+    /// - Returns: The created bundle, reloaded from disk.
+    /// - Throws: ``VirtualMachineBundleError``, or a DiskImageKit or
+    ///   file-system error.
+    @available(macOS 27, *)
+    public static func createOverlayBacked(
+        at url: URL,
+        spec: VirtualMachineSpecification,
+        displayName: String,
+        base: BaseImageReference,
+        baseImageURL: URL,
+        baseAuxiliaryURL: URL,
+        baseHardwareModelURL: URL,
+        network: GuestNetworkAllocation,
+        publications: [PortPublication]
+    ) throws -> VirtualMachineBundle {
+        // Reuse the standard create path so overlay bundles inherit
+        // spec validation, the provisioning share and the data-at-rest
+        // protection class rather than re-implementing them.
+        let bundle = try create(at: url, spec: spec, displayName: displayName)
+        let fileManager = FileManager.default
+
+        // The overlay is sized to the VM's requested disk: the topmost
+        // layer determines a stack's effective size, so this is how a
+        // VM gets a larger disk than the base it came from.
+        try DiskStack.createOverlay(
+            at: bundle.overlayURL,
+            base: baseImageURL,
+            sizeInBytes: spec.diskSizeInBytes
+        )
+
+        // APFS clones these — instant, and no extra space until written.
+        try fileManager.copyItem(
+            at: baseAuxiliaryURL,
+            to: url.appendingPathComponent(auxiliaryStorageFileName)
+        )
+        try fileManager.copyItem(
+            at: baseHardwareModelURL,
+            to: url.appendingPathComponent(hardwareModelFileName)
+        )
+
+        try VZMacMachineIdentifier().dataRepresentation.write(
+            to: url.appendingPathComponent(machineIdentifierFileName),
+            options: .atomic
+        )
+
+        var metadata = bundle.metadata
+        metadata.baseImage = base
+        metadata.networkAllocation = network
+        metadata.portPublications = publications
+        try writeMetadata(metadata, to: url)
+
+        Log.vm.info(
+            "Created overlay-backed bundle '\(url.lastPathComponent, privacy: .public)' on base \(base.buildVersion, privacy: .public)"
+        )
+        return try load(from: url)
+    }
+
+    /// Discards all guest state by replacing the overlay.
+    ///
+    /// Deleting the overlay removes every byte the guest ever wrote:
+    /// DiskImageKit only writes to the topmost layer of a stack, so the
+    /// shared base is provably untouched rather than merely assumed
+    /// clean. A fresh auxiliary storage and a new machine identifier
+    /// make the reset VM a different machine to the guest OS.
+    ///
+    /// Network identity — MAC, reserved address, publications — is
+    /// deliberately preserved: it belongs to the pool slot, not to the
+    /// workload that just finished.
+    ///
+    /// - Parameters:
+    ///   - baseImageURL: The shared base image to re-stack on.
+    ///   - baseAuxiliaryURL: The base's auxiliary-storage template.
+    /// - Throws: A DiskImageKit or file-system error.
+    @available(macOS 27, *)
+    public func resetOverlay(baseImageURL: URL, baseAuxiliaryURL: URL) throws {
+        let fileManager = FileManager.default
+
+        try? fileManager.removeItem(at: overlayURL)
+        try DiskStack.createOverlay(
+            at: overlayURL,
+            base: baseImageURL,
+            sizeInBytes: spec.diskSizeInBytes
+        )
+
+        let auxiliaryURL = url.appendingPathComponent(Self.auxiliaryStorageFileName)
+        try? fileManager.removeItem(at: auxiliaryURL)
+        try fileManager.copyItem(at: baseAuxiliaryURL, to: auxiliaryURL)
+
+        try VZMacMachineIdentifier().dataRepresentation.write(
+            to: url.appendingPathComponent(Self.machineIdentifierFileName),
+            options: .atomic
+        )
+
+        try? BundleProtection.propagate(to: url)
+        Log.vm.notice(
+            "Reset overlay for '\(url.lastPathComponent, privacy: .public)' — guest state discarded"
+        )
     }
 
     // MARK: - Updating Bundles
