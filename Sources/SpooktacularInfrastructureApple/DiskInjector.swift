@@ -160,12 +160,41 @@ public enum DiskInjector {
         runner: URL,
         privileged: PrivilegedFileOps
     ) throws {
+        try installProvisionerDaemon(
+            intoDiskImageAt: bundle.url.appendingPathComponent(VirtualMachineBundle.diskImageFileName),
+            plist: plist,
+            runner: runner,
+            privileged: privileged
+        )
+    }
+
+    /// Injects the provisioner LaunchDaemon into a disk image directly.
+    ///
+    /// The bundle-taking overload delegates here. This form exists for
+    /// the base-image build, where the target is a shared ASIF image in
+    /// the cache rather than a disk inside a VM bundle — the base is
+    /// injected **once**, and every VM overlaid on it inherits the
+    /// daemon without needing root itself.
+    ///
+    /// - Parameters:
+    ///   - diskImageURL: The guest disk image to inject into. Must be a
+    ///     stopped, unbooted image.
+    ///   - plist: Source URL of the provisioner plist (see ``ProvisionerAssets``).
+    ///   - runner: Source URL of the runner script.
+    ///   - privileged: Performs the `root:wheel` file operations.
+    /// - Throws: ``PrivilegedOpsError/notPrivileged`` if `privileged`
+    ///   can't set root ownership (checked first, before any disk
+    ///   work), or ``DiskInjectorError`` on mount/copy failure.
+    public static func installProvisionerDaemon(
+        intoDiskImageAt diskImageURL: URL,
+        plist: URL,
+        runner: URL,
+        privileged: PrivilegedFileOps
+    ) throws {
         // Fail fast before mounting anything if we can't set root ownership.
         try privileged.preflight()
 
-        let diskPath = bundle.url
-            .appendingPathComponent(VirtualMachineBundle.diskImageFileName)
-            .path
+        let diskPath = diskImageURL.path
         guard FileManager.default.fileExists(atPath: diskPath) else {
             throw DiskInjectorError.diskImageNotFound(path: diskPath)
         }

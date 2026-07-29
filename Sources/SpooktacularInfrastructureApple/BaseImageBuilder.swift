@@ -1,0 +1,306 @@
+import Foundation
+import Virtualization
+import SpooktacularApplication
+import os
+
+/// Progress reported while a base image is built.
+public enum BaseBuildProgress: Sendable, Equatable {
+
+    /// macOS is installing into the base image.
+    case installing(fraction: Double)
+
+    /// The provisioner LaunchDaemon is being injected (requires root).
+    case injectingProvisioner
+
+    /// The base is being sealed read-only.
+    case sealing
+}
+
+/// Builds the installed-once macOS base image that every VM overlays.
+///
+/// This is the **only** privileged operation in Spooktacular's create
+/// path: injecting a `root:wheel` LaunchDaemon into a guest image needs
+/// root on the host (or the SMAppService helper in the GUI). Once the
+/// base exists, creating VMs from it is entirely unprivileged and takes
+/// seconds.
+///
+/// The base is deliberately **never booted**. That keeps its
+/// `layerUUID` stable for every overlay stacked on it, and it means
+/// each VM's first boot is genuinely the guest's "first boot after
+/// restore" — the moment `VZMacGuestProvisioningOptions` creates that
+/// VM's own account.
+@available(macOS 27, *)
+public final class BaseImageBuilder {
+
+    /// Identifies the provisioner assets baked into a base.
+    ///
+    /// Bump this when the injected daemon or runner script changes, so
+    /// stale bases are rebuilt rather than silently reused by VMs that
+    /// would then be missing the new behaviour.
+    public static let provisionerVersion = "1"
+
+    private let store: BaseImageStore
+    private static let log = Logger(subsystem: "com.spooktacular", category: "base-image")
+
+    /// Creates a builder writing into a store.
+    ///
+    /// - Parameter store: The base-image cache.
+    public init(store: BaseImageStore) {
+        self.store = store
+    }
+
+    /// Returns the cached descriptor for a build when it is complete
+    /// and was produced by the current provisioner version.
+    ///
+    /// - Parameter build: The macOS build string.
+    /// - Returns: The descriptor, or `nil` when a build is required.
+    /// - Throws: ``BaseImageStoreError`` when a descriptor exists but
+    ///   cannot be decoded.
+    public func cachedDescriptor(forBuild build: String) throws -> BaseImageDescriptor? {
+        guard store.hasBase(forBuild: build),
+              let descriptor = try store.descriptor(forBuild: build),
+              descriptor.provisionerVersion == Self.provisionerVersion else {
+            return nil
+        }
+        return descriptor
+    }
+
+    /// Clears the write bits so the base cannot be modified while
+    /// overlays depend on it.
+    ///
+    /// DiskImageKit only writes to the topmost layer of a stack, so the
+    /// base is already safe in normal use; sealing defends against
+    /// anything outside the framework touching it.
+    ///
+    /// - Parameter url: The base image file.
+    /// - Throws: ``BaseImageBuildError/sealFailed(_:)`` on failure.
+    public func seal(at url: URL) throws {
+        do {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o444],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            throw BaseImageBuildError.sealFailed(url)
+        }
+    }
+
+    /// Returns the existing base for the restore image's build, or
+    /// builds one.
+    ///
+    /// - Parameters:
+    ///   - restoreImage: The macOS restore image to install from.
+    ///   - sizeInBytes: Logical size of the base disk.
+    ///   - progress: Receives build progress. Not called on a cache hit.
+    /// - Returns: The descriptor of the ready base.
+    /// - Throws: ``BaseImageBuildError`` or a framework error.
+    public func ensureBase(
+        restoreImage: VZMacOSRestoreImage,
+        sizeInBytes: UInt64,
+        progress: @escaping @Sendable (BaseBuildProgress) -> Void
+    ) async throws -> BaseImageDescriptor {
+        let build = restoreImage.buildVersion
+        if let cached = try cachedDescriptor(forBuild: build) { return cached }
+
+        guard let assets = ProvisionerAssets.locate() else {
+            throw BaseImageBuildError.provisionerAssetsMissing
+        }
+        do {
+            try DirectPrivilegedFileOps().preflight()
+        } catch {
+            throw BaseImageBuildError.requiresRoot
+        }
+        guard let supported = restoreImage.mostFeaturefulSupportedConfiguration else {
+            throw BaseImageBuildError.unsupportedRestoreImage(build: build)
+        }
+
+        return try await store.withBuildLock(forBuild: build) {
+            // Another process may have finished while we waited.
+            if let cached = try cachedDescriptor(forBuild: build) { return cached }
+
+            let directory = store.directory(forBuild: build)
+            let staging = directory.appendingPathComponent("staging", isDirectory: true)
+            try? FileManager.default.removeItem(at: staging)
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+
+            let stagedImage = staging.appendingPathComponent("base.asif")
+            let stagedAux = staging.appendingPathComponent("auxiliary.bin")
+            let stagedModel = staging.appendingPathComponent("hardware-model.bin")
+
+            let layerUUID = try DiskStack.createBase(at: stagedImage, sizeInBytes: sizeInBytes)
+
+            let hardwareModel = supported.hardwareModel
+            try hardwareModel.dataRepresentation.write(to: stagedModel, options: .atomic)
+            _ = try VZMacAuxiliaryStorage(
+                creatingStorageAt: stagedAux,
+                hardwareModel: hardwareModel,
+                options: []
+            )
+
+            try await Self.runInstaller(
+                restoreURL: restoreImage.url,
+                hardwareModelData: hardwareModel.dataRepresentation,
+                cpuCount: max(supported.minimumSupportedCPUCount, 4),
+                memorySize: max(supported.minimumSupportedMemorySize, 8 * 1024 * 1024 * 1024),
+                label: "spook-base-\(build)",
+                image: stagedImage,
+                auxiliary: stagedAux,
+                progress: progress
+            )
+
+            progress(.injectingProvisioner)
+            try DiskInjector.installProvisionerDaemon(
+                intoDiskImageAt: stagedImage,
+                plist: assets.plist,
+                runner: assets.runner,
+                privileged: DirectPrivilegedFileOps()
+            )
+
+            progress(.sealing)
+            try seal(at: stagedImage)
+            try Self.promote(from: staging, to: directory)
+
+            let descriptor = BaseImageDescriptor(
+                buildVersion: build,
+                layerUUID: layerUUID,
+                sizeInBytes: sizeInBytes,
+                createdAt: Date(),
+                provisionerVersion: Self.provisionerVersion
+            )
+            try store.write(descriptor)
+            Self.log.notice("Built base image for macOS build \(build, privacy: .public)")
+            return descriptor
+        }
+    }
+
+    /// Moves finished staging files into their final names.
+    ///
+    /// Building into `staging/` and renaming at the end means an
+    /// interrupted build leaves no half-written base that a later run
+    /// might mistake for a complete one.
+    private static func promote(from staging: URL, to directory: URL) throws {
+        let fileManager = FileManager.default
+        for name in ["base.asif", "auxiliary.bin", "hardware-model.bin"] {
+            let source = staging.appendingPathComponent(name)
+            let destination = directory.appendingPathComponent(name)
+            try? fileManager.removeItem(at: destination)
+            try fileManager.moveItem(at: source, to: destination)
+        }
+        try? fileManager.removeItem(at: staging)
+    }
+
+    /// Runs `VZMacOSInstaller` against a throwaway configuration whose
+    /// only storage is the staged base image.
+    ///
+    /// `VZVirtualMachine` and `VZMacOSInstaller` are main-actor types
+    /// and their configuration is not `Sendable`, so the whole
+    /// configuration is assembled here on the main actor and only
+    /// `Sendable` values cross the boundary — the hardware model
+    /// travels as its data representation and is rebuilt inside.
+    ///
+    /// The install itself is awaited through a continuation, so a
+    /// twenty-minute install suspends rather than blocking a thread.
+    ///
+    /// - Parameters:
+    ///   - restoreURL: The IPSW to restore from.
+    ///   - hardwareModelData: Serialized `VZMacHardwareModel`.
+    ///   - cpuCount: CPU count for the installer VM.
+    ///   - memorySize: Memory size for the installer VM.
+    ///   - label: Configuration label, for host-side diagnostics.
+    ///   - image: The staged base image to install into.
+    ///   - auxiliary: The staged auxiliary storage.
+    ///   - progress: Receives install progress.
+    /// - Throws: ``BaseImageBuildError`` or a framework error.
+    @MainActor
+    private static func runInstaller(
+        restoreURL: URL,
+        hardwareModelData: Data,
+        cpuCount: Int,
+        memorySize: UInt64,
+        label: String,
+        image: URL,
+        auxiliary: URL,
+        progress: @escaping @Sendable (BaseBuildProgress) -> Void
+    ) async throws {
+        guard let hardwareModel = VZMacHardwareModel(dataRepresentation: hardwareModelData) else {
+            throw BaseImageBuildError.unsupportedRestoreImage(build: label)
+        }
+
+        let configuration = VZVirtualMachineConfiguration()
+        configuration.cpuCount = cpuCount
+        configuration.memorySize = memorySize
+        configuration.label = label
+
+        let platform = VZMacPlatformConfiguration()
+        platform.hardwareModel = hardwareModel
+        platform.machineIdentifier = VZMacMachineIdentifier()
+        platform.auxiliaryStorage = VZMacAuxiliaryStorage(url: auxiliary)
+        configuration.platform = platform
+        configuration.bootLoader = VZMacOSBootLoader()
+        configuration.storageDevices = [
+            VZVirtioBlockDeviceConfiguration(attachment: try DiskStack.writableAttachment(at: image)),
+        ]
+        try configuration.validate()
+
+        let machine = VZVirtualMachine(configuration: configuration)
+        let installer = VZMacOSInstaller(
+            virtualMachine: machine,
+            restoringFromImageAt: restoreURL
+        )
+        let observation = installer.progress.observe(
+            \.fractionCompleted,
+            options: [.initial, .new]
+        ) { value, _ in
+            progress(.installing(fraction: value.fractionCompleted))
+        }
+        defer { observation.invalidate() }
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            installer.install { result in
+                continuation.resume(with: result)
+            }
+        }
+    }
+}
+
+/// Diagnostics for base-image builds.
+public enum BaseImageBuildError: Error, Sendable, Equatable, LocalizedError {
+
+    /// The provisioner plist/runner could not be located.
+    case provisionerAssetsMissing
+
+    /// The build needs root and the process does not have it.
+    case requiresRoot
+
+    /// The restore image reports no supported configuration for this host.
+    case unsupportedRestoreImage(build: String)
+
+    /// The base image could not be made read-only.
+    case sealFailed(URL)
+
+    public var errorDescription: String? {
+        switch self {
+        case .provisionerAssetsMissing:
+            "Provisioner assets were not found."
+        case .requiresRoot:
+            "Building the macOS base image requires root."
+        case .unsupportedRestoreImage(let build):
+            "macOS build \(build) is not supported on this host."
+        case .sealFailed(let url):
+            "Could not seal the base image at '\(url.path)' read-only."
+        }
+    }
+
+    public var recoverySuggestion: String? {
+        switch self {
+        case .provisionerAssetsMissing:
+            "Run ./build-app.sh so Resources/SpookProvisioner/ is staged into the app bundle."
+        case .requiresRoot:
+            "On an EC2 Mac, run under the root service. Locally, run 'sudo spook create …' once, or approve Spooktacular's privileged helper in System Settings. Only the first create needs this — every VM afterwards is unprivileged."
+        case .unsupportedRestoreImage:
+            "Use a restore image that matches this Mac's hardware."
+        case .sealFailed:
+            "Check permissions on ~/.spooktacular/cache/base/."
+        }
+    }
+}
