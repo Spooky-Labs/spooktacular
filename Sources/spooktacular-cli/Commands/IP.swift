@@ -39,6 +39,15 @@ extension Spooktacular {
 
             let bundle = try VirtualMachineBundle.load(from: bundleURL)
 
+            // A VM created with its own vmnet network recorded the
+            // address it reserved, so this is a metadata read rather
+            // than a DHCP-lease scrape — exact, immediate, and correct
+            // even before the guest has finished booting.
+            if let allocation = bundle.metadata.networkAllocation {
+                print(allocation.guestAddress)
+                return
+            }
+
             guard let macAddress = bundle.spec.macAddress else {
                 print(Style.error("✗ VM '\(name)' has no configured MAC address."))
                 print(Style.dim("  The Virtualization framework assigns a random MAC at runtime."))

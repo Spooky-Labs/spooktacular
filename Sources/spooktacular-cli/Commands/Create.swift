@@ -249,6 +249,16 @@ extension Spooktacular {
         )
         var ephemeral: Bool = false
 
+        @Option(
+            name: .customLong("publish"),
+            help: """
+                Publish a guest port on the host, like docker -p. Use \
+                <hostPort>:<guestPort>, or a bare <port> for the same \
+                number on both sides. Repeatable. macOS guests only.
+                """
+        )
+        var publish: [String] = []
+
         @Flag(
             help: """
                 Skip auto-provisioning after install. The template \
@@ -462,36 +472,30 @@ extension Spooktacular {
             }
 
             // A first-boot script is only ever executed by the
-            // Spooktacular Provisioner LaunchDaemon, which is now
-            // injected directly onto the guest's Data volume before
-            // first boot (see ``DiskInjector/installProvisionerDaemon``)
-            // — replacing the old Setup Assistant + pkg-install path.
-            // Computed from already-parsed flags, no restore image or
-            // install needed yet.
+            // Spooktacular Provisioner LaunchDaemon, which is baked
+            // into the shared base image once, at base-build time —
+            // not into each VM. Creating a VM from an existing base is
+            // therefore entirely unprivileged; only building the base
+            // needs root.
             let willInjectFirstBootScript = provision == .diskInject
                 && (githubRunner || remoteDesktop || openclaw || userData != nil)
-            let needsProvisionerDaemon = willInjectFirstBootScript || guestTools.installsAppBundle
 
-            // Fail fast, BEFORE the 10-20 minute macOS install
-            // begins: injecting a root:wheel LaunchDaemon requires
-            // running with root privileges on the host. YAGNI: no
-            // flag to opt out of the daemon — a create that needs it
-            // and can't get it should fail loudly, not silently skip
-            // provisioning.
-            if needsProvisionerDaemon {
-                do {
-                    try DirectPrivilegedFileOps().preflight()
-                } catch {
-                    let message = "Provisioner injection requires running as root."
-                    let hint = "On an EC2 Mac, run under the root service. Otherwise, run this command with 'sudo spook create ...'."
-                    if json {
-                        printJSONError(code: "provisioner-requires-root", message: message, hint: hint)
-                    } else {
-                        print(Style.error("✗ \(message)"))
-                        print(Style.dim("  \(hint)"))
-                    }
-                    throw ExitCode(CLIExit.validation)
+            // Parse --publish now so a typo fails in milliseconds
+            // rather than after a base build.
+            let operatorPublications: [PortPublication]
+            do {
+                operatorPublications = try PortPublication.parse(publish)
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+                let hint = (error as? LocalizedError)?.recoverySuggestion
+                if json {
+                    printJSONError(code: "invalid-publish", message: message, hint: hint)
+                } else {
+                    print(Style.error("✗ \(message)"))
+                    if let hint { print(Style.dim("  \(hint)")) }
                 }
+                throw ExitCode(CLIExit.validation)
             }
 
             // Fail fast on a bad --vm-user / --vm-password BEFORE the
@@ -628,60 +632,101 @@ extension Spooktacular {
                     )
                 }
 
-                if !json { print(Style.info("Creating VM bundle '\(name)' (id=\(bundleID.uuidString))...")) }
-                let bundle = try await manager.createBundle(
-                    id: bundleID,
-                    displayName: name,
-                    in: SpooktacularPaths.vms,
-                    from: restoreImage,
-                    spec: spec
-                )
-
-                // Capacity pre-flight BEFORE the long install —
-                // VZMacOSInstaller boots the VM internally, so a
-                // host at the concurrent-VM limit would otherwise
-                // burn the whole install and fail with the
-                // framework's opaque installation error instead of
-                // CapacityError's actionable one.
+                // Capacity pre-flight BEFORE any long operation — a
+                // base build boots a VM internally, so a host at the
+                // concurrent-VM limit would otherwise burn the whole
+                // install and fail with the framework's opaque error
+                // instead of CapacityError's actionable one.
                 try CapacityCheck.ensureCapacity(in: SpooktacularPaths.vms)
 
-                if !json { print(Style.info("Installing macOS (10-20 minutes)...")) }
-                try await manager.install(
-                    bundle: bundle,
-                    from: ipswURL
-                ) { fraction in
-                    guard !json else { return }
-                    let percentage = Int(fraction * 100)
-                    print("\r  Installing: \(percentage)%", terminator: "")
-                    fflush(stdout)
-                }
-                if !json { print() }
-
-                // Provisioner daemon injection — replaces the old
-                // Setup Assistant + pkg-install path with a static
-                // root LaunchDaemon written directly onto the
-                // guest's Data volume before first boot (see
-                // ``DiskInjector/installProvisionerDaemon``). No OS
-                // boot needed to install it — it's a disk-level
-                // copy while the VM is stopped. `needsProvisionerDaemon`
-                // was computed earlier (before the install) from
-                // already-parsed flags, alongside the matching
-                // preflight check.
-                if needsProvisionerDaemon {
-                    if let assets = ProvisionerAssets.locate() {
-                        try DiskInjector.installProvisionerDaemon(
-                            into: bundle,
-                            plist: assets.plist,
-                            runner: assets.runner,
-                            privileged: DirectPrivilegedFileOps()
-                        )
-                        if !json { print(Style.success("✓ Provisioner daemon injected.")) }
+                // The shared base image: macOS is installed **once**
+                // per build and the provisioner daemon is injected into
+                // it there. This is the only step that needs root, and
+                // only the first time — every VM afterwards is an
+                // overlay on this base, created in seconds by an
+                // unprivileged process.
+                guard #available(macOS 27, *) else {
+                    let message = "Creating macOS VMs requires macOS 27 or newer on the host."
+                    let hint = "The base+overlay disk format uses DiskImageKit, introduced in macOS 27."
+                    if json {
+                        printJSONError(code: "host-too-old", message: message, hint: hint)
                     } else {
-                        // Soft warn, mirroring the Guest Tools
-                        // bundle-not-found path below — dev builds
-                        // that never ran build-app.sh don't have
-                        // the plist/runner to inject.
-                        if !json { print(Style.dim("  Provisioner assets not found — run build-app.sh to produce Resources/SpookProvisioner/. Continuing without the provisioner daemon.")) }
+                        print(Style.error("✗ \(message)"))
+                        print(Style.dim("  \(hint)"))
+                    }
+                    throw ExitCode(CLIExit.validation)
+                }
+                let baseStore = BaseImageStore(rootDirectory: SpooktacularPaths.baseImages)
+                let builder = BaseImageBuilder(store: baseStore)
+                let hasBase = baseStore.hasBase(forBuild: restoreImage.buildVersion)
+                if !hasBase, !json {
+                    print(Style.info("Building the macOS base image — one time, 10-20 minutes."))
+                    print(Style.dim("  Every VM created afterwards takes seconds and needs no privileges."))
+                }
+                let descriptor: BaseImageDescriptor
+                do {
+                    descriptor = try await builder.ensureBase(
+                        restoreImage: restoreImage,
+                        sizeInBytes: spec.diskSizeInBytes
+                    ) { progress in
+                        guard !json else { return }
+                        switch progress {
+                        case .installing(let fraction):
+                            print("\r  Installing base: \(Int(fraction * 100))%", terminator: "")
+                            fflush(stdout)
+                        case .injectingProvisioner:
+                            print("\n  Injecting provisioner into the base...")
+                        case .sealing:
+                            print("  Sealing the base image read-only...")
+                        }
+                    }
+                } catch {
+                    let message = (error as? LocalizedError)?.errorDescription
+                        ?? error.localizedDescription
+                    let hint = (error as? LocalizedError)?.recoverySuggestion
+                    if json {
+                        printJSONError(code: "base-image-build-failed", message: message, hint: hint)
+                    } else {
+                        print(Style.error("✗ \(message)"))
+                        if let hint { print(Style.dim("  \(hint)")) }
+                    }
+                    throw ExitCode(CLIExit.validation)
+                }
+                if !hasBase, !json { print(Style.success("✓ Base image ready.")) }
+
+                // Every VM gets its own subnet so its address can be
+                // pinned by DHCP reservation before the network starts.
+                // `Swift.Set` qualified explicitly: this module declares
+                // its own `Set` type, which otherwise shadows it here.
+                let usedOctets = Swift.Set(
+                    Self.existingAllocations().map { $0.thirdOctet }
+                )
+                let allocation = try GuestNetworkAllocation.allocate(avoiding: usedOctets)
+                let publications = CreateFlowPublications.merge(
+                    template: openclaw ? [PortPublication(hostPort: 18789, guestPort: 18789)] : [],
+                    operator: operatorPublications
+                )
+
+                if !json { print(Style.info("Creating VM bundle '\(name)' (id=\(bundleID.uuidString))...")) }
+                let bundle = try VirtualMachineBundle.createOverlayBacked(
+                    at: SpooktacularPaths.bundleURL(for: bundleID),
+                    spec: spec,
+                    displayName: name,
+                    base: BaseImageReference(
+                        buildVersion: descriptor.buildVersion,
+                        layerUUID: descriptor.layerUUID
+                    ),
+                    baseImageURL: baseStore.baseImageURL(forBuild: descriptor.buildVersion),
+                    baseAuxiliaryURL: baseStore.auxiliaryStorageURL(forBuild: descriptor.buildVersion),
+                    baseHardwareModelURL: baseStore.hardwareModelURL(forBuild: descriptor.buildVersion),
+                    network: allocation,
+                    publications: publications
+                )
+                if !json {
+                    print(Style.success("✓ VM created from the cached base image."))
+                    print(Style.dim("  Address \(allocation.guestAddress)"))
+                    for publication in publications {
+                        print(Style.dim("  Published localhost:\(publication.hostPort) → guest \(publication.guestPort)"))
                     }
                 }
 
@@ -1651,6 +1696,25 @@ extension Spooktacular {
         ///     passed — the script is still generated and injected,
         ///     but nothing boots or executes it automatically.
         @MainActor
+        /// The network allocations already handed out to existing VMs.
+        ///
+        /// Read straight from bundle metadata: every VM records its
+        /// subnet at create time, so no host-level scan or lease-file
+        /// parse is needed to know which are taken. Unreadable bundles
+        /// are skipped rather than failing the create — a corrupt
+        /// neighbour shouldn't block a new VM, and the worst case is a
+        /// subnet collision that vmnet itself rejects.
+        static func existingAllocations() -> [GuestNetworkAllocation] {
+            let contents = (try? FileManager.default.contentsOfDirectory(
+                at: SpooktacularPaths.vms,
+                includingPropertiesForKeys: nil
+            )) ?? []
+            return contents
+                .filter { $0.pathExtension == "vm" }
+                .compactMap { try? VirtualMachineBundle.load(from: $0) }
+                .compactMap(\.metadata.networkAllocation)
+        }
+
         private func provisionGitHubRunner(
             bundle: VirtualMachineBundle,
             bundleURL: URL,

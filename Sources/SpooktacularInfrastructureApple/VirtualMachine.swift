@@ -282,6 +282,19 @@ public final class VirtualMachine: NSObject {
     ///
     /// Returns `nil` if the VM has no vsock device in its
     /// configuration.
+    /// The running VM's virtio socket device, if it has one.
+    ///
+    /// Exposed so callers can register their own listeners on ports
+    /// other than the Guest Tools event stream — the readiness signal
+    /// uses this to listen on its own port rather than contending for
+    /// ``AgentEventListener``'s single connection.
+    ///
+    /// Returns `nil` when the VM isn't running or has no vsock device.
+    public func socketDevice() -> VZVirtioSocketDevice? {
+        guard let vzVM else { return nil }
+        return vzVM.socketDevices.first as? VZVirtioSocketDevice
+    }
+
     public func agentEventListener() -> AgentEventListener? {
         guard let vzVM,
               let socketDevice = vzVM.socketDevices.first as? VZVirtioSocketDevice else {

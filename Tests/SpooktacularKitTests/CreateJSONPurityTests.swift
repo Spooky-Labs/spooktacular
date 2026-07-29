@@ -84,21 +84,42 @@ struct CreateJSONPurityTests {
         )
     }
 
-    @Test("provisioner daemon injection's progress lines are gated on !json")
-    func provisionerDaemonInjectionProgressIsJSONAware() throws {
+    /// The provisioner LaunchDaemon is now injected once, into the
+    /// shared base image, rather than into each VM — so the progress
+    /// output that must stay JSON-pure is the base build's.
+    @Test("base-image build progress is gated on !json")
+    func baseImageBuildProgressIsJSONAware() throws {
         let source = try readCreateSource()
-        guard let range = source.range(of: "try DiskInjector.installProvisionerDaemon(") else {
-            Issue.record("DiskInjector.installProvisionerDaemon call not found in Create.swift — test is obsolete.")
+        guard let range = source.range(of: "try await builder.ensureBase(") else {
+            Issue.record("builder.ensureBase call not found in Create.swift — test is obsolete.")
             return
         }
         let body = String(source[range.upperBound...].prefix(1200))
         #expect(
-            body.contains(#"if !json { print(Style.success("✓ Provisioner daemon injected.")) }"#),
-            "The provisioner daemon injection's success line must be gated on !json."
+            body.contains("guard !json else { return }"),
+            "The base-build progress closure must return early when --json is set."
         )
         #expect(
-            body.contains(#"if !json { print(Style.dim("  Provisioner assets not found"#),
-            "The provisioner-assets-not-found soft warning must be gated on !json."
+            !body.contains(#"print(Style.info("Installing base"#),
+            "Base-build progress must not print outside the !json guard."
+        )
+    }
+
+    @Test("overlay-create summary lines are gated on !json")
+    func overlayCreateSummaryIsJSONAware() throws {
+        let source = try readCreateSource()
+        guard let range = source.range(of: "try VirtualMachineBundle.createOverlayBacked(") else {
+            Issue.record("createOverlayBacked call not found in Create.swift — test is obsolete.")
+            return
+        }
+        let body = String(source[range.upperBound...].prefix(900))
+        #expect(
+            body.contains("if !json {"),
+            "The overlay-create success summary must be gated on !json."
+        )
+        #expect(
+            !body.contains("\n                print("),
+            "No ungated print may follow the overlay create."
         )
     }
 }

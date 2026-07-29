@@ -339,6 +339,24 @@ extension Spooktacular {
 
             print(Style.success("✓ VM '\(name)' is running."))
 
+            // Listen for the guest's end-of-provisioning report. The
+            // guest dials the host the moment its first-boot script
+            // exits, carrying the exit code, so completion is an event
+            // rather than something inferred from a poll that might
+            // simply have timed out early.
+            var readinessListener: ProvisioningSignalListener?
+            if let socketDevice = vm.socketDevice() {
+                readinessListener = ProvisioningSignalListener(socketDevice: socketDevice) { signal in
+                    if signal.succeeded {
+                        print(Style.success("✓ Provisioning completed."))
+                    } else {
+                        print(Style.error("✗ Provisioning failed (exit \(signal.exitCode))."))
+                        print(Style.dim("  See provision/first-boot.stderr.log in the VM bundle."))
+                    }
+                }
+            }
+            defer { readinessListener?.stop() }
+
             if let scriptPath = userData {
                 Style.field("User-data", scriptPath)
                 Style.field("Provision", provision.label)
