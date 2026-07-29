@@ -61,6 +61,9 @@ struct CreateVMSheet: View {
     /// ready-made with cloud-init provisioning, no installer
     /// walkthrough, no root.
     @State private var cloudImagePath: String = "fedora"
+    /// Comma-separated `host:guest` port publications, e.g.
+    /// `8080:18789, 2222:22`. macOS guests only.
+    @State private var publishedPorts: String = ""
 
     /// Expose Rosetta 2 to the Linux guest as a virtio-fs
     /// share.  Only shown when ``guestOS`` is
@@ -414,11 +417,27 @@ struct CreateVMSheet: View {
                             : template.explanation)
                     }
 
-                    // A macOS template injects a provisioner into the
-                    // guest disk — root-only. On EC2 Mac the CLI is
-                    // already root; in the app, escalate once through
-                    // the approved privileged helper.
-                    if guestOS == .macOS && macOSTemplateNeedsRoot {
+                    // macOS guests can publish guest ports on the host,
+                    // the way `docker -p` does.
+                    if guestOS == .macOS {
+                        Section {
+                            LabeledContent("Published ports") {
+                                TextField("8080:18789, 2222:22", text: $publishedPorts)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                        } header: {
+                            RitualGlassHeader(title: "Ports", complete: true)
+                        } footer: {
+                            Text("Reach a guest service from the host, for example http://localhost:8080. Comma-separated host:guest pairs; a bare port uses the same number on both sides. The OpenClaw template publishes its gateway automatically.")
+                        }
+                    }
+
+                    // Building the shared base image is the one step
+                    // that needs privileges, and only until a base
+                    // exists. Every VM created afterwards is an overlay
+                    // on that base and needs none — so this row is
+                    // about a one-time setup, not a per-VM toll.
+                    if needsBaseImageBuild {
                         privilegedHelperRow
                     }
                 }
@@ -540,13 +559,36 @@ struct CreateVMSheet: View {
         !cloudImagePath.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    /// `true` when the selected macOS template injects a provisioner
-    /// into the guest disk (root-only). `.none` provisions nothing.
-    private var macOSTemplateNeedsRoot: Bool {
-        switch template {
-        case .none: false
-        case .githubRunner, .openclaw, .remoteDesktop, .custom: true
-        }
+    /// `true` when creating this VM would have to build the shared
+    /// macOS base image — the one step that needs privileges.
+    ///
+    /// Once a base exists, every create is an overlay on it and needs
+    /// no privileges at all, so the approval affordance disappears
+    /// rather than reappearing per VM. The check is deliberately coarse
+    /// (any cached base counts): the exact build isn't known until the
+    /// restore image resolves, which happens after the sheet closes.
+    private var needsBaseImageBuild: Bool {
+        guestOS == .macOS
+            && BaseImageStore(rootDirectory: SpooktacularPaths.baseImages)
+                .availableBuilds()
+                .isEmpty
+    }
+
+    /// The port publications this create should apply: the selected
+    /// template's defaults merged with the operator's own entries.
+    ///
+    /// - Throws: ``PortPublicationError`` when a field is malformed.
+    private func resolvePublications() throws -> [PortPublication] {
+        let fields = publishedPorts
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return CreateFlowPublications.merge(
+            template: template == .openclaw
+                ? [PortPublication(hostPort: 18789, guestPort: 18789)]
+                : [],
+            operator: try PortPublication.parse(fields)
+        )
     }
 
     /// One-time approval affordance for the privileged helper: shows
@@ -559,7 +601,7 @@ struct CreateVMSheet: View {
         Section {
             switch PrivilegedHelper.shared.status {
             case .enabled:
-                Label("Privileged helper approved — provisioning runs in-app.",
+                Label("Privileged helper approved — base images can be built in-app.",
                       systemImage: String.SFSymbols.checkmarkSealFill)
                     .foregroundStyle(Apparition.vital)
             case .requiresApproval:
@@ -567,7 +609,7 @@ struct CreateVMSheet: View {
                     PrivilegedHelper.shared.openApprovalSettings()
                 }
             default:
-                Button("Enable macOS provisioning (approve once)…") {
+                Button("Enable base-image builds (approve once)…") {
                     do {
                         try PrivilegedHelper.shared.registerIfNeeded()
                         PrivilegedHelper.shared.openApprovalSettings()
@@ -582,7 +624,7 @@ struct CreateVMSheet: View {
                 complete: PrivilegedHelper.shared.isEnabled
             )
         } footer: {
-            Text("macOS templates inject a provisioner into the guest disk, which needs root. Approve Spooktacular's helper once in System Settings → Login Items, or run the equivalent `sudo spook create …` in Terminal.")
+            Text("The first macOS VM builds a shared base image, which installs macOS once and needs root to inject the provisioner into it. Approve Spooktacular's helper once in System Settings → Login Items, or run `sudo spook create …` in Terminal. Every VM after that is created from the base in seconds, with no privileges.")
         }
     }
 
@@ -1209,7 +1251,8 @@ struct CreateVMSheet: View {
                     localIpswPath: localIpswPath,
                     userScriptURL: userScriptURL,
                     ownsUserScript: ownsUserScript,
-                    runnerSpec: runnerSpec
+                    runnerSpec: runnerSpec,
+                    publications: try resolvePublications()
                 )
                 appState.beginCreateMacOSVM(request)
                 dismiss()

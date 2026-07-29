@@ -1137,8 +1137,30 @@ final class AppState {
         /// ``runMacOSCreate(request:)``, seconds before the VM
         /// boots. See ``RunnerRequest``.
         let runnerSpec: RunnerRequest?
+        /// Host-to-guest port mappings to install as vmnet forwarding
+        /// rules, merged from the selected template's defaults and the
+        /// operator's own entries before the sheet is dismissed.
+        let publications: [PortPublication]
 
         enum IPSWSource: Sendable { case latest, local }
+    }
+
+    /// The network allocations already handed out to existing VMs.
+    ///
+    /// Read from bundle metadata, so no host-level scan is needed to
+    /// know which subnets are taken. Unreadable bundles are skipped
+    /// rather than failing the create.
+    ///
+    /// - Parameter directory: The VM bundles directory.
+    static func existingAllocations(in directory: URL) -> [GuestNetworkAllocation] {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        return contents
+            .filter { $0.pathExtension == "vm" }
+            .compactMap { try? VirtualMachineBundle.load(from: $0) }
+            .compactMap { $0.metadata.networkAllocation }
     }
 
     struct LinuxCreationRequest: Sendable {
@@ -1355,14 +1377,9 @@ final class AppState {
                 )
             }
 
-            updateCreation(name: name, progress: 0.5, status: "Writing base disk…")
-            let bundle = try await manager.createBundle(
-                id: bundleID,
-                displayName: name,
-                in: vmsDirectory,
-                from: restoreImage,
-                spec: request.spec
-            )
+            guard #available(macOS 27, *) else {
+                throw VirtualMachineProvisioningError.hostTooOld
+            }
             try Task.checkCancellation()
 
             // Capacity pre-flight BEFORE the long install:
@@ -1378,16 +1395,61 @@ final class AppState {
                 in: vmsDirectory
             )
 
-            updateCreation(name: name, progress: 0.55, status: "Installing macOS…")
-            try await manager.install(bundle: bundle, from: ipswURL) { [weak self] fraction in
+            // The shared base image: macOS is installed once per build
+            // and the provisioner daemon is injected into it there.
+            // Only this step needs privileges, and only the first time
+            // — every VM afterwards is an overlay created in seconds.
+            let baseStore = BaseImageStore(rootDirectory: SpooktacularPaths.baseImages)
+            let builder = BaseImageBuilder(store: baseStore)
+            let hadBase = baseStore.hasBase(forBuild: restoreImage.buildVersion)
+            updateCreation(
+                name: name,
+                progress: 0.55,
+                status: hadBase ? "Preparing base image…" : "Installing macOS into the base image…"
+            )
+            let descriptor = try await builder.ensureBase(
+                restoreImage: restoreImage,
+                sizeInBytes: request.spec.diskSizeInBytes
+            ) { [weak self] progress in
                 Task { @MainActor in
-                    self?.updateCreation(
-                        name: name,
-                        progress: 0.55 + fraction * 0.4,
-                        status: "Installing macOS (\(Int(fraction * 100))%)…"
-                    )
+                    switch progress {
+                    case .installing(let fraction):
+                        self?.updateCreation(
+                            name: name,
+                            progress: 0.55 + fraction * 0.35,
+                            status: "Installing macOS into the base image (\(Int(fraction * 100))%)…"
+                        )
+                    case .injectingProvisioner:
+                        self?.updateCreation(
+                            name: name, progress: 0.91, status: "Injecting provisioner…"
+                        )
+                    case .sealing:
+                        self?.updateCreation(
+                            name: name, progress: 0.93, status: "Sealing the base image…"
+                        )
+                    }
                 }
             }
+            try Task.checkCancellation()
+
+            updateCreation(name: name, progress: 0.95, status: "Creating VM from base…")
+            let allocation = try GuestNetworkAllocation.allocate(
+                avoiding: Swift.Set(Self.existingAllocations(in: vmsDirectory).map { $0.thirdOctet })
+            )
+            let bundle = try VirtualMachineBundle.createOverlayBacked(
+                at: vmsDirectory.appendingPathComponent("\(bundleID.uuidString).vm"),
+                spec: request.spec,
+                displayName: name,
+                base: BaseImageReference(
+                    buildVersion: descriptor.buildVersion,
+                    layerUUID: descriptor.layerUUID
+                ),
+                baseImageURL: baseStore.baseImageURL(forBuild: descriptor.buildVersion),
+                baseAuxiliaryURL: baseStore.auxiliaryStorageURL(forBuild: descriptor.buildVersion),
+                baseHardwareModelURL: baseStore.hardwareModelURL(forBuild: descriptor.buildVersion),
+                network: allocation,
+                publications: request.publications
+            )
             try Task.checkCancellation()
 
             // Provisioner daemon injection. A GUI create with a
@@ -1416,33 +1478,10 @@ final class AppState {
             // `installsAppBundle`) would inject the daemon twice: once
             // here (soft-fail), then again in the runner phase
             // (hard-fail on the now-already-injected daemon).
-            let willInjectFirstBootScript = request.userScriptURL != nil
-            if (willInjectFirstBootScript || bundle.spec.guestToolsInstall.installsAppBundle)
-                && request.runnerSpec == nil {
-                if let assets = ProvisionerAssets.locate() {
-                    do {
-                        try DiskInjector.installProvisionerDaemon(
-                            into: bundle,
-                            plist: assets.plist,
-                            runner: assets.runner,
-                            privileged: DirectPrivilegedFileOps()
-                        )
-                    } catch {
-                        Log.provision.error(
-                            "Provisioner daemon injection failed for '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)"
-                        )
-                        notifications.notifyWarning(
-                            bundleID.uuidString,
-                            displayName: name,
-                            body: "Provisioner daemon injection failed, so the first-boot script may not run automatically. Start the VM to complete setup and run it by hand."
-                        )
-                    }
-                } else {
-                    Log.provision.warning(
-                        "Provisioner assets not found — skipping daemon injection for '\(name, privacy: .public)'. Run build-app.sh to produce Resources/SpookProvisioner/."
-                    )
-                }
-            }
+            // No per-VM provisioner injection: the daemon lives in the
+            // shared base image this VM was overlaid on, so every VM
+            // inherits it without touching the guest disk — which is
+            // what makes a GUI create unprivileged.
 
             // Provisioning phase. Runs when EITHER:
             //
