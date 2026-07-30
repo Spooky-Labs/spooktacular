@@ -31,9 +31,11 @@ spook create my-vm --from-ipsw latest
 spook create runner --cpu 8 --memory 16 --disk 100
 ```
 
-> Note: IPSW installation takes 10--20 minutes per VM. For faster
-> deployment, create a base VM once, then use `spook clone` for
-> instant copies.
+> Note: the *first* macOS create installs macOS into a shared base image,
+> which takes 10--20 minutes and needs root once. Every create after that
+> is an overlay layer on that base and takes seconds. `spook clone` is
+> faster still — a measured 30 ms for a 5 GB VM, using no extra disk,
+> because APFS shares the blocks. See <doc:InstantCreate>.
 
 ### Creating a VM with the GUI
 
@@ -42,8 +44,8 @@ spook create runner --cpu 8 --memory 16 --disk 100
 3. Enter a name and adjust hardware settings.
 4. Click **Create**.
 
-The app downloads the latest compatible macOS IPSW and installs it
-into a new VM bundle.
+The app downloads the latest compatible macOS IPSW and, the first time,
+installs it into the shared base image; later creates reuse that base.
 
 ### Managing VMs
 

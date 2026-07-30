@@ -112,7 +112,7 @@ spook create runner-01 --from-ipsw latest \
 > before first boot (`DiskInjector.installProvisionerDaemon`) runs the
 > setup script once the account exists. `--from-ipsw latest` can resolve
 > below the floor; `spook create` fails fast with an actionable error in
-> that case rather than timing out 10-20 minutes into the install.
+> that case rather than timing out 10-20 minutes into a base-image build.
 
 The `--github-runner` flag drives a flow that:
 

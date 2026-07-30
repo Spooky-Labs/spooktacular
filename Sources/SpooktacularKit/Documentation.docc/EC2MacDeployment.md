@@ -149,7 +149,8 @@ spook create runner-02 --from-ipsw latest \
     --cpu 4 --memory 8 --disk 64
 ```
 
-> Note: IPSW installation takes 10-20 minutes per VM. For faster
+> Note: only the first create per macOS build installs macOS, into a
+> shared base image that takes 10-20 minutes. For faster
 > deployment, create one base VM, configure it, then use
 > `spook clone` for instant copies.
 

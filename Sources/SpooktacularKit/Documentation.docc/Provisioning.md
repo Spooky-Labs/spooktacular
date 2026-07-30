@@ -14,7 +14,7 @@ agent and shared-folder watcher) are planned.
 | Mode | Status | Works without setup? | Network needed? | Best for |
 |------|--------|---------------------|----------------|----------|
 | ``ProvisioningMode/ssh`` | **Working** | Need SSH enabled | Yes | Cloned VMs with SSH |
-| ``ProvisioningMode/diskInject`` | **In progress** | Yes | No | Fresh IPSW installs, CI runners |
+| ``ProvisioningMode/diskInject`` | **Working** | Yes | No | Fresh installs, CI runners |
 | ``ProvisioningMode/agent`` | Planned | Need agent installed | No | OCI images (future) |
 | ``ProvisioningMode/sharedFolder`` | Planned | Need watcher | No | No-disk-modify environments |
 
@@ -33,18 +33,26 @@ spook start my-vm \
 **Requires:** Remote Login enabled in the guest
 (System Settings -> General -> Sharing -> Remote Login).
 
-### Disk Inject (In Progress)
+### Disk Inject (Working)
 
-Before the VM boots, Spooktacular mounts the guest's data volume
-and writes a standard macOS LaunchDaemon that executes your script.
-This is the only mode that will work on a completely vanilla macOS
-install. This mode is currently being implemented.
+A standard macOS LaunchDaemon is written into the guest disk as
+`root:wheel`, and it runs your script on first boot. This is the only
+mode that works on a completely vanilla macOS install, because it needs
+nothing enabled in the guest and no guest networking at all.
+
+The write happens once, into the **shared base image**, at base-build
+time — not per VM. That is why it is also the only privileged step in
+the system, and why it costs nothing on the second and every later
+create. See <doc:InstantCreate>.
 
 ```bash
-spook create my-vm --from-ipsw latest \
-    --user-data ~/setup.sh \
-    --provision disk-inject
+spook create my-vm --user-data ~/setup.sh --provision disk-inject
 ```
+
+The guest reports the script's exit code back to the host over vsock,
+so `spook start` prints a definitive result instead of polling for a
+service and guessing from a timeout. When a script fails, its output is
+in the VM bundle's `provision/` directory.
 
 ### Guest Agent (Planned)
 
