@@ -18,11 +18,13 @@ public enum BaseBuildProgress: Sendable, Equatable {
 
 /// Builds the installed-once macOS base image that every VM overlays.
 ///
-/// This is the **only** privileged operation in Spooktacular's create
-/// path: injecting a `root:wheel` LaunchDaemon into a guest image needs
-/// root on the host (or the SMAppService helper in the GUI). Once the
-/// base exists, creating VMs from it is entirely unprivileged and takes
-/// seconds.
+/// Exactly one step of a build is privileged — injecting the
+/// `root:wheel` LaunchDaemon into the guest image — and that step is
+/// delegated to a ``ProvisionerInjecting``. A root process injects
+/// directly; the GUI routes it through its approved SMAppService helper.
+/// Everything else here (creating the ASIF image, running the
+/// installer, sealing the result) runs as the ordinary user, and once
+/// the base exists creating VMs from it is entirely unprivileged.
 ///
 /// The base is deliberately **never booted**. That keeps its
 /// `layerUUID` stable for every overlay stacked on it, and it means
@@ -97,6 +99,9 @@ public final class BaseImageBuilder {
     ///     installing from that would re-download the ~19 GB the
     ///     caller has already cached.
     ///   - sizeInBytes: Logical size of the base disk.
+    ///   - injector: Performs the one privileged step. Its `preflight()`
+    ///     runs before the install, so a permissions problem surfaces in
+    ///     milliseconds instead of after 20 minutes of work.
     ///   - progress: Receives build progress. Not called on a cache hit.
     /// - Returns: The descriptor of the ready base.
     /// - Throws: ``BaseImageBuildError`` or a framework error.
@@ -104,19 +109,16 @@ public final class BaseImageBuilder {
         restoreImage: VZMacOSRestoreImage,
         installMediaURL: URL,
         sizeInBytes: UInt64,
+        injector: ProvisionerInjecting = DirectProvisionerInjector(),
         progress: @escaping @Sendable (BaseBuildProgress) -> Void
     ) async throws -> BaseImageDescriptor {
         let build = restoreImage.buildVersion
         if let cached = try cachedDescriptor(forBuild: build) { return cached }
 
-        guard let assets = ProvisionerAssets.locate() else {
-            throw BaseImageBuildError.provisionerAssetsMissing
-        }
-        do {
-            try DirectPrivilegedFileOps().preflight()
-        } catch {
-            throw BaseImageBuildError.requiresRoot
-        }
+        // Fail fast before the install: the injector decides whether it
+        // can do privileged work (root in-process, or an approved
+        // helper) and says so now rather than 20 minutes from now.
+        try await injector.preflight()
         guard let supported = restoreImage.mostFeaturefulSupportedConfiguration else {
             throw BaseImageBuildError.unsupportedRestoreImage(build: build)
         }
@@ -173,13 +175,7 @@ public final class BaseImageBuilder {
             )
 
             progress(.injectingProvisioner)
-            try DiskInjector.installProvisionerDaemon(
-                intoDiskImageAt: stagedImage,
-                plist: assets.plist,
-                runner: assets.runner,
-                signal: assets.signal,
-                privileged: DirectPrivilegedFileOps()
-            )
+            try await injector.injectProvisioner(intoDiskImageAt: stagedImage)
 
             progress(.sealing)
             try seal(at: stagedImage)

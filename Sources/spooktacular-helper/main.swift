@@ -33,6 +33,55 @@ final class HelperService: NSObject, SpooktacularHelperXPC {
         return try VirtualMachineBundle.load(from: url)
     }
 
+    /// Validates a base-image path handed over by the app.
+    ///
+    /// The helper runs as **root**, so it cannot recompute the calling
+    /// user's `~/.spooktacular` to compare against — root's home is
+    /// `/var/root`. Validation is therefore structural: the path must be
+    /// absolute, must sit inside a base-image cache directory, must name
+    /// the base image itself, and must contain no traversal. Combined
+    /// with the code-signing requirement pinning the peer to this app,
+    /// that keeps the verb from being turned into an
+    /// arbitrary-file-write primitive.
+    private func validatedBaseImageURL(_ path: String) throws -> URL {
+        let url = URL(fileURLWithPath: path).standardizedFileURL
+        let components = url.pathComponents
+        guard url.path.hasPrefix("/"),
+              !path.contains(".."),
+              url.lastPathComponent == "base.asif",
+              components.contains(".spooktacular"),
+              components.contains("cache"),
+              components.contains("base"),
+              FileManager.default.fileExists(atPath: url.path) else {
+            throw HelperServiceError.notABaseImage(path)
+        }
+        return url
+    }
+
+    func installProvisionerIntoBaseImage(
+        baseImagePath: String,
+        reply: @escaping (NSError?) -> Void
+    ) {
+        queue.async {
+            do {
+                let imageURL = try self.validatedBaseImageURL(baseImagePath)
+                guard let assets = ProvisionerAssets.locate() else {
+                    throw HelperServiceError.assetsMissing
+                }
+                try DiskInjector.installProvisionerDaemon(
+                    intoDiskImageAt: imageURL,
+                    plist: assets.plist,
+                    runner: assets.runner,
+                    signal: assets.signal,
+                    privileged: DirectPrivilegedFileOps()
+                )
+                reply(nil)
+            } catch {
+                reply(error as NSError)
+            }
+        }
+    }
+
     func installProvisionerDaemon(
         vmBundlePath: String,
         reply: @escaping (NSError?) -> Void
@@ -85,12 +134,15 @@ final class HelperService: NSObject, SpooktacularHelperXPC {
 /// Helper-local failures surfaced over XPC.
 enum HelperServiceError: Error, LocalizedError {
     case notAVMBundle(String)
+    case notABaseImage(String)
     case assetsMissing
 
     var errorDescription: String? {
         switch self {
         case .notAVMBundle(let path):
             "Refusing to operate on '\(path)' — not a .vm bundle."
+        case .notABaseImage(let path):
+            "Refusing to operate on '\(path)' — not a base image in the Spooktacular cache."
         case .assetsMissing:
             "Provisioner/Guest Tools assets not found in the app bundle."
         }

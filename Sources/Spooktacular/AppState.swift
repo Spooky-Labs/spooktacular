@@ -1410,7 +1410,8 @@ final class AppState {
             let descriptor = try await builder.ensureBase(
                 restoreImage: restoreImage,
                 installMediaURL: ipswURL,
-                sizeInBytes: request.spec.diskSizeInBytes
+                sizeInBytes: request.spec.diskSizeInBytes,
+                injector: HelperProvisionerInjector(helper: PrivilegedHelper.shared)
             ) { [weak self] progress in
                 Task { @MainActor in
                     switch progress {

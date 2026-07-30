@@ -66,6 +66,20 @@ final class PrivilegedHelper {
 
     // MARK: - The two root operations
 
+    /// Root-injects the provisioner LaunchDaemon into a shared base
+    /// image via the helper.
+    ///
+    /// This is the call that makes the helper worth approving: it is the
+    /// only privileged step of a base-image build, so routing it here
+    /// lets the GUI build a base without the app itself being root.
+    ///
+    /// - Parameter baseImageURL: The staged `base.asif` to inject into.
+    func installProvisionerIntoBaseImage(baseImageURL: URL) async throws {
+        try await call { proxy, done in
+            proxy.installProvisionerIntoBaseImage(baseImagePath: baseImageURL.path, reply: done)
+        }
+    }
+
     /// Root-injects the provisioner LaunchDaemon into the guest disk
     /// via the helper.
     func installProvisionerDaemon(vmBundleURL: URL) async throws {

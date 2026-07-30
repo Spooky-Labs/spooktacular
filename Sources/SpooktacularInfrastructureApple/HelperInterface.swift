@@ -50,6 +50,24 @@ import Security
         reply: @escaping (NSError?) -> Void
     )
 
+    /// Injects the provisioner LaunchDaemon into a **shared base
+    /// image** in the base-image cache (mounts the image; root-only).
+    ///
+    /// This is the one privileged step of a base-image build, and the
+    /// reason the GUI's helper exists: everything else — creating the
+    /// ASIF image, running the installer, sealing the result — runs
+    /// unprivileged, so routing just this call through the approved
+    /// helper lets a GUI user build a base without a terminal.
+    ///
+    /// - Parameters:
+    ///   - baseImagePath: Absolute path to a staged `base.asif` inside
+    ///     the base-image cache. Validated by the helper.
+    ///   - reply: `nil` on success, or the failure.
+    func installProvisionerIntoBaseImage(
+        baseImagePath: String,
+        reply: @escaping (NSError?) -> Void
+    )
+
     /// Version/handshake probe so the app can detect a stale helper
     /// after an app update (the approved daemon relaunches from the
     /// updated bundle on next boot, but not mid-session).
