@@ -104,7 +104,7 @@ privileges once; the rest take seconds and ask for nothing.
 # injects the provisioner into it — the only step that needs root).
 sudo spook create dev --openclaw --publish 18789:18789
 
-# Every create afterwards: seconds, no privileges, no install.
+# Every create afterwards: seconds, and no install.
 spook create dev2
 spook create dev3
 
@@ -117,8 +117,15 @@ spook ip dev
 
 On an EC2 Mac, where Spooktacular runs as a root service, even the first create
 asks nothing. Locally you can approve the privileged helper once in System
-Settings instead of using `sudo`. See the `InstantCreate` article in the DocC
-documentation for how base images, overlays and published ports fit together.
+Settings instead of using `sudo`.
+
+One caveat worth stating plainly: a create that provisions a guest account
+(`--remote-desktop`, `--openclaw`, `--user-data`, or any `--vm-password`) writes
+that password to the root-owned System keychain, so it needs root even when the
+base exists — that is the price of never putting the password on disk in
+plaintext. Creates that provision no account need no privileges at all. See the
+`InstantCreate` article in the DocC documentation for how base images, overlays
+and published ports fit together.
 
 ### Remote desktop & interactive VMs
 

@@ -16,6 +16,7 @@ Spooktacular does them **once**:
     ├── base.asif             ← macOS installed, provisioner injected, sealed read-only, never booted
     ├── auxiliary.bin         ← cloned into each VM
     ├── hardware-model.bin
+    ├── machine-identifier.bin ← the identity the installer personalized against
     └── base.json             ← BaseImageDescriptor
 ```
 
@@ -25,7 +26,7 @@ Each VM is then a thin layer on top:
 ~/.spooktacular/vms/<uuid>.vm/
 ├── disk-overlay.asif         ← this VM's writes only; the base stays untouched
 ├── auxiliary.bin             ← APFS clone of the base's
-├── machine-identifier.bin    ← freshly minted, never shared
+├── machine-identifier.bin    ← copied from the base, paired with auxiliary.bin
 └── metadata.json             ← records the base, subnet and published ports
 ```
 
@@ -44,8 +45,32 @@ asked. Locally, either run the first create under `sudo`, or approve the
 privileged helper once in System Settings — after which the GUI can build
 bases itself.
 
-Every create after that is entirely unprivileged: an overlay file, two APFS
-clones, and a new machine identifier.
+Every create after that is a handful of file operations — an overlay layer and
+two APFS clones — with **one exception worth knowing**. A create that
+provisions a guest account (`--remote-desktop`, `--openclaw`, `--user-data`, or
+any `--vm-password`) stores that account's password in the root-owned **System**
+keychain, so it still needs root even when the base already exists. The
+password is written there rather than to `metadata.json` precisely so it never
+sits in plaintext on disk; the first `start` reads it back, applies it, and
+deletes it.
+
+Creates that provision no account — a plain `spook create dev2`, or a
+`--github-runner` create, which mints its credentials at boot instead — need no
+privileges at all once a base exists.
+
+## Why a VM inherits the base's identity
+
+`VZMacOSInstaller` personalizes the auxiliary storage against the machine
+identifier it runs with, and Apple requires that a VM loaded from disk "restore
+the `hardwareModel`, `machineIdentifier` and `auxiliaryStorage` properties to
+their original values". An overlay VM is exactly that disk loaded again, so it
+copies the base's identifier rather than minting one: a fresh identifier would
+pair personalized boot state with an identity it was never signed for.
+
+Apple also warns that running two VMs concurrently with the same identifier is
+undefined in the guest. Both statements are true at once, and the pairing wins —
+a VM that cannot boot is worse than one that should not run beside its sibling.
+Each VM does get its own **MAC address**, so VMs stay distinct on the network.
 
 ## Why the base is never booted
 

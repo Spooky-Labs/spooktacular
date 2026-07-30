@@ -1,0 +1,291 @@
+/* Spooktacular — shared design system.
+ *
+ * A haunted terminal: violet phosphor on near-black, with a campfire
+ * ember for prompts and cursors (the two colours in the app icon).
+ * Monospace carries the chrome, labels and data; a system sans carries
+ * long prose, because all-mono paragraphs are a readability tax.
+ *
+ * Extracted to one file so all pages share tokens — previously every
+ * page inlined its own copy.
+ */
+
+:root {
+  /* Palette. Violet phosphor rather than the usual terminal green:
+     derived from the product's own accent, with the ember pulled from
+     the campfire in the icon. */
+  --void: #08060e;
+  --panel: #0d0a16;
+  --panel-2: #140f22;
+  --rule: rgba(196, 181, 253, 0.14);
+  --rule-strong: rgba(196, 181, 253, 0.3);
+  --phosphor: #ede9fe;
+  --phosphor-mid: #c4b5fd;
+  --phosphor-dim: #8b7faa;
+  --ember: #fb923c;
+  --spectral: #34d399;
+  --alert: #f87171;
+
+  /* Type */
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+
+  /* Scale — a 1.25 ratio, tightened at display sizes for a terminal feel */
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.5rem;
+  --step-3: 2rem;
+  --step-4: clamp(2.25rem, 5vw, 3.5rem);
+
+  --gutter: clamp(1.25rem, 4vw, 2rem);
+  --measure: 68ch;
+  --radius: 6px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+body {
+  background: var(--void);
+  color: var(--phosphor);
+  font-family: var(--mono);
+  font-size: var(--step-0);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  /* Static scanline texture: the CRT read, at a weight you feel rather
+     than see. Fixed so it doesn't shift while scrolling. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(196, 181, 253, 0.022) 0px,
+    rgba(196, 181, 253, 0.022) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  background-attachment: fixed;
+}
+
+/* Prose gets the sans; everything else stays mono. */
+p, .prose { font-family: var(--sans); color: #cfc7e6; }
+p { max-width: var(--measure); }
+
+a { color: var(--phosphor-mid); text-decoration: none; border-bottom: 1px solid var(--rule-strong); }
+a:hover { color: var(--ember); border-bottom-color: var(--ember); }
+a:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; border-radius: 2px; }
+
+.container { max-width: 1080px; margin: 0 auto; padding: 0 var(--gutter); }
+
+.skip-link {
+  position: absolute; top: -100%; left: 1rem; z-index: 200;
+  background: var(--ember); color: #1a0f00; padding: 0.5rem 1rem;
+  border-radius: var(--radius); font-weight: 600; border: 0;
+}
+.skip-link:focus { top: 0.5rem; }
+
+/* ── Chrome ───────────────────────────────────────────────────────── */
+
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(8, 6, 14, 0.82);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border-bottom: 1px solid var(--rule);
+}
+nav .inner {
+  display: flex; align-items: center; justify-content: space-between;
+  max-width: 1080px; margin: 0 auto; padding: 0.6rem var(--gutter);
+}
+nav .logo {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-weight: 600; font-size: var(--step-0); color: var(--phosphor);
+  border: 0; letter-spacing: -0.01em;
+}
+nav .logo img { width: 24px; height: 24px; }
+/* The prompt caret in the wordmark: this is a terminal, and it blinks. */
+nav .logo::after {
+  content: "_"; color: var(--ember); margin-left: -0.2rem;
+  animation: caret 1.15s step-end infinite;
+}
+@keyframes caret { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+nav .nav-links { display: flex; align-items: center; gap: 0.15rem; font-size: var(--step--1); }
+nav .nav-links a {
+  color: var(--phosphor-dim); padding: 0.35rem 0.7rem; border: 0;
+  border-radius: var(--radius); transition: color 0.18s, background 0.18s;
+}
+nav .nav-links a:hover { color: var(--phosphor); background: var(--panel-2); }
+nav .nav-links a.active { color: var(--ember); }
+nav .cta-btn {
+  border: 1px solid var(--ember); color: var(--ember);
+  padding: 0.35rem 0.85rem; border-radius: var(--radius);
+  font-size: var(--step--1); margin-left: 0.4rem;
+  transition: background 0.18s, color 0.18s;
+}
+nav .cta-btn:hover { background: var(--ember); color: #1a0f00; }
+
+#nav-toggle { display: none; }
+nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
+nav .hamburger span { display: block; width: 18px; height: 2px; background: var(--phosphor-mid); transition: transform 0.25s, opacity 0.25s; }
+
+@media (max-width: 768px) {
+  nav .hamburger { display: flex; }
+  nav .nav-links {
+    display: none; flex-direction: column; align-items: stretch;
+    position: absolute; top: 100%; left: 0; right: 0;
+    background: rgba(8, 6, 14, 0.97); border-bottom: 1px solid var(--rule);
+    padding: 0.75rem var(--gutter);
+  }
+  #nav-toggle:checked ~ .nav-links { display: flex; }
+  nav .cta-btn { margin: 0.5rem 0 0; text-align: center; }
+}
+
+/* ── Sections ─────────────────────────────────────────────────────── */
+
+section { padding: clamp(3.5rem, 8vw, 6rem) 0; border-top: 1px solid var(--rule); }
+section:first-of-type { border-top: 0; }
+
+/* Structural device: a section's eyebrow is the command that produces
+   it. Order isn't meaningful here, so numbering would be decoration —
+   the command is the fact worth encoding. */
+.prompt {
+  display: inline-flex; align-items: baseline; gap: 0.5ch;
+  font-size: var(--step--1); color: var(--phosphor-dim);
+  margin-bottom: 1rem; letter-spacing: 0.02em;
+}
+.prompt::before { content: "spook ~ %"; color: var(--ember); }
+
+h1, h2, h3 { font-family: var(--mono); font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+h1 { font-size: var(--step-4); }
+h2 { font-size: var(--step-3); margin-bottom: 0.75rem; }
+h3 { font-size: var(--step-1); margin-bottom: 0.4rem; }
+/* Phosphor bloom — the glow a CRT gives its brightest text. */
+h1, h2 { text-shadow: 0 0 22px rgba(196, 181, 253, 0.18); }
+
+.lede { font-family: var(--sans); font-size: var(--step-1); color: #cfc7e6; max-width: 60ch; }
+
+/* ── Terminal panels ──────────────────────────────────────────────── */
+
+.term {
+  background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.9);
+}
+.term-bar {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 0.85rem; background: var(--panel-2);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--step--1); color: var(--phosphor-dim);
+}
+.term-bar .dot { width: 9px; height: 9px; border-radius: 50%; background: #2c2340; }
+.term-bar .title { margin-left: 0.4rem; }
+.term-body {
+  padding: 1rem 1.1rem; font-size: var(--step-0);
+  white-space: pre-wrap; word-break: break-word; line-height: 1.75;
+  overflow-x: auto;
+}
+.term-body .cmd { color: var(--phosphor); }
+.term-body .cmd::before { content: "$ "; color: var(--ember); }
+.term-body .ok { color: var(--spectral); }
+.term-body .note { color: var(--phosphor-dim); }
+.term-body .warn { color: var(--ember); }
+.term-body .time { color: var(--phosphor-dim); }
+
+/* Copyable command rows */
+.cmd-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  background: var(--panel); border: 1px solid var(--rule);
+  border-radius: var(--radius); padding: 0.7rem 0.9rem; margin: 0.5rem 0;
+}
+.cmd-row code { flex: 1; font-family: var(--mono); font-size: var(--step-0); color: var(--phosphor); overflow-x: auto; }
+.cmd-row code::before { content: "$ "; color: var(--ember); }
+.copy {
+  flex-shrink: 0; background: transparent; border: 1px solid var(--rule);
+  color: var(--phosphor-dim); font-family: var(--mono); font-size: var(--step--1);
+  padding: 0.2rem 0.55rem; border-radius: 4px; cursor: pointer;
+  transition: color 0.18s, border-color 0.18s, background 0.18s;
+}
+.copy:hover { color: var(--ember); border-color: var(--ember); }
+.copy[data-copied="true"] { color: var(--spectral); border-color: var(--spectral); }
+
+/* ── Grids and cards ──────────────────────────────────────────────── */
+
+.grid { display: grid; gap: 1rem; }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid.three { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+.card {
+  background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 10px; padding: 1.25rem;
+  transition: border-color 0.22s, transform 0.22s;
+}
+.card:hover { border-color: var(--rule-strong); transform: translateY(-2px); }
+.card h3 { color: var(--phosphor); }
+.card p { font-size: var(--step--1); margin-top: 0.35rem; }
+
+/* Data rows — a spec sheet, not a feature grid. */
+.spec { border-top: 1px solid var(--rule); }
+.spec-row {
+  display: grid; grid-template-columns: minmax(120px, 22%) 1fr;
+  gap: 1rem; padding: 0.85rem 0; border-bottom: 1px solid var(--rule);
+  align-items: baseline;
+}
+.spec-row dt { color: var(--phosphor-dim); font-size: var(--step--1); }
+.spec-row dd { color: var(--phosphor); }
+.spec-row dd .sub { display: block; font-family: var(--sans); font-size: var(--step--1); color: var(--phosphor-dim); margin-top: 0.15rem; }
+@media (max-width: 620px) { .spec-row { grid-template-columns: 1fr; gap: 0.15rem; } }
+
+/* Visually hidden, still announced. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* Inline code inside prose keeps the mono voice without shouting. */
+p code, li code, dd code {
+  font-family: var(--mono); font-size: 0.92em; color: var(--phosphor-mid);
+  background: var(--panel-2); padding: 0.06em 0.35em; border-radius: 4px;
+}
+
+.tag {
+  display: inline-block; font-size: var(--step--1); color: var(--phosphor-dim);
+  border: 1px solid var(--rule); border-radius: 999px; padding: 0.05rem 0.6rem;
+}
+.tag.ok { color: var(--spectral); border-color: rgba(52, 211, 153, 0.35); }
+.tag.soon { color: var(--ember); border-color: rgba(251, 146, 60, 0.35); }
+
+/* ── Buttons ──────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-family: var(--mono); font-size: var(--step-0);
+  padding: 0.6rem 1.1rem; border-radius: var(--radius); border: 1px solid var(--rule-strong);
+  color: var(--phosphor); transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+.btn:hover { border-color: var(--ember); color: var(--ember); background: rgba(251, 146, 60, 0.06); }
+.btn.primary { background: var(--ember); border-color: var(--ember); color: #1a0f00; font-weight: 600; }
+.btn.primary:hover { color: #1a0f00; filter: brightness(1.08); }
+.btn-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
+
+/* ── Footer ───────────────────────────────────────────────────────── */
+
+footer { border-top: 1px solid var(--rule); padding: 2.5rem 0; color: var(--phosphor-dim); font-size: var(--step--1); }
+footer .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.5rem; }
+footer h4 { color: var(--phosphor); font-size: var(--step--1); margin-bottom: 0.5rem; font-weight: 600; }
+footer a { display: block; color: var(--phosphor-dim); border: 0; padding: 0.15rem 0; }
+footer a:hover { color: var(--ember); }
+footer .base { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); }
+
+/* ── Motion ───────────────────────────────────────────────────────── */
+
+/* Scroll reveal. Elements start hidden only when JS is present, so a
+   no-JS reader sees everything. */
+.js .reveal { opacity: 0; transform: translateY(14px); }
+.js .reveal.in { opacity: 1; transform: none; transition: opacity 0.55s ease, transform 0.55s cubic-bezier(0.2, 0.7, 0.2, 1); }
+
+/* The typed cursor in the hero terminal. */
+.typing-caret { color: var(--ember); animation: caret 1.15s step-end infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  .js .reveal { opacity: 1; transform: none; }
+}

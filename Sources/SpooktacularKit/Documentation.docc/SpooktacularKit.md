@@ -50,10 +50,33 @@ try VirtualMachineConfiguration.applySpec(spec, to: config)
 
 ## Topics
 
+### Base images and disks
+
+- ``BaseImageStore``
+- ``BaseImageDescriptor``
+- ``BaseImageBuilder``
+- ``BaseImageReference``
+- ``DiskStack``
+- ``ProvisionerInjecting``
+
+### Guest networking
+
+- ``VmnetNetwork``
+- ``GuestNetworkAllocation``
+- ``PortPublication``
+- ``GuestNetworking``
+
+### Readiness
+
+- ``ProvisioningSignal``
+- ``ProvisioningSignalListener``
+
 ### Guides
 
 - <doc:GettingStarted>
+- <doc:InstantCreate>
 - <doc:Provisioning>
+- <doc:LinuxProvisioning>
 - <doc:CLIReference>
 - <doc:GitHubActionsGuide>
 - <doc:JenkinsGuide>
