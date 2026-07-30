@@ -45,7 +45,10 @@ struct EmptyStateView: View {
             VStack(spacing: 8) {
                 Text("No workspaces yet.")
                     .font(.system(.largeTitle, design: .rounded, weight: .semibold))
-                Text("Create a macOS workspace to get started. It takes about 15 minutes the first time — future clones take 48 ms.")
+                // The first create installs macOS into the shared base image;
+                // every one after it is an overlay layer on that base. The
+                // clone figure is measured, not estimated: 30 ms for a 5 GB VM.
+                Text("Create a macOS workspace to get started. The first one installs macOS into a shared base image and takes 10 to 20 minutes. Every workspace after that takes seconds.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
