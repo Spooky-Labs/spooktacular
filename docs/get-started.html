@@ -18,7 +18,7 @@
 <style>
 /* Documentation shell: a sticky contents rail beside a single measure of prose. */
 .doc { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 3.5rem); align-items: start; }
-@media (max-width: 940px) { .doc { grid-template-columns: 1fr; } .toc { position: static !important; } }
+@media (max-width: 940px) { .doc { grid-template-columns: minmax(0, 1fr); } .toc { position: static !important; } }
 
 .toc { position: sticky; top: calc(var(--u) * 12); }
 .toc h2 {

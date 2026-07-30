@@ -120,7 +120,10 @@ strong { font-weight: 600; color: var(--ink); }
 
 code, kbd, samp, pre { font-family: var(--mono); }
 
-/* Inline code: a hairline chip, 11-12px, never a colored blob. */
+/* Inline code: a hairline chip, never a colored blob. Long identifiers such
+   as kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly have no break
+   opportunity, so they must be allowed to break rather than push the page
+   sideways on a phone. */
 :not(pre) > code {
   font-size: 0.86em;
   padding: 0.12em 0.36em;
@@ -129,7 +132,7 @@ code, kbd, samp, pre { font-family: var(--mono); }
   background: var(--surface-2);
   color: var(--ink);
   letter-spacing: 0;
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 
 hr { height: 1px; margin: 0; border: 0; background: var(--line); }
@@ -302,7 +305,13 @@ nav.site .inner {
   font-family: var(--mono); font-size: 0.8125rem;
   overflow-x: auto;
 }
-.cmd code { flex: 1; white-space: pre; color: var(--ink); border: 0; background: none; padding: 0; }
+/* min-width:0 lets the flex item shrink, so a long command scrolls inside
+   .cmd instead of widening whatever column contains it. */
+.cmd code {
+  flex: 1; min-width: 0;
+  white-space: pre; color: var(--ink);
+  border: 0; background: none; padding: 0;
+}
 .cmd .sigil { color: var(--ink-3); user-select: none; }
 .copy {
   flex: none; padding: 0.25rem 0.5rem;
