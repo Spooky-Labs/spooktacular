@@ -3,237 +3,472 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spooktacular — macOS VMs in seconds, on the Mac you already have</title>
-<meta name="description" content="Open-source macOS VM manager for Apple silicon. Install macOS once, then create VMs in seconds with copy-on-write overlays. Zero-touch GitHub Actions runners, published ports, remote desktop. MIT licensed, $0 forever.">
-<meta name="keywords" content="macOS virtualization, Apple silicon VM, CI/CD runners, GitHub Actions, DiskImageKit, ASIF, vmnet, EC2 Mac, open source">
+<title>Spooktacular — macOS VMs in seconds</title>
+<meta name="description" content="Install macOS once into a shared base image, then create virtual machines in seconds on the Mac you already have. Open-source, Apple-native virtualization for CI runners and remote desktops.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#08060e">
+<meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="Spooktacular — macOS VMs in seconds">
-<meta property="og:description" content="Install macOS once. Create VMs in seconds with copy-on-write overlays. MIT licensed, $0 forever.">
-<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
+<meta property="og:description" content="Install macOS once. Create every VM after that in seconds, from a shared base image.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://spooktacular.app/">
+<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
 <link rel="canonical" href="https://spooktacular.app/">
 <link rel="stylesheet" href="/spook.css">
 <style>
-/* Hero — the one place boldness is spent. */
-.hero { padding: clamp(2rem, 5vw, 3.25rem) 0 clamp(2.5rem, 6vw, 4rem); }
-.hero .wordmark { font-size: var(--step--1); color: var(--phosphor-dim); letter-spacing: 0.14em; text-transform: uppercase; margin-bottom: 1.25rem; }
-.hero h1 { max-width: 22ch; }
-.hero h1 em { font-style: normal; color: var(--ember); }
-.hero .lede { margin-top: 1rem; }
-
-/* One slow scanline sweeping the hero terminal: the only moving
-   ornament on the page, and the reason the CRT read lands. */
-.hero-term { margin-top: 1.75rem; position: relative; overflow: hidden; border-radius: 10px; }
-.hero-term::after {
-  content: ""; position: absolute; inset-inline: 0; top: 0; height: 26%;
-  pointer-events: none;
-  background: linear-gradient(to bottom, transparent, rgba(196,181,253,0.05), transparent);
-  animation: sweep 7s linear infinite;
+/* Hero: text left, figure right. The figure is the product's architecture,
+   which is also the reason it is fast — so it earns the space. */
+.hero { padding-block: clamp(2.5rem, 1.5rem + 4vw, 5rem) clamp(3rem, 2rem + 4vw, 6rem); }
+.hero-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  gap: clamp(2rem, 5vw, 4.5rem); align-items: center;
 }
-@keyframes sweep { from { transform: translateY(-110%); } to { transform: translateY(420%); } }
-@media (prefers-reduced-motion: reduce) { .hero-term::after { display: none; } }
+@media (max-width: 1000px) { .hero-grid { grid-template-columns: 1fr; } }
 
-#session { min-height: 17.5rem; }
-@media (max-width: 620px) { #session { min-height: 24rem; } }
+.hero h1 { max-width: 18ch; }
+.hero .lede {
+  margin-top: 1.15rem; max-width: 46ch;
+  font-size: var(--t-lede); line-height: 1.45; color: var(--ink-2);
+}
+.hero .btn-row { margin-top: 1.9rem; }
+.hero .cmd { margin-top: 1.1rem; max-width: 30rem; }
+.hero .meta { margin-top: 1.1rem; font-size: var(--t-small); color: var(--ink-3); }
 
-/* Metric strip: three facts set as data, not as a feature grid. */
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; margin-top: 2rem; }
-.metric { background: var(--panel); padding: 1rem 1.15rem; }
-.metric b { display: block; font-size: var(--step-2); color: var(--phosphor); letter-spacing: -0.03em; }
-.metric span { font-size: var(--step--1); color: var(--phosphor-dim); }
+/* The stack figure, on the same 8px module as the rest of the page. */
+.stack { display: block; width: 100%; height: auto; }
+.stack text { font-family: var(--mono); font-size: 12px; letter-spacing: 0.01em; }
+.stack .lbl { fill: var(--ink); }
+.stack .lbl-acc { fill: var(--accent); }
+.stack .num { fill: var(--ink-3); }
+.stack .cap { fill: var(--ink-3); font-size: 11px; }
+.stack .slab { fill: var(--surface); stroke: var(--line); }
+.stack .edge { fill: var(--accent); opacity: 0.55; }
+.stack .slab-base { fill: var(--surface-2); stroke: var(--accent); stroke-opacity: 0.35; }
+.stack .blocks rect { fill: var(--accent); opacity: 0.17; }
 
-.compare { width: 100%; border-collapse: collapse; font-size: var(--step--1); }
-.compare th, .compare td { text-align: left; padding: 0.7rem 0.6rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
-.compare th { color: var(--phosphor-dim); font-weight: 600; }
-.compare td:first-child { color: var(--phosphor); }
-.compare .yes { color: var(--spectral); }
-.compare .no { color: var(--phosphor-dim); }
+@media (prefers-reduced-motion: no-preference) {
+  .stack .layer { animation: layer-in 420ms var(--out-expo) both; }
+  .stack .layer.l1 { animation-delay: 90ms; }
+  .stack .layer.l2 { animation-delay: 170ms; }
+  .stack .layer.l3 { animation-delay: 250ms; }
+  @keyframes layer-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+/* Before/after of what a create involves. */
+.then-now { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; }
+@media (max-width: 720px) { .then-now { grid-template-columns: 1fr; } }
+.tn { padding: clamp(1.15rem, 0.8rem + 1vw, 1.75rem); background: var(--paper); }
+.tn > span {
+  display: block; margin-bottom: 0.9rem;
+  font-family: var(--mono); font-size: 0.6875rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);
+}
+.tn.now > span { color: var(--accent); }
+.tn ul { margin: 0; padding-left: 1.05rem; color: var(--ink-2); font-size: var(--t-small); line-height: 1.7; }
+
+.use-cases { display: grid; gap: 1px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 900px) { .use-cases { grid-template-columns: 1fr; } }
+.uc { display: flex; flex-direction: column; padding: clamp(1.15rem, 0.8rem + 1vw, 1.75rem); background: var(--paper); }
+.uc h3 { margin-bottom: 0.4rem; }
+.uc p { color: var(--ink-2); font-size: var(--t-small); }
+.uc .cmd { margin-top: 1.15rem; }
+
+.shot { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(1.5rem, 4vw, 3rem); align-items: center; }
+@media (max-width: 900px) { .shot { grid-template-columns: 1fr; } }
+.shot p { color: var(--ink-2); }
+.shot ul { margin: 1rem 0 0; padding-left: 1.1rem; color: var(--ink-2); font-size: var(--t-small); line-height: 1.7; }
+
+.closing { text-align: center; }
+.closing h2 { max-width: 26ch; margin-inline: auto; }
+.closing p { margin-top: 0.9rem; max-width: 50ch; margin-inline: auto; color: var(--ink-2); }
+.closing .btn-row { margin-top: 1.6rem; justify-content: center; }
 </style>
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
 
-<nav>
+<nav class="site">
   <div class="inner">
-    <a href="/" class="logo"><img src="/favicon.png" alt="">spooktacular</a>
-    <input type="checkbox" id="nav-toggle" aria-label="Open menu">
+    <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" aria-label="Menu">
     <label class="hamburger" for="nav-toggle"><span></span><span></span><span></span></label>
     <div class="nav-links">
       <a href="/features.html">Features</a>
       <a href="/get-started.html">Get started</a>
       <a href="/compare.html">Compare</a>
       <a href="/security.html">Security</a>
-      <a href="/roadmap.html">Roadmap</a>
-      <a href="https://github.com/Spooky-Labs/spooktacular" class="cta-btn">GitHub</a>
+      <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
     </div>
   </div>
 </nav>
 
 <main id="main">
 
-<section class="hero">
-  <div class="container">
-    <p class="wordmark">macOS virtualization for teams · Apple silicon</p>
-    <h1>Install macOS once. Then create VMs in <em>seconds</em>.</h1>
-    <p class="lede">
-      Spooktacular installs macOS into one shared base image, then gives every VM
-      its own copy-on-write overlay. The first VM takes twenty minutes and asks
-      for permission once. Every VM after that takes about a second and asks for
-      nothing.
-    </p>
-
-    <div class="hero-term">
-      <div class="term">
-        <div class="term-bar">
-          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          <span class="title">zsh — spook</span>
+  <section class="hero">
+    <div class="container hero-grid">
+      <div>
+        <h1>macOS VMs in seconds.</h1>
+        <p class="lede">
+          Install macOS <strong>once</strong> into a shared base image. Every
+          virtual machine after that is a copy-on-write layer on top, created in
+          seconds, on the Mac you already own.
+        </p>
+        <div class="btn-row">
+          <a class="btn primary" href="/get-started.html">Build from source</a>
+          <a class="btn" href="https://github.com/Spooky-Labs/spooktacular">View on GitHub</a>
         </div>
-        <div class="term-body" id="session" role="img"
-             aria-label="Terminal session: the first create builds a shared base image; a second create finishes in under a second; starting the VM reports provisioning complete.">
+        <div class="cmd">
+          <span class="sigil">$</span>
+          <code>spook create ci-runner-02</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p class="meta">Apple silicon · macOS 27 · MIT licensed</p>
+      </div>
+
+      <figure class="fig">
+        <svg class="stack" viewBox="0 0 560 300" role="img"
+             aria-label="Diagram: three virtual machine overlay layers stacked on a single shared read-only base image. Each overlay holds only that machine's writes, in tens of megabytes, while the 40 gigabyte base is never modified.">
+          <!-- overlay layers, newest on top; each holds only its own writes -->
+          <g class="layer l3">
+            <rect class="slab" x="18" y="10" width="524" height="42" rx="3"/>
+            <rect class="edge" x="18" y="10" width="3" height="42"/>
+            <text class="lbl" x="36" y="36">ci-runner-02</text>
+            <text class="num" x="524" y="36" text-anchor="end">+ 40 MB</text>
+          </g>
+          <g class="layer l2">
+            <rect class="slab" x="18" y="60" width="524" height="42" rx="3"/>
+            <rect class="edge" x="18" y="60" width="3" height="42"/>
+            <text class="lbl" x="36" y="86">ci-runner-01</text>
+            <text class="num" x="524" y="86" text-anchor="end">+ 12 MB</text>
+          </g>
+          <g class="layer l1">
+            <rect class="slab" x="18" y="110" width="524" height="42" rx="3"/>
+            <rect class="edge" x="18" y="110" width="3" height="42"/>
+            <text class="lbl" x="36" y="136">dev</text>
+            <text class="num" x="524" y="136" text-anchor="end">+ 96 MB</text>
+          </g>
+
+          <text class="cap" x="18" y="176">three overlays — each stores only its own writes</text>
+
+          <!-- the shared base, drawn as the blocks it is made of -->
+          <rect class="slab-base" x="18" y="190" width="524" height="72" rx="3"/>
+          <g class="blocks">
+            <rect x="36" y="228" width="10" height="10"/>
+            <rect x="50" y="228" width="10" height="10"/>
+            <rect x="64" y="228" width="10" height="10"/>
+            <rect x="78" y="228" width="10" height="10"/>
+            <rect x="92" y="228" width="10" height="10"/>
+            <rect x="106" y="228" width="10" height="10"/>
+            <rect x="120" y="228" width="10" height="10"/>
+            <rect x="134" y="228" width="10" height="10"/>
+            <rect x="148" y="228" width="10" height="10"/>
+            <rect x="162" y="228" width="10" height="10"/>
+            <rect x="176" y="228" width="10" height="10"/>
+            <rect x="190" y="228" width="10" height="10"/>
+            <rect x="204" y="228" width="10" height="10"/>
+            <rect x="218" y="228" width="10" height="10"/>
+            <rect x="232" y="228" width="10" height="10"/>
+            <rect x="246" y="228" width="10" height="10"/>
+            <rect x="260" y="228" width="10" height="10"/>
+            <rect x="274" y="228" width="10" height="10"/>
+            <rect x="288" y="228" width="10" height="10"/>
+            <rect x="302" y="228" width="10" height="10"/>
+            <rect x="316" y="228" width="10" height="10"/>
+            <rect x="330" y="228" width="10" height="10"/>
+            <rect x="344" y="228" width="10" height="10"/>
+            <rect x="358" y="228" width="10" height="10"/>
+            <rect x="372" y="228" width="10" height="10"/>
+            <rect x="386" y="228" width="10" height="10"/>
+            <rect x="400" y="228" width="10" height="10"/>
+            <rect x="414" y="228" width="10" height="10"/>
+            <rect x="428" y="228" width="10" height="10"/>
+            <rect x="442" y="228" width="10" height="10"/>
+            <rect x="456" y="228" width="10" height="10"/>
+            <rect x="470" y="228" width="10" height="10"/>
+            <rect x="484" y="228" width="10" height="10"/>
+            <rect x="498" y="228" width="10" height="10"/>
+            <rect x="512" y="228" width="10" height="10"/>
+            <rect x="36" y="242" width="10" height="10"/>
+            <rect x="50" y="242" width="10" height="10"/>
+            <rect x="64" y="242" width="10" height="10"/>
+            <rect x="78" y="242" width="10" height="10"/>
+            <rect x="92" y="242" width="10" height="10"/>
+            <rect x="106" y="242" width="10" height="10"/>
+            <rect x="120" y="242" width="10" height="10"/>
+            <rect x="134" y="242" width="10" height="10"/>
+            <rect x="148" y="242" width="10" height="10"/>
+            <rect x="162" y="242" width="10" height="10"/>
+            <rect x="176" y="242" width="10" height="10"/>
+            <rect x="190" y="242" width="10" height="10"/>
+            <rect x="204" y="242" width="10" height="10"/>
+            <rect x="218" y="242" width="10" height="10"/>
+            <rect x="232" y="242" width="10" height="10"/>
+            <rect x="246" y="242" width="10" height="10"/>
+            <rect x="260" y="242" width="10" height="10"/>
+            <rect x="274" y="242" width="10" height="10"/>
+            <rect x="288" y="242" width="10" height="10"/>
+            <rect x="302" y="242" width="10" height="10"/>
+            <rect x="316" y="242" width="10" height="10"/>
+            <rect x="330" y="242" width="10" height="10"/>
+            <rect x="344" y="242" width="10" height="10"/>
+            <rect x="358" y="242" width="10" height="10"/>
+            <rect x="372" y="242" width="10" height="10"/>
+            <rect x="386" y="242" width="10" height="10"/>
+            <rect x="400" y="242" width="10" height="10"/>
+            <rect x="414" y="242" width="10" height="10"/>
+            <rect x="428" y="242" width="10" height="10"/>
+            <rect x="442" y="242" width="10" height="10"/>
+            <rect x="456" y="242" width="10" height="10"/>
+            <rect x="470" y="242" width="10" height="10"/>
+            <rect x="484" y="242" width="10" height="10"/>
+            <rect x="498" y="242" width="10" height="10"/>
+            <rect x="512" y="242" width="10" height="10"/>
+          </g>
+          <text class="lbl-acc" x="36" y="214">base.asif</text>
+          <text class="num" x="524" y="214" text-anchor="end">40 GB</text>
+          <text class="cap" x="18" y="286">one macOS install · read-only · never booted</text>
+        </svg>
+        <figcaption><b>Fig 1</b> — one shared base image, one thin overlay per VM.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="container">
+      <div class="cardset reveal">
+        <div class="facts">
+          <div class="fact">
+            <b>30&thinsp;<sup>ms</sup></b>
+            <span>to clone a 5&nbsp;GB VM, measured on an M-series Mac</span>
+          </div>
+          <div class="fact">
+            <b>0&thinsp;<sup>bytes</sup></b>
+            <span>of extra disk for that clone — APFS shares the blocks</span>
+          </div>
+          <div class="fact">
+            <b>1&thinsp;<sup>install</sup></b>
+            <span>of macOS per build, not one per virtual machine</span>
+          </div>
+          <div class="fact">
+            <b>918</b>
+            <span>tests across the engine, the CLI and the app</span>
+          </div>
         </div>
       </div>
     </div>
+  </section>
 
-    <div class="metrics">
-      <div class="metric"><b>~1s</b><span>to create VM number two</span></div>
-      <div class="metric"><b>2</b><span>macOS VMs per Mac, the EULA maximum</span></div>
-      <div class="metric"><b>$0</b><span>MIT licensed, forever</span></div>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Creating a macOS VM used to mean installing macOS.</h2>
+        <p>
+          Every VM meant its own 10–20 minute install and its own privileged
+          write into the guest disk. Spooktacular does both once per macOS
+          build, then shares the result.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="then-now">
+          <div class="tn">
+            <span>Per virtual machine, before</span>
+            <ul>
+              <li>Download a restore image</li>
+              <li>Run Apple's installer — 10 to 20 minutes</li>
+              <li>Write the provisioner into the guest disk, as root</li>
+              <li>Pay the full disk cost of another macOS</li>
+            </ul>
+          </div>
+          <div class="tn now">
+            <span>Per virtual machine, now</span>
+            <ul>
+              <li>Add an overlay layer to the shared base</li>
+              <li>Clone the auxiliary storage — an APFS clone, so instant</li>
+              <li>Reserve an address and install any published ports</li>
+              <li>Boot, and let the guest report when it is ready</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <p class="prose" style="margin-top:1.5rem">
+        The base image in <strong>Fig 1</strong> is sealed read-only and never
+        booted, so its layer identity cannot drift and a warm pool can
+        <em>prove</em> its base is pristine rather than assume it.
+        <a href="/api/documentation/spooktacularkit/instantcreate">How instant create works</a>
+        has the full picture.
+      </p>
     </div>
+  </section>
 
-    <div class="btn-row">
-      <a href="/get-started.html" class="btn primary">Get started</a>
-      <a href="https://github.com/Spooky-Labs/spooktacular" class="btn">Read the source</a>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Built for the two jobs Macs get bought for.</h2>
+        <p>
+          CI runners that reset to a known-clean state, and desktops you can
+          reach. Each is one command.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="use-cases">
+          <div class="uc">
+            <p class="eyebrow">GitHub Actions</p>
+            <h3>Ephemeral runners</h3>
+            <p>
+              A registration token is minted seconds before boot from a token in
+              the Keychain, so no long-lived credential reaches the guest. The
+              runner takes one job, then the VM resets to the base.
+            </p>
+            <div class="cmd">
+              <span class="sigil">$</span>
+              <code>spook create runner --github-runner --ephemeral</code>
+              <button class="copy" type="button" aria-label="Copy command">copy</button>
+            </div>
+          </div>
+          <div class="uc">
+            <p class="eyebrow">Screen Sharing</p>
+            <h3>Remote desktops</h3>
+            <p>
+              An admin account is provisioned, Setup Assistant is skipped, and
+              Screen Sharing plus Remote Login come up on first boot. Connect
+              with the credentials you set.
+            </p>
+            <div class="cmd">
+              <span class="sigil">$</span>
+              <code>spook create desktop --remote-desktop</code>
+              <button class="copy" type="button" aria-label="Copy command">copy</button>
+            </div>
+          </div>
+          <div class="uc">
+            <p class="eyebrow">Published ports</p>
+            <h3>Guest services on the host</h3>
+            <p>
+              Every VM gets a private subnet and a reserved address, so a guest
+              port can be published to the host the way a container's would be —
+              and <code>spook ip</code> is a lookup, not a probe.
+            </p>
+            <div class="cmd">
+              <span class="sigil">$</span>
+              <code>spook create web --publish 8080:80</code>
+              <button class="copy" type="button" aria-label="Copy command">copy</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<section>
-  <div class="container reveal">
-    <p class="prompt">create agent --openclaw --publish 18789:18789</p>
-    <h2>Your VM's services, on localhost</h2>
-    <p>
-      Every VM gets its own private subnet and a reserved address, so
-      <code>spook ip</code> is a lookup rather than a guess. Publish a guest port
-      and reach it on the host the way you would a container.
-    </p>
-    <div class="cmd-row"><code>spook create agent --openclaw --publish 18789:18789</code><button class="copy" type="button">copy</button></div>
-    <div class="cmd-row"><code>open http://localhost:18789</code><button class="copy" type="button">copy</button></div>
-  </div>
-</section>
-
-<section>
-  <div class="container reveal">
-    <p class="prompt">create runner-01 --github-runner</p>
-    <h2>Runners that register themselves</h2>
-    <p>
-      One command creates the VM, mints a short-lived registration token from a
-      personal access token held in the Keychain, boots headless, and waits until
-      GitHub reports the runner online. No golden image to maintain, no manual
-      first login.
-    </p>
-    <div class="cmd-row"><code>spook create runner-01 --github-runner --github-repo your-org/repo --github-token-keychain your-org --ephemeral</code><button class="copy" type="button">copy</button></div>
-    <p style="margin-top:1rem">
-      An ephemeral runner exits after one job, and resetting the VM discards its
-      overlay — so the next job starts from the base image, which the framework
-      only ever reads.
-    </p>
-  </div>
-</section>
-
-<section>
-  <div class="container reveal">
-    <p class="prompt">list --long</p>
-    <h2>What it is</h2>
-    <dl class="spec">
-      <div class="spec-row">
-        <dt>Guests</dt>
-        <dd>macOS and Linux
-          <span class="sub">macOS from an IPSW into a shared base image; Linux from cloud images with cloud-init.</span></dd>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>One engine, two front doors.</h2>
+        <p>
+          A native Mac app and a 27-command CLI over one core. A VM made in
+          either is a first-class citizen of the other.
+        </p>
       </div>
-      <div class="spec-row">
-        <dt>Storage</dt>
-        <dd>ASIF base plus per-VM overlay
-          <span class="sub">Apple's DiskImageKit. Ten VMs cost about one base image plus whatever each one writes.</span></dd>
+      <div class="shot reveal">
+        <figure class="fig">
+          <img src="/img/app/window.png" width="1772" height="1078" loading="lazy"
+               alt="The Spooktacular Mac app, listing virtual machines with their CPU, memory and disk allocations beside a sidebar of downloaded images.">
+          <figcaption><b>Fig 2</b> — the app, managing a small fleet.</figcaption>
+        </figure>
+        <div>
+          <p>
+            The app is where you watch a fleet and open a screen; the CLI is what
+            your automation calls. Neither wraps the other — both sit on the same
+            Swift core, so behaviour cannot drift between them.
+          </p>
+          <ul>
+            <li>Create, clone, snapshot and reset from either side</li>
+            <li>A live event stream per VM over a Unix socket</li>
+            <li>An HTTP control plane with signed requests, for fleets</li>
+            <li>Roles and Secure-Enclave-bound keys for who may do what</li>
+          </ul>
+          <div class="btn-row" style="margin-top:1.4rem">
+            <a class="btn" href="/features.html">All features</a>
+            <a class="btn" href="/api/documentation/spooktacularkit/clireference">CLI reference</a>
+          </div>
+        </div>
       </div>
-      <div class="spec-row">
-        <dt>Networking</dt>
-        <dd>A vmnet network per VM
-          <span class="sub">Reserved addresses and published ports. VMs are isolated from each other by default.</span></dd>
-      </div>
-      <div class="spec-row">
-        <dt>Provisioning</dt>
-        <dd>A first-boot script, run as root
-          <span class="sub">The guest reports completion over vsock with its exit code, so nothing polls for readiness.</span></dd>
-      </div>
-      <div class="spec-row">
-        <dt>Interfaces</dt>
-        <dd>CLI, SwiftUI app, HTTP API
-          <span class="sub">27 commands. The app and the CLI share one engine, so neither is a second-class path.</span></dd>
-      </div>
-      <div class="spec-row">
-        <dt>Licence</dt>
-        <dd>MIT <span class="tag ok">no paid tier</span></dd>
-      </div>
-    </dl>
-  </div>
-</section>
-
-<section>
-  <div class="container reveal">
-    <p class="prompt">compare</p>
-    <h2>Where it fits</h2>
-    <p>
-      Spooktacular is built for teams running a fleet: multi-tenant access
-      control, an mTLS control plane, and an append-only audit log, on Apple's
-      own Virtualization framework with no kernel extension.
-    </p>
-    <div style="overflow-x:auto; margin-top:1.5rem">
-      <table class="compare">
-        <caption class="sr-only">Feature comparison with Tart and Anka</caption>
-        <thead>
-          <tr><th scope="col">&nbsp;</th><th scope="col">Spooktacular</th><th scope="col">Tart</th><th scope="col">Anka</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Price</td><td class="yes">$0, MIT</td><td class="yes">$0, fair-source</td><td class="no">Commercial</td></tr>
-          <tr><td>Install macOS once, overlay per VM</td><td class="yes">Yes</td><td class="no">Full clones</td><td class="no">Full clones</td></tr>
-          <tr><td>First-boot scripts on a fresh guest</td><td class="yes">Yes</td><td class="no">Needs a baked-in agent</td><td class="no">UI automation</td></tr>
-          <tr><td>Published ports</td><td class="yes">Yes</td><td class="no">—</td><td class="no">—</td></tr>
-          <tr><td>Multi-tenant access control and audit log</td><td class="yes">Yes</td><td class="no">—</td><td class="yes">Yes</td></tr>
-          <tr><td>Needs a kernel extension</td><td class="yes">No</td><td class="yes">No</td><td class="no">Historically yes</td></tr>
-        </tbody>
-      </table>
     </div>
-    <div class="btn-row"><a href="/compare.html" class="btn">Full comparison</a></div>
-  </div>
-</section>
+  </section>
 
-<section>
-  <div class="container reveal">
-    <p class="prompt">build-app.sh release</p>
-    <h2>Build it from source</h2>
-    <p>
-      Needs an Apple silicon Mac running macOS 27 or newer, and Xcode 27. Signed
-      releases are coming to the repository's Releases page.
-    </p>
-    <div class="cmd-row"><code>git clone https://github.com/Spooky-Labs/spooktacular.git</code><button class="copy" type="button">copy</button></div>
-    <div class="cmd-row"><code>cd spooktacular &amp;&amp; ./build-app.sh release</code><button class="copy" type="button">copy</button></div>
-    <div class="btn-row">
-      <a href="/get-started.html" class="btn primary">Full walkthrough</a>
-      <a href="/api/documentation/spooktacularkit/" class="btn">API reference</a>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>What the first run actually prints.</h2>
+        <p>
+          The first create pays for the base image once. Every create after it is
+          file operations.
+        </p>
+      </div>
+      <div class="grid cols-2 reveal" style="gap:clamp(1rem,3vw,2rem)">
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><b>first create — once per macOS build</b></div>
+<pre><span class="dim">$</span> <span class="em">sudo spook create dev</span>
+<span class="dim">Resolving the latest macOS restore image…</span>
+<span class="dim">Downloading IPSW (100%)</span>
+<span class="acc">Building the macOS base image — one time, 10-20 minutes.</span>
+<span class="dim">  Installing base: 100%</span>
+<span class="dim">  Injecting provisioner into the base…</span>
+<span class="dim">  Sealing the base image read-only…</span>
+<span class="ok">✓ Base image ready.</span>
+<span class="ok">✓ VM created from the cached base image.</span>
+<span class="dim">  Address 192.168.64.3</span></pre>
+        </div>
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><b>every create after that</b></div>
+<pre><span class="dim">$</span> <span class="em">spook create dev2</span>
+<span class="ok">✓ VM created from the cached base image.</span>
+<span class="dim">  Address 192.168.65.3</span>
+
+<span class="dim">$</span> <span class="em">spook clone dev2 dev3</span>
+<span class="ok">✓ Clone 'dev3' created.</span>
+<span class="dim">  Machine ID  inherited (paired with auxiliary storage)</span>
+<span class="dim">  MAC         regenerated (unique)</span>
+
+<span class="dim">$</span> <span class="em">spook list</span>
+<span class="dim">dev    dev2    dev3</span></pre>
+        </div>
+      </div>
+      <p class="prose" style="margin-top:1.5rem">
+        Apple permits two macOS guests per host, and Spooktacular enforces that
+        rather than letting you find out later. Linux guests are unlimited, boot
+        from a cloud image, and need no base image at all.
+      </p>
     </div>
-  </div>
-</section>
+  </section>
+
+  <section class="band closing">
+    <div class="container">
+      <h2>Stop paying for the same macOS install twice.</h2>
+      <p>
+        Open source under MIT, built on Apple's own Virtualization and
+        DiskImageKit frameworks. No agent on your guests, no license server,
+        nothing phoning home.
+      </p>
+      <div class="btn-row">
+        <a class="btn primary" href="/get-started.html">Get started</a>
+        <a class="btn" href="/compare.html">Compare with Tart and Anka</a>
+      </div>
+    </div>
+  </section>
 
 </main>
 
-<footer>
+<footer class="site">
   <div class="container">
     <div class="cols">
+      <div class="brand">
+        <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+        <p>Apple-native macOS virtualization for the Mac you already have.</p>
+      </div>
       <div>
         <h4>Product</h4>
         <a href="/features.html">Features</a>
@@ -256,101 +491,27 @@
         <a href="/terms.html">Terms</a>
       </div>
     </div>
-    <div class="base">
-      Spooktacular is MIT licensed. macOS, Apple silicon and Xcode are trademarks of Apple Inc.
-    </div>
+    <p class="legal">
+      MIT licensed. Apple, macOS, Apple silicon and Xcode are trademarks of
+      Apple Inc. Spooktacular is not affiliated with or endorsed by Apple.
+    </p>
   </div>
 </footer>
 
 <script>
-document.documentElement.classList.add('js');
-
-/* The hero session: real output from the commands it shows, typed line by
-   line so the page opens on this product's most characteristic artifact.
-   Reduced motion gets the finished session immediately. */
-(function () {
-  var el = document.getElementById('session');
-  if (!el) { return; }
-
-  var lines = [
-    { c: 'cmd',  t: 'sudo spook create dev --openclaw --publish 18789:18789' },
-    { c: 'warn', t: 'Building the macOS base image — one time, 10-20 minutes.' },
-    { c: 'note', t: '  Every VM created afterwards takes seconds and needs no privileges.' },
-    { c: 'note', t: '  Installing base: 100%  ·  injecting provisioner  ·  sealing' },
-    { c: 'ok',   t: '✓ Base image ready.' },
-    { c: 'ok',   t: '✓ VM created from the cached base image.' },
-    { c: 'note', t: '  Address 192.168.64.3' },
-    { c: 'note', t: '  Published localhost:18789 → guest 18789' },
-    { c: 'gap',  t: '' },
-    { c: 'cmd',  t: 'spook create dev2' },
-    { c: 'ok',   t: '✓ VM created from the cached base image.        0.4s' },
-    { c: 'gap',  t: '' },
-    { c: 'cmd',  t: 'spook start dev' },
-    { c: 'ok',   t: "✓ VM 'dev' is running." },
-    { c: 'ok',   t: '✓ Provisioning completed.' }
-  ];
-
-  function escapeHTML(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  }
-
-  function render(upto, caret) {
-    var html = '';
-    for (var i = 0; i < upto; i++) {
-      var l = lines[i];
-      if (l.c === 'gap') { html += '\n'; continue; }
-      html += '<span class="' + l.c + '">' + escapeHTML(l.t) + '</span>\n';
-    }
-    if (caret) { html += '<span class="typing-caret">▋</span>'; }
-    el.innerHTML = html;
-  }
-
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    render(lines.length, false);
-    return;
-  }
-
-  var shown = 0;
-  function step() {
-    shown++;
-    render(shown, shown < lines.length);
-    if (shown >= lines.length) { return; }
-    // Commands land quickly; the base-build steps dwell a little so the
-    // sequence reads as work happening rather than as a spinner.
-    var next = lines[shown];
-    var delay = next.c === 'cmd' ? 520 : next.c === 'note' ? 240 : 340;
-    setTimeout(step, delay);
-  }
-  setTimeout(step, 400);
-})();
-
-/* Scroll reveal. No-JS and no-IntersectionObserver readers see everything. */
-(function () {
-  var items = document.querySelectorAll('.reveal');
-  if (!('IntersectionObserver' in window)) {
-    Array.prototype.forEach.call(items, function (n) { n.classList.add('in'); });
-    return;
-  }
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) {
-      if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-    });
-  }, { rootMargin: '0px 0px -12% 0px' });
-  Array.prototype.forEach.call(items, function (n) { io.observe(n); });
-})();
-
-/* Copy buttons. The label reports what happened, then returns. */
-document.addEventListener('click', function (e) {
-  var btn = e.target.closest ? e.target.closest('.copy') : null;
-  if (!btn) { return; }
-  var code = btn.parentElement.querySelector('code');
-  if (!code || !navigator.clipboard) { return; }
-  navigator.clipboard.writeText(code.textContent).then(function () {
-    btn.textContent = 'copied';
-    btn.dataset.copied = 'true';
+/* Copy buttons — the only scripted behaviour here, so the page is complete
+   without JavaScript. */
+document.addEventListener('click', function (event) {
+  var button = event.target.closest && event.target.closest('.copy');
+  if (!button || !navigator.clipboard) { return; }
+  var code = button.parentElement.querySelector('code');
+  if (!code) { return; }
+  navigator.clipboard.writeText(code.textContent.trim()).then(function () {
+    button.textContent = 'copied';
+    button.dataset.done = 'true';
     setTimeout(function () {
-      btn.textContent = 'copy';
-      delete btn.dataset.copied;
+      button.textContent = 'copy';
+      delete button.dataset.done;
     }, 1600);
   });
 });
