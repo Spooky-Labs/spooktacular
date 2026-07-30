@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spooktacular — macOS VMs in seconds</title>
-<meta name="description" content="Install macOS once into a shared base image, then create virtual machines in seconds on the Mac you already have. Open-source, Apple-native virtualization for CI runners and remote desktops.">
+<meta name="description" content="Requires macOS 27 or later on Apple silicon. Install macOS once into a shared base image, then create virtual machines in seconds — built for EC2 Mac and other data-centre Macs, and easy to evaluate on your own.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
@@ -34,7 +34,13 @@
 }
 .hero .btn-row { margin-top: 1.9rem; }
 .hero .cmd { margin-top: 1.1rem; max-width: 30rem; }
-.hero .meta { margin-top: 1.1rem; font-size: var(--t-small); color: var(--ink-3); }
+.hero .req {
+  margin-top: 1.25rem; padding-left: 0.7rem;
+  border-left: 2px solid var(--accent);
+  font-size: var(--t-small); color: var(--ink-2); line-height: 1.45;
+}
+.hero .req strong { color: var(--ink); font-weight: 600; }
+.hero .req span { color: var(--ink-3); }
 
 /* The stack figure, on the same 8px module as the rest of the page. */
 .stack { display: block; width: 100%; height: auto; }
@@ -177,18 +183,22 @@
         <p class="lede">
           Install macOS <strong>once</strong> into a shared base image. Every
           virtual machine after that is a copy-on-write layer on top, created in
-          seconds, on the Mac you already own.
+          seconds — turning one EC2 Mac Dedicated Host, or any Mac in your rack,
+          into a pool that resets clean between jobs.
         </p>
         <div class="btn-row">
-          <a class="btn primary" href="/get-started.html">Build from source</a>
-          <a class="btn" href="https://github.com/Spooky-Labs/spooktacular">View on GitHub</a>
+          <a class="btn primary" href="/ec2-mac.html">Deploy on EC2 Mac</a>
+          <a class="btn" href="/get-started.html">Try it on your Mac first</a>
         </div>
         <div class="cmd">
           <span class="sigil">$</span>
           <code>spook create ci-runner-02</code>
           <button class="copy" type="button" aria-label="Copy command">copy</button>
         </div>
-        <p class="meta">Apple silicon · macOS 27 · MIT licensed</p>
+        <p class="req">
+          <strong>Requires macOS&nbsp;27 or later</strong> on Apple silicon.
+          <span>MIT licensed.</span>
+        </p>
       </div>
 
       <figure class="fig">
@@ -318,6 +328,42 @@
           <div class="fact">
             <b>865</b>
             <span>tests in 222 suites, run on every change</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="container">
+      <div class="cardset reveal">
+        <div class="grid cols-3">
+          <div class="card">
+            <p class="tag">Host operating system</p>
+            <h3>macOS 27 or later</h3>
+            <p>
+              Required for macOS guests: the shared base image and its
+              copy-on-write overlays are built on DiskImageKit, which shipped in
+              macOS 27. Linux guests run on older hosts.
+            </p>
+          </div>
+          <div class="card">
+            <p class="tag">Hardware</p>
+            <h3>Apple silicon</h3>
+            <p>
+              M1 or newer, including the Apple silicon EC2 Mac families. Intel
+              Macs — and the <code>mac1</code> EC2 family — cannot run macOS
+              guests at all.
+            </p>
+          </div>
+          <div class="card">
+            <p class="tag">To build from source</p>
+            <h3>Xcode 27</h3>
+            <p>
+              The macOS 27 SDK is needed to compile. Roughly 40&nbsp;GB of free
+              disk covers the first base image, plus whatever each VM writes on
+              top of it.
+            </p>
           </div>
         </div>
       </div>
