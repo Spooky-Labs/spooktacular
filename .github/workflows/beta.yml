@@ -28,7 +28,7 @@ env:
 jobs:
   testflight:
     name: TestFlight
-    runs-on: macos-26
+    runs-on: xcode-27
     env:
       # App Store Connect API key (bypasses 2FA interactively).
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
@@ -54,13 +54,17 @@ jobs:
           # and match's Git remote can cache-resolve.
           fetch-depth: 0
 
-      # ── macOS 27 SDK gate ─────────────────────────────────
-      # Native guest provisioning needs the macOS 27 SDK; the
-      # package no longer compiles on Xcode 26.x. Same gate as
-      # ci.yml (see the comment there): use Xcode 27 when the
-      # image ships it, otherwise skip the TestFlight lane with
-      # a warning instead of failing every push to main. Delete
-      # once GitHub images carry Xcode 27.
+      # ── macOS 27 SDK ──────────────────────────────────────
+      # The package needs the macOS 27 SDK to compile. GitHub ships it on the
+      # dedicated `xcode-27` image label (actions/runner-images#14404,
+      # 2026-07-16), not inside the macos-26 image — which is why the old
+      # probe here never found it and every run skipped.
+      #
+      # That image is "macOS 26 with Xcode 27": Xcode 27 compiles against the
+      # 27 SDK, but the runner OS is still 26. Anything gated on macOS 27 at
+      # RUNTIME (DiskImageKit, VZMacGuestProvisioningOptions) cannot execute
+      # here. Building, signing and uploading are fine, which is what these
+      # jobs do.
       - name: Select Xcode 27 (or skip — macOS 27 SDK required)
         id: xcode27
         run: |
@@ -70,7 +74,7 @@ jobs:
             xcodebuild -version
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning title=Skipped — macOS 27 SDK unavailable::TestFlight build skipped; the package requires the macOS 27 SDK and this runner image tops out at Xcode 26.x. Resumes automatically once the image ships Xcode 27."
+            echo "::warning title=Skipped — macOS 27 SDK unavailable::TestFlight build skipped: no Xcode 27 found on this runner. The job requests the xcode-27 image label; if this fires, that label did not provide Xcode 27."
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -105,7 +109,7 @@ jobs:
   # the App Store artwork always matches the tagged binary.
   ui-tests:
     name: UI Tests (screenshots)
-    runs-on: macos-26
+    runs-on: xcode-27
     # No secrets needed: the `:ui_tests` lane runs XCUITest against
     # a locally-run macOS build with signing forced OFF
     # (`CODE_SIGNING_ALLOWED=NO` passed to xcodebuild via scan's
@@ -126,7 +130,7 @@ jobs:
             xcodebuild -version
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::warning title=Skipped — macOS 27 SDK unavailable::UI-test screenshot lane skipped; requires the macOS 27 SDK. Resumes automatically once the image ships Xcode 27."
+            echo "::warning title=Skipped — macOS 27 SDK unavailable::UI-test screenshot lane skipped: no Xcode 27 found on this runner, which requests the xcode-27 image label."
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
 
