@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Get started — Spooktacular</title>
+<title>Get started | Spooktacular</title>
 <meta name="description" content="Install Spooktacular, build the shared macOS base image once, then create VMs in seconds. Published ports, GitHub Actions runners, Linux guests, remote desktop, and the full command reference.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
-<meta property="og:title" content="Get started — Spooktacular">
+<meta property="og:title" content="Get started with Spooktacular">
 <meta property="og:description" content="From a clone of the repo to a running macOS VM, and what every command does.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://spooktacular.app/get-started.html">
@@ -104,7 +104,7 @@
         <h2>Requirements</h2>
         <ul>
           <li>An Apple silicon Mac. Intel Macs cannot run macOS guests.</li>
-          <li><strong>macOS 27 or newer</strong> on the host — the base-image format uses DiskImageKit, which shipped in macOS 27. Linux guests work on older hosts.</li>
+          <li><strong>macOS 27 or newer</strong> on the host, the base-image format uses DiskImageKit, which shipped in macOS 27. Linux guests work on older hosts.</li>
           <li>Xcode 27 to build from source.</li>
           <li>Roughly 40 GB free for the first base image, plus whatever each VM writes.</li>
         </ul>
@@ -204,7 +204,7 @@
         </div>
         <p>
           Each VM's disk starts as a near-empty delta and grows only with what the
-          guest writes. Cloning an existing VM is faster still — a measured
+          guest writes. Cloning an existing VM is faster still: a measured
           <strong>30 ms</strong> for a 5 GB VM, consuming no additional disk,
           because APFS shares the blocks:
         </p>
@@ -222,9 +222,9 @@
         </div>
         <div class="note">
           <b>One create still needs root</b>
-          A create that provisions a guest account — <code>--remote-desktop</code>,
+          A create that provisions a guest account, <code>--remote-desktop</code>,
           <code>--openclaw</code>, <code>--user-data</code>, or any
-          <code>--vm-password</code> — stores that password in the root-owned
+          <code>--vm-password</code>, stores that password in the root-owned
           System keychain, so it needs root even when the base exists. That is
           deliberate: the password never touches disk in plaintext. Creates
           without an account need no privileges at all.
@@ -245,7 +245,7 @@
           <code>--publish</code> takes <code>hostPort:guestPort</code>, or a bare
           port to use the same number on both sides, and is repeatable. Two rules
           cannot share a host port, and that fails immediately rather than
-          silently picking a winner. Templates contribute their own defaults — the
+          silently picking a winner. Templates contribute their own defaults: the
           OpenClaw template publishes its gateway on 18789 without being asked:
         </p>
         <div class="cmd">
@@ -258,8 +258,7 @@
         <h2>GitHub Actions runners</h2>
         <p>
           Store a personal access token with repository admin scope in the
-          Keychain. This is a PAT, not a runner registration token —
-          <code>create</code> mints a short-lived registration token from it
+          Keychain. This is a PAT, not a runner registration token, <code>create</code> mints a short-lived registration token from it
           seconds before the VM boots, so no long-lived credential reaches the
           guest.
         </p>
@@ -277,7 +276,7 @@
             <thead><tr><th scope="col">Flag</th><th scope="col">What it does</th></tr></thead>
             <tbody>
               <tr><td><code>--github-repo</code></td><td>The <code>owner/repo</code> the runner registers against.</td></tr>
-              <tr><td><code>--github-token-keychain</code></td><td>Keychain account holding the PAT, under service <code>com.spooktacular.github</code>. The only accepted source — never a flag, an environment variable, or a file.</td></tr>
+              <tr><td><code>--github-token-keychain</code></td><td>Keychain account holding the PAT, under service <code>com.spooktacular.github</code>. The only accepted source, never a flag, an environment variable, or a file.</td></tr>
               <tr><td><code>--ephemeral</code></td><td>The runner takes one job and exits. Reset the VM and the next job starts from the base image.</td></tr>
               <tr><td>Runner labels</td><td>Every runner registers with <code>self-hosted</code>, <code>macOS</code> and <code>ARM64</code>. Extra labels are supported by the template but are not yet exposed as a CLI flag.</td></tr>
               <tr><td><code>--no-start</code></td><td>Create and provision, but do not boot. Useful for pre-warming a pool.</td></tr>
@@ -348,7 +347,7 @@
               <tr><td><code>spook list</code></td><td>Every VM with state, resources and provisioning status. Add <code>--ip</code> for addresses, <code>--json</code> for machine-readable output.</td></tr>
               <tr><td><code>spook stop</code></td><td>Shut the guest down cleanly.</td></tr>
               <tr><td><code>spook suspend</code></td><td>Save running state to disk and stop; a later <code>start</code> resumes it.</td></tr>
-              <tr><td><code>spook clone</code></td><td>Copy-on-write duplicate — 30 ms for a 5 GB VM, no extra disk.</td></tr>
+              <tr><td><code>spook clone</code></td><td>Copy-on-write duplicate, 30 ms for a 5 GB VM, no extra disk.</td></tr>
               <tr><td><code>spook snapshot</code></td><td>Manage disk snapshots for a stopped VM.</td></tr>
               <tr><td><code>spook delete</code></td><td>Remove the VM and its data. The shared base image is untouched.</td></tr>
             </tbody>
@@ -373,8 +372,8 @@
           <button class="copy" type="button" aria-label="Copy command">copy</button>
         </div>
         <p>
-          To force a rebuild — after changing the bundled provisioner, or to
-          reclaim space — delete the build's directory. The next create rebuilds
+          To force a rebuild. After changing the bundled provisioner, or to
+          reclaim space, delete the build's directory. The next create rebuilds
           it:
         </p>
         <div class="cmd">

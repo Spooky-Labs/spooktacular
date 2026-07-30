@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Security &amp; compliance — Spooktacular</title>
+<title>Security &amp; compliance | Spooktacular</title>
 <meta name="description" content="Spooktacular's security posture: host-to-control-plane mTLS, Keychain-backed credentials with per-action authentication, data-at-rest protection, code signing, and ephemeral cloud credentials.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
-<meta property="og:title" content="Security &amp; compliance — Spooktacular">
+<meta property="og:title" content="Spooktacular security and compliance">
 <meta property="og:description" content="Fail-closed by default. Every control points at the code that implements it.">
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://spooktacular.app/security.html">
@@ -132,7 +132,7 @@
 <span class="ok">Verify return code: 0 (ok)</span></pre>
         </div>
         <p>
-          Every HTTP response — regardless of status — carries OWASP ASVS V14.4
+          Every HTTP response, regardless of status: carries OWASP ASVS V14.4
           security headers (<code>X-Content-Type-Options</code>, CSP
           <code>default-src 'none'</code>, HSTS, <code>X-Frame-Options</code>,
           <code>Referrer-Policy</code>, <code>Cache-Control</code>).
@@ -155,7 +155,7 @@
           fallback</strong>. Private key bytes are generated inside the Secure
           Enclave and never leave it, so they remain non-extractable even under full
           kernel compromise. The daemon resolves keys by Keychain label and fails at
-          startup if the label is missing — silent ephemeral keys are not possible.
+          startup if the label is missing. Silent ephemeral keys are not possible.
         </p>
       </section>
 
@@ -179,8 +179,7 @@
             AAL3, and FIPS 140-3 Level 2 for the SEP.</li>
           <li><strong>Signed operator-to-API requests:</strong> each request is
             signed with P-256 ECDSA and verified with a nonce replay cache, a
-            &plusmn;60s clock-skew window, and canonical-string body-hash binding —
-            no shared static tokens. The trust allowlist is
+            &plusmn;60s clock-skew window, and canonical-string body-hash binding, no shared static tokens. The trust allowlist is
             <code>SPOOKTACULAR_API_PUBLIC_KEYS_DIR</code>. Maps to OWASP ASVS V2.10
             and OWASP API Top 10 2023 A02.</li>
         </ul>
@@ -248,7 +247,7 @@
         <p>
           In multi-tenant deployments, every request carries a
           <code>TenantID</code>, and scheduler gates ensure one tenant cannot
-          schedule onto another tenant's host pools — the control that prevents
+          schedule onto another tenant's host pools: the control that prevents
           cross-tenant reuse and warm-pool leakage
           (<code>MultiTenantIsolation.canReuse</code>, mapping to SOC 2 CC6.1).
         </p>
@@ -259,7 +258,7 @@
           <li><strong>Break-glass is disabled by default</strong> in multi-tenant
             mode. Opening a shell requires both a tenant with
             <code>breakGlassAllowed</code> set and a role holding
-            <code>break-glass:invoke</code> — neither is sufficient alone.</li>
+            <code>break-glass:invoke</code>. Neither is sufficient alone.</li>
         </ul>
       </section>
 
@@ -318,8 +317,7 @@ Signed Time=<span class="dim">…</span></pre>
             provisions an ephemeral keychain and forces <code>match</code> into
             <code>readonly</code> mode so CI can never mint or revoke certs.</li>
           <li><strong>Zero third-party Swift dependencies:</strong>
-            <code>Package.swift</code> has no <code>.package(url:)</code> entries —
-            verified by CI — so every security primitive comes from Apple SDKs
+            <code>Package.swift</code> has no <code>.package(url:)</code> entries, verified by CI, so every security primitive comes from Apple SDKs
             (CryptoKit, Security, Network).</li>
         </ul>
       </section>

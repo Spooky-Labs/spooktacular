@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Spooktacular — macOS VMs in seconds</title>
-<meta name="description" content="Requires macOS 27 or later on Apple silicon. Install macOS once into a shared base image, then create virtual machines in seconds — built for EC2 Mac and other data-centre Macs, and easy to evaluate on your own.">
+<meta name="description" content="Requires macOS 27 or later on Apple silicon. Install macOS once into a shared base image, then create virtual machines in seconds. Built for EC2 Mac and other data-centre Macs, and easy to evaluate on your own.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
@@ -95,6 +95,21 @@
    the way a screenshot would be. The transcript lives in the markup, so the
    block is complete with JavaScript disabled; the script only paces it. */
 .replay-wrap { container-type: inline-size; }
+/* The replay band goes full-bleed dark: one hard contrast change carries the
+   page's rhythm, and the artifact inside it is dark anyway. */
+.band.inverse {
+  background: oklch(15% 0.012 275);
+  border-top-color: oklch(100% 0 0 / 0.10);
+}
+.band.inverse h2 { color: oklch(97% 0.004 275); }
+.band.inverse .band-head > p { color: oklch(74% 0.008 275); }
+.band.inverse .prose { color: oklch(74% 0.008 275); }
+.band.inverse .prose strong { color: oklch(97% 0.004 275); }
+.band.inverse .prose :not(pre) > code {
+  background: oklch(21% 0.012 275); border-color: oklch(100% 0 0 / 0.14);
+  color: oklch(92% 0.006 275);
+}
+.band.inverse .term.shell { border-color: oklch(100% 0 0 / 0.16); }
 .term.shell {
   background: oklch(19% 0.012 275);
   border-color: oklch(100% 0 0 / 0.14);
@@ -183,7 +198,7 @@
         <p class="lede">
           Install macOS <strong>once</strong> into a shared base image. Every
           virtual machine after that is a copy-on-write layer on top, created in
-          seconds — turning one EC2 Mac Dedicated Host, or any Mac in your rack,
+          seconds, turning one EC2 Mac Dedicated Host, or any Mac in your rack,
           into a pool that resets clean between jobs.
         </p>
         <div class="btn-row">
@@ -224,7 +239,7 @@
             <text class="num" x="524" y="136" text-anchor="end">+ 96 MB</text>
           </g>
 
-          <text class="cap" x="18" y="176">three overlays — each stores only its own writes</text>
+          <text class="cap" x="18" y="176">three overlays. Each stores only its own writes</text>
 
           <!-- the shared base, drawn as the blocks it is made of -->
           <rect class="slab-base" x="18" y="190" width="524" height="72" rx="3"/>
@@ -304,7 +319,7 @@
           <text class="num" x="524" y="214" text-anchor="end">40 GB</text>
           <text class="cap" x="18" y="286">one macOS install · read-only · never booted</text>
         </svg>
-        <figcaption><b>Fig 1</b> — one shared base image, one thin overlay per VM.</figcaption>
+        <figcaption><b>Fig 1</b>, one shared base image, one thin overlay per VM.</figcaption>
       </figure>
     </div>
   </section>
@@ -319,7 +334,7 @@
           </div>
           <div class="fact">
             <b>0&thinsp;<sup>bytes</sup></b>
-            <span>of extra disk for that clone — APFS shares the blocks</span>
+            <span>of extra disk for that clone: APFS shares the blocks</span>
           </div>
           <div class="fact">
             <b>1&thinsp;<sup>install</sup></b>
@@ -352,7 +367,7 @@
             <h3>Apple silicon</h3>
             <p>
               M1 or newer, including the Apple silicon EC2 Mac families. Intel
-              Macs — and the <code>mac1</code> EC2 family — cannot run macOS
+              Macs. And the <code>mac1</code> EC2 family, cannot run macOS
               guests at all.
             </p>
           </div>
@@ -386,7 +401,7 @@
             <span>Per virtual machine, before</span>
             <ul>
               <li>Download a restore image</li>
-              <li>Run Apple's installer — 10 to 20 minutes</li>
+              <li>Run Apple's installer, 10 to 20 minutes</li>
               <li>Write the provisioner into the guest disk, as root</li>
               <li>Pay the full disk cost of another macOS</li>
             </ul>
@@ -395,7 +410,7 @@
             <span>Per virtual machine, now</span>
             <ul>
               <li>Add an overlay layer to the shared base</li>
-              <li>Clone the auxiliary storage — an APFS clone, so instant</li>
+              <li>Clone the auxiliary storage. An APFS clone, so instant</li>
               <li>Reserve an address and install any published ports</li>
               <li>Boot, and let the guest report when it is ready</li>
             </ul>
@@ -456,8 +471,7 @@
             <h3>Guest services on the host</h3>
             <p>
               Every VM gets a private subnet and a reserved address, so a guest
-              port can be published to the host the way a container's would be —
-              and <code>spook ip</code> is a lookup, not a probe.
+              port can be published to the host the way a container's would be, and <code>spook ip</code> is a lookup, not a probe.
             </p>
             <div class="cmd">
               <span class="sigil">$</span>
@@ -483,12 +497,12 @@
         <figure class="fig">
           <img src="/img/app/window.png" width="1772" height="900" loading="lazy"
                alt="The Spooktacular Mac app: a sidebar listing two Linux virtual machines with their vCPU and memory allocations, above the downloaded Fedora and macOS images.">
-          <figcaption><b>Fig 2</b> — the app, managing a small fleet.</figcaption>
+          <figcaption><b>Fig 2</b>: the app, managing a small fleet.</figcaption>
         </figure>
         <div>
           <p>
             The app is where you watch a fleet and open a screen; the CLI is what
-            your automation calls. Neither wraps the other — both sit on the same
+            your automation calls. Neither wraps the other. Both sit on the same
             Swift core, so behaviour cannot drift between them.
           </p>
           <ul>
@@ -509,13 +523,12 @@
   <!-- A replay of a session actually captured from this machine. The full
        transcript is in the markup, so it is complete without JavaScript and
        under prefers-reduced-motion; the script only reveals it gradually. -->
-  <section class="band">
+  <section class="band inverse">
     <div class="container">
       <div class="band-head reveal">
         <h2>A real session, replayed.</h2>
         <p>
-          Every line below was captured from a terminal on an M-series Mac —
-          commands, timings and all. Only the generated password is masked.
+          Every line below was captured from a terminal on an M-series Mac, commands, timings and all. Only the generated password is masked.
         </p>
       </div>
 
@@ -523,7 +536,7 @@
         <div class="term shell" data-replay>
           <div class="term-bar">
             <i></i><i></i><i></i>
-            <b>zsh — spook</b>
+            <b>zsh: spook</b>
             <button class="replay-again" type="button" hidden>replay</button>
           </div>
           <pre><code><span class="ln cmd-line">spook create ci-runner-01 --os linux --from-image fedora</span><span class="ln ok">✓ Linux VM 'ci-runner-01' created (cloud-init provisioned).</span><span class="ln dim">  Bundle           ~/.spooktacular/vms/ED27407A-FBBA-4F12-878A-C26C041F8BBE.vm</span><span class="ln dim">  Image            Fedora-Cloud-Base-AmazonEC2-44-1.7.aarch64.raw.xz</span><span class="ln">&nbsp;</span><span class="ln warn">⚠ Save these credentials — you need them to connect (shown only once):</span><span class="ln dim">  Account          admin</span><span class="ln dim">  Password         ························</span><span class="ln dim">  Applied by cloud-init on the first 'spook start'. No sudo needed.</span><span class="ln">&nbsp;</span><span class="ln cmd-line">spook clone ci-runner-01 ci-runner-02</span><span class="ln dim">⤢ Cloning 'ci-runner-01' → 'ci-runner-02'…</span><span class="ln ok">✓ Clone 'ci-runner-02' created.</span><span class="ln dim">  Machine ID       inherited (paired with auxiliary storage)</span><span class="ln dim">  MAC              regenerated (unique)</span><span class="ln">&nbsp;</span><span class="ln cmd-line">spook list</span><span class="ln dim">NAME          STATE      CPU      MEM    DISK    NET  ♪  STATUS</span><span class="ln dim">────────────  ─────────  ───────  ─────  ──────  ───  ─  ───────</span><span class="ln em">ci-runner-01  ○ stopped  8 cores  16 GB  100 GB  nat  ♪  pending</span><span class="ln em">ci-runner-02  ○ stopped  8 cores  16 GB  100 GB  nat  ♪  pending</span><span class="ln">&nbsp;</span><span class="ln dim">2 virtual machines, 0 running</span></code></pre>

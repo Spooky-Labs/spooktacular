@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Roadmap — Spooktacular</title>
-<meta name="description" content="The Spooktacular roadmap: what has shipped — the shared base image, copy-on-write overlays, runners, Linux guests — what is planned, and what is under consideration.">
+<title>Roadmap | Spooktacular</title>
+<meta name="description" content="The Spooktacular roadmap: what has shipped. The shared base image, copy-on-write overlays, runners, Linux guests, what is planned, and what is under consideration.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
-<meta property="og:title" content="Roadmap — Spooktacular">
-<meta property="og:description" content="What has shipped, what is planned, and what is under consideration — updated as development progresses.">
+<meta property="og:title" content="Spooktacular roadmap">
+<meta property="og:description" content="What has shipped, what is planned, and what is under consideration. Updated as development progresses.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://spooktacular.app/roadmap.html">
 <meta property="og:image" content="https://spooktacular.app/img/og-image.png">
@@ -54,8 +54,8 @@
       <p class="eyebrow">Roadmap</p>
       <h1>What has shipped, and what comes next.</h1>
       <p class="lede">
-        Every item carries its status in words — shipped, in progress,
-        planned, or under consideration — so nothing depends on colour to be
+        Every item carries its status in words, shipped, in progress,
+        planned, or under consideration, so nothing depends on colour to be
         read. Updated as development progresses.
       </p>
     </div>
@@ -91,7 +91,7 @@
         </div>
       </div>
 
-      <p class="eyebrow reveal" style="margin-top:3rem"><span class="n">v0.1</span> Foundation — shipped</p>
+      <p class="eyebrow reveal" style="margin-top:3rem"><span class="n">v0.1</span> Foundation. Shipped</p>
       <div class="cardset reveal">
         <div class="grid cols-3">
           <div class="card">
@@ -102,7 +102,7 @@
               <li>Suspend saves running state to disk; a later start resumes it</li>
               <li>Restore-image management with automatic IPSW download</li>
               <li>Configuration: CPU, memory, disk, displays, audio, networking</li>
-              <li>APFS copy-on-write cloning — 30&nbsp;ms for a 5&nbsp;GB VM, no extra disk</li>
+              <li>APFS copy-on-write cloning, 30&nbsp;ms for a 5&nbsp;GB VM, no extra disk</li>
               <li>Clones inherit the source's machine identifier, which the personalized auxiliary storage is signed against; run a clone as a replacement, not a sibling</li>
               <li>MAC addresses are regenerated on clone, so network identities stay distinct</li>
               <li>Disk snapshots: save, restore, list, delete</li>
@@ -116,20 +116,20 @@
             <ul>
               <li>SSH provisioning: wait-for-SSH, then streamed script execution</li>
               <li>Disk-inject provisioning: the LaunchDaemon provisioner is written into the shared base image once per build, not per VM</li>
-              <li>Native macOS 27 guest provisioning: the admin account and Setup Assistant skip use Apple's own provisioning options — no OCR</li>
+              <li>Native macOS 27 guest provisioning: the admin account and Setup Assistant skip use Apple's own provisioning options: no OCR</li>
               <li>Guest event stream over a virtio socket (stats and ports)</li>
               <li>One command creates, provisions and boots</li>
               <li><code>spook ip</code> is a metadata read from the VM's DHCP reservation</li>
-              <li>In progress: shared-folder provisioning — the host-side plumbing exists, but it is not yet wired into the CLI</li>
+              <li>In progress: shared-folder provisioning. The host-side plumbing exists, but it is not yet wired into the CLI</li>
             </ul>
           </div>
           <div class="card">
             <span class="tag">Shipped</span>
             <h3>Templates</h3>
             <ul>
-              <li>GitHub Actions runner — a registration token is minted from a Keychain-stored PAT seconds before boot</li>
-              <li>Remote desktop — admin account, Setup Assistant skipped, Screen Sharing and Remote Login on first boot</li>
-              <li>OpenClaw AI — publishes its gateway on port 18789 by default</li>
+              <li>GitHub Actions runner, a registration token is minted from a Keychain-stored PAT seconds before boot</li>
+              <li>Remote desktop: admin account, Setup Assistant skipped, Screen Sharing and Remote Login on first boot</li>
+              <li>OpenClaw AI. Publishes its gateway on port 18789 by default</li>
             </ul>
           </div>
           <div class="card">
@@ -168,7 +168,7 @@
         </div>
       </div>
 
-      <p class="eyebrow reveal" style="margin-top:3rem">Instant create — shipped</p>
+      <p class="eyebrow reveal" style="margin-top:3rem">Instant create, shipped</p>
       <div class="cardset reveal">
         <div class="grid cols-3">
           <div class="card">
@@ -203,9 +203,9 @@
       </div>
 
       <div class="note reveal" style="margin-top:2.5rem">
-        <b>Guest Tools — shipped</b>
+        <b>Guest Tools: shipped</b>
         A companion app inside the guest syncs the clipboard in both
-        directions over a SPICE serial channel — no SSH and no network
+        directions over a SPICE serial channel. No SSH and no network
         involved.
       </div>
     </div>
@@ -261,7 +261,7 @@
       <div class="band-head reveal">
         <h2>Under consideration.</h2>
         <p>
-          Ideas we keep returning to — unscheduled and unpromised, listed so
+          Ideas we keep returning to, unscheduled and unpromised, listed so
           you can tell us which ones matter.
         </p>
       </div>

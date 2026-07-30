@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Spooktacular on EC2 Mac — Spooktacular</title>
+<title>Spooktacular on EC2 Mac</title>
 <meta name="description" content="Run Spooktacular on Amazon EC2 Mac: which instance families work, the Dedicated Host and 24-hour minimum, resizing the APFS root volume, installing from user data, and the networking model that works behind a Nitro ENI.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -80,7 +80,7 @@
     </p>
     <p style="margin-top:0.9rem;padding-left:0.7rem;border-left:2px solid var(--accent);max-width:58ch;font-size:var(--t-small);color:var(--ink-2)">
       <strong style="color:var(--ink)">The host needs macOS&nbsp;27 or later</strong>
-      on an Apple silicon family — check
+      on an Apple silicon family. Check
       <code>MacOSLatestSupportedVersions</code> before you allocate.
     </p>
     <div class="btn-row" style="margin-top:1.6rem">
@@ -111,7 +111,7 @@
         <p>
           EC2 Mac bills per <strong>Dedicated Host</strong>, not per instance,
           and there is a one-to-one mapping between a host and the instance on
-          it — you cannot slice a Mac host the way you slice a Linux one. Apple's
+          it, you cannot slice a Mac host the way you slice a Linux one. Apple's
           software licence agreement also imposes a <strong>24-hour minimum
           allocation</strong>, and that clock starts when the host is allocated,
           not when you launch an instance.
@@ -149,7 +149,7 @@
           <button class="copy" type="button" aria-label="Copy command">copy</button>
         </div>
         <p>
-          That builds the shared base image once — 10 to 20 minutes — and then
+          That builds the shared base image once, 10 to 20 minutes. And then
           every later create takes seconds. Once you have seen
           <code>spook create</code>, <code>spook start</code>,
           <code>spook ip</code> and <code>spook list</code> behave on your own
@@ -163,7 +163,7 @@
         <h2>Choosing an instance</h2>
         <p>
           Spooktacular needs <strong>Apple silicon</strong>, so the
-          <code>mac1</code> family is out — those are Intel Mac minis. Use an
+          <code>mac1</code> family is out, those are Intel Mac minis. Use an
           Apple silicon family, and pick on memory, because memory is what caps
           how many guests you can run comfortably:
         </p>
@@ -181,7 +181,7 @@
               <tr><td><code>mac2-m2</code></td><td>M2</td><td>8 cores</td><td>24 GiB</td><td>Two modest guests</td></tr>
               <tr><td><code>mac2-m2pro</code></td><td>M2 Pro</td><td>12 cores</td><td>32 GiB</td><td>A comfortable two-guest runner host</td></tr>
               <tr><td><code>mac-m4</code></td><td>M4</td><td>10 cores</td><td>24 GiB</td><td>Faster builds at mac2-m2 memory</td></tr>
-              <tr><td><code>mac-m4pro</code></td><td>M4 Pro</td><td>14 cores</td><td>48 GiB</td><td>Best fit — and a 2 TB instance store per host</td></tr>
+              <tr><td><code>mac-m4pro</code></td><td>M4 Pro</td><td>14 cores</td><td>48 GiB</td><td>Best fit, and a 2 TB instance store per host</td></tr>
               <tr><td><code>mac2-m1ultra</code></td><td>M1 Ultra</td><td>20 cores</td><td>128 GiB</td><td>Memory-heavy guests</td></tr>
             </tbody>
           </table>
@@ -223,8 +223,8 @@
         <div class="note">
           <b>Do not skimp on the EBS volume</b>
           APFS is the default macOS filesystem and is tuned for SSDs, so AWS
-          recommends an SSD-backed volume — <code>gp3</code> or
-          <code>io2</code> — and suggests starting at <strong>5000 IOPS and 200
+          recommends an SSD-backed volume, <code>gp3</code> or
+          <code>io2</code>, and suggests starting at <strong>5000 IOPS and 200
           MB/s throughput</strong>. Spooktacular is disk-heavy in exactly the
           way that matters here: a base image is roughly 40 GB, every overlay
           grows from near zero, and a warm-pool reset is a file operation. An
@@ -236,7 +236,7 @@
         <h2>Sizing the volume</h2>
         <p>
           This is the step people miss. Asking EC2 for a 500 GB root volume does
-          <em>not</em> give macOS 500 GB — the AMI's APFS container stays its
+          <em>not</em> give macOS 500 GB: the AMI's APFS container stays its
           original size, and the extra space sits unallocated until you grow the
           container. A 40 GB base image plus overlays will fill the default and
           fail in confusing ways.
@@ -260,13 +260,13 @@
         <h2>Installing from user data</h2>
         <p>
           User data runs as <strong>root</strong> on first boot, which is exactly
-          the privilege the one privileged step needs — writing the provisioner
+          the privilege the one privileged step needs. Writing the provisioner
           into the shared base image. Put the whole install there and the host
           comes up ready, with no interactive step and no <code>sudo</code>
           prompt to answer.
         </p>
         <div class="term">
-          <div class="term-bar"><i></i><i></i><i></i><b>install-spooktacular.sh — EC2 user data</b></div>
+          <div class="term-bar"><i></i><i></i><i></i><b>install-spooktacular.sh, EC2 user data</b></div>
 <pre><span class="acc">#!/bin/zsh</span>
 <span class="dim">set -euo pipefail</span>
 
@@ -297,7 +297,7 @@
         <div class="note">
           <b>Why the System keychain, specifically</b>
           A personal access token is the only accepted source for runner
-          registration — never a flag, an environment variable, or a file on
+          registration: never a flag, an environment variable, or a file on
           disk. On a workstation it lives in your login keychain. On EC2 Mac,
           where Spooktacular runs as a root service, root cannot read a user's
           login keychain, so it must be the System keychain. Getting this wrong
@@ -306,7 +306,7 @@
         </div>
         <p>
           Pull the token from Secrets Manager or SSM Parameter Store as above
-          rather than baking it into user data — user data is readable from the
+          rather than baking it into user data. User data is readable from the
           instance metadata service by anything running on the host.
         </p>
       </section>
@@ -321,7 +321,7 @@
           An EC2 instance reaches the VPC through a Nitro elastic network
           interface. That interface is bound to the addresses and MAC that EC2
           assigned it. A guest VM in <strong>bridged</strong> mode puts its own
-          MAC address on the wire, which the VPC does not know about — so
+          MAC address on the wire, which the VPC does not know about, so
           bridged guests are the wrong model on EC2 even when they appear to
           come up. Do not reach for it.
         </p>
@@ -340,7 +340,7 @@
           inherits the instance's route table, NAT gateway and VPC endpoints
           with nothing extra to configure. Inbound reaches a guest only through
           a published port, which means the thing you already use to control
-          access — the <strong>security group on the host</strong> — controls
+          access: the <strong>security group on the host</strong>. Controls
           access to your guests too. There is no second, VM-shaped firewall to
           keep in sync.
         </p>
@@ -353,8 +353,8 @@
                 If a peer service must reach a guest, it reaches the host's
                 private address on the published port.</li>
             <li><code>spook ip</code> returns the guest's address on its private
-                subnet. It is a metadata read — the address is reserved when the
-                VM is created — so orchestration never has to poll for it.</li>
+                subnet. It is a metadata read, the address is reserved when the
+                VM is created, so orchestration never has to poll for it.</li>
           </ul>
         </div>
       </section>
@@ -374,7 +374,7 @@
         <p>
           <code>--ephemeral</code> means the runner accepts one job and exits.
           Pair it with a reset and each job starts from a base image that has
-          never run anyone else's code — which is the property that makes a
+          never run anyone else's code. Which is the property that makes a
           shared Mac host defensible for CI in the first place.
         </p>
       </section>
@@ -384,7 +384,7 @@
         <p>
           A reset discards the VM's overlay and puts a fresh one back on the
           untouched base. The base image is sealed read-only and is never
-          booted, so its layer identity cannot drift — which means a pool can
+          booted, so its layer identity cannot drift, which means a pool can
           <em>prove</em> its base is pristine rather than assume it.
         </p>
         <div class="cmd">
@@ -416,7 +416,7 @@
           attached root volume does not inherit them. Changing SIP can take up
           to 90 minutes, during which the instance is unreachable, and the
           setting does not carry into AMIs or snapshots you create afterwards.
-          Spooktacular does not require SIP changes — this matters only if
+          Spooktacular does not require SIP changes: this matters only if
           something else in your image does.
         </p>
 

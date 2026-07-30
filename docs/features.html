@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Features — Spooktacular</title>
+<title>Features | Spooktacular</title>
 <meta name="description" content="Spooktacular's features, grouped by the jobs they serve: one shared macOS base image with copy-on-write overlays, GitHub Actions runners, remote desktops, Linux guests, per-VM networking, and a signed HTTP control plane.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
-<meta property="og:title" content="Features — Spooktacular">
-<meta property="og:description" content="Install macOS once, then create copy-on-write VMs in seconds — plus CI runners, remote desktops, Linux guests and per-VM networking.">
+<meta property="og:title" content="Spooktacular features">
+<meta property="og:description" content="Install macOS once, then create copy-on-write VMs in seconds: plus CI runners, remote desktops, Linux guests and per-VM networking.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://spooktacular.app/features.html">
 <meta property="og:image" content="https://spooktacular.app/img/og-image.png">
@@ -63,15 +63,14 @@
         <h2>One macOS install, shared by every VM.</h2>
         <p>
           macOS is installed once per macOS build, into a read-only base
-          image. Every VM after that is a copy-on-write overlay on top —
-          only the first create pays the install.
+          image. Every VM after that is a copy-on-write overlay on top. Only the first create pays the install.
         </p>
       </div>
       <div class="cardset reveal">
         <div class="facts">
           <div class="fact">
             <b>1&thinsp;<sup>install</sup></b>
-            <span>of macOS per build — the first create pays it, no VM after does</span>
+            <span>of macOS per build, the first create pays it, no VM after does</span>
           </div>
           <div class="fact">
             <b>30&thinsp;<sup>ms</sup></b>
@@ -79,11 +78,11 @@
           </div>
           <div class="fact">
             <b>0&thinsp;<sup>bytes</sup></b>
-            <span>of extra disk for that clone — verified with df before and after</span>
+            <span>of extra disk for that clone: verified with df before and after</span>
           </div>
           <div class="fact">
             <b>2</b>
-            <span>macOS guests per host — Apple's licence ceiling, enforced up front</span>
+            <span>macOS guests per host. Apple's licence ceiling, enforced up front</span>
           </div>
         </div>
       </div>
@@ -95,7 +94,7 @@
             <p>
               macOS is installed once per build into <code>base.asif</code>,
               then sealed read-only. The base is never booted, so its layer
-              identity cannot drift — a warm pool can prove its base is
+              identity cannot drift, a warm pool can prove its base is
               pristine instead of assuming it.
             </p>
           </div>
@@ -104,8 +103,7 @@
             <h3>Overlays instead of installs</h3>
             <p>
               Each VM adds a copy-on-write overlay that stores only its own
-              writes. With the base present, a create is file operations —
-              not another 10–20 minute install per machine.
+              writes. With the base present, a create is file operations: not another 10–20 minute install per machine.
             </p>
           </div>
           <div class="card">
@@ -113,7 +111,7 @@
             <h3>Clones in 30 ms, for free</h3>
             <p>
               Cloning a 5.0&nbsp;GB VM took a measured 30&nbsp;ms and consumed
-              zero additional bytes of disk — checked with <code>df</code>
+              zero additional bytes of disk. Checked with <code>df</code>
               before and after on an M-series Mac. APFS shares the blocks
               until a clone writes.
             </p>
@@ -122,7 +120,7 @@
             <span class="tag">Shipped</span>
             <h3>What a clone inherits</h3>
             <p>
-              A clone keeps its source's machine identifier — deliberately.
+              A clone keeps its source's machine identifier, deliberately.
               The installer personalizes the auxiliary storage against that
               identifier, so a fresh one would pair personalized boot state
               with an identity it was never signed for. Apple warns against
@@ -146,7 +144,7 @@
             <h3>Restore images, managed</h3>
             <p>
               The latest compatible macOS restore image is resolved and
-              downloaded automatically — no manual IPSW hunting. One base is
+              downloaded automatically: no manual IPSW hunting. One base is
               kept per macOS build, and a base with a stale provisioner is
               rebuilt rather than silently reused.
             </p>
@@ -155,7 +153,7 @@
       </div>
       <div class="note reveal" style="margin-top:1.5rem">
         <b>Host requirements</b>
-        macOS guests need macOS 27 or newer on the host — the base-and-overlay
+        macOS guests need macOS 27 or newer on the host. The base-and-overlay
         disk format uses DiskImageKit, which shipped in macOS 27. Linux guests
         work on older hosts. Apple silicon only.
       </div>
@@ -220,7 +218,7 @@
             <h3>Provisioning without a network</h3>
             <p>
               The first-boot provisioner is a LaunchDaemon written directly
-              into the shared base image — once per build, not per VM — so
+              into the shared base image, once per build, not per VM, so
               guests provision with no SSH and no network at all.
             </p>
           </div>
@@ -259,7 +257,7 @@
             <p>
               The template provisions an admin account, skips Setup
               Assistant, and enables Screen Sharing and Remote Login on first
-              boot. Connect over VNC or SSH with the credentials you set — or
+              boot. Connect over VNC or SSH with the credentials you set. Or
               with the strong password printed once at create time.
             </p>
           </div>
@@ -268,7 +266,7 @@
             <h3>Native guest provisioning</h3>
             <p>
               On macOS 27, the account and the Setup Assistant skip use
-              Apple's own guest provisioning options — no OCR, no synthetic
+              Apple's own guest provisioning options, no OCR, no synthetic
               keyboard, nothing brittle.
             </p>
           </div>
@@ -277,7 +275,7 @@
             <h3>Metal-accelerated displays</h3>
             <p>
               One or two GPU-accelerated displays per VM at 1920×1200, for a
-              desktop that feels local — and for GPU-hungry workloads inside
+              desktop that feels local, and for GPU-hungry workloads inside
               the guest.
             </p>
           </div>
@@ -302,7 +300,7 @@
             <h3>Clipboard sync</h3>
             <p>
               A Guest Tools companion keeps the pasteboard in sync between
-              host and guest over a SPICE serial channel — no SSH, no network
+              host and guest over a SPICE serial channel. No SSH, no network
               involved.
             </p>
           </div>
@@ -310,7 +308,7 @@
             <span class="tag">Shipped</span>
             <h3>Shared folders</h3>
             <p>
-              Mount host directories inside the VM over VirtIO — project
+              Mount host directories inside the VM over VirtIO, project
               files, build artifacts and datasets, without copying them into
               the image.
             </p>
@@ -335,7 +333,7 @@
         <h2>Linux guests, no base image required.</h2>
         <p>
           Linux VMs boot from a cloud image and are provisioned by
-          cloud-init — no install, no privileges, and no two-VM ceiling.
+          cloud-init: no install, no privileges, and no two-VM ceiling.
         </p>
       </div>
       <div class="cmd reveal" style="max-width:34rem;margin-bottom:1.5rem">
@@ -353,7 +351,7 @@
               the latest aarch64 cloud image against each project's release
               index at create time; a local raw image, optionally
               <code>.xz</code>-compressed, works too. Templates apply here as
-              well — a Linux VM can register as a GitHub Actions runner.
+              well. A Linux VM can register as a GitHub Actions runner.
             </p>
           </div>
           <div class="card">
@@ -379,7 +377,7 @@
             <h3>Runs where macOS guests cannot</h3>
             <p>
               Linux guests do not need DiskImageKit, so they work on hosts
-              older than macOS 27 — and Apple's two-VM licence ceiling does
+              older than macOS 27, and Apple's two-VM licence ceiling does
               not apply to them.
             </p>
           </div>
@@ -413,8 +411,7 @@
             <h3>Published ports</h3>
             <p>
               <code>--publish hostPort:guestPort</code>, repeatable, backed
-              by vmnet forwarding rules. Two rules cannot share a host port —
-              that fails loudly at create time instead of silently picking a
+              by vmnet forwarding rules. Two rules cannot share a host port: that fails loudly at create time instead of silently picking a
               winner.
             </p>
           </div>
@@ -431,7 +428,7 @@
             <span class="tag">Shipped</span>
             <h3>Air-gapped when you want it</h3>
             <p>
-              Isolated networking gives a VM zero network access — run
+              Isolated networking gives a VM zero network access. Run
               untrusted models, code or experiments in complete isolation.
             </p>
           </div>
@@ -448,7 +445,7 @@
             <h3>A live event stream</h3>
             <p>
               Each running VM exposes a live event stream over a Unix
-              socket — <code>spook stream</code> to watch it,
+              socket, <code>spook stream</code> to watch it,
               <code>spook socket</code> for the path your tooling should
               attach to.
             </p>
@@ -470,7 +467,7 @@
       <figure class="fig reveal" style="margin-bottom:1.75rem">
         <img src="/img/app/window.png" width="1772" height="940" loading="lazy"
              alt="The Spooktacular Mac app with a sidebar of virtual machines and a detail view showing one VM's CPU, memory and disk allocation.">
-        <figcaption><b>Fig 1</b> — the app side of the shared core, managing a small fleet.</figcaption>
+        <figcaption><b>Fig 1</b>: the app side of the shared core, managing a small fleet.</figcaption>
       </figure>
       <div class="cardset reveal">
         <div class="grid cols-3">
@@ -478,7 +475,7 @@
             <span class="tag">Shipped</span>
             <h3>Two front doors, one engine</h3>
             <p>
-              The app and the CLI sit on the same Swift core — a VM created
+              The app and the CLI sit on the same Swift core. A VM created
               in either is a first-class citizen of the other, and behaviour
               cannot drift between them. Twenty-seven subcommands, each with
               its own help, plus a menu bar extra for quick status.
@@ -541,7 +538,7 @@
         <h2>Every claim above is auditable.</h2>
         <p>
           865 tests in 222 suites. MIT licensed.
-          Built from source today — there are no signed binary releases yet.
+          Built from source today, there are no signed binary releases yet.
         </p>
       </div>
       <div class="btn-row reveal">

@@ -389,8 +389,8 @@ nav.site .inner {
 @media (max-width: 760px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .fact { padding: 1.25rem 1.25rem 1.35rem; background: var(--paper); }
 .fact b {
-  display: block; font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.125rem);
-  font-weight: 600; letter-spacing: -0.025em; line-height: 1;
+  display: block; font-size: clamp(2rem, 1.3rem + 2.6vw, 3.25rem);
+  font-weight: 600; letter-spacing: -0.035em; line-height: 0.95;
   color: var(--ink); font-variant-numeric: tabular-nums;
 }
 .fact b sup { font-size: 0.5em; font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
