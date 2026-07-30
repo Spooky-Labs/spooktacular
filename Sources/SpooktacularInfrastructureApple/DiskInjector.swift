@@ -74,12 +74,20 @@ public enum DiskInjector {
         appBundle appBundleURL: URL,
         into bundle: VirtualMachineBundle
     ) throws {
-        let diskPath = bundle.url
-            .appendingPathComponent(VirtualMachineBundle.diskImageFileName)
-            .path
+        // Overlay-backed bundles never have a `disk.img`; their writable layer
+        // is `disk-overlay.asif`. Hardcoding the former made this throw
+        // "disk image not found" for every macOS VM created since the base +
+        // overlay change, which named the wrong problem entirely.
+        let diskPath = bundle.writableDiskURL.path
 
         guard FileManager.default.fileExists(atPath: diskPath) else {
             throw DiskInjectorError.diskImageNotFound(path: diskPath)
+        }
+        // An overlay is only meaningful stacked on its base, so attaching it
+        // alone does not yield a mountable volume. Say so plainly rather than
+        // letting `diskutil` fail with something unrelated.
+        if bundle.hasOverlay {
+            throw DiskInjectorError.overlayInjectionUnsupported(path: diskPath)
         }
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: appBundleURL.path, isDirectory: &isDir),
@@ -605,6 +613,15 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
     /// - Parameter path: The expected path to `disk.img`.
     case diskImageNotFound(path: String)
 
+    /// The bundle is overlay-backed, so its writable layer cannot be
+    /// attached on its own.
+    ///
+    /// An overlay only describes the blocks a VM has written; the filesystem
+    /// it belongs to lives in the shared base underneath. Attaching the
+    /// overlay alone therefore yields nothing mountable, so guest-side
+    /// injection has to go through the stacked attachment instead.
+    case overlayInjectionUnsupported(path: String)
+
     /// The user-data script file was not found.
     ///
     /// - Parameter path: The path that was provided for the script.
@@ -639,6 +656,8 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
         switch self {
         case .diskImageNotFound(let path):
             return "Disk image not found at '\(path)'."
+        case .overlayInjectionUnsupported(let path):
+            return "'\(path)' is a copy-on-write overlay and cannot be attached on its own."
         case .scriptNotFound(let path):
             return "User-data script not found at '\(path)'."
         case .mountFailed(let reason):
@@ -661,6 +680,11 @@ public enum DiskInjectorError: Error, Sendable, Equatable, LocalizedError {
         case .diskImageNotFound:
             "Ensure the VM bundle contains a 'disk.img' file. "
             + "The bundle may be corrupted — try deleting and recreating the VM."
+        case .overlayInjectionUnsupported:
+            "This VM shares a read-only base image, so its overlay holds only "
+            + "the blocks it has written and cannot be mounted by itself. "
+            + "Install Guest Tools from inside the running VM instead, or "
+            + "create the VM with Guest Tools disabled."
         case .scriptNotFound:
             "Verify the path to your user-data script exists and is readable."
         case .mountFailed:

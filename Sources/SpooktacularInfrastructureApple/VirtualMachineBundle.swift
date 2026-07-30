@@ -226,6 +226,17 @@ public struct VirtualMachineBundle: Sendable {
         FileManager.default.fileExists(atPath: overlayURL.path)
     }
 
+    /// The image that receives this VM's writes.
+    ///
+    /// Overlay-backed bundles have no `disk.img` at all — their writable
+    /// layer is ``overlayURL``, stacked on a shared read-only base. Anything
+    /// that modifies a stopped VM's disk has to ask for this rather than
+    /// assuming ``diskImageFileName``, or it looks for a file that was never
+    /// created and reports the wrong problem.
+    public var writableDiskURL: URL {
+        hasOverlay ? overlayURL : url.appendingPathComponent(Self.diskImageFileName)
+    }
+
     /// Absolute URL of the per-VM provisioning share root
     /// (host-side view of what the guest mounts at
     /// `/Library/Application Support/Spooktacular/provision/`).

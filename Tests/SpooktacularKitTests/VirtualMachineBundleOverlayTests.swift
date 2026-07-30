@@ -161,4 +161,31 @@ struct VirtualMachineBundleOverlayTests {
             "the shared base must be provably unchanged by a reset"
         )
     }
+
+    @Test("an overlay-backed bundle reports the overlay as its writable disk")
+    func writableDiskFollowsTheOverlay() throws {
+        // Guest-tools injection resolved `disk.img` unconditionally, so every
+        // overlay-backed macOS VM failed with "disk image not found" — naming
+        // a file that is never created for these bundles.
+        let temp = TempDirectory()
+        let bundleURL = temp.file("\(UUID().uuidString).vm")
+        let bundle = try VirtualMachineBundle.create(
+            at: bundleURL,
+            spec: VirtualMachineSpecification(),
+            displayName: "overlay-vm"
+        )
+
+        #expect(
+            bundle.writableDiskURL.lastPathComponent == VirtualMachineBundle.diskImageFileName,
+            "without an overlay the writable disk is disk.img"
+        )
+
+        FileManager.default.createFile(atPath: bundle.overlayURL.path, contents: Data())
+
+        #expect(bundle.hasOverlay)
+        #expect(
+            bundle.writableDiskURL.lastPathComponent == VirtualMachineBundle.overlayFileName,
+            "with an overlay present the writable disk is the overlay"
+        )
+    }
 }
