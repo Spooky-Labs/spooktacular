@@ -277,4 +277,38 @@ struct CloneManagerTests {
             ))
         }
     }
+
+    @Test("a clone's metadata id matches its directory, so UUID selectors resolve", .timeLimit(.minutes(1)))
+    func cloneIdentityMatchesItsDirectory() throws {
+        // Production bundle directories are UUID-named and
+        // `SpooktacularPaths.bundleURL(for:)` maps an id straight back to a
+        // path. When CloneManager minted its own id, that mapping pointed at
+        // a directory that did not exist: `spook <cmd> <uuid>` failed for
+        // every clone, and the ambiguous-name error advised a UUID that
+        // could not resolve.
+        let tmp = TempDirectory()
+        let source = try makeTestBundle(in: tmp)
+
+        let destinationID = UUID()
+        let destURL = tmp.url.appendingPathComponent("\(destinationID.uuidString).vm")
+
+        let clone = try CloneManager.clone(
+            source: source,
+            to: destURL,
+            displayName: "ci-runner-02"
+        )
+
+        #expect(
+            clone.metadata.id == destinationID,
+            "the clone's id must be the id encoded in its directory name"
+        )
+        #expect(clone.metadata.displayName == "ci-runner-02")
+        #expect(clone.metadata.id != source.metadata.id, "a clone is still a new identity")
+
+        let reloaded = try VirtualMachineBundle.load(from: destURL)
+        #expect(
+            reloaded.metadata.id.uuidString == destURL.deletingPathExtension().lastPathComponent,
+            "the invariant must survive a round-trip through disk"
+        )
+    }
 }

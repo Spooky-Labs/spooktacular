@@ -153,7 +153,15 @@ public enum CloneManager {
             let spec = source.spec.with(macAddress: .set(MACAddress.generate()))
             try VirtualMachineBundle.writeSpec(spec, to: destination)
 
-            var metadata = VirtualMachineMetadata(displayName: displayName)
+            // Align the metadata UUID with the destination's basename, the
+            // same way ``VirtualMachineBundle/create(at:spec:displayName:)``
+            // does. Minting an independent UUID here left every clone with
+            // metadata whose id named no directory on disk, so the clone was
+            // unreachable by UUID and the ambiguous-name error advised a
+            // selector that could not resolve.
+            let basename = destination.deletingPathExtension().lastPathComponent
+            let id = UUID(uuidString: basename) ?? UUID()
+            var metadata = VirtualMachineMetadata(id: id, displayName: displayName)
             metadata.setupCompleted = source.metadata.setupCompleted
             try VirtualMachineBundle.writeMetadata(metadata, to: destination)
 

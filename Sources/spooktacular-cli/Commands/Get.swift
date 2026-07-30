@@ -54,7 +54,9 @@ extension Spooktacular {
                 return
             }
 
-            printStyledConfig(name: name, spec: spec, metadata: metadata, bundle: bundle)
+            // Show the VM's name, not the selector: addressing a VM by UUID
+            // should still print the label the user gave it.
+            printStyledConfig(name: metadata.displayName, spec: spec, metadata: metadata, bundle: bundle)
         }
 
         private func printStyledConfig(

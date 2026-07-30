@@ -50,7 +50,12 @@ extension Spooktacular {
 
             print(Style.success("✓ Clone '\(destination)' created."))
             Style.field("UUID", Style.dim(clone.id.uuidString))
-            Style.field("Machine ID", Style.dim("regenerated (unique)"))
+            // The machine identifier is inherited, not regenerated: the
+            // installer personalizes auxiliary storage against it, so a
+            // fresh identifier would pair boot state with an identity it
+            // was never signed for. The MAC address *is* regenerated.
+            Style.field("Machine ID", Style.dim("inherited (paired with auxiliary storage)"))
+            Style.field("MAC", Style.dim("regenerated (unique)"))
             Style.field("Setup", clone.metadata.setupCompleted
                         ? Style.green("inherited") : Style.dim("pending"))
             print()

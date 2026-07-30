@@ -46,41 +46,44 @@ extension Spooktacular {
                 return
             }
 
+            // Bundle directories are named by UUID, so the label has to come
+            // from the metadata — the directory basename is not the VM's name.
             var bundles: [(String, VirtualMachineBundle)] = contents.compactMap { url in
-                let name = url.deletingPathExtension().lastPathComponent
+                let directory = url.deletingPathExtension().lastPathComponent
                 do {
                     let bundle = try VirtualMachineBundle.load(from: url)
-                    return (name, bundle)
+                    return (bundle.metadata.displayName, bundle)
                 } catch {
-                    Log.vm.error("Failed to load bundle '\(name, privacy: .public)': \(error.localizedDescription, privacy: .public)")
+                    Log.vm.error("Failed to load bundle '\(directory, privacy: .public)': \(error.localizedDescription, privacy: .public)")
                     return nil
                 }
-            }.sorted { $0.0 < $1.0 }
+            }.sorted { $0.0.localizedStandardCompare($1.0) == .orderedAscending }
 
             if runningOnly {
                 bundles = bundles.filter { PIDFile.isRunning(bundleURL: $0.1.url) }
             }
 
             // Resolve IPs once, up front, so the table rendering stays sync.
-            var ipByName: [String: String] = [:]
+            // Keyed by VM id: display names are not guaranteed unique.
+            var ipByID: [UUID: String] = [:]
             if includeIP {
-                for (name, bundle) in bundles {
+                for (_, bundle) in bundles {
                     guard PIDFile.isRunning(bundleURL: bundle.url),
                           let mac = bundle.spec.macAddress,
                           let ip = try? await IPResolver.resolveIP(macAddress: mac)
                     else { continue }
-                    ipByName[name] = ip
+                    ipByID[bundle.metadata.id] = ip
                 }
             }
 
             if json {
-                printJSON(bundles, ipByName: ipByName)
+                printJSON(bundles, ipByID: ipByID)
             } else {
-                printTable(bundles, ipByName: ipByName)
+                printTable(bundles, ipByID: ipByID)
             }
         }
 
-        private func printTable(_ bundles: [(String, VirtualMachineBundle)], ipByName: [String: String] = [:]) {
+        private func printTable(_ bundles: [(String, VirtualMachineBundle)], ipByID: [UUID: String] = [:]) {
             var rows: [[String]] = []
             var runningCount = 0
 
@@ -104,7 +107,7 @@ extension Spooktacular {
                     setup,
                 ]
                 if includeIP {
-                    row.append(ipByName[name] ?? Style.dim("—"))
+                    row.append(ipByID[bundle.metadata.id] ?? Style.dim("—"))
                 }
                 rows.append(row)
             }
@@ -120,7 +123,7 @@ extension Spooktacular {
             )
         }
 
-        private func printJSON(_ bundles: [(String, VirtualMachineBundle)], ipByName: [String: String] = [:]) {
+        private func printJSON(_ bundles: [(String, VirtualMachineBundle)], ipByID: [UUID: String] = [:]) {
             struct VMEntry: Encodable {
                 let name: String
                 let running: Bool
@@ -149,7 +152,7 @@ extension Spooktacular {
                     setupCompleted: bundle.metadata.setupCompleted,
                     id: bundle.metadata.id.uuidString,
                     path: bundle.url.path,
-                    ip: ipByName[name]
+                    ip: ipByID[bundle.metadata.id]
                 )
             }
 
