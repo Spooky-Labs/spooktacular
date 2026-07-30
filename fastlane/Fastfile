@@ -1,3 +1,7 @@
+require "digest"
+require "tmpdir"
+require "fileutils"
+
 default_platform(:mac)
 
 # Project root (Fastfile runs from fastlane/, so parent is root)
@@ -5,6 +9,12 @@ PROJECT_ROOT = File.expand_path("..", __dir__)
 APP_BUNDLE = File.join(PROJECT_ROOT, "Spooktacular.app")
 PKG_FILE = File.join(PROJECT_ROOT, "Spooktacular.pkg")
 APP_IDENTIFIER = "com.spooktacular.app"
+
+# Direct-distribution targets. Overridable so a fork can publish to its
+# own repository and tap without editing this file.
+GITHUB_REPO   = ENV["SPOOKTACULAR_GITHUB_REPO"] || "Spooky-Labs/spooktacular"
+HOMEBREW_TAP  = ENV["SPOOKTACULAR_HOMEBREW_TAP"] || "spooky-labs/tap"
+CASK_FILE     = File.join(PROJECT_ROOT, "Casks", "spooktacular.rb")
 
 # Developer contact fields — sourced from .env so forks can override
 # without editing the Fastfile. Defaults keep Spooktacular's canonical
@@ -547,18 +557,171 @@ platform :mac do
   end
 
   # ──────────────────────────────────────────────────
-  # Homebrew — Notarized zip for Homebrew cask
+  # Direct distribution — Developer ID, notarized, tagged,
+  # published to GitHub Releases, and poured by Homebrew.
+  #
+  # This is the path for the website's Download button and for
+  # `brew install --cask`. It is deliberately separate from the
+  # App Store lanes: those sign with Apple Distribution, and
+  # Apple does not accept that certificate for notarization.
   # ──────────────────────────────────────────────────
 
-  desc "Build, notarize, and package for Homebrew distribution"
-  lane :homebrew do
-    build
-    notarize_app
-    Dir.chdir(PROJECT_ROOT) do
-      sh("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent",
-         "Spooktacular.app", "Spooktacular.app.zip")
+  desc "Sync the Developer ID Application certificate used for notarized builds"
+  lane :signing_developer_id do
+    # `type: "developer_id"` is what produces a "Developer ID
+    # Application" certificate. Apple rejects Apple Distribution,
+    # Apple Development and ad-hoc signatures at the notary
+    # service, so the App Store `signing` lane cannot stand in
+    # for this one.
+    match(
+      api_key: get_api_key,
+      type: "developer_id",
+      readonly: is_ci
+    )
+  end
+
+  desc "Build, notarize, tag, publish to GitHub Releases, and update the Homebrew cask"
+  #
+  # Usage:
+  #   bundle exec fastlane dist version:0.2.0
+  #   bundle exec fastlane dist version:0.2.0 dry_run:true
+  #
+  # Runs locally today; the steps are ordered so the same lane
+  # works unchanged in GitHub Actions once a runner image ships
+  # the macOS 27 SDK.
+  lane :dist do |options|
+    version = (options[:version] || ENV["APP_VERSION"]).to_s
+    unless version.match?(/\A\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?\z/)
+      UI.user_error!("version: must be semver, e.g. version:0.2.0 (got #{version.inspect})")
     end
-    UI.success("Homebrew package ready: Spooktacular.app.zip")
+    dry_run = options[:dry_run] ? true : false
+    tag = "v#{version}"
+    zip_name = "Spooktacular-#{version}-macos-arm64.zip"
+    zip_path = File.join(PROJECT_ROOT, zip_name)
+    # The website links to a stable filename under /releases/latest/download/,
+    # which only resolves if the asset name never changes. The cask needs the
+    # opposite — an immutable, version-stamped URL to pin a sha256 against — so
+    # the same bytes are published under both names.
+    latest_name = "Spooktacular-macos-arm64.zip"
+    latest_path = File.join(PROJECT_ROOT, latest_name)
+
+    # ---- 1. Refuse to publish from a dirty or diverged tree ----
+    Dir.chdir(PROJECT_ROOT) do
+      unless sh("git status --porcelain", log: false).strip.empty?
+        UI.user_error!("Working tree is dirty. Commit or stash before cutting a release.")
+      end
+      branch = sh("git rev-parse --abbrev-ref HEAD", log: false).strip
+      UI.important("Releasing from '#{branch}' rather than main.") unless branch == "main"
+      if sh("git tag --list #{tag}", log: false).strip == tag
+        UI.user_error!("Tag #{tag} already exists. Bump the version or delete the tag.")
+      end
+      sh("git fetch origin --tags", log: false)
+    end
+
+    # ---- 2. Gates. A release is the wrong place to discover a red test ----
+    test
+    lint
+
+    # ---- 3. Developer ID signing identity ----
+    signing_developer_id
+    identity = developer_id_identity
+    UI.message("Signing with: #{identity}")
+
+    # ---- 4. Build at the release version ----
+    Dir.chdir(PROJECT_ROOT) do
+      sh(
+        { "CODESIGN_IDENTITY" => identity, "MARKETING_VERSION" => version },
+        "./build-app.sh", "release"
+      )
+    end
+
+    # ---- 5. Check the things the notary service checks, before uploading ----
+    verify_notarization_prerequisites
+
+    # ---- 6. Notarize and staple ----
+    if dry_run
+      UI.important("dry_run: skipping notarization, tag, release and cask update.")
+    else
+      notarize(
+        package: APP_BUNDLE,
+        bundle_id: APP_IDENTIFIER,
+        api_key: get_api_key,
+        verbose: true,
+        print_log: true
+      )
+      # Apple staples to the .app; the ticket must be verified on the
+      # bundle before it is zipped, because a zip cannot be stapled.
+      sh("xcrun", "stapler", "validate", APP_BUNDLE)
+      sh("spctl", "--assess", "--type", "exec", "--verbose=4", APP_BUNDLE)
+      UI.success("Notarized and stapled.")
+    end
+
+    # ---- 7. Archive the stapled bundle ----
+    FileUtils.rm_f(zip_path)
+    Dir.chdir(PROJECT_ROOT) do
+      # ditto preserves the signature and extended attributes that a
+      # plain `zip` drops, which would otherwise break the signature.
+      sh("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent",
+         "Spooktacular.app", zip_name)
+    end
+    FileUtils.cp(zip_path, latest_path)
+    sha = Digest::SHA256.file(zip_path).hexdigest
+    UI.success("#{zip_name}  sha256 #{sha}")
+
+    if dry_run
+      UI.success("dry_run complete. Artifact left at #{zip_path}")
+      next
+    end
+
+    # ---- 8. Tag, then publish. Tag first so the release always has one ----
+    Dir.chdir(PROJECT_ROOT) do
+      sh("git", "tag", "-a", tag, "-m", "Spooktacular #{version}")
+      sh("git", "push", "origin", tag)
+    end
+
+    notes = release_notes(version)
+    Dir.chdir(PROJECT_ROOT) do
+      sh("gh", "release", "create", tag, zip_path, latest_path,
+         "--title", "Spooktacular #{version}",
+         "--notes", notes,
+         "--verify-tag")
+    end
+    UI.success("Published #{tag} with #{zip_name}")
+
+    # ---- 9. Homebrew, in the same run, against the asset just published ----
+    update_homebrew_cask(version: version, sha256: sha, asset: zip_name)
+
+    UI.success([
+      "Release #{version} is live.",
+      "  Download page resolves to: https://github.com/#{GITHUB_REPO}/releases/latest/download/#{zip_name}",
+      "  Homebrew: brew install --cask #{HOMEBREW_TAP}/spooktacular"
+    ].join("\n"))
+  end
+
+  desc "Verify the .app satisfies Apple's notarization prerequisites"
+  lane :verify_notarization_prerequisites do
+    # Cheap local checks for the failures the notary service would
+    # otherwise report 10 minutes later.
+    out = sh("codesign", "--display", "--verbose=4", APP_BUNDLE, log: false) rescue ""
+    entitlements = sh("codesign", "--display", "--entitlements", ":-", APP_BUNDLE, log: false) rescue ""
+
+    unless out.include?("flags=") && out.match?(/runtime/)
+      UI.user_error!("Hardened runtime missing. Apple requires it for notarization; build-app.sh should pass --options runtime.")
+    end
+    if out.include?("Timestamp=none")
+      UI.user_error!("No secure timestamp. Apple requires one; codesign needs --timestamp (not --timestamp=none).")
+    end
+    if entitlements.match?(/get-task-allow.*\n?\s*<true/) || entitlements.include?("<key>com.apple.security.get-task-allow</key>\n\t<true/>")
+      UI.user_error!("com.apple.security.get-task-allow is set true. Apple rejects notarization with it enabled.")
+    end
+    unless out.match?(/Authority=Developer ID Application/)
+      UI.user_error!(
+        "Not signed with a Developer ID Application certificate.\n" \
+        "Apple will refuse notarization for Apple Distribution / Apple Development / ad-hoc signatures.\n" \
+        "Create one in the developer portal, then run: bundle exec fastlane signing_developer_id"
+      )
+    end
+    UI.success("Notarization prerequisites satisfied.")
   end
 
   # ──────────────────────────────────────────────────
@@ -866,6 +1029,194 @@ platform :mac do
     "macOS VMs on Apple Silicon. Works only on Apple Silicon Macs. " \
     "The app includes a GUI, a bundled CLI (spook), and an HTTP API server. " \
     "No account or internet connection required — all VMs run locally."
+  end
+
+  # Resolve the Developer ID Application identity from the keychain rather
+  # than interpolating a name. Notarization fails on any other certificate
+  # type, so this is worth reading back instead of assuming.
+  def self.developer_id_identity
+    out = `security find-identity -v -p codesigning 2>/dev/null`
+    match = out.lines.grep(/Developer ID Application/).first
+    if match.nil?
+      UI.user_error!(
+        "No 'Developer ID Application' certificate in the keychain.\n" \
+        "Apple requires it for notarized distribution outside the App Store, and will not\n" \
+        "accept the Apple Distribution certificate this project uses for the App Store.\n" \
+        "\n" \
+        "One-time setup:\n" \
+        "  1. Create a Developer ID Application certificate for team #{TEAM_ID}.\n" \
+        "  2. bundle exec fastlane signing_developer_id\n"
+      )
+    end
+    match[/"([^"]+)"/, 1]
+  end
+
+  # Notes for the GitHub Release. Prefers a hand-written section in
+  # CHANGELOG.md so a release can say something specific; falls back to a
+  # short, honest template rather than inventing highlights.
+  def self.release_notes(version)
+    changelog = File.join(PROJECT_ROOT, "CHANGELOG.md")
+    if File.exist?(changelog)
+      body = File.read(changelog)
+      section = body[/^##+\s*\[?#{Regexp.escape(version)}\]?.*?\n(.*?)(?=\n##+\s|\z)/m, 1]
+      return section.strip unless section.nil? || section.strip.empty?
+    end
+    [
+      "Spooktacular #{version} for Apple silicon.",
+      "",
+      "Requires macOS 27 or later for macOS guests. Linux guests run on earlier hosts.",
+      "",
+      "This build is signed with a Developer ID certificate and notarized by Apple,",
+      "so it opens without a Gatekeeper override.",
+      "",
+      "Install with Homebrew:",
+      "",
+      "    brew install --cask #{HOMEBREW_TAP}/spooktacular",
+      "",
+      "Or download the archive below, unzip it, and move Spooktacular.app to /Applications.",
+      "",
+      "Full commit history: https://github.com/#{GITHUB_REPO}/commits/v#{version}"
+    ].join("\n")
+  end
+
+  # Rewrite the cask in-repo, then push it to the tap. The tap holds a copy
+  # because Homebrew reads casks from the tap, but the repo keeps the source
+  # of truth so a release is reviewable in one diff.
+  def self.update_homebrew_cask(version:, sha256:, asset:)
+    url = "https://github.com/#{GITHUB_REPO}/releases/download/v#{version}/#{asset}"
+    FileUtils.mkdir_p(File.dirname(CASK_FILE))
+    File.write(CASK_FILE, <<~RUBY)
+      # Generated by `fastlane dist`. Edit the lane, not this file.
+      cask "spooktacular" do
+        version "#{version}"
+        sha256 "#{sha256}"
+
+        url "https://github.com/#{GITHUB_REPO}/releases/download/v\#{version}/Spooktacular-\#{version}-macos-arm64.zip"
+        name "Spooktacular"
+        desc "Create macOS virtual machines in seconds from a shared base image"
+        homepage "https://spooktacular.app/"
+
+        # A bare symbol is already a minimum ("this release or newer"), which
+        # is what brew style enforces. The real floor is macOS 27, but
+        # Homebrew rejects numeric versions here and there is no verified
+        # symbol for 27 yet, so this sits one release low on purpose: an
+        # unknown symbol would break the cask outright, whereas this only lets
+        # a macOS 26 user install and read the caveat. Tighten it when the
+        # symbol lands.
+        depends_on macos: :tahoe
+        depends_on arch: :arm64
+
+        app "Spooktacular.app"
+        binary "#{'#'}{appdir}/Spooktacular.app/Contents/MacOS/spook"
+
+        zap trash: [
+          "~/Library/Application Support/com.spooktacular.app",
+          "~/Library/Caches/com.spooktacular.app",
+          "~/Library/Preferences/com.spooktacular.app.plist",
+          "~/Library/Saved Application State/com.spooktacular.app.savedState",
+        ]
+
+        caveats <<~EOS
+          Creating macOS virtual machines requires macOS 27 or later, because
+          the shared base image and its copy-on-write overlays are built on
+          DiskImageKit. On macOS 26 the app installs and runs, and Linux guests
+          work, but macOS guests will refuse to be created.
+
+          Spooktacular keeps virtual machines and cached base images in
+          ~/.spooktacular. Deleting the app does not remove them; `brew uninstall
+          --zap` does not either, because losing a VM to an uninstall would be
+          worse than leaving the directory behind.
+
+          The first macOS VM you create installs macOS into a shared base image.
+          That takes 10-20 minutes and asks for an administrator password once.
+          Every VM created afterwards takes seconds and needs no privileges.
+        EOS
+      end
+    RUBY
+    UI.success("Cask written: #{CASK_FILE}")
+
+    # `brew style` accepts a path; `brew audit` requires a tapped name, so the
+    # audit runs after the tap is updated, below.
+    begin
+      sh("brew", "style", CASK_FILE)
+    rescue StandardError => e
+      UI.user_error!("brew style rejected the generated cask: #{e.message}")
+    end
+
+    Dir.chdir(PROJECT_ROOT) do
+      sh("git", "add", CASK_FILE)
+      sh("git", "commit", "-m", "chore(release): cask #{version}")
+      sh("git", "push", "origin", "HEAD")
+    end
+
+    tap_repo = "https://github.com/#{HOMEBREW_TAP.sub('/', '/homebrew-')}.git"
+    Dir.mktmpdir do |dir|
+      begin
+        sh("git", "clone", "--depth", "1", tap_repo, dir)
+      rescue StandardError
+        UI.important(
+          "Could not clone the tap at #{tap_repo}.\n" \
+          "Create it (a repo named homebrew-tap under the #{HOMEBREW_TAP.split('/').first} org),\n" \
+          "then re-run: bundle exec fastlane dist version:#{version}\n" \
+          "The release and its asset are already published; only the tap is behind."
+        )
+        next
+      end
+      # Casks must sit in a top-level `Casks` directory of the tap, and
+      # Homebrew recommends the tap carry a README.
+      FileUtils.mkdir_p(File.join(dir, "Casks"))
+      FileUtils.cp(CASK_FILE, File.join(dir, "Casks", "spooktacular.rb"))
+      File.write(File.join(dir, "README.md"), <<~MD)
+        # #{HOMEBREW_TAP.split("/").first} Homebrew tap
+
+        Casks for [Spooktacular](https://spooktacular.app/), which creates macOS
+        virtual machines in seconds from a shared, read-only base image.
+
+        ## Install
+
+        ```sh
+        brew tap #{HOMEBREW_TAP}
+        brew install --cask spooktacular
+        ```
+
+        Or in one step, without tapping first:
+
+        ```sh
+        brew install --cask #{HOMEBREW_TAP}/spooktacular
+        ```
+
+        ## Requirements
+
+        - Apple silicon. Intel Macs cannot run macOS guests.
+        - macOS 27 or later for macOS guests; Linux guests run on earlier hosts.
+
+        Builds are signed with a Developer ID certificate and notarized by
+        Apple, so they open without a Gatekeeper override.
+
+        ## Updating
+
+        This tap is written by `fastlane dist` in the
+        [Spooktacular repository](https://github.com/#{GITHUB_REPO}); the cask
+        there is the source of truth. Send changes to that repository rather
+        than editing this one, or they will be overwritten by the next release.
+      MD
+      Dir.chdir(dir) do
+        sh("git", "add", "Casks/spooktacular.rb")
+        sh("git", "commit", "-m", "spooktacular #{version}")
+        sh("git", "push")
+      end
+      UI.success("Tap updated: brew install --cask #{HOMEBREW_TAP}/spooktacular")
+    end
+
+    # Audit against the published asset. Non-fatal: the release is already out,
+    # and an audit warning is worth seeing rather than worth failing over.
+    begin
+      sh("brew", "tap", HOMEBREW_TAP)
+      sh("brew", "audit", "--cask", "--online", "#{HOMEBREW_TAP}/spooktacular")
+      UI.success("brew audit clean.")
+    rescue StandardError => e
+      UI.important("brew audit reported issues (release is published; fix in the next bump): #{e.message}")
+    end
   end
 
   def self.default_changelog

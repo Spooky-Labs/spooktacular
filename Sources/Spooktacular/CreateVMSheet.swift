@@ -785,6 +785,30 @@ struct CreateVMSheet: View {
                 )
                 .frame(width: 45, alignment: .trailing)
         }
+        // Visible rather than hover-only: the tooltips above are unreachable
+        // by keyboard and invisible on a first read, and these numbers are
+        // exactly where someone new to virtualization guesses wrong.
+        Text(hardwareExplanation)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Help text for CPU, memory and disk.
+    ///
+    /// Says what the numbers do for someone who has never sized a VM, then
+    /// the two things that actually bite: memory is committed while the guest
+    /// runs, and disk is sparse so the figure is a ceiling rather than a cost.
+    private var hardwareExplanation: String {
+        let cores = ProcessInfo.processInfo.processorCount
+        return "Cores and memory are taken from this Mac while the guest is "
+            + "running, so leave headroom for the host: this Mac has \(cores) "
+            + "logical cores, and macOS guests need at least 4. Memory is "
+            + "committed for the whole run, which makes it the setting that "
+            + "decides how many VMs fit at once. Disk is the opposite — it is "
+            + "an APFS sparse ceiling, not an allocation, so a 200 GB guest "
+            + "that writes 8 GB costs 8 GB, and a generous number is close to "
+            + "free."
     }
 
     @ViewBuilder
@@ -944,19 +968,41 @@ struct CreateVMSheet: View {
 
     // MARK: - Network Explanation
 
+    /// Help text for the network picker.
+    ///
+    /// Each option answers two questions in order: what it means if you have
+    /// never configured a VM network, and what it costs you operationally if
+    /// you have. The second half is the part that saves a senior engineer an
+    /// afternoon — particularly the note that bridged mode cannot work on
+    /// EC2 Mac.
     private var networkExplanation: String {
         switch networkKind {
         case .nat:
-            "The VM accesses the internet through your Mac's connection. " +
-            "The host can reach the guest via its DHCP-assigned IP."
-        case .isolated:
-            "The VM has no network interface. Use for secure builds " +
-            "where network isolation is required. Host-guest " +
-            "communication is still possible via the VirtIO socket."
+            "The guest shares this Mac's connection, the way a laptop sits "
+            + "behind a home router: it can reach the internet, but nothing "
+            + "on your network can reach it uninvited. Each VM gets its own "
+            + "private subnet and a reserved address, so `spook ip` is a "
+            + "lookup rather than a scan, and you expose a guest service by "
+            + "publishing it onto a host port. This is the only mode that "
+            + "works on EC2 Mac, because outbound traffic leaves through the "
+            + "host's own network interface."
         case .bridged:
-            "The VM gets its own IP on your local network via the " +
-            "chosen host interface. Requires the " +
-            "com.apple.vm.networking entitlement."
+            "The guest appears on your network as though it were a separate "
+            + "physical machine, with its own address from your router — "
+            + "convenient when other machines need to reach it directly. The "
+            + "cost is that the guest puts its own MAC address on the wire, "
+            + "so it will not work on EC2 Mac or anywhere else that filters "
+            + "unknown MACs, and it can trip DHCP or network-access-control "
+            + "policy on a corporate LAN. Needs a host interface to bridge "
+            + "onto, and the com.apple.vm.networking entitlement."
+        case .isolated:
+            "The guest gets no network interface at all, which is what you "
+            + "want for untrusted code or for a build that must not reach "
+            + "the internet. First-boot provisioning still works, because "
+            + "the provisioner is written into the disk rather than fetched "
+            + "over the network, and the host can still talk to the guest "
+            + "over a virtio socket — so readiness reporting and `spook exec` "
+            + "keep working while nothing routes."
         }
     }
 
