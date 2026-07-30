@@ -83,6 +83,66 @@
 .shot p { color: var(--ink-2); }
 .shot ul { margin: 1rem 0 0; padding-left: 1.1rem; color: var(--ink-2); font-size: var(--t-small); line-height: 1.7; }
 
+
+/* ---- Session replay -------------------------------------------------------
+   A real terminal is dark, so the artifact is dark inside the light page —
+   the way a screenshot would be. The transcript lives in the markup, so the
+   block is complete with JavaScript disabled; the script only paces it. */
+.replay-wrap { container-type: inline-size; }
+.term.shell {
+  background: oklch(19% 0.012 275);
+  border-color: oklch(100% 0 0 / 0.14);
+}
+.term.shell .term-bar {
+  background: oklch(23% 0.013 275);
+  border-bottom-color: oklch(100% 0 0 / 0.09);
+}
+.term.shell .term-bar i { background: oklch(70% 0.02 275); opacity: 0.35; }
+.term.shell .term-bar b { color: oklch(66% 0.012 275); }
+.term.shell pre {
+  padding: 1rem 1.15rem 1.25rem;
+  color: oklch(78% 0.01 275);
+  font-size: clamp(0.6875rem, 0.45rem + 0.6vw, 0.8125rem);
+  line-height: 1.55;
+  /* Reserve the finished height so the replay does not reflow the page. */
+  min-height: 23.5rem;
+}
+.term.shell code { display: block; border: 0; background: none; padding: 0; font-size: inherit; }
+.term.shell .ln { display: block; white-space: pre; }
+.term.shell .ok   { color: oklch(78% 0.15 155); }
+.term.shell .warn { color: oklch(82% 0.13 85); }
+.term.shell .em   { color: oklch(96% 0.005 275); }
+.term.shell .dim  { color: oklch(62% 0.012 275); }
+/* A typed command carries its own prompt, added in CSS so the text stays
+   copy-pasteable without a stray "$". */
+.term.shell .cmd-line { color: oklch(96% 0.005 275); }
+.term.shell .cmd-line::before { content: '$ '; color: oklch(72% 0.145 273); }
+
+.replay-again {
+  margin-left: auto; padding: 0.15rem 0.5rem;
+  border: 1px solid oklch(100% 0 0 / 0.16); border-radius: var(--r-sm);
+  background: transparent; color: oklch(66% 0.012 275);
+  font-family: var(--mono); font-size: 0.6875rem; cursor: pointer;
+  transition: color var(--quick) var(--out), border-color var(--quick) var(--out);
+}
+.replay-again:hover { color: oklch(96% 0.005 275); border-color: oklch(100% 0 0 / 0.32); }
+
+/* Only hide lines once the script has taken over, so no-JS shows everything. */
+.term.shell[data-running] .ln { visibility: hidden; }
+.term.shell[data-running] .ln[data-shown] { visibility: visible; }
+.term.shell .ln[data-typing]::after {
+  content: '';
+  display: inline-block; width: 0.5em; height: 1em;
+  margin-left: 0.05em; vertical-align: -0.15em;
+  background: oklch(72% 0.145 273);
+  animation: caret 1s steps(1, end) infinite;
+}
+@keyframes caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .term.shell[data-running] .ln { visibility: visible; }
+  .term.shell .ln[data-typing]::after { display: none; }
+}
+
 .closing { text-align: center; }
 .closing h2 { max-width: 26ch; margin-inline: auto; }
 .closing p { margin-top: 0.9rem; max-width: 50ch; margin-inline: auto; color: var(--ink-2); }
@@ -374,8 +434,8 @@
       </div>
       <div class="shot reveal">
         <figure class="fig">
-          <img src="/img/app/window.png" width="1772" height="1078" loading="lazy"
-               alt="The Spooktacular Mac app, listing virtual machines with their CPU, memory and disk allocations beside a sidebar of downloaded images.">
+          <img src="/img/app/window.png" width="1772" height="900" loading="lazy"
+               alt="The Spooktacular Mac app: a sidebar listing two Linux virtual machines with their vCPU and memory allocations, above the downloaded Fedora and macOS images.">
           <figcaption><b>Fig 2</b> — the app, managing a small fleet.</figcaption>
         </figure>
         <div>
@@ -399,48 +459,42 @@
     </div>
   </section>
 
+  <!-- A replay of a session actually captured from this machine. The full
+       transcript is in the markup, so it is complete without JavaScript and
+       under prefers-reduced-motion; the script only reveals it gradually. -->
   <section class="band">
     <div class="container">
       <div class="band-head reveal">
-        <h2>What the first run actually prints.</h2>
+        <h2>A real session, replayed.</h2>
         <p>
-          The first create pays for the base image once. Every create after it is
-          file operations.
+          Every line below was captured from a terminal on an M-series Mac —
+          commands, timings and all. Only the generated password is masked.
         </p>
       </div>
-      <div class="grid cols-2 reveal" style="gap:clamp(1rem,3vw,2rem)">
-        <div class="term">
-          <div class="term-bar"><i></i><i></i><i></i><b>first create — once per macOS build</b></div>
-<pre><span class="dim">$</span> <span class="em">sudo spook create dev</span>
-<span class="dim">Resolving the latest macOS restore image…</span>
-<span class="dim">Downloading IPSW (100%)</span>
-<span class="acc">Building the macOS base image — one time, 10-20 minutes.</span>
-<span class="dim">  Installing base: 100%</span>
-<span class="dim">  Injecting provisioner into the base…</span>
-<span class="dim">  Sealing the base image read-only…</span>
-<span class="ok">✓ Base image ready.</span>
-<span class="ok">✓ VM created from the cached base image.</span>
-<span class="dim">  Address 192.168.64.3</span></pre>
-        </div>
-        <div class="term">
-          <div class="term-bar"><i></i><i></i><i></i><b>every create after that</b></div>
-<pre><span class="dim">$</span> <span class="em">spook create dev2</span>
-<span class="ok">✓ VM created from the cached base image.</span>
-<span class="dim">  Address 192.168.65.3</span>
 
-<span class="dim">$</span> <span class="em">spook clone dev2 dev3</span>
-<span class="ok">✓ Clone 'dev3' created.</span>
-<span class="dim">  Machine ID  inherited (paired with auxiliary storage)</span>
-<span class="dim">  MAC         regenerated (unique)</span>
-
-<span class="dim">$</span> <span class="em">spook list</span>
-<span class="dim">dev    dev2    dev3</span></pre>
+      <div class="replay-wrap reveal">
+        <div class="term shell" data-replay>
+          <div class="term-bar">
+            <i></i><i></i><i></i>
+            <b>zsh — spook</b>
+            <button class="replay-again" type="button" hidden>replay</button>
+          </div>
+          <pre><code><span class="ln cmd-line">spook create ci-runner-01 --os linux --from-image fedora</span><span class="ln ok">✓ Linux VM 'ci-runner-01' created (cloud-init provisioned).</span><span class="ln dim">  Bundle           ~/.spooktacular/vms/ED27407A-FBBA-4F12-878A-C26C041F8BBE.vm</span><span class="ln dim">  Image            Fedora-Cloud-Base-AmazonEC2-44-1.7.aarch64.raw.xz</span><span class="ln">&nbsp;</span><span class="ln warn">⚠ Save these credentials — you need them to connect (shown only once):</span><span class="ln dim">  Account          admin</span><span class="ln dim">  Password         ························</span><span class="ln dim">  Applied by cloud-init on the first 'spook start'. No sudo needed.</span><span class="ln">&nbsp;</span><span class="ln cmd-line">spook clone ci-runner-01 ci-runner-02</span><span class="ln dim">⤢ Cloning 'ci-runner-01' → 'ci-runner-02'…</span><span class="ln ok">✓ Clone 'ci-runner-02' created.</span><span class="ln dim">  Machine ID       inherited (paired with auxiliary storage)</span><span class="ln dim">  MAC              regenerated (unique)</span><span class="ln">&nbsp;</span><span class="ln cmd-line">spook list</span><span class="ln dim">NAME          STATE      CPU      MEM    DISK    NET  ♪  STATUS</span><span class="ln dim">────────────  ─────────  ───────  ─────  ──────  ───  ─  ───────</span><span class="ln em">ci-runner-01  ○ stopped  8 cores  16 GB  100 GB  nat  ♪  pending</span><span class="ln em">ci-runner-02  ○ stopped  8 cores  16 GB  100 GB  nat  ♪  pending</span><span class="ln">&nbsp;</span><span class="ln dim">2 virtual machines, 0 running</span></code></pre>
         </div>
       </div>
+
       <p class="prose" style="margin-top:1.5rem">
+        The first macOS create is the one that costs anything: it installs macOS
+        into the shared base image, printing
+        <code>Building the macOS base image — one time, 10-20 minutes.</code>
+        and then <code>Sealing the base image read-only…</code> before the VM
+        appears. Every create after that skips straight to
+        <code>✓ VM created from the cached base image.</code>
+      </p>
+      <p class="prose" style="margin-top:0.85rem">
         Apple permits two macOS guests per host, and Spooktacular enforces that
-        rather than letting you find out later. Linux guests are unlimited, boot
-        from a cloud image, and need no base image at all.
+        rather than letting you find out later. Linux guests, like the ones
+        above, are unlimited and need no base image at all.
       </p>
     </div>
   </section>
@@ -515,6 +569,107 @@ document.addEventListener('click', function (event) {
     }, 1600);
   });
 });
+
+
+/* Session replay. The transcript is already in the DOM; this paces its
+   reveal — commands typed a character at a time, output lines revealed as a
+   block, which is how a real shell behaves. Bails out entirely under
+   prefers-reduced-motion, and never runs if the element is missing. */
+(function () {
+  var shell = document.querySelector('.term.shell[data-replay]');
+  if (!shell) { return; }
+
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  if (reduce.matches) { return; }
+
+  var lines = Array.prototype.slice.call(shell.querySelectorAll('.ln'));
+  if (!lines.length) { return; }
+
+  var again = shell.querySelector('.replay-again');
+  var originals = lines.map(function (line) { return line.textContent; });
+  var timers = [];
+  var running = false;
+
+  function clearTimers() {
+    timers.forEach(clearTimeout);
+    timers = [];
+  }
+
+  function after(delay, fn) { timers.push(setTimeout(fn, delay)); }
+
+  function finish() {
+    running = false;
+    shell.removeAttribute('data-running');
+    lines.forEach(function (line, i) {
+      line.textContent = originals[i];
+      line.setAttribute('data-shown', '');
+      line.removeAttribute('data-typing');
+    });
+    if (again) { again.hidden = false; }
+  }
+
+  function typeLine(line, text, done) {
+    line.setAttribute('data-typing', '');
+    line.setAttribute('data-shown', '');
+    line.textContent = '';
+    var i = 0;
+    (function step() {
+      if (i >= text.length) {
+        line.removeAttribute('data-typing');
+        after(260, done);
+        return;
+      }
+      line.textContent = text.slice(0, ++i);
+      after(18 + Math.round((i * 7) % 11), step);   // slight jitter, no RNG
+    })();
+  }
+
+  function play(index) {
+    if (index >= lines.length) { finish(); return; }
+    var line = lines[index];
+    var text = originals[index];
+    if (line.classList.contains('cmd-line')) {
+      typeLine(line, text, function () { play(index + 1); });
+      return;
+    }
+    line.textContent = text;
+    line.setAttribute('data-shown', '');
+    after(text.trim() ? 55 : 110, function () { play(index + 1); });
+  }
+
+  function start() {
+    if (running) { return; }
+    running = true;
+    clearTimers();
+    if (again) { again.hidden = true; }
+    shell.setAttribute('data-running', '');
+    lines.forEach(function (line) {
+      line.removeAttribute('data-shown');
+      line.removeAttribute('data-typing');
+      line.textContent = '\u00a0';
+    });
+    after(220, function () { play(0); });
+  }
+
+  if (again) { again.addEventListener('click', start); }
+
+  /* Begin when the block is actually on screen, once. */
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) { io.disconnect(); start(); }
+      });
+    }, { threshold: 0.35 });
+    io.observe(shell);
+  } else {
+    start();
+  }
+
+  /* If the user switches on reduced motion mid-visit, stop and show it all. */
+  reduce.addEventListener('change', function (event) {
+    if (event.matches) { clearTimers(); finish(); }
+  });
+})();
 </script>
 </body>
 </html>

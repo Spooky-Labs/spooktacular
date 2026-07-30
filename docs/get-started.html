@@ -278,7 +278,7 @@
               <tr><td><code>--github-repo</code></td><td>The <code>owner/repo</code> the runner registers against.</td></tr>
               <tr><td><code>--github-token-keychain</code></td><td>Keychain account holding the PAT, under service <code>com.spooktacular.github</code>. The only accepted source — never a flag, an environment variable, or a file.</td></tr>
               <tr><td><code>--ephemeral</code></td><td>The runner takes one job and exits. Reset the VM and the next job starts from the base image.</td></tr>
-              <tr><td><code>--labels</code></td><td>Extra runner labels. <code>self-hosted</code>, <code>macOS</code> and <code>ARM64</code> are always present.</td></tr>
+              <tr><td>Runner labels</td><td>Every runner registers with <code>self-hosted</code>, <code>macOS</code> and <code>ARM64</code>. Extra labels are supported by the template but are not yet exposed as a CLI flag.</td></tr>
               <tr><td><code>--no-start</code></td><td>Create and provision, but do not boot. Useful for pre-warming a pool.</td></tr>
             </tbody>
           </table>
