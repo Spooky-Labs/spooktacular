@@ -4,408 +4,342 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Roadmap — Spooktacular</title>
-<meta name="description" content="Spooktacular development roadmap. See what's shipped, what's in progress, and what's planned for enterprise macOS virtualization.">
+<meta name="description" content="The Spooktacular roadmap: what has shipped — the shared base image, copy-on-write overlays, runners, Linux guests — what is planned, and what is under consideration.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#0f0a1a">
+<meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="Roadmap — Spooktacular">
-<meta property="og:description" content="Spooktacular development roadmap. See what's shipped, what's in progress, and what's planned for enterprise macOS virtualization.">
-<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
+<meta property="og:description" content="What has shipped, what is planned, and what is under consideration — updated as development progresses.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://spooktacular.app/roadmap.html">
+<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
+<link rel="canonical" href="https://spooktacular.app/roadmap.html">
+<link rel="stylesheet" href="/spook.css">
 <style>
-:root { --bg: #07050f; --surface: #0f0a1a; --surface2: #1a1035; --border: rgba(139,108,224,0.15); --fg: #f0eaff; --dim: #8b7faa; --accent: #a78bfa; --accent2: #7c3aed; --green: #22c55e; --red: #ef4444; --yellow: #fbbf24; --blue: #60a5fa; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.skip-link { position: absolute; top: -100%; left: 1rem; background: var(--accent); color: #000; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; z-index: 200; }
-.skip-link:focus { top: 0.5rem; }
-.container { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
+/* Page header: lighter than the home hero — a title and a capped lede. */
+.page-head { padding-block: clamp(2.5rem, 1.5rem + 3vw, 4.5rem) clamp(2rem, 1rem + 3vw, 3.5rem); }
+.page-head h1 { max-width: 24ch; font-size: clamp(2.25rem, 1.7rem + 2.4vw, 3.5rem); }
+.page-head .lede { margin-top: 1.1rem; max-width: 54ch; font-size: var(--t-lede); line-height: 1.45; color: var(--ink-2); }
 
-/* Nav */
-nav { position: fixed; top: 0; width: 100%; z-index: 100; background: rgba(7,5,15,0.7); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid rgba(139,108,224,0.1); }
-nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
-nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
-nav .logo:hover { text-decoration: none; }
-nav .logo svg { width: 24px; height: 24px; }
-nav .logo img { width: 28px; height: 28px; }
-nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
-nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
-nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
-nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
-nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
-nav .nav-links a.active { color: var(--fg); }
-nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
-nav .cta-btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
-nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
-nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
-nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
-#nav-toggle { display: none; }
-@media (max-width: 768px) {
-  nav .hamburger { display: flex; }
-  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(7,5,15,0.95); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
-  nav .nav-links a { padding: 0.6rem 0.75rem; }
-  nav .nav-links a::after { display: none; }
-  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
-  #nav-toggle:checked ~ .nav-links { display: flex; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-}
-
-/* Page header */
-.page-header { text-align: center; padding: 7rem 0 2rem; }
-.page-header h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -0.03em; }
-.page-header h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.page-header p { color: var(--dim); font-size: 1.1rem; margin-top: 0.75rem; max-width: 600px; margin-left: auto; margin-right: auto; }
-
-/* Legend */
-.legend { display: flex; gap: 2rem; justify-content: center; margin: 1.5rem 0 3rem; flex-wrap: wrap; }
-.legend span { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--dim); }
-.legend .dot { width: 8px; height: 8px; border-radius: 50%; }
-.legend .dot-green { background: var(--green); }
-.legend .dot-blue { background: var(--blue); }
-.legend .dot-gray { background: var(--dim); }
-
-/* Timeline */
-.timeline { position: relative; padding-left: 2.5rem; }
-.timeline::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 2px; background: var(--border); }
-
-/* Milestone */
-.milestone { position: relative; margin-bottom: 3rem; }
-.milestone .dot-marker { position: absolute; left: -2.5rem; top: 0.35rem; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid; z-index: 2; background: var(--bg); }
-.milestone.shipped .dot-marker { border-color: var(--green); }
-.milestone.shipped .dot-marker::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
-.milestone.planned .dot-marker { border-color: var(--blue); }
-.milestone.planned .dot-marker::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--blue); opacity: 0.5; }
-.milestone.future .dot-marker { border-color: var(--dim); }
-.milestone.future .dot-marker::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--dim); opacity: 0.3; }
-
-.milestone .header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
-.milestone .header h2 { font-size: 1.35rem; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
-.milestone .header .status { display: inline-block; padding: 0.15rem 0.65rem; border-radius: 4px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-.status-shipped { background: rgba(34,197,94,0.15); color: var(--green); }
-.status-planned { background: rgba(96,165,250,0.15); color: var(--blue); }
-.status-future { background: rgba(139,127,170,0.15); color: var(--dim); }
-
-.milestone .phase { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; margin-bottom: 1rem; }
-.milestone .phase h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem; }
-.milestone .phase ul { list-style: none; padding: 0; }
-.milestone .phase li { padding: 0.3rem 0; font-size: 0.87rem; padding-left: 1.5rem; position: relative; }
-.milestone .phase li a { color: inherit; }
-.milestone .phase li a:hover { color: var(--accent); }
-.milestone .phase li .check { position: absolute; left: 0; color: var(--green); font-weight: 700; }
-.milestone .phase li .todo { position: absolute; left: 0; color: var(--dim); }
-
-/* Stats ribbon */
-.shipped-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
-.shipped-stat { font-size: 0.8rem; color: var(--dim); }
-.shipped-stat strong { color: var(--green); font-weight: 700; }
-
-/* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
-footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
-footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
-footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-col .brand-desc { font-size: 0.85rem; color: var(--dim); margin-top: 0.25rem; }
-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
-footer .foot-bottom p { margin: 0; }
-@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
-
-/* Pixel Starfield */
-.pixel-stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars, .stars2, .stars3 { display: none; }
-
-/* Pixel ghost divider */
-.ghost-divider { display: flex; align-items: center; justify-content: center; gap: 1.5rem; padding: 1.5rem 0; opacity: 0.4; }
-.ghost-divider .divider-line { flex: 1; max-width: 120px; height: 1px; background: linear-gradient(90deg, transparent, #a78bfa, transparent); }
-
-/* Pixel timeline markers */
-.milestone.shipped .dot-marker { border-color: var(--green); }
-.milestone.planned .dot-marker { border-color: var(--blue); }
-nav, .container, .page-header, footer, main { position: relative; z-index: 1; }
-
-@media (max-width: 640px) { .page-header h1 { font-size: 2.25rem; } }
+/* Roadmap milestones are item lists inside cards; match the card's small type. */
+.card ul { margin: 0; padding-left: 1.05rem; color: var(--ink-2); font-size: var(--t-small); line-height: 1.6; }
+.card li { margin: 0.35rem 0; }
 </style>
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to main content</a>
-<!-- Pixel starfield background -->
-<div class="pixel-stars" aria-hidden="true">
-<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" image-rendering="pixelated" preserveAspectRatio="none">
-<rect width="100%" height="100%" fill="#07050f"/>
-<rect x="3%" y="4%" width="2" height="2" fill="#c4b5fd" opacity="0.7"><animate attributeName="opacity" values="0.7;0.3;0.7" dur="4s" repeatCount="indefinite"/></rect>
-<rect x="12%" y="8%" width="2" height="2" fill="#8b6ce0" opacity="0.5"/>
-<rect x="22%" y="3%" width="2" height="2" fill="#c4b5fd" opacity="0.6"><animate attributeName="opacity" values="0.6;0.2;0.6" dur="5s" repeatCount="indefinite"/></rect>
-<rect x="35%" y="12%" width="2" height="2" fill="#5b21b6" opacity="0.4"/>
-<rect x="42%" y="5%" width="2" height="2" fill="#8b6ce0" opacity="0.5"/>
-<rect x="55%" y="9%" width="2" height="2" fill="#c4b5fd" opacity="0.6"><animate attributeName="opacity" values="0.6;0.25;0.6" dur="6s" repeatCount="indefinite"/></rect>
-<rect x="65%" y="2%" width="2" height="2" fill="#8b6ce0" opacity="0.7"/>
-<rect x="78%" y="7%" width="2" height="2" fill="#5b21b6" opacity="0.4"/>
-<rect x="88%" y="4%" width="2" height="2" fill="#c4b5fd" opacity="0.5"><animate attributeName="opacity" values="0.5;0.2;0.5" dur="4.5s" repeatCount="indefinite"/></rect>
-<rect x="95%" y="11%" width="2" height="2" fill="#8b6ce0" opacity="0.3"/>
-<rect x="8%" y="18%" width="2" height="2" fill="#5b21b6" opacity="0.3"/>
-<rect x="28%" y="22%" width="2" height="2" fill="#8b6ce0" opacity="0.4"/>
-<rect x="48%" y="16%" width="2" height="2" fill="#5b21b6" opacity="0.3"/>
-<rect x="68%" y="20%" width="2" height="2" fill="#c4b5fd" opacity="0.5"/>
-<rect x="82%" y="15%" width="2" height="2" fill="#5b21b6" opacity="0.35"/>
-<rect x="18%" y="30%" width="2" height="2" fill="#8b6ce0" opacity="0.3"/>
-<rect x="52%" y="28%" width="2" height="2" fill="#5b21b6" opacity="0.25"/>
-<rect x="75%" y="32%" width="2" height="2" fill="#c4b5fd" opacity="0.4"><animate attributeName="opacity" values="0.4;0.1;0.4" dur="7s" repeatCount="indefinite"/></rect>
-<rect x="92%" y="26%" width="2" height="2" fill="#8b6ce0" opacity="0.3"/>
-</svg>
-</div>
+<a href="#main" class="skip-link">Skip to content</a>
 
-<nav role="navigation" aria-label="Main navigation">
-<div class="inner">
-<a href="index.html" class="logo" aria-label="Spooktacular home">
-<img src="/img/icon.svg" width="28" height="28" alt="Spooktacular" style="image-rendering:pixelated;border-radius:6px;">
-Spooktacular
-</a>
-<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
-<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
-<div class="nav-links">
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html" class="active">Roadmap</a>
-<a href="api/documentation/spooktacularkit/">Docs</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="get-started.html">Get Started</a>
-<a href="download.html" class="cta-btn">Download</a>
-</div>
-</div>
+<nav class="site">
+  <div class="inner">
+    <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" aria-label="Menu">
+    <label class="hamburger" for="nav-toggle"><span></span><span></span><span></span></label>
+    <div class="nav-links">
+      <a href="/features.html">Features</a>
+      <a href="/get-started.html">Get started</a>
+      <a href="/compare.html">Compare</a>
+      <a href="/security.html">Security</a>
+      <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+    </div>
+  </div>
 </nav>
 
 <main id="main">
-<div class="page-header">
-<h1>Development <span class="gradient">Roadmap</span></h1>
-<p>What we've shipped, what's in progress, and what's on the horizon. Updated as development progresses.</p>
-</div>
 
-<div class="container">
-<div class="legend" role="legend" aria-label="Status legend">
-<span><span class="dot dot-green" aria-hidden="true"></span> Shipped</span>
-<span><span class="dot dot-blue" aria-hidden="true"></span> In Progress (Planned)</span>
-<span><span class="dot dot-gray" aria-hidden="true"></span> Future Ideas</span>
-</div>
+  <section class="page-head">
+    <div class="container">
+      <p class="eyebrow">Roadmap</p>
+      <h1>What has shipped, and what comes next.</h1>
+      <p class="lede">
+        Every item carries its status in words — shipped, in progress,
+        planned, or under consideration — so nothing depends on colour to be
+        read. Updated as development progresses.
+      </p>
+    </div>
+  </section>
 
-<div class="timeline" role="list">
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Shipped, and in the tree today.</h2>
+        <p>
+          Everything in this section is implemented, exercised by the test
+          suite, and readable in the open-source repository.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="facts">
+          <div class="fact">
+            <b>865</b>
+            <span>tests in 222 suites, run on every change</span>
+          </div>
+          <div class="fact">
+            <b>27</b>
+            <span>CLI subcommands, each with its own help</span>
+          </div>
+          <div class="fact">
+            <b>30&thinsp;<sup>ms</sup></b>
+            <span>to clone a 5&nbsp;GB VM, with no additional disk used</span>
+          </div>
+          <div class="fact">
+            <b>1&thinsp;<sup>install</sup></b>
+            <span>of macOS per build, shared by every VM as a base image</span>
+          </div>
+        </div>
+      </div>
 
-<!-- v0.1 -->
-<div class="milestone shipped" role="listitem">
-<div class="dot-marker" aria-hidden="true"></div>
-<div class="header">
-<h2>v0.1 &mdash; Foundation</h2>
-<span class="status status-shipped">Shipped</span>
-</div>
-<div class="phase">
-<h3>Core VM Engine</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachine.swift">VM lifecycle: start, stop, pause, resume</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachine.swift#L599">Save/restore machine state (macOS 14+)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/RestoreImageManager.swift">IPSW restore image management + auto-download</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">VM configuration: CPU, memory, displays, audio, networking</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/CloneManager.swift">APFS copy-on-write cloning</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/CloneManager.swift#L98">MachineIdentifier regeneration on clone</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/SnapshotManager.swift">Disk-level snapshots: save, restore, list, delete</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/CapacityCheck.swift">2-VM capacity enforcement</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/PIDFile.swift">PID file tracking</a></li>
-</ul>
-</div>
-<div class="phase">
-<h3>Provisioning</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/SSHExecutor.swift">SSH provisioning: wait-for-SSH + streaming execution</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/DiskInjector.swift">Disk-inject provisioning: LaunchDaemon injection</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/AgentEventListener.swift">VirtIO socket guest event stream (host side, stats/ports — not a provisioning mode)</a></li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/SharedFolderProvisioner.swift">Shared folder provisioning (host-side plumbing exists; <code>--provision shared-folder</code> is not yet wired up in the CLI)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/IPResolver.swift">IP resolution: DHCP leases + ARP fallback</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/GuestProvisioningOptionsMapping.swift">Native macOS 27 guest provisioning (VZMacGuestProvisioningOptions) — admin account + Setup Assistant skip, no OCR</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-cli/Commands/Create.swift">Template auto-execution: create, install, setup, provision</a></li>
-</ul>
-</div>
-<div class="phase">
-<h3>Templates</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/GitHubRunnerTemplate.swift">GitHub Actions runner template</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/RemoteDesktopTemplate.swift">Remote desktop template</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/OpenClawTemplate.swift">OpenClaw AI template</a></li>
-</ul>
-</div>
-<div class="phase">
-<h3>Networking</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">NAT networking</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">Bridged networking (NAT fallback)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/VirtualMachineConfiguration.swift">Isolated networking (air-gapped)</a></li>
-</ul>
-</div>
-<div class="phase">
-<h3>Interfaces</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/spooktacular-cli/Commands">27 CLI commands</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularInfrastructureApple/HTTPAPIServer.swift">HTTP REST API: VM lifecycle, IAM, RBAC, tenants; Network.framework</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">SwiftUI GUI: NavigationSplitView, inspector, create sheet</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/SpooktacularApp.swift">Menu bar extra</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/GlassModifiers.swift">Liquid Glass (macOS 26+)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> Full VoiceOver accessibility: labels, hints, identifiers, announcements</li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/spooktacular-cli/Commands/Start.swift">Ephemeral runners: --ephemeral flag</a></li>
-</ul>
-</div>
-<div class="phase">
-<h3>Infrastructure</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/SpooktacularApplication/ServicePlist.swift">Per-VM LaunchDaemon service</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/blob/main/Sources/Spooktacular/VMDetailView.swift">Auto-resize display (macOS 14+)</a></li>
-<li><span class="check" aria-hidden="true">&#10003;</span> Metal GPU displays: 1-2 per VM at 1920x1200</li>
-<li><span class="check" aria-hidden="true">&#10003;</span> Audio output + microphone passthrough</li>
-<li><span class="check" aria-hidden="true">&#10003;</span> VirtIO shared folders</li>
-</ul>
-<div class="shipped-stats">
-<span class="shipped-stat"><strong>784</strong> tests</span>
-<span class="shipped-stat"><strong>43</strong> test suites</span>
-<span class="shipped-stat"><strong>15+</strong> CLI commands</span>
-<span class="shipped-stat"><strong>9</strong> API endpoints</span>
-</div>
-</div>
-</div>
+      <p class="eyebrow reveal" style="margin-top:3rem"><span class="n">v0.1</span> Foundation — shipped</p>
+      <div class="cardset reveal">
+        <div class="grid cols-3">
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Core VM engine</h3>
+            <ul>
+              <li>VM lifecycle: create, start, stop, suspend and resume</li>
+              <li>Suspend saves running state to disk; a later start resumes it</li>
+              <li>Restore-image management with automatic IPSW download</li>
+              <li>Configuration: CPU, memory, disk, displays, audio, networking</li>
+              <li>APFS copy-on-write cloning — 30&nbsp;ms for a 5&nbsp;GB VM, no extra disk</li>
+              <li>Clones inherit the source's machine identifier, which the personalized auxiliary storage is signed against; run a clone as a replacement, not a sibling</li>
+              <li>MAC addresses are regenerated on clone, so network identities stay distinct</li>
+              <li>Disk snapshots: save, restore, list, delete</li>
+              <li>Two-VM capacity enforcement, checked before work starts</li>
+              <li>PID-file tracking for every running VM</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Provisioning</h3>
+            <ul>
+              <li>SSH provisioning: wait-for-SSH, then streamed script execution</li>
+              <li>Disk-inject provisioning: the LaunchDaemon provisioner is written into the shared base image once per build, not per VM</li>
+              <li>Native macOS 27 guest provisioning: the admin account and Setup Assistant skip use Apple's own provisioning options — no OCR</li>
+              <li>Guest event stream over a virtio socket (stats and ports)</li>
+              <li>One command creates, provisions and boots</li>
+              <li><code>spook ip</code> is a metadata read from the VM's DHCP reservation</li>
+              <li>In progress: shared-folder provisioning — the host-side plumbing exists, but it is not yet wired into the CLI</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Templates</h3>
+            <ul>
+              <li>GitHub Actions runner — a registration token is minted from a Keychain-stored PAT seconds before boot</li>
+              <li>Remote desktop — admin account, Setup Assistant skipped, Screen Sharing and Remote Login on first boot</li>
+              <li>OpenClaw AI — publishes its gateway on port 18789 by default</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Networking</h3>
+            <ul>
+              <li>NAT networking on a private subnet per VM</li>
+              <li>Bridged networking, with NAT as the fallback</li>
+              <li>Isolated, air-gapped networking</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Interfaces</h3>
+            <ul>
+              <li>27 CLI subcommands</li>
+              <li>HTTP control plane: VM lifecycle, IAM and RBAC over signed requests, with Secure-Enclave-bound signing keys</li>
+              <li>Native SwiftUI app: split view, inspector, create sheet</li>
+              <li>Menu bar extra for quick status and actions</li>
+              <li>Liquid Glass on macOS 26 and newer</li>
+              <li>Full VoiceOver accessibility: labels, hints, identifiers, announcements</li>
+              <li>Ephemeral runners: <code>--ephemeral</code> takes one job, then the VM resets</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Infrastructure</h3>
+            <ul>
+              <li>Per-VM LaunchDaemon services: start at boot, restart on failure</li>
+              <li>Auto-resizing display that follows the window</li>
+              <li>Metal GPU displays, one or two per VM at 1920×1200</li>
+              <li>Audio output and microphone passthrough</li>
+              <li>VirtIO shared folders between host and guest</li>
+            </ul>
+          </div>
+        </div>
+      </div>
 
-<!-- Shipped: Guest Tools -->
-<div class="milestone shipped" role="listitem">
-<div class="dot-marker" aria-hidden="true"></div>
-<div class="header">
-<h2>Guest Tools</h2>
-<span class="status status-shipped">Shipped</span>
-</div>
-<div class="phase">
-<h3>SPICE Clipboard Bridge</h3>
-<ul>
-<li><span class="check" aria-hidden="true">&#10003;</span> <a href="https://github.com/Spooky-Labs/spooktacular/tree/main/Sources/SpooktacularGuestTools">Clipboard sync (read/write guest clipboard) over a SPICE serial channel</a></li>
-</ul>
-</div>
-</div>
+      <p class="eyebrow reveal" style="margin-top:3rem">Instant create — shipped</p>
+      <div class="cardset reveal">
+        <div class="grid cols-3">
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Base and overlays</h3>
+            <ul>
+              <li>macOS installed once per build into a shared base image, <code>base.asif</code></li>
+              <li>Every VM is a copy-on-write overlay; only the first create per build pays the install</li>
+              <li>Bases are sealed read-only and never booted, so a warm pool can prove its base is pristine</li>
+              <li>macOS guests require macOS 27 on the host (DiskImageKit); Linux guests work on older hosts</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Per-VM networking</h3>
+            <ul>
+              <li>A private subnet and a DHCP-reserved address for every VM</li>
+              <li>Published ports: <code>--publish hostPort:guestPort</code>, repeatable, over vmnet forwarding rules; host-port conflicts fail loudly</li>
+              <li>vsock readiness: the guest reports its first-boot exit code, so <code>start</code> prints a definitive result</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Shipped</span>
+            <h3>Linux guests</h3>
+            <ul>
+              <li>Cloud image plus cloud-init: <code>--from-image fedora</code> or <code>debian</code>, or a local raw image, optionally <code>.xz</code>-compressed</li>
+              <li>Installer ISOs via <code>--installer-iso</code></li>
+              <li>Optional Rosetta for x86-64 binaries</li>
+            </ul>
+          </div>
+        </div>
+      </div>
 
-<!-- Planned: OCI -->
-<div class="milestone planned" role="listitem">
-<div class="dot-marker" aria-hidden="true"></div>
-<div class="header">
-<h2>OCI Registry Support</h2>
-<span class="status status-planned">Planned</span>
-</div>
-<div class="phase">
-<h3>Image Distribution</h3>
-<ul>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Push VM images to OCI-compliant registries</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Pull VM images from OCI registries</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Content-addressable storage for deduplication</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Integration with GitHub Container Registry, Docker Hub, ECR</li>
-</ul>
-</div>
-</div>
+      <div class="note reveal" style="margin-top:2.5rem">
+        <b>Guest Tools — shipped</b>
+        A companion app inside the guest syncs the clipboard in both
+        directions over a SPICE serial channel — no SSH and no network
+        involved.
+      </div>
+    </div>
+  </section>
 
-<!-- Planned: Fleet -->
-<div class="milestone planned" role="listitem">
-<div class="dot-marker" aria-hidden="true"></div>
-<div class="header">
-<h2>Fleet Autoscaling</h2>
-<span class="status status-planned">Planned</span>
-</div>
-<div class="phase">
-<h3>Scale Management</h3>
-<ul>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Webhook-driven GitHub Actions scaling</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> AWS Auto Scaling Group integration</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Pool auto-replacement for failed VMs</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Multi-host fleet coordination</li>
-</ul>
-</div>
-</div>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Planned next.</h2>
+        <p>
+          Committed direction, not yet in the tree. Each item ships only once
+          it clears the same test bar as everything above.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="grid cols-3">
+          <div class="card">
+            <span class="tag">Planned</span>
+            <h3>OCI registry support</h3>
+            <ul>
+              <li>Push VM images to OCI-compliant registries</li>
+              <li>Pull VM images from OCI registries</li>
+              <li>Content-addressable storage for deduplication</li>
+              <li>GitHub Container Registry, Docker Hub and ECR integration</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Planned</span>
+            <h3>Fleet autoscaling</h3>
+            <ul>
+              <li>Webhook-driven GitHub Actions scaling</li>
+              <li>AWS Auto Scaling Group integration</li>
+              <li>Automatic replacement of failed pool VMs</li>
+              <li>Multi-host fleet coordination</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="tag">Planned</span>
+            <h3>Additional CI templates</h3>
+            <ul>
+              <li>BuildKite agent template</li>
+              <li>CircleCI runner template</li>
+              <li>Jenkins agent template</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<!-- Planned: More CI templates -->
-<div class="milestone planned" role="listitem">
-<div class="dot-marker" aria-hidden="true"></div>
-<div class="header">
-<h2>Additional CI Templates</h2>
-<span class="status status-planned">Planned</span>
-</div>
-<div class="phase">
-<h3>CI/CD Integrations</h3>
-<ul>
-<li><span class="todo" aria-hidden="true">&#9675;</span> BuildKite agent template</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> CircleCI runner template</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Jenkins agent template</li>
-</ul>
-</div>
-</div>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Under consideration.</h2>
+        <p>
+          Ideas we keep returning to — unscheduled and unpromised, listed so
+          you can tell us which ones matter.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="grid cols-4">
+          <div class="card">
+            <span class="tag">Under consideration</span>
+            <h3>Fleet dashboard</h3>
+            <p>A web view for monitoring a fleet of VMs across hosts.</p>
+          </div>
+          <div class="card">
+            <span class="tag">Under consideration</span>
+            <h3>Metrics export</h3>
+            <p>Prometheus- and Grafana-friendly metrics from the control plane.</p>
+          </div>
+          <div class="card">
+            <span class="tag">Under consideration</span>
+            <h3>Terraform provider</h3>
+            <p>Declare VMs and pools as Terraform resources.</p>
+          </div>
+          <div class="card">
+            <span class="tag">Under consideration</span>
+            <h3>Ansible collection</h3>
+            <p>Drive provisioning from existing Ansible playbooks.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<!-- Future -->
-<div class="milestone future" role="listitem">
-<div class="dot-marker" aria-hidden="true"></div>
-<div class="header">
-<h2>Future Ideas</h2>
-<span class="status status-future">Future Ideas</span>
-</div>
-<div class="phase">
-<h3>Under Consideration</h3>
-<ul>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Web dashboard for fleet monitoring</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Prometheus/Grafana metrics export</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Terraform provider</li>
-<li><span class="todo" aria-hidden="true">&#9675;</span> Ansible collection</li>
-</ul>
-</div>
-</div>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Have a feature request?</h2>
+        <p>The roadmap moves when users push it. Tell us what is missing.</p>
+      </div>
+      <div class="btn-row reveal">
+        <a class="btn primary" href="https://github.com/Spooky-Labs/spooktacular/discussions">Open a discussion on GitHub</a>
+        <a class="btn" href="/features.html">See what is shipped</a>
+      </div>
+    </div>
+  </section>
 
-</div>
-
-<p style="text-align: center; margin: 3rem 0; color: var(--dim); font-size: 0.9rem;">Have a feature request? <a href="https://github.com/Spooky-Labs/spooktacular/discussions">Open a discussion on GitHub</a>.</p>
-</div>
 </main>
 
-<footer role="contentinfo">
-<div class="foot-inner">
-<div class="foot-grid">
-<div class="foot-col">
-<h4>Product</h4>
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="versioning.html">Versioning</a>
-<a href="download.html">Downloads</a>
-</div>
-<div class="foot-col">
-<h4>Resources</h4>
-<a href="api/documentation/spooktacularkit/">API Reference</a>
-<a href="get-started.html">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
-</div>
-<div class="foot-col">
-<h4>Legal</h4>
-<a href="privacy.html">Privacy Policy</a>
-<a href="terms.html">Terms of Use</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
-</div>
-<div class="foot-col">
-<h4>Community</h4>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
-</div>
-</div>
-<div class="foot-bottom">
-<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-</div>
-</div>
+<footer class="site">
+  <div class="container">
+    <div class="cols">
+      <div class="brand">
+        <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+        <p>Apple-native macOS virtualization for the Mac you already have.</p>
+      </div>
+      <div>
+        <h2>Product</h2>
+        <a href="/features.html">Features</a>
+        <a href="/get-started.html">Get started</a>
+        <a href="/compare.html">Compare</a>
+        <a href="/roadmap.html">Roadmap</a>
+      </div>
+      <div>
+        <h2>Docs</h2>
+        <a href="/api/documentation/spooktacularkit/">API reference</a>
+        <a href="/api/documentation/spooktacularkit/instantcreate">Instant create</a>
+        <a href="/api/documentation/spooktacularkit/githubactionsguide">GitHub Actions</a>
+        <a href="/versioning.html">Versioning</a>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+        <a href="/security.html">Security</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    </div>
+    <p class="legal">
+      MIT licensed. Apple, macOS, Apple silicon and Xcode are trademarks of
+      Apple Inc. Spooktacular is not affiliated with or endorsed by Apple.
+    </p>
+  </div>
 </footer>
 </body>
 </html>

@@ -3,291 +3,224 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Download Spooktacular — macOS Virtualization for Apple Silicon</title>
-<meta name="description" content="Download Spooktacular for macOS. macOS Virtualization for Teams on Apple Silicon. Free, open source, MIT licensed.">
+<title>Download Spooktacular — build from source</title>
+<meta name="description" content="There are no signed releases yet — build Spooktacular from source with ./build-app.sh release. Free, open source, MIT licensed, for Apple silicon Macs.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#0f0a1a">
-<meta property="og:title" content="Download Spooktacular — macOS Virtualization for Apple Silicon">
-<meta property="og:description" content="Download Spooktacular for macOS. macOS Virtualization for Teams on Apple Silicon. Free, open source, MIT licensed.">
-<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
+<meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Download Spooktacular — build from source">
+<meta property="og:description" content="There are no signed releases yet — build Spooktacular from source with ./build-app.sh release. Free, open source, MIT licensed, for Apple silicon Macs.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://spooktacular.app/download.html">
+<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
-<style>
-:root { --bg: #09090b; --surface: #18181b; --surface2: #1f1f23; --border: #27272a; --border-hover: #3f3f46; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-.skip-link { position: absolute; top: -100%; left: 1rem; background: var(--accent); color: #000; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; z-index: 200; }
-.skip-link:focus { top: 0.5rem; }
-
-/* Nav */
-nav { position: sticky; top: 0; z-index: 100; background: rgba(9,9,11,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(39,39,42,0.5); }
-nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
-nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
-nav .logo:hover { text-decoration: none; }
-nav .logo svg { width: 24px; height: 24px; }
-nav .logo img { width: 28px; height: 28px; }
-nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
-nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
-nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
-nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
-nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
-nav .nav-links a.active { color: var(--fg); }
-nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
-nav .cta-btn { background: var(--accent); color: #000; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
-nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
-nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
-nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
-#nav-toggle { display: none; }
-@media (max-width: 768px) {
-  nav .hamburger { display: flex; }
-  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(9,9,11,0.97); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
-  nav .nav-links a { padding: 0.6rem 0.75rem; }
-  nav .nav-links a::after { display: none; }
-  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
-  #nav-toggle:checked ~ .nav-links { display: flex; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-}
-
-/* Hero */
-.hero { text-align: center; padding: 6rem 0 3rem; position: relative; }
-.hero h1 { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.035em; line-height: 1.1; max-width: 800px; margin: 0 auto; }
-.hero h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.hero .lead { font-size: 1.2rem; color: var(--dim); margin-top: 1rem; max-width: 540px; margin-left: auto; margin-right: auto; line-height: 1.6; }
-.hero .version-badge { display: inline-flex; align-items: center; gap: 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.35rem 1.25rem; font-size: 0.8rem; color: var(--dim); margin-bottom: 2rem; }
-.hero .version-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s ease-in-out infinite; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-/* Download button */
-.download-btn { display: inline-flex; flex-direction: column; align-items: center; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #000; padding: 1.25rem 3.5rem; border-radius: 14px; font-weight: 700; font-size: 1.35rem; margin-top: 2.5rem; transition: all 0.25s; box-shadow: 0 4px 24px rgba(167,139,250,0.25); }
-.download-btn:hover { opacity: 0.92; text-decoration: none; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(167,139,250,0.35); }
-.download-btn .download-sub { font-size: 0.8rem; font-weight: 500; opacity: 0.8; margin-top: 0.35rem; }
-
-/* Sections */
-section { padding: 4rem 0; }
-section h2 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
-
-/* Requirements */
-.requirements { max-width: 700px; margin: 0 auto; }
-.req-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; margin-top: 2rem; }
-.req-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; text-align: center; transition: border-color 0.25s; }
-.req-card:hover { border-color: rgba(167,139,250,0.3); }
-.req-card .icon { font-size: 1.75rem; margin-bottom: 0.5rem; display: block; }
-.req-card h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.25rem; }
-.req-card p { color: var(--dim); font-size: 0.82rem; line-height: 1.5; }
-@media (max-width: 640px) { .req-grid { grid-template-columns: 1fr; } }
-
-/* Install steps */
-.install-steps { max-width: 700px; margin: 0 auto; }
-.steps-row { display: flex; align-items: center; justify-content: center; gap: 1.5rem; margin-top: 2rem; flex-wrap: wrap; }
-.step { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem 1.75rem; text-align: center; flex: 1; min-width: 160px; }
-.step .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: rgba(167,139,250,0.15); color: var(--accent); font-weight: 700; font-size: 0.85rem; margin-bottom: 0.5rem; }
-.step h3 { font-size: 0.9rem; font-weight: 600; }
-.step p { color: var(--dim); font-size: 0.8rem; margin-top: 0.25rem; }
-.step-arrow { color: var(--dim); font-size: 1.5rem; font-weight: 300; }
-@media (max-width: 640px) { .step-arrow { display: none; } }
-
-/* Alt install */
-.alt-install { max-width: 700px; margin: 0 auto; }
-.alt-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.25rem; margin-top: 2rem; }
-.alt-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
-.alt-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
-.alt-card .planned-tag { display: inline-block; padding: 0.12rem 0.5rem; border-radius: 4px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(96,165,250,0.12); color: var(--blue); }
-.alt-card p { color: var(--dim); font-size: 0.85rem; line-height: 1.5; margin-bottom: 0.75rem; }
-.alt-card code { display: block; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 1rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; color: var(--accent); }
-@media (max-width: 640px) { .alt-grid { grid-template-columns: 1fr; } }
-
-/* Older versions link */
-.older-versions { text-align: center; margin-top: 3rem; padding: 1.5rem; }
-.older-versions a { color: var(--dim); font-size: 0.9rem; transition: color 0.2s; }
-.older-versions a:hover { color: var(--accent); }
-
-/* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
-footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
-footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
-footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
-footer .foot-bottom p { margin: 0; }
-@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
-
-/* Starfield */
-.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
-.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
-.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
-@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, .container, .hero, footer, main { position: relative; z-index: 1; }
-
-@media (max-width: 640px) {
-  .hero h1 { font-size: 2.25rem; }
-  .download-btn { font-size: 1.1rem; padding: 1rem 2.5rem; }
-}
-</style>
+<link rel="canonical" href="https://spooktacular.app/download.html">
+<link rel="stylesheet" href="/spook.css">
 </head>
 <body>
-<div class="stars" aria-hidden="true"></div>
-<div class="stars2" aria-hidden="true"></div>
-<div class="stars3" aria-hidden="true"></div>
 <a href="#main" class="skip-link">Skip to content</a>
 
-<nav role="navigation" aria-label="Main navigation">
-<div class="inner">
-<a href="index.html" class="logo" aria-label="Spooktacular home">
-<img src="/img/icon.svg" width="28" height="28" alt="Spooktacular" style="image-rendering:pixelated;border-radius:6px;">
-Spooktacular
-</a>
-<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
-<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
-<div class="nav-links">
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="api/documentation/spooktacularkit/">Docs</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="get-started.html">Get Started</a>
-<a href="download.html" class="cta-btn active">Download</a>
-</div>
-</div>
+<nav class="site">
+  <div class="inner">
+    <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" aria-label="Menu">
+    <label class="hamburger" for="nav-toggle"><span></span><span></span><span></span></label>
+    <div class="nav-links">
+      <a href="/features.html">Features</a>
+      <a href="/get-started.html">Get started</a>
+      <a href="/compare.html">Compare</a>
+      <a href="/security.html">Security</a>
+      <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+    </div>
+  </div>
 </nav>
 
 <main id="main">
 
-<!-- Hero -->
-<section class="hero" aria-labelledby="hero-heading">
-<div class="container">
-<div class="version-badge"><span class="dot"></span> v1.0.1 &mdash; Build from Source</div>
-<h1 id="hero-heading">Download <span class="gradient">Spooktacular</span></h1>
-<p class="lead">macOS Virtualization for Teams on Apple Silicon. Free, open source, MIT licensed. Zero cost, forever.</p>
-<a href="https://github.com/Spooky-Labs/spooktacular" class="download-btn">
-  Get Spooktacular on GitHub
-  <span class="download-sub">macOS 26+ &middot; Apple Silicon &middot; build from source today</span>
-</a>
-</div>
-</section>
+  <section class="band">
+    <div class="container">
+      <p class="eyebrow">Download <span class="n">·</span> pre-1.0</p>
+      <h1>Built from source, for now.</h1>
+      <div class="prose" style="margin-top:1.15rem">
+        <p>
+          macOS virtualization for teams on Apple silicon. Free, open source,
+          MIT licensed — zero cost, forever. Spooktacular is pre-1.0 and there
+          are no signed binary releases yet, so today the install is a clone
+          and one build script.
+        </p>
+      </div>
+      <div class="btn-row" style="margin-top:1.9rem">
+        <a class="btn primary" href="https://github.com/Spooky-Labs/spooktacular">Get the source on GitHub</a>
+        <a class="btn" href="/get-started.html">Get started</a>
+      </div>
+      <div class="cmd" style="margin-top:1.1rem;max-width:34rem">
+        <span class="sigil">$</span>
+        <code>git clone https://github.com/Spooky-Labs/spooktacular.git</code>
+        <button class="copy" type="button" aria-label="Copy command">copy</button>
+      </div>
+    </div>
+  </section>
 
-<!-- System Requirements -->
-<section aria-labelledby="requirements-heading">
-<div class="container requirements">
-<h2 id="requirements-heading" style="text-align: center;">System Requirements</h2>
-<div class="req-grid">
-<div class="req-card">
-<span class="icon" aria-hidden="true">&#128187;</span>
-<h3>macOS 26+</h3>
-<p>Required. Uses Apple's Virtualization.framework.</p>
-</div>
-<div class="req-card">
-<span class="icon" aria-hidden="true">&#9889;</span>
-<h3>Apple Silicon</h3>
-<p>M1, M2, M3, M4, or later. Intel Macs are not supported.</p>
-</div>
-<div class="req-card">
-<span class="icon" aria-hidden="true">&#128190;</span>
-<h3>35 GB Free</h3>
-<p>For the app plus one macOS VM. Each clone adds ~1 GB.</p>
-</div>
-</div>
-</div>
-</section>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>What you need</h2>
+        <p>
+          Spooktacular is Apple-native, so the list is short: an Apple silicon
+          Mac and current Apple tooling.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="grid cols-4">
+          <div class="card">
+            <span class="tag">Host</span>
+            <h3>macOS 27</h3>
+            <p>
+              Required for macOS guests — the shared base image is built with
+              DiskImageKit on Apple's Virtualization framework.
+            </p>
+          </div>
+          <div class="card">
+            <span class="tag">Hardware</span>
+            <h3>Apple silicon</h3>
+            <p>M1, M2, M3, M4, or later. Intel Macs are not supported.</p>
+          </div>
+          <div class="card">
+            <span class="tag">Toolchain</span>
+            <h3>Xcode 27</h3>
+            <p>
+              Spooktacular builds with Xcode 27. <code>./build-app.sh</code>
+              drives the build for you.
+            </p>
+          </div>
+          <div class="card">
+            <span class="tag">Disk</span>
+            <h3>35 GB free</h3>
+            <p>
+              For the app plus one macOS VM. Clones share blocks with the base,
+              so each one starts near zero.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<!-- Install Steps -->
-<section aria-labelledby="install-heading">
-<div class="container install-steps">
-<h2 id="install-heading" style="text-align: center;">Build in 3 Steps</h2>
-<div class="steps-row">
-<div class="step">
-<div class="num">1</div>
-<h3>Clone</h3>
-<p><code>git clone</code> the repo</p>
-</div>
-<span class="step-arrow" aria-hidden="true">&#8594;</span>
-<div class="step">
-<div class="num">2</div>
-<h3>Build</h3>
-<p><code>./build-app.sh release</code></p>
-</div>
-<span class="step-arrow" aria-hidden="true">&#8594;</span>
-<div class="step">
-<div class="num">3</div>
-<h3>Move to Applications</h3>
-<p>Drag the built Spooktacular.app</p>
-</div>
-</div>
-</div>
-</section>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Build in three steps</h2>
+        <p>
+          Clone, run the build script, and drag the app into Applications.
+          That is the whole install.
+        </p>
+      </div>
+      <div class="term reveal">
+        <div class="term-bar"><i></i><i></i><i></i><b>build from source</b></div>
+<pre><span class="dim">$</span> <span class="em">git clone https://github.com/Spooky-Labs/spooktacular.git</span>
+<span class="dim">$</span> <span class="em">cd spooktacular</span>
+<span class="dim">$</span> <span class="em">./build-app.sh release</span>
+<span class="dim"># then drag the built Spooktacular.app into /Applications</span></pre>
+      </div>
+      <p class="prose" style="margin-top:1.5rem">
+        Signed, notarized builds will appear on the
+        <a href="https://github.com/Spooky-Labs/spooktacular/releases">GitHub Releases page</a>
+        when they are published. Until then, building from source is the
+        supported install.
+      </p>
+    </div>
+  </section>
 
-<!-- Alternative Install Methods -->
-<section aria-labelledby="alt-heading">
-<div class="container alt-install">
-<h2 id="alt-heading" style="text-align: center;">Alternative Install Methods</h2>
-<div class="alt-grid">
-<div class="alt-card">
-<h3>Homebrew Cask <span class="planned-tag">Planned</span></h3>
-<p>Install the GUI app via Homebrew. One command, auto-updates. Not published yet — build from source in the meantime.</p>
-<code>brew install --cask spooktacular</code>
-</div>
-<div class="alt-card">
-<h3>CLI via Homebrew <span class="planned-tag">Planned</span></h3>
-<p>Install just the <code style="background:none;border:none;padding:0;color:var(--accent);display:inline;">spook</code> CLI for headless workflows and CI/CD. Not published yet — build from source in the meantime.</p>
-<code>brew install spooktacular</code>
-</div>
-</div>
-<div class="older-versions">
-<a href="https://github.com/Spooky-Labs/spooktacular">Build from source on GitHub &#8594;</a>
-</div>
-</div>
-</section>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Planned install methods</h2>
+        <p>
+          Both Homebrew paths are planned but not published yet. Build from
+          source in the meantime.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="grid cols-2">
+          <div class="card">
+            <span class="tag">Planned</span>
+            <h3>Homebrew cask</h3>
+            <p>
+              Install the GUI app via Homebrew — one command,
+              <code>brew install --cask spooktacular</code>, with auto-updates.
+              Not published yet.
+            </p>
+          </div>
+          <div class="card">
+            <span class="tag">Planned</span>
+            <h3>CLI via Homebrew</h3>
+            <p>
+              Install just the <code>spook</code> CLI for headless workflows and
+              CI/CD with <code>brew install spooktacular</code>. Not published
+              yet.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
 </main>
 
-<footer role="contentinfo">
-<div class="foot-inner">
-<div class="foot-grid">
-<div class="foot-col">
-<h4>Product</h4>
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="versioning.html">Versioning</a>
-<a href="download.html">Downloads</a>
-</div>
-<div class="foot-col">
-<h4>Resources</h4>
-<a href="api/documentation/spooktacularkit/">API Reference</a>
-<a href="get-started.html">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
-</div>
-<div class="foot-col">
-<h4>Legal</h4>
-<a href="privacy.html">Privacy Policy</a>
-<a href="terms.html">Terms of Use</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
-</div>
-<div class="foot-col">
-<h4>Community</h4>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
-</div>
-</div>
-<div class="foot-bottom">
-<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-</div>
-</div>
+<footer class="site">
+  <div class="container">
+    <div class="cols">
+      <div class="brand">
+        <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+        <p>Apple-native macOS virtualization for the Mac you already have.</p>
+      </div>
+      <div>
+        <h2>Product</h2>
+        <a href="/features.html">Features</a>
+        <a href="/get-started.html">Get started</a>
+        <a href="/compare.html">Compare</a>
+        <a href="/roadmap.html">Roadmap</a>
+      </div>
+      <div>
+        <h2>Docs</h2>
+        <a href="/api/documentation/spooktacularkit/">API reference</a>
+        <a href="/api/documentation/spooktacularkit/instantcreate">Instant create</a>
+        <a href="/api/documentation/spooktacularkit/githubactionsguide">GitHub Actions</a>
+        <a href="/versioning.html">Versioning</a>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+        <a href="/security.html">Security</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    </div>
+    <p class="legal">
+      MIT licensed. Apple, macOS, Apple silicon and Xcode are trademarks of
+      Apple Inc. Spooktacular is not affiliated with or endorsed by Apple.
+    </p>
+  </div>
 </footer>
+
+<script>
+/* Copy buttons — the only scripted behaviour here, so the page is complete
+   without JavaScript. */
+document.addEventListener('click', function (event) {
+  var button = event.target.closest && event.target.closest('.copy');
+  if (!button || !navigator.clipboard) { return; }
+  var code = button.parentElement.querySelector('code');
+  if (!code) { return; }
+  navigator.clipboard.writeText(code.textContent.trim()).then(function () {
+    button.textContent = 'copied';
+    button.dataset.done = 'true';
+    setTimeout(function () {
+      button.textContent = 'copy';
+      delete button.dataset.done;
+    }, 1600);
+  });
+});
+</script>
 </body>
 </html>

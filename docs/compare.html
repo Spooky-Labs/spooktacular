@@ -3,693 +3,538 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Compare — Spooktacular vs Tart, Anka, Orka</title>
-<meta name="description" content="Detailed comparison of Spooktacular against Tart, Anka, and Orka. Feature matrix, pricing breakdown, total cost of ownership, and honest assessment of where competitors are ahead.">
+<title>Compare — Spooktacular, Tart, Anka and Orka</title>
+<meta name="description" content="An honest feature matrix comparing Spooktacular with Tart, Anka and Orka — including a section listing every place a competitor is ahead of us.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#0f0a1a">
-<meta property="og:title" content="Compare — Spooktacular vs Tart, Anka, Orka">
-<meta property="og:description" content="Detailed comparison of Spooktacular against Tart, Anka, and Orka. Feature matrix, pricing breakdown, total cost of ownership, and honest assessment of where competitors are ahead.">
-<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
-<meta property="og:type" content="website">
+<meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Compare — Spooktacular, Tart, Anka and Orka">
+<meta property="og:description" content="What we have, what we don't, and where the competition is ahead.">
+<meta property="og:type" content="article">
 <meta property="og:url" content="https://spooktacular.app/compare.html">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
+<link rel="canonical" href="https://spooktacular.app/compare.html">
+<link rel="stylesheet" href="/spook.css">
 <style>
-:root { --bg: #07050f; --surface: #0f0a1a; --surface2: #1a1035; --border: rgba(139,108,224,0.15); --fg: #f0eaff; --dim: #8b7faa; --accent: #a78bfa; --accent2: #7c3aed; --green: #22c55e; --red: #ef4444; --yellow: #fbbf24; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.skip-link { position: absolute; top: -100%; left: 1rem; background: var(--accent); color: #000; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; z-index: 200; }
-.skip-link:focus { top: 0.5rem; }
-.container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-
-/* Nav */
-nav { position: fixed; top: 0; width: 100%; z-index: 100; background: rgba(7,5,15,0.7); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid rgba(139,108,224,0.1); }
-nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
-nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
-nav .logo:hover { text-decoration: none; }
-nav .logo svg { width: 24px; height: 24px; }
-nav .logo img { width: 28px; height: 28px; }
-nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
-nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
-nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
-nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
-nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
-nav .nav-links a.active { color: var(--fg); }
-nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
-nav .cta-btn { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
-nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
-nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
-nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
-#nav-toggle { display: none; }
-@media (max-width: 768px) {
-  nav .hamburger { display: flex; }
-  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(7,5,15,0.95); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
-  nav .nav-links a { padding: 0.6rem 0.75rem; }
-  nav .nav-links a::after { display: none; }
-  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
-  #nav-toggle:checked ~ .nav-links { display: flex; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+/* The matrix is the page. Rows are grouped by area with a spanning label. */
+table.matrix tr.group td {
+  padding-top: 1.5rem; padding-bottom: 0.5rem;
+  font-family: var(--mono); font-size: 0.6875rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);
 }
+table.matrix .mark { font-weight: 600; }
+table.matrix td small { display: block; margin-top: 0.15rem; color: var(--ink-3); font-size: 0.75rem; }
+table.matrix tbody td:first-child { min-width: 15rem; color: var(--ink); }
+table.matrix tbody td { white-space: normal; }
 
-/* Page header */
-.page-header { text-align: center; padding: 7rem 0 2rem; }
-.page-header h1 { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
-.page-header h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.page-header p { font-size: 1.15rem; color: var(--dim); margin-top: 0.75rem; max-width: 650px; margin-left: auto; margin-right: auto; }
-
-/* Sections */
-section { padding: 3.5rem 0; }
-section h2 { font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
-section .subtitle { color: var(--dim); font-size: 1.05rem; margin-bottom: 2rem; }
-
-/* Comparison table */
-.comparison { overflow-x: auto; margin: 1.5rem 0; border-radius: 12px; border: 1px solid var(--border); }
-table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
-th { text-align: left; padding: 0.85rem 1rem; border-bottom: 2px solid var(--border); font-weight: 600; background: var(--surface); font-size: 0.82rem; }
-th:first-child { border-radius: 12px 0 0 0; }
-th:last-child { border-radius: 0 12px 0 0; }
-th.hl { color: var(--accent); }
-td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border); }
-td.yes { color: var(--green); font-weight: 600; }
-td.no { color: var(--red); }
-td.partial { color: var(--yellow); }
-tr:hover { background: rgba(15,10,26,0.5); }
-.highlight-col { background: rgba(167,139,250,0.04); }
-.cat-row td { background: var(--surface); font-weight: 600; color: var(--accent); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.55rem 1rem; }
-
-/* Pricing cards */
-.pricing-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1.25rem; margin: 2rem 0; }
-.price-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 2rem; position: relative; transition: border-color 0.25s; }
-.price-card:hover { border-color: rgba(139,108,224,0.3); }
-.price-card.featured { border-color: var(--accent); }
-.price-card.featured::before { content: 'OPEN SOURCE'; position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; font-size: 0.65rem; font-weight: 700; padding: 0.15rem 0.75rem; border-radius: 4px; letter-spacing: 0.05em; }
-.price-card h3 { font-size: 1.1rem; margin-bottom: 0.25rem; }
-.price-card .price { font-size: 2rem; font-weight: 800; margin: 0.5rem 0; }
-.price-card .price span { font-size: 0.85rem; font-weight: 400; color: var(--dim); }
-.price-card .price-note { font-size: 0.82rem; color: var(--dim); margin-bottom: 1rem; }
-.price-card ul { list-style: none; padding: 0; }
-.price-card li { padding: 0.3rem 0; color: var(--dim); font-size: 0.82rem; }
-.price-card li::before { content: "\2713 "; color: var(--green); font-weight: 700; }
-@media (max-width: 1000px) { .pricing-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 500px) { .pricing-grid { grid-template-columns: 1fr; } }
-
-/* TCO Section */
-.tco-box { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 2.5rem; margin: 2rem 0; }
-.tco-box h3 { font-size: 1.35rem; font-weight: 700; margin-bottom: 0.5rem; }
-.tco-box .sub { color: var(--dim); font-size: 0.95rem; margin-bottom: 1.5rem; }
-.tco-table { width: 100%; border-collapse: collapse; }
-.tco-table th { text-align: left; padding: 0.7rem 0; border-bottom: 2px solid var(--border); color: var(--dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; background: transparent; }
-.tco-table td { padding: 0.7rem 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
-.tco-table td.total { font-weight: 700; font-size: 1rem; }
-.tco-table td.save { color: var(--green); font-weight: 700; }
-.tco-table td.cost { color: var(--red); font-weight: 600; }
-.tco-note { color: var(--dim); font-size: 0.8rem; margin-top: 1rem; line-height: 1.6; }
-
-/* Honest callout */
-.honest-box { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--yellow); border-radius: 0 12px 12px 0; padding: 1.75rem; margin: 2rem 0; }
-.honest-box h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.75rem; color: var(--yellow); }
-.honest-box ul { list-style: none; padding: 0; }
-.honest-box li { padding: 0.35rem 0; color: var(--dim); font-size: 0.9rem; padding-left: 1.5rem; position: relative; }
-.honest-box li::before { content: '!'; position: absolute; left: 0; width: 18px; height: 18px; background: rgba(251,191,36,0.12); color: var(--yellow); border-radius: 4px; font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; top: 0.45rem; }
-
-/* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
-footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
-footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
-footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-col .brand-desc { font-size: 0.85rem; color: var(--dim); margin-top: 0.25rem; }
-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
-footer .foot-bottom p { margin: 0; }
-@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
-
-/* Starfield */
-.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #7c3aed33, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
-.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #7c3aed44, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
-.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #7c3aed22, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
-@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, .container, .page-header, footer, main { position: relative; z-index: 1; }
-
-@media (max-width: 640px) {
-  section h2 { font-size: 1.5rem; }
+.ahead { display: grid; gap: 1px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 760px) { .ahead { grid-template-columns: 1fr; } }
+.ahead > div { padding: clamp(1.15rem, 0.8rem + 1vw, 1.6rem); background: var(--paper); }
+.ahead h3 { margin-bottom: 0.35rem; font-size: var(--t-body); }
+.ahead p { color: var(--ink-2); font-size: var(--t-small); }
+.ahead .who {
+  display: block; margin-bottom: 0.7rem;
+  font-family: var(--mono); font-size: 0.6875rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3);
 }
 </style>
 </head>
 <body>
-<a href="#main" class="skip-link">Skip to main content</a>
-<div class="stars" aria-hidden="true"></div><div class="stars2" aria-hidden="true"></div><div class="stars3" aria-hidden="true"></div>
+<a href="#main" class="skip-link">Skip to content</a>
 
-<nav role="navigation" aria-label="Main navigation">
-<div class="inner">
-<a href="index.html" class="logo" aria-label="Spooktacular home">
-<img src="/img/icon.svg" width="28" height="28" alt="Spooktacular" style="image-rendering:pixelated;border-radius:6px;">
-Spooktacular
-</a>
-<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
-<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
-<div class="nav-links">
-<a href="features.html">Features</a>
-<a href="compare.html" class="active">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="api/documentation/spooktacularkit/">Docs</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="get-started.html">Get Started</a>
-<a href="download.html" class="cta-btn">Download</a>
-</div>
-</div>
+<nav class="site">
+  <div class="inner">
+    <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" aria-label="Menu">
+    <label class="hamburger" for="nav-toggle"><span></span><span></span><span></span></label>
+    <div class="nav-links">
+      <a href="/features.html">Features</a>
+      <a href="/get-started.html">Get started</a>
+      <a href="/compare.html" aria-current="page">Compare</a>
+      <a href="/security.html">Security</a>
+      <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+    </div>
+  </div>
 </nav>
 
 <main id="main">
-<div class="page-header">
-<h1>The real truth about <span class="gradient">pricing</span></h1>
-<p>We show what we have, what we don't, and where competitors are ahead. Every claim links to source code.</p>
-</div>
 
-<!-- Feature matrix -->
-<section>
-<div class="container">
-<h2>Full feature matrix</h2>
-<p class="subtitle">Green means shipped and verified. Red means we don't have it. Yellow means partial.</p>
-<div class="comparison" role="region" aria-label="Feature comparison table" tabindex="0">
-<table>
-<thead>
-<tr>
-<th scope="col"></th>
-<th scope="col" class="hl highlight-col">Spooktacular</th>
-<th scope="col">Tart</th>
-<th scope="col">Anka</th>
-<th scope="col">Orka</th>
-<th scope="col">GhostVM</th>
-</tr>
-</thead>
-<tbody>
-<tr class="cat-row"><td colspan="6">Licensing &amp; Pricing</td></tr>
-<tr>
-<td>License</td>
-<td class="highlight-col"><strong>MIT (free forever)</strong></td>
-<td>Fair Source (BSL)</td>
-<td>Proprietary</td>
-<td>Proprietary</td>
-<td>MIT</td>
-</tr>
-<tr>
-<td>Pricing</td>
-<td class="highlight-col"><strong>$0</strong></td>
-<td>$0 &ndash; $36K/yr</td>
-<td>Contact sales</td>
-<td>$499+/mo</td>
-<td>$0</td>
-</tr>
-<tr>
-<td>Source available</td>
-<td class="highlight-col yes">&#10003; Full source, MIT</td>
-<td class="yes">&#10003; Fair Source</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003; MIT</td>
-</tr>
+  <section class="band" style="padding-block:clamp(2rem,1rem+3vw,3.25rem) clamp(2rem,1rem+3vw,3rem)">
+    <div class="container">
+      <p class="eyebrow">Comparison</p>
+      <h1 style="max-width:24ch;font-size:clamp(2rem,1.6rem+2vw,3rem)">Where we win, and where we lose</h1>
+      <p style="margin-top:1.1rem;max-width:54ch;font-size:var(--t-lede);line-height:1.45;color:var(--ink-2)">
+        A comparison worth reading is one that admits what it lacks. Here is the
+        full matrix, and then every place a competitor is genuinely ahead of us
+        today.
+      </p>
+      <div class="btn-row" style="margin-top:1.6rem">
+        <a class="btn primary" href="#ahead">Where they beat us</a>
+        <a class="btn" href="#matrix">Full matrix</a>
+      </div>
+    </div>
+  </section>
 
-<tr class="cat-row"><td colspan="6">VM Management</td></tr>
-<tr>
-<td>APFS CoW cloning</td>
-<td class="highlight-col yes">&#10003; 48ms clones</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Limited</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>VM lifecycle (start/stop/pause/resume)</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>Save/restore machine state</td>
-<td class="highlight-col yes">&#10003; macOS 14+</td>
-<td class="no">&#10005;</td>
-<td class="partial">Limited</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Disk snapshots</td>
-<td class="highlight-col yes">&#10003; Save/restore/list/delete</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Limited</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Ephemeral VMs</td>
-<td class="highlight-col yes">&#10003; --ephemeral flag</td>
-<td class="partial">Manual cleanup</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Capacity enforcement</td>
-<td class="highlight-col yes">&#10003; 2-VM limit enforced</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
+  <section class="band" id="matrix">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Feature matrix</h2>
+        <p>
+          "Yes" means shipped and covered by tests. An em dash means we do not
+          have it. Partial is called partial. Competitor columns come from each
+          project's own public documentation, read in July 2026.
+        </p>
+      </div>
 
-<tr class="cat-row"><td colspan="6">Provisioning</td></tr>
-<tr>
-<td>SSH provisioning</td>
-<td class="highlight-col yes">&#10003; Wait-for-SSH + streaming</td>
-<td class="partial">SSH only</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Limited</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Disk-inject provisioning</td>
-<td class="highlight-col yes">&#10003; Zero-network LaunchDaemon</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Clipboard sync (guest agent)</td>
-<td class="highlight-col partial">~ SPICE clipboard only</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003; Clipboard/exec/apps</td>
-</tr>
-<tr>
-<td>Native guest provisioning</td>
-<td class="highlight-col yes">&#10003; macOS 27+ (VZMacGuestProvisioningOptions)</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>CI runner templates</td>
-<td class="highlight-col yes">&#10003; GitHub Actions</td>
-<td class="partial">GitHub only</td>
-<td class="yes">&#10003; Multiple</td>
-<td class="yes">&#10003; Multiple</td>
-<td class="no">&#10005;</td>
-</tr>
+      <div class="table-scroll reveal">
+        <table class="data matrix">
+          <thead>
+            <tr>
+              <th scope="col">Capability</th>
+              <th scope="col">Spooktacular</th>
+              <th scope="col">Tart</th>
+              <th scope="col">Anka</th>
+              <th scope="col">Orka</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="group"><td colspan="5">Licensing</td></tr>
+            <tr>
+              <td>Licence</td>
+              <td class="yes mark">MIT<small>every feature, no tiers</small></td>
+              <td>Fair Source</td>
+              <td>Commercial<small>paid tiers</small></td>
+              <td>Commercial<small>hosted by MacStadium</small></td>
+            </tr>
+            <tr>
+              <td>Full source available</td>
+              <td class="yes mark">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>Runs on hardware you own</td>
+              <td class="yes mark">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="no">MacStadium only</td>
+            </tr>
 
-<tr class="cat-row"><td colspan="6">Interfaces</td></tr>
-<tr>
-<td>GUI app</td>
-<td class="highlight-col yes">&#10003; SwiftUI + Liquid Glass</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003; Web UI</td>
-<td class="yes">&#10003; GUI + CLI</td>
-</tr>
-<tr>
-<td>CLI</td>
-<td class="highlight-col yes">&#10003; 27 CLI commands</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Limited</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>HTTP REST API</td>
-<td class="highlight-col yes">&#10003; 9 endpoints</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Menu bar app</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
+            <tr class="group"><td colspan="5">Creating and cloning</td></tr>
+            <tr>
+              <td>Shared base image with per-VM overlay</td>
+              <td class="yes mark">Yes<small>one macOS install per build</small></td>
+              <td class="no">—<small>an image per VM</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>APFS copy-on-write cloning</td>
+              <td class="yes mark">Yes<small>30 ms for a 5 GB VM, 0 extra bytes</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Disk snapshots</td>
+              <td class="yes mark">Yes<small>save, restore, list, delete</small></td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Suspend and resume to disk</td>
+              <td class="yes mark">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Ephemeral VMs</td>
+              <td class="yes mark">Yes<small><code>--ephemeral</code></small></td>
+              <td class="no">Manual cleanup</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Licence-capacity enforcement</td>
+              <td class="yes mark">Yes<small>two macOS guests per host</small></td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+            </tr>
 
-<tr class="cat-row"><td colspan="6">Networking</td></tr>
-<tr>
-<td>NAT networking</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>Bridged networking</td>
-<td class="highlight-col yes">&#10003; With NAT fallback</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Isolated (air-gapped)</td>
-<td class="highlight-col yes">&#10003; Zero network</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
+            <tr class="group"><td colspan="5">Provisioning</td></tr>
+            <tr>
+              <td>Native guest provisioning</td>
+              <td class="yes mark">Yes<small>VZMacGuestProvisioningOptions, macOS 27</small></td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>Provisioning without guest networking</td>
+              <td class="yes mark">Yes<small>LaunchDaemon written into the base</small></td>
+              <td class="no">SSH only</td>
+              <td class="no">Needs an agent</td>
+              <td class="no">Needs an agent</td>
+            </tr>
+            <tr>
+              <td>Definitive readiness signal</td>
+              <td class="yes mark">Yes<small>the guest reports its exit code over vsock</small></td>
+              <td class="no">Poll for SSH</td>
+              <td class="yes">Its agent reports</td>
+              <td class="yes">Its agent reports</td>
+            </tr>
+            <tr>
+              <td>Anything to install inside the guest</td>
+              <td class="yes mark">Nothing</td>
+              <td class="yes">Nothing</td>
+              <td class="no">An agent</td>
+              <td class="no">An agent</td>
+            </tr>
+            <tr>
+              <td>CI runner templates</td>
+              <td>Partial<small>GitHub Actions only</small></td>
+              <td>Partial<small>GitHub Actions</small></td>
+              <td class="yes">Several</td>
+              <td class="yes">Several</td>
+            </tr>
 
-<tr class="cat-row"><td colspan="6">Hardware</td></tr>
-<tr>
-<td>Metal GPU displays</td>
-<td class="highlight-col yes">&#10003; 1-2 per VM, 1920x1200</td>
-<td class="partial">Basic</td>
-<td class="partial">Basic</td>
-<td class="no">&#10005;</td>
-<td class="partial">Basic</td>
-</tr>
-<tr>
-<td>Audio output + microphone</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>VirtIO shared folders</td>
-<td class="highlight-col yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="partial">Limited</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-</tr>
+            <tr class="group"><td colspan="5">Networking</td></tr>
+            <tr>
+              <td>Per-VM subnet with a reserved address</td>
+              <td class="yes mark">Yes<small><code>spook ip</code> is a lookup, not a probe</small></td>
+              <td class="no">Shared NAT</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Publish a guest port on the host</td>
+              <td class="yes mark">Yes<small><code>--publish 8080:80</code></small></td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Bridged networking</td>
+              <td class="yes mark">Yes<small>with a NAT fallback</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Fully isolated networking</td>
+              <td class="yes mark">Yes</td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
 
-<tr class="cat-row"><td colspan="6">Enterprise &amp; Scale</td></tr>
-<tr>
-<td>OCI registries</td>
-<td class="highlight-col no">&#10005; <a href="roadmap.html">Planned</a></td>
-<td class="yes">&#10003;</td>
-<td class="no">Proprietary</td>
-<td class="partial">Docker</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Runner pool orchestration</td>
-<td class="highlight-col yes">&#10003; 9-state lifecycle FSM</td>
-<td class="no">&#10005;</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>mTLS (controller ↔ node)</td>
-<td class="highlight-col yes">&#10003; Optional, mutual cert auth</td>
-<td class="no">&#10005;</td>
-<td class="partial">Server TLS only</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Cert rotation without restart</td>
-<td class="highlight-col yes">&#10003; File-watch hot reload</td>
-<td class="no">&#10005;</td>
-<td class="no">&#10005;</td>
-<td class="partial">Limited</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Fleet autoscaling</td>
-<td class="highlight-col no">&#10005; <a href="roadmap.html">Planned</a></td>
-<td class="no">&#10005;</td>
-<td class="partial">Manual</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Self-hosted</td>
-<td class="highlight-col yes">&#10003; Anywhere</td>
-<td class="yes">&#10003;</td>
-<td class="yes">&#10003;</td>
-<td class="no">MacStadium only</td>
-<td class="yes">&#10003;</td>
-</tr>
-<tr>
-<td>LaunchDaemon services</td>
-<td class="highlight-col yes">&#10003; Per-VM plist</td>
-<td class="no">&#10005;</td>
-<td class="partial">Requires agent</td>
-<td class="yes">&#10003;</td>
-<td class="no">&#10005;</td>
-</tr>
+            <tr class="group"><td colspan="5">Guest experience</td></tr>
+            <tr>
+              <td>Metal-accelerated displays</td>
+              <td class="yes mark">Yes<small>up to two per VM</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="no">Headless</td>
+            </tr>
+            <tr>
+              <td>Audio output and microphone</td>
+              <td class="yes mark">Yes</td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="no">—</td>
+            </tr>
+            <tr>
+              <td>Shared folders</td>
+              <td class="yes mark">Yes<small>VirtIO directory sharing</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Clipboard sync</td>
+              <td>Partial<small>SPICE clipboard only</small></td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Linux guests</td>
+              <td class="yes mark">Yes<small>cloud image plus cloud-init</small></td>
+              <td class="yes">Yes</td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+            </tr>
 
-<tr class="cat-row"><td colspan="6">Quality</td></tr>
-<tr>
-<td>Test suite</td>
-<td class="highlight-col yes">&#10003; 793 tests / 202 suites</td>
-<td class="partial">Some</td>
-<td class="no">Unknown</td>
-<td class="no">Unknown</td>
-<td class="no">Unknown</td>
-</tr>
-<tr>
-<td>Supply chain (SBOM, attestations)</td>
-<td class="highlight-col yes">&#10003; SBOM + artifact attestations</td>
-<td class="no">&#10005;</td>
-<td class="no">Unknown</td>
-<td class="partial">Limited</td>
-<td class="no">&#10005;</td>
-</tr>
-<tr>
-<td>Accessibility (WCAG)</td>
-<td class="highlight-col yes">&#10003; Full VoiceOver</td>
-<td class="no">N/A (no GUI)</td>
-<td class="partial">Limited</td>
-<td class="partial">Web WCAG</td>
-<td class="partial">Limited</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-</section>
+            <tr class="group"><td colspan="5">Interfaces</td></tr>
+            <tr>
+              <td>Native Mac app</td>
+              <td class="yes mark">Yes<small>SwiftUI, on the CLI's own core</small></td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="no">Web UI</td>
+            </tr>
+            <tr>
+              <td>Command-line interface</td>
+              <td class="yes mark">Yes<small>27 subcommands</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>HTTP API</td>
+              <td class="yes mark">Yes<small>with signed requests</small></td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Accessibility</td>
+              <td class="yes mark">Yes<small>VoiceOver throughout the app</small></td>
+              <td>Not applicable<small>no GUI</small></td>
+              <td>Unstated</td>
+              <td>Unstated</td>
+            </tr>
 
-<!-- Where they're ahead -->
-<section>
-<div class="container">
-<div class="honest-box">
-<h3>Where competitors are ahead</h3>
-<ul>
-<li><strong>OCI registries:</strong> Tart ships OCI push/pull today. We have it planned but not yet implemented.</li>
-<li><strong>Fleet autoscaling:</strong> Orka autoscales. Anka has manual pool management. We have no fleet management yet.</li>
-<li><strong>Multi-CI templates:</strong> Anka and Orka support BuildKite, CircleCI, and Jenkins natively. We only have GitHub Actions today.</li>
-<li><strong>Pool auto-replacement:</strong> Anka replaces failed VMs automatically. Spooktacular has no fleet-level pool reconciler yet — pool management is a roadmap item.</li>
-<li><strong>Enterprise support:</strong> Anka and Orka offer paid support contracts. We are community-supported only.</li>
-</ul>
-<p style="color: var(--dim); font-size: 0.85rem; margin-top: 0.75rem; font-style: italic;">Note: GhostVM has an edge on clipboard/exec/apps via its guest agent. Spooktacular currently ships SPICE-based clipboard sync only; remote exec and app control are not yet implemented.</p>
-</div>
-</div>
-</section>
+            <tr class="group"><td colspan="5">Fleet and security</td></tr>
+            <tr>
+              <td>Runner pool orchestration</td>
+              <td class="yes mark">Yes<small>a nine-state lifecycle machine</small></td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Mutual TLS, control plane to node</td>
+              <td class="yes mark">Yes<small>optional, mutual certificate auth</small></td>
+              <td class="no">—</td>
+              <td class="no">Server TLS only</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Certificate rotation without a restart</td>
+              <td class="yes mark">Yes<small>file-watch hot reload</small></td>
+              <td class="no">—</td>
+              <td class="no">—</td>
+              <td>Unstated</td>
+            </tr>
+            <tr>
+              <td>Role-based access control</td>
+              <td class="yes mark">Yes<small>plus Secure-Enclave-bound keys</small></td>
+              <td class="no">—</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Fleet autoscaling</td>
+              <td class="no">—<small>not implemented</small></td>
+              <td class="no">—</td>
+              <td>Partial<small>manual pools</small></td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>OCI registry push and pull</td>
+              <td class="no">—<small>planned</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+            <tr>
+              <td>Supply-chain attestations</td>
+              <td class="yes mark">Yes<small>SBOM and artifact attestations</small></td>
+              <td class="no">—</td>
+              <td>Unstated</td>
+              <td>Unstated</td>
+            </tr>
+            <tr>
+              <td>Publicly visible test suite</td>
+              <td class="yes mark">865 tests<small>222 suites, run on every change</small></td>
+              <td class="yes">Yes</td>
+              <td class="no">Not public</td>
+              <td class="no">Not public</td>
+            </tr>
+            <tr>
+              <td>Commercial support contract</td>
+              <td class="no">—<small>community only</small></td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+              <td class="yes">Yes</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 
-<!-- Pricing -->
-<section>
-<div class="container">
-<h2>Pricing: $0 forever</h2>
-<p class="subtitle">Spooktacular costs nothing. Not a free tier &mdash; free everything.</p>
-<div class="pricing-grid">
+  <section class="band" id="ahead">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>Where the competition is ahead</h2>
+        <p>
+          These are real gaps, not hedges. If one of them sits on your critical
+          path, another tool is the better choice today.
+        </p>
+      </div>
+      <div class="cardset reveal">
+        <div class="ahead">
+          <div>
+            <span class="who">Tart, Anka, Orka</span>
+            <h3>OCI registries</h3>
+            <p>
+              Tart pushes and pulls VM images from any OCI-compliant registry
+              today. We do not. If your workflow distributes images through a
+              registry, that is a requirement we cannot meet yet.
+            </p>
+          </div>
+          <div>
+            <span class="who">Orka</span>
+            <h3>Fleet autoscaling</h3>
+            <p>
+              Orka scales a pool against demand, and Anka offers manual pool
+              management. We orchestrate runners on a single host and have no
+              multi-host fleet management at all.
+            </p>
+          </div>
+          <div>
+            <span class="who">Anka, Orka</span>
+            <h3>CI systems beyond GitHub Actions</h3>
+            <p>
+              Both ship native integrations for BuildKite, CircleCI and Jenkins.
+              We have a GitHub Actions template and nothing else, so any other CI
+              system means writing your own first-boot script.
+            </p>
+          </div>
+          <div>
+            <span class="who">Tart, Anka, Orka</span>
+            <h3>Someone to call</h3>
+            <p>
+              They sell support with response commitments. We are
+              community-supported through GitHub issues. If you need a vendor
+              contractually on the hook, that is a real difference.
+            </p>
+          </div>
+          <div>
+            <span class="who">Anka, Orka</span>
+            <h3>Deeper host-to-guest integration</h3>
+            <p>
+              Their guest agents do more than our SPICE clipboard bridge. We
+              chose not to require an agent inside the guest, and thinner
+              integration is the price of that choice.
+            </p>
+          </div>
+          <div>
+            <span class="who">Orka</span>
+            <h3>Kubernetes-native operation</h3>
+            <p>
+              Orka runs as Kubernetes-native managed infrastructure. If you want
+              Macs to behave like any other node pool, that is a different kind
+              of product from this one.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<div class="price-card featured">
-<h3>Spooktacular</h3>
-<div class="price">$0 <span>forever</span></div>
-<p class="price-note">MIT licensed, open source</p>
-<ul>
-<li>Unlimited VMs (2 concurrent per host)</li>
-<li>All features included</li>
-<li>Full source code access</li>
-<li>Community support</li>
-<li>No sales calls</li>
-<li>No license keys</li>
-</ul>
-</div>
+  <section class="band">
+    <div class="container">
+      <div class="band-head reveal">
+        <h2>What it costs</h2>
+        <p>
+          Spooktacular is MIT licensed with every feature included — not a free
+          tier with the useful parts held back.
+        </p>
+      </div>
 
-<div class="price-card">
-<h3>Tart</h3>
-<div class="price">$0&ndash;$36K <span>/yr</span></div>
-<p class="price-note">Fair Source license, paid tiers</p>
-<ul>
-<li>Free for small teams</li>
-<li>Orchard orchestrator extra</li>
-<li>OCI registry support</li>
-<li>SSH-only provisioning</li>
-<li>No GUI application</li>
-</ul>
-</div>
+      <div class="cardset reveal" style="margin-bottom:1.5rem">
+        <div class="facts">
+          <div class="fact">
+            <b>$0</b>
+            <span>licence cost, for every feature</span>
+          </div>
+          <div class="fact">
+            <b>0</b>
+            <span>licence keys, seats or activation servers</span>
+          </div>
+          <div class="fact">
+            <b>0</b>
+            <span>sales calls needed to evaluate it</span>
+          </div>
+          <div class="fact">
+            <b>MIT</b>
+            <span>so you may fork it and ship it commercially</span>
+          </div>
+        </div>
+      </div>
 
-<div class="price-card">
-<h3>Anka</h3>
-<div class="price">Contact <span>sales</span></div>
-<p class="price-note">Per-core licensing, proprietary</p>
-<ul>
-<li>Per-core license model</li>
-<li>Enterprise GUI + CLI</li>
-<li>Multiple CI integrations</li>
-<li>Pool management</li>
-<li>Paid support contracts</li>
-</ul>
-</div>
+      <div class="note reveal" style="max-width:68ch">
+        <b>About the cost table that used to be here</b>
+        This page previously carried a three-year total-cost comparison built on
+        specific competitor licence figures and an assumed EC2 hourly rate. Those
+        numbers were neither sourced nor dated, and vendor pricing moves, so
+        presenting them as fact was not defensible. The honest version is
+        shorter: our licence cost is zero, and the hardware bill is the same
+        whichever tool runs on it — so compare each vendor's current published
+        price against nothing.
+      </div>
+    </div>
+  </section>
 
-<div class="price-card">
-<h3>Orka</h3>
-<div class="price">$499+ <span>/mo</span></div>
-<p class="price-note">MacStadium hosted, proprietary</p>
-<ul>
-<li>Kubernetes-native</li>
-<li>Managed infrastructure</li>
-<li>Web UI</li>
-<li>Autoscaling</li>
-<li>MacStadium lock-in</li>
-</ul>
-</div>
-
-<div class="price-card">
-<h3>GhostVM</h3>
-<div class="price">$0 <span>forever</span></div>
-<p class="price-note">MIT licensed, open source</p>
-<ul>
-<li>GUI + CLI interface</li>
-<li>Clipboard/exec/apps agent</li>
-<li>No Kubernetes support</li>
-<li>No HTTP API</li>
-<li>No templates or ephemeral</li>
-<li>No capacity enforcement</li>
-</ul>
-</div>
-
-</div>
-</div>
-</section>
-
-<!-- TCO -->
-<section>
-<div class="container">
-<div class="tco-box">
-<h3>Total cost of ownership: 20 EC2 Macs, 3 years</h3>
-<p class="sub">Real numbers using AWS public pricing for mac2-m2pro.metal at $1.08/hr with 24-hour minimum allocation.</p>
-<table class="tco-table" aria-label="Total cost of ownership comparison">
-<thead>
-<tr>
-<th scope="col">Cost category</th>
-<th scope="col" style="color: var(--accent);">Spooktacular</th>
-<th scope="col">Tart (Enterprise)</th>
-<th scope="col">Anka</th>
-<th scope="col">Orka</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Software license (3yr)</td>
-<td class="save">$0</td>
-<td class="cost">~$108K</td>
-<td class="cost">Contact sales</td>
-<td class="cost">~$18K+</td>
-</tr>
-<tr>
-<td>EC2 hosts needed (40 runners)</td>
-<td>20 hosts (2 VMs each)</td>
-<td>20 hosts (2 VMs each)</td>
-<td>20 hosts</td>
-<td>N/A (MacStadium)</td>
-</tr>
-<tr>
-<td>EC2 compute (3yr)</td>
-<td>$567,648</td>
-<td>$567,648</td>
-<td>$567,648</td>
-<td>N/A</td>
-</tr>
-<tr>
-<td>MacStadium hosting (3yr)</td>
-<td>N/A</td>
-<td>N/A</td>
-<td>N/A</td>
-<td class="cost">~$360K+</td>
-</tr>
-<tr>
-<td class="total">Total 3-year cost</td>
-<td class="total save">$567,648</td>
-<td class="total cost">~$675,648</td>
-<td class="total cost">$567K + license</td>
-<td class="total cost">~$378K+</td>
-</tr>
-</tbody>
-</table>
-<p class="tco-note">EC2 mac2-m2pro.metal pricing: $1.08/hr, 24/7 dedicated host = $9,460.80/yr per host. Tart Enterprise pricing based on published rates. Anka pricing is not publicly available. Orka pricing from MacStadium estimates for equivalent capacity. All figures are estimates for comparison purposes.</p>
-</div>
-</div>
-</section>
-
-<!-- CTA -->
-<div style="text-align: center; padding: 4rem 0 5rem; position: relative; z-index: 1;">
-<div class="container">
-<h2 style="font-size: 2rem; font-weight: 800; margin-bottom: 0.75rem;">Try it yourself</h2>
-<p style="color: var(--dim); font-size: 1.1rem; margin-bottom: 2rem; max-width: 500px; margin-left: auto; margin-right: auto;">Install in 30 seconds. Run your own comparison on real workloads.</p>
-<div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-<a href="https://github.com/Spooky-Labs/spooktacular/releases" style="padding: 0.85rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; transition: opacity 0.2s;">Get Started</a>
-<a href="features.html" style="padding: 0.85rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; background: var(--surface); border: 1px solid var(--border); color: var(--fg); transition: all 0.2s;">See All Features</a>
-</div>
-</div>
-</div>
+  <section class="band" style="text-align:center">
+    <div class="container">
+      <h2 style="max-width:26ch;margin-inline:auto">Read the code before you believe the table.</h2>
+      <p style="margin-top:0.9rem;max-width:50ch;margin-inline:auto;color:var(--ink-2)">
+        Every capability claimed above lives in a public repository with its
+        tests beside it. That is the only comparison claim that verifies itself.
+      </p>
+      <div class="btn-row" style="margin-top:1.6rem;justify-content:center">
+        <a class="btn primary" href="/get-started.html">Get started</a>
+        <a class="btn" href="https://github.com/Spooky-Labs/spooktacular">Read the source</a>
+      </div>
+    </div>
+  </section>
 
 </main>
 
-<footer role="contentinfo">
-<div class="foot-inner">
-<div class="foot-grid">
-<div class="foot-col">
-<h4>Product</h4>
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="versioning.html">Versioning</a>
-<a href="download.html">Downloads</a>
-</div>
-<div class="foot-col">
-<h4>Resources</h4>
-<a href="api/documentation/spooktacularkit/">API Reference</a>
-<a href="get-started.html">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
-</div>
-<div class="foot-col">
-<h4>Legal</h4>
-<a href="privacy.html">Privacy Policy</a>
-<a href="terms.html">Terms of Use</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
-</div>
-<div class="foot-col">
-<h4>Community</h4>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
-</div>
-</div>
-<div class="foot-bottom">
-<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-</div>
-</div>
+<footer class="site">
+  <div class="container">
+    <div class="cols">
+      <div class="brand">
+        <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+        <p>Apple-native macOS virtualization for the Mac you already have.</p>
+      </div>
+      <div>
+        <h2>Product</h2>
+        <a href="/features.html">Features</a>
+        <a href="/get-started.html">Get started</a>
+        <a href="/compare.html">Compare</a>
+        <a href="/roadmap.html">Roadmap</a>
+      </div>
+      <div>
+        <h2>Docs</h2>
+        <a href="/api/documentation/spooktacularkit/">API reference</a>
+        <a href="/api/documentation/spooktacularkit/instantcreate">Instant create</a>
+        <a href="/api/documentation/spooktacularkit/githubactionsguide">GitHub Actions</a>
+        <a href="/versioning.html">Versioning</a>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+        <a href="/security.html">Security</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    </div>
+    <p class="legal">
+      MIT licensed. Apple, macOS, Apple silicon and Xcode are trademarks of
+      Apple Inc. Spooktacular is not affiliated with or endorsed by Apple. Tart,
+      Anka and Orka are trademarks of their respective owners; details about them
+      are drawn from their public documentation and may have changed since.
+    </p>
+  </div>
 </footer>
 </body>
 </html>

@@ -3,444 +3,552 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Get Started — Spooktacular</title>
-<meta name="description" content="Step-by-step guide to getting started with Spooktacular. Create your first VM, clone it, and run your CI pipeline in minutes.">
+<title>Get started — Spooktacular</title>
+<meta name="description" content="Install Spooktacular, build the shared macOS base image once, then create VMs in seconds. Published ports, GitHub Actions runners, Linux guests, remote desktop, and the full command reference.">
 <link rel="icon" type="image/png" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#0f0a1a">
-<meta property="og:title" content="Get Started — Spooktacular">
-<meta property="og:description" content="Step-by-step guide to getting started with Spooktacular. Create your first VM, clone it, and run your CI pipeline in minutes.">
-<meta property="og:image" content="https://spooktacular.app/img/og-image.png">
-<meta property="og:type" content="website">
+<meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Get started — Spooktacular">
+<meta property="og:description" content="From a clone of the repo to a running macOS VM, and what every command does.">
+<meta property="og:type" content="article">
 <meta property="og:url" content="https://spooktacular.app/get-started.html">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://spooktacular.app/img/og-image.png">
+<link rel="canonical" href="https://spooktacular.app/get-started.html">
+<link rel="stylesheet" href="/spook.css">
 <style>
-:root { --bg: #09090b; --surface: #18181b; --surface2: #1f1f23; --border: #27272a; --border-hover: #3f3f46; --fg: #fafafa; --dim: #a1a1aa; --accent: #a78bfa; --accent2: #818cf8; --green: #6ee7b7; --blue: #60a5fa; --yellow: #fbbf24; --red: #ef4444; }
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--fg); line-height: 1.7; -webkit-font-smoothing: antialiased; }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-.container { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-.skip-link { position: absolute; top: -100%; left: 1rem; background: var(--accent); color: #000; padding: 0.5rem 1rem; border-radius: 6px; font-weight: 600; z-index: 200; }
-.skip-link:focus { top: 0.5rem; }
+/* Documentation shell: a sticky contents rail beside a single measure of prose. */
+.doc { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 3.5rem); align-items: start; }
+@media (max-width: 940px) { .doc { grid-template-columns: 1fr; } .toc { position: static !important; } }
 
-/* Nav */
-nav { position: sticky; top: 0; z-index: 100; background: rgba(9,9,11,0.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(39,39,42,0.5); }
-nav .inner { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; padding: 0.75rem 2rem; }
-nav .logo { display: flex; align-items: center; gap: 0.5rem; font-weight: 700; font-size: 1.1rem; color: var(--fg); text-decoration: none; }
-nav .logo:hover { text-decoration: none; }
-nav .logo svg { width: 24px; height: 24px; }
-nav .logo img { width: 28px; height: 28px; }
-nav .nav-links { display: flex; align-items: center; gap: 0.25rem; font-size: 0.9rem; }
-nav .nav-links a { color: var(--dim); padding: 0.4rem 0.75rem; border-radius: 6px; position: relative; transition: color 0.2s; }
-nav .nav-links a::after { content: ''; position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%) scaleX(0); width: 60%; height: 2px; background: var(--accent); border-radius: 1px; transition: transform 0.25s ease; }
-nav .nav-links a:hover { color: var(--fg); text-decoration: none; }
-nav .nav-links a:hover::after { transform: translateX(-50%) scaleX(1); }
-nav .nav-links a.active { color: var(--fg); }
-nav .nav-links a.active::after { transform: translateX(-50%) scaleX(1); }
-nav .cta-btn { background: var(--accent); color: #000; padding: 0.4rem 1rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; transition: opacity 0.2s; margin-left: 0.5rem; }
-nav .cta-btn:hover { opacity: 0.9; text-decoration: none; }
-nav .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 0.5rem; background: none; border: none; }
-nav .hamburger span { display: block; width: 20px; height: 2px; background: var(--fg); border-radius: 1px; transition: transform 0.3s, opacity 0.3s; }
-#nav-toggle { display: none; }
-@media (max-width: 768px) {
-  nav .hamburger { display: flex; }
-  nav .nav-links { display: none; flex-direction: column; position: absolute; top: 100%; left: 0; right: 0; background: rgba(9,9,11,0.97); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid var(--border); padding: 1rem 2rem; gap: 0.25rem; }
-  nav .nav-links a { padding: 0.6rem 0.75rem; }
-  nav .nav-links a::after { display: none; }
-  nav .cta-btn { margin-left: 0; margin-top: 0.5rem; text-align: center; display: block; }
-  #nav-toggle:checked ~ .nav-links { display: flex; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-  #nav-toggle:checked ~ .hamburger span:nth-child(2) { opacity: 0; }
-  #nav-toggle:checked ~ .hamburger span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+.toc { position: sticky; top: calc(var(--u) * 12); }
+.toc h2 {
+  margin-bottom: 0.6rem; color: var(--ink-3);
+  font-family: var(--mono); font-size: var(--t-micro); font-weight: 400;
+  text-transform: uppercase; letter-spacing: 0.09em;
 }
-
-/* Page header */
-.page-header { text-align: center; padding: 5rem 0 1.5rem; }
-.page-header h1 { font-size: 3rem; font-weight: 800; letter-spacing: -0.03em; }
-.page-header h1 .gradient { background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-.page-header p { color: var(--dim); font-size: 1.15rem; margin-top: 0.75rem; max-width: 650px; margin-left: auto; margin-right: auto; }
-
-/* Steps */
-.step-section { padding: 3.5rem 0; border-top: 1px solid var(--border); }
-.step-section:first-of-type { border-top: none; }
-.step-label { display: inline-flex; align-items: center; gap: 0.5rem; background: rgba(167,139,250,0.08); border: 1px solid rgba(167,139,250,0.2); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.8rem; font-weight: 600; color: var(--accent); margin-bottom: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.step-section h2 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
-.step-section .sub { color: var(--dim); font-size: 1.05rem; margin-bottom: 1.5rem; max-width: 700px; }
-
-/* Download button in guide */
-.guide-download { display: inline-flex; flex-direction: column; align-items: center; background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #000; padding: 0.9rem 2.5rem; border-radius: 10px; font-weight: 700; font-size: 1.1rem; margin: 1rem 0 1.5rem; transition: all 0.25s; box-shadow: 0 4px 20px rgba(167,139,250,0.2); }
-.guide-download:hover { opacity: 0.92; text-decoration: none; transform: translateY(-1px); }
-.guide-download .download-sub { font-size: 0.75rem; font-weight: 500; opacity: 0.8; margin-top: 0.2rem; }
-
-/* Alt install note */
-.alt-note { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1rem 0; font-size: 0.9rem; color: var(--dim); }
-.alt-note code { font-family: 'SF Mono', 'Fira Code', monospace; color: var(--accent); font-size: 0.85rem; }
-.alt-note strong { color: var(--fg); }
-
-/* Terminal blocks */
-.code-example { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin: 1.5rem 0; max-width: 780px; }
-.code-example .code-header { display: flex; align-items: center; gap: 0.5rem; padding: 0.65rem 1.25rem; border-bottom: 1px solid var(--border); }
-.code-example .code-header .dot-r { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; }
-.code-example .code-header .dot-y { width: 10px; height: 10px; border-radius: 50%; background: #fbbf24; }
-.code-example .code-header .dot-g { width: 10px; height: 10px; border-radius: 50%; background: #6ee7b7; }
-.code-example .code-header span.title { margin-left: 0.5rem; font-size: 0.75rem; color: var(--dim); font-family: 'SF Mono', 'Fira Code', monospace; }
-.code-example pre { padding: 1.25rem 1.5rem; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; line-height: 1.85; overflow-x: auto; margin: 0; background: transparent; }
-.dim { color: var(--dim); }
-.cmd { color: var(--accent); }
-.ok { color: var(--green); }
-.cmt { color: #525262; font-style: italic; }
-.file { color: var(--blue); }
-.warn { color: var(--yellow); }
-
-/* Explanation cards */
-.explain { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem 1.5rem; margin: 1rem 0; }
-.explain h4 { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem; }
-.explain p { color: var(--dim); font-size: 0.88rem; line-height: 1.6; }
-
-/* Jump nav */
-.jump-nav { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin: 1.5rem 0 3rem; }
-.jump-nav a { background: var(--surface); border: 1px solid var(--border); padding: 0.4rem 1rem; border-radius: 6px; font-size: 0.82rem; color: var(--dim); font-weight: 500; transition: all 0.2s; }
-.jump-nav a:hover { border-color: var(--accent); color: var(--fg); text-decoration: none; }
-
-/* Next steps CTA */
-.next-cta { text-align: center; padding: 4rem 0 2rem; }
-.next-cta h2 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
-.next-cta p { color: var(--dim); font-size: 1.05rem; margin-bottom: 1.5rem; }
-.next-cta .cta-row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-.next-cta .cta-row a { padding: 0.8rem 2rem; border-radius: 8px; font-weight: 600; font-size: 1rem; transition: all 0.2s; }
-.btn-primary { background: var(--accent); color: #000; }
-.btn-primary:hover { opacity: 0.9; text-decoration: none; transform: translateY(-1px); }
-.btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--fg); }
-.btn-secondary:hover { border-color: var(--accent); text-decoration: none; transform: translateY(-1px); }
-
-/* Footer */
-footer { border-top: 1px solid var(--border); padding: 3rem 0; color: var(--dim); font-size: 0.85rem; }
-footer .foot-inner { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
-footer .foot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2rem; }
-footer .foot-col { display: flex; flex-direction: column; gap: 0.5rem; }
-footer .foot-col h4 { color: var(--fg); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem; font-weight: 600; }
-footer .foot-col a { color: var(--dim); font-size: 0.85rem; }
-footer .foot-col a:hover { color: var(--fg); text-decoration: none; }
-footer .foot-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 1rem; }
-footer .foot-bottom p { margin: 0; }
-@media (max-width: 768px) { footer .foot-grid { grid-template-columns: repeat(2, 1fr); } footer .foot-bottom { flex-direction: column; text-align: center; } }
-
-/* Starfield */
-.stars, .stars2, .stars3 { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-.stars { background: radial-gradient(1px 1px at 20px 30px, #a78bfa33, transparent), radial-gradient(1px 1px at 40px 70px, #818cf833, transparent), radial-gradient(1px 1px at 50px 160px, #a78bfa22, transparent), radial-gradient(1px 1px at 90px 40px, #fff2, transparent), radial-gradient(1px 1px at 130px 80px, #a78bfa33, transparent), radial-gradient(1px 1px at 160px 120px, #fff1, transparent); background-size: 200px 200px; animation: starTwinkle 4s ease-in-out infinite alternate; }
-.stars2 { background: radial-gradient(1px 1px at 10px 10px, #fff2, transparent), radial-gradient(1.5px 1.5px at 150px 150px, #a78bfa44, transparent), radial-gradient(1px 1px at 100px 50px, #fff1, transparent), radial-gradient(1.5px 1.5px at 60px 120px, #818cf844, transparent), radial-gradient(1px 1px at 175px 175px, #fff2, transparent); background-size: 250px 250px; animation: starTwinkle 6s ease-in-out infinite alternate-reverse; }
-.stars3 { background: radial-gradient(1.5px 1.5px at 25px 50px, #fff1, transparent), radial-gradient(1px 1px at 75px 130px, #a78bfa22, transparent), radial-gradient(2px 2px at 125px 25px, #818cf822, transparent), radial-gradient(1px 1px at 180px 90px, #fff1, transparent); background-size: 300px 300px; animation: starTwinkle 8s ease-in-out infinite alternate; }
-@keyframes starTwinkle { 0% { opacity: 0.3; } 50% { opacity: 0.8; } 100% { opacity: 0.5; } }
-nav, .container, .page-header, footer, main { position: relative; z-index: 1; }
-
-@media (max-width: 640px) {
-  .page-header h1 { font-size: 2.25rem; }
-  .step-section h2 { font-size: 1.5rem; }
+.toc a {
+  display: block; padding: 0.24rem 0 0.24rem 0.7rem;
+  border-left: 1.5px solid var(--line);
+  color: var(--ink-2); font-size: var(--t-small);
+  transition: color var(--quick) var(--out), border-color var(--quick) var(--out);
 }
+.toc a:hover { color: var(--ink); text-decoration: none; }
+.toc a.here { color: var(--accent); border-left-color: var(--accent); }
+
+.doc section { padding-block: 2.25rem; border-top: 1px solid var(--line); }
+.doc section:first-of-type { padding-top: 0; border-top: 0; }
+.doc section h2 { font-size: clamp(1.5rem, 1.25rem + 1vw, 1.875rem); }
+.doc section h3 { margin-top: 1.75rem; }
+.doc p { max-width: 68ch; color: var(--ink-2); margin-top: 0.7rem; }
+.doc p strong, .doc li strong { color: var(--ink); }
+.doc ul { max-width: 68ch; margin: 0.8rem 0 0; padding-left: 1.15rem; color: var(--ink-2); }
+.doc li { margin: 0.3rem 0; }
+.doc .cmd { margin-top: 0.85rem; }
+.doc .note { margin-top: 1.1rem; max-width: 68ch; }
+.doc .term { margin-top: 1.1rem; }
+.doc .table-scroll { margin-top: 1rem; }
 </style>
 </head>
 <body>
-<div class="stars" aria-hidden="true"></div>
-<div class="stars2" aria-hidden="true"></div>
-<div class="stars3" aria-hidden="true"></div>
 <a href="#main" class="skip-link">Skip to content</a>
 
-<nav role="navigation" aria-label="Main navigation">
-<div class="inner">
-<a href="index.html" class="logo" aria-label="Spooktacular home">
-<img src="/img/icon.svg" width="28" height="28" alt="Spooktacular" style="image-rendering:pixelated;border-radius:6px;">
-Spooktacular
-</a>
-<input type="checkbox" id="nav-toggle" aria-label="Toggle navigation menu">
-<label for="nav-toggle" class="hamburger" aria-label="Menu"><span></span><span></span><span></span></label>
-<div class="nav-links">
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="api/documentation/spooktacularkit/">Docs</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="get-started.html" class="active">Get Started</a>
-<a href="download.html" class="cta-btn">Download</a>
-</div>
-</div>
+<nav class="site">
+  <div class="inner">
+    <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" aria-label="Menu">
+    <label class="hamburger" for="nav-toggle"><span></span><span></span><span></span></label>
+    <div class="nav-links">
+      <a href="/features.html">Features</a>
+      <a href="/get-started.html" aria-current="page">Get started</a>
+      <a href="/compare.html">Compare</a>
+      <a href="/security.html">Security</a>
+      <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+    </div>
+  </div>
 </nav>
 
 <main id="main">
-<div class="page-header">
-<h1>Getting <span class="gradient">Started</span></h1>
-<p>From first download to a running CI pipeline in seven steps. No prior experience required.</p>
-</div>
-
-<div class="jump-nav container" aria-label="Jump to step">
-<a href="#step-1">1. Download</a>
-<a href="#step-2">2. Create</a>
-<a href="#step-3">3. Clone</a>
-<a href="#step-4">4. Run CI</a>
-<a href="#step-5">5. Double</a>
-<a href="#step-6">6. Service</a>
-<a href="#step-7">7. Remote</a>
-</div>
-
 <div class="container">
 
-<!-- Step 1: Download & Install -->
-<section class="step-section" id="step-1" aria-labelledby="step1-heading">
-<div class="step-label">Step 1</div>
-<h2 id="step1-heading">Download &amp; Install</h2>
-<p class="sub">Install Spooktacular on your Mac. Takes about 30 seconds.</p>
+  <section class="band" style="padding-block:clamp(2rem,1rem+3vw,3.25rem) clamp(2rem,1rem+3vw,3rem)">
+    <p class="eyebrow">Documentation</p>
+    <h1 style="max-width:26ch;font-size:clamp(2rem,1.6rem+2vw,3rem)">From a clone of the repo to a running macOS VM</h1>
+    <p style="margin-top:1.1rem;max-width:56ch;font-size:var(--t-lede);line-height:1.45;color:var(--ink-2)">
+      One thing is worth understanding before you start: macOS is installed
+      <strong>once</strong>, into a shared base image, and every VM after that is
+      a copy-on-write layer on top of it.
+    </p>
+  </section>
 
-<a href="https://github.com/Spooky-Labs/spooktacular#quick-start" class="guide-download">
-  Build Spooktacular from Source
-  <span class="download-sub">macOS 26+ &middot; Apple Silicon &middot; signed releases coming</span>
-</a>
+  <div class="doc" style="padding-bottom:var(--section)">
+    <aside class="toc" aria-label="On this page">
+      <h2>On this page</h2>
+      <a href="#requirements">Requirements</a>
+      <a href="#install">Install</a>
+      <a href="#first-vm">Your first VM</a>
+      <a href="#more-vms">More VMs, instantly</a>
+      <a href="#ports">Published ports</a>
+      <a href="#runners">GitHub Actions runners</a>
+      <a href="#desktop">Remote desktop</a>
+      <a href="#linux">Linux guests</a>
+      <a href="#lifecycle">Lifecycle</a>
+      <a href="#base">Base images</a>
+      <a href="#troubleshoot">Troubleshooting</a>
+      <a href="#commands">All commands</a>
+    </aside>
 
-<div class="code-example">
-<div class="code-header">
-<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
-<span class="title">Terminal</span>
+    <div>
+
+      <section id="requirements">
+        <h2>Requirements</h2>
+        <ul>
+          <li>An Apple silicon Mac. Intel Macs cannot run macOS guests.</li>
+          <li><strong>macOS 27 or newer</strong> on the host — the base-image format uses DiskImageKit, which shipped in macOS 27. Linux guests work on older hosts.</li>
+          <li>Xcode 27 to build from source.</li>
+          <li>Roughly 40 GB free for the first base image, plus whatever each VM writes.</li>
+        </ul>
+        <p>Check the host before you start:</p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook doctor</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="note">
+          <b>Apple's licence sets the ceiling</b>
+          macOS permits two virtual machines per host. Spooktacular enforces that
+          rather than letting you discover it partway through a build. Linux
+          guests are unlimited.
+        </div>
+      </section>
+
+      <section id="install">
+        <h2>Install</h2>
+        <p>
+          Build from source today. There are no signed binary releases yet; when
+          there are, they will appear on the repository's Releases page.
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>git clone https://github.com/Spooky-Labs/spooktacular.git</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="cmd">
+          <span class="sigil">$</span><code>cd spooktacular &amp;&amp; ./build-app.sh release</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          That produces <code>Spooktacular.app</code>, with the CLI inside it. Put
+          it on your <code>PATH</code>:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>sudo ln -sf "$PWD/Spooktacular.app/Contents/MacOS/spook" /usr/local/bin/spook</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          The app and the CLI are one engine rather than two implementations, so a
+          VM created in either is a first-class citizen of the other.
+        </p>
+      </section>
+
+      <section id="first-vm">
+        <h2>Your first VM</h2>
+        <p>
+          The first macOS create does two expensive things once: it downloads a
+          restore image, and it installs macOS into the shared base image. It
+          also needs root once, to write the provisioner into that base.
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>sudo spook create dev</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><b>first create</b></div>
+<pre><span class="dim">Resolving the latest macOS restore image…</span>
+<span class="dim">Downloading IPSW (100%)</span>
+<span class="acc">Building the macOS base image — one time, 10-20 minutes.</span>
+<span class="dim">  Installing base: 100%</span>
+<span class="dim">  Injecting provisioner into the base…</span>
+<span class="dim">  Sealing the base image read-only…</span>
+<span class="ok">✓ Base image ready.</span>
+<span class="ok">✓ VM created from the cached base image.</span>
+<span class="dim">  Address 192.168.64.3</span></pre>
+        </div>
+        <p>Then start it:</p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook start dev</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="note">
+          <b>Why root, once</b>
+          The provisioner that runs your first-boot scripts is a LaunchDaemon
+          written into the guest disk as <code>root:wheel</code>. It goes into the
+          base image, so it is written once rather than per VM. On an EC2 Mac,
+          where Spooktacular runs as a root service, nothing is ever asked. In the
+          app you can approve the privileged helper once in System Settings
+          instead of using <code>sudo</code>.
+        </div>
+      </section>
+
+      <section id="more-vms">
+        <h2>More VMs, instantly</h2>
+        <p>
+          With a base image present, a create is an overlay layer plus two APFS
+          clones:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create dev2</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create dev3 --cpu 8 --memory 16 --disk 120</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          Each VM's disk starts as a near-empty delta and grows only with what the
+          guest writes. Cloning an existing VM is faster still — a measured
+          <strong>30 ms</strong> for a 5 GB VM, consuming no additional disk,
+          because APFS shares the blocks:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook clone dev2 dev3</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          Ask a VM for its address at any time. This is a metadata read rather
+          than a probe, because the address is reserved when the VM is created:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook ip dev2</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="note">
+          <b>One create still needs root</b>
+          A create that provisions a guest account — <code>--remote-desktop</code>,
+          <code>--openclaw</code>, <code>--user-data</code>, or any
+          <code>--vm-password</code> — stores that password in the root-owned
+          System keychain, so it needs root even when the base exists. That is
+          deliberate: the password never touches disk in plaintext. Creates
+          without an account need no privileges at all.
+        </div>
+      </section>
+
+      <section id="ports">
+        <h2>Published ports</h2>
+        <p>
+          Every VM gets its own private subnet and a reserved address, so a guest
+          service can be published to the host the way a container's would be:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create web --publish 8080:80 --publish 2222:22</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          <code>--publish</code> takes <code>hostPort:guestPort</code>, or a bare
+          port to use the same number on both sides, and is repeatable. Two rules
+          cannot share a host port, and that fails immediately rather than
+          silently picking a winner. Templates contribute their own defaults — the
+          OpenClaw template publishes its gateway on 18789 without being asked:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create agent --openclaw &amp;&amp; open http://localhost:18789</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+      </section>
+
+      <section id="runners">
+        <h2>GitHub Actions runners</h2>
+        <p>
+          Store a personal access token with repository admin scope in the
+          Keychain. This is a PAT, not a runner registration token —
+          <code>create</code> mints a short-lived registration token from it
+          seconds before the VM boots, so no long-lived credential reaches the
+          guest.
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>security add-generic-password -s com.spooktacular.github -a your-org -w &lt;PAT&gt; -U</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>Then one command creates, provisions, boots and waits for the runner to report online:</p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create runner-01 --github-runner --github-repo your-org/repo --github-token-keychain your-org --ephemeral</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="table-scroll">
+          <table class="data">
+            <thead><tr><th scope="col">Flag</th><th scope="col">What it does</th></tr></thead>
+            <tbody>
+              <tr><td><code>--github-repo</code></td><td>The <code>owner/repo</code> the runner registers against.</td></tr>
+              <tr><td><code>--github-token-keychain</code></td><td>Keychain account holding the PAT, under service <code>com.spooktacular.github</code>. The only accepted source — never a flag, an environment variable, or a file.</td></tr>
+              <tr><td><code>--ephemeral</code></td><td>The runner takes one job and exits. Reset the VM and the next job starts from the base image.</td></tr>
+              <tr><td><code>--labels</code></td><td>Extra runner labels. <code>self-hosted</code>, <code>macOS</code> and <code>ARM64</code> are always present.</td></tr>
+              <tr><td><code>--no-start</code></td><td>Create and provision, but do not boot. Useful for pre-warming a pool.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <b>On an EC2 Mac</b>
+          The PAT must live in the <strong>System</strong> keychain, because the
+          service runs as root and root cannot read a user's login keychain. Add
+          <code>/Library/Keychains/System.keychain</code> to the
+          <code>security</code> command above.
+        </div>
+      </section>
+
+      <section id="desktop">
+        <h2>Remote desktop</h2>
+        <p>
+          A remote-desktop VM provisions an admin account, skips Setup Assistant,
+          and enables Screen Sharing and Remote Login on first boot.
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>sudo spook create desktop --remote-desktop --vm-user admin</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="cmd">
+          <span class="sigil">$</span><code>sudo spook start desktop &amp;&amp; open vnc://$(spook ip desktop)</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          Without <code>--vm-password</code>, a strong password is generated and
+          printed once at create time. Those account credentials are exactly what
+          you use to connect over VNC or SSH.
+        </p>
+      </section>
+
+      <section id="linux">
+        <h2>Linux guests</h2>
+        <p>
+          Linux VMs boot from a cloud image and are provisioned by cloud-init, so
+          they need no base image and no privileges at all. Pass a distro alias
+          and the latest aarch64 cloud image is resolved at create time.
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create linux-01 --os linux --from-image fedora</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create linux-02 --os linux --from-image debian --github-runner --github-repo your-org/repo --github-token-keychain your-org</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          <code>fedora</code> and <code>debian</code> resolve live against each
+          project's release index; you can also pass a path to a local raw image,
+          optionally <code>.xz</code>-compressed. To boot an installer ISO instead
+          and walk through it yourself, use <code>--installer-iso</code>. Rosetta
+          can be exposed to the guest for x86-64 binaries with
+          <code>--rosetta</code>.
+        </p>
+      </section>
+
+      <section id="lifecycle">
+        <h2>Lifecycle</h2>
+        <div class="table-scroll">
+          <table class="data">
+            <thead><tr><th scope="col">Command</th><th scope="col">What it does</th></tr></thead>
+            <tbody>
+              <tr><td><code>spook list</code></td><td>Every VM with state, resources and provisioning status. Add <code>--ip</code> for addresses, <code>--json</code> for machine-readable output.</td></tr>
+              <tr><td><code>spook stop</code></td><td>Shut the guest down cleanly.</td></tr>
+              <tr><td><code>spook suspend</code></td><td>Save running state to disk and stop; a later <code>start</code> resumes it.</td></tr>
+              <tr><td><code>spook clone</code></td><td>Copy-on-write duplicate — 30 ms for a 5 GB VM, no extra disk.</td></tr>
+              <tr><td><code>spook snapshot</code></td><td>Manage disk snapshots for a stopped VM.</td></tr>
+              <tr><td><code>spook delete</code></td><td>Remove the VM and its data. The shared base image is untouched.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <b>A clone inherits its source's machine identifier</b>
+          The installer personalizes auxiliary storage against that identifier, so
+          a fresh one would pair boot state with an identity it was never signed
+          for. Apple warns against running two VMs with the same identifier at
+          once, so treat a clone as a replacement for its source rather than a
+          sibling to run beside it. MAC addresses <em>are</em> regenerated, so
+          clones stay distinct on the network.
+        </div>
+      </section>
+
+      <section id="base">
+        <h2>Base images</h2>
+        <p>Base images live under the cache directory, one per macOS build:</p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>ls ~/.spooktacular/cache/base/</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          To force a rebuild — after changing the bundled provisioner, or to
+          reclaim space — delete the build's directory. The next create rebuilds
+          it:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>rm -rf ~/.spooktacular/cache/base/&lt;build&gt;</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          Bases are also rebuilt automatically when the provisioner version
+          changes, so a VM never silently inherits a stale one. A base is sealed
+          read-only after it is built and is never booted, which is what lets a
+          warm pool prove its base is pristine after a reset.
+        </p>
+      </section>
+
+      <section id="troubleshoot">
+        <h2>Troubleshooting</h2>
+
+        <h3>Provisioning did not finish</h3>
+        <p>
+          The guest reports its first-boot exit code to the host over vsock, so
+          <code>start</code> prints a definitive result instead of guessing from a
+          timeout. When it fails, the script's own output is in the VM bundle:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>cat ~/.spooktacular/vms/&lt;uuid&gt;.vm/provision/first-boot.stderr.log</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+
+        <h3>"Creating macOS VMs requires macOS 27 or newer"</h3>
+        <p>
+          The base-and-overlay disk format uses DiskImageKit, which shipped in
+          macOS 27. Linux guests work on older hosts.
+        </p>
+
+        <h3>"Building the macOS base image requires root"</h3>
+        <p>
+          Run the first create with <code>sudo</code>, or approve the privileged
+          helper in the app once. Only the base build needs this.
+        </p>
+
+        <h3>A published port does not answer</h3>
+        <p>
+          Confirm the guest service is listening, then check the VM's reserved
+          address with <code>spook ip &lt;name&gt;</code>. Forwarding rules are
+          installed when the VM starts, so a VM whose publications changed needs a
+          restart to pick them up.
+        </p>
+
+        <h3>Two VMs answer to the same name</h3>
+        <p>
+          Display names are not unique. Any command given an ambiguous name lists
+          the matching UUIDs and exits; pass the UUID of the one you meant.
+        </p>
+
+        <h3>Everything else</h3>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook doctor --strict</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+      </section>
+
+      <section id="commands">
+        <h2>All commands</h2>
+        <p>
+          Twenty-seven subcommands. Each carries its own help:
+          <code>spook help &lt;command&gt;</code>.
+        </p>
+        <div class="table-scroll">
+          <table class="data">
+            <thead><tr><th scope="col">Commands</th><th scope="col">Area</th></tr></thead>
+            <tbody>
+              <tr><td><code>create</code></td><td>Create a VM, optionally provisioning it</td></tr>
+              <tr><td><code>start</code> <code>stop</code></td><td>Boot or shut down</td></tr>
+              <tr><td><code>suspend</code> <code>discard-suspend</code></td><td>Save running state to disk, or drop a saved state</td></tr>
+              <tr><td><code>list</code> <code>get</code> <code>set</code></td><td>Inspect and change configuration</td></tr>
+              <tr><td><code>clone</code> <code>delete</code></td><td>Duplicate copy-on-write, or remove</td></tr>
+              <tr><td><code>ip</code> <code>ssh</code> <code>exec</code></td><td>Reach into a running VM</td></tr>
+              <tr><td><code>snapshot</code> <code>share</code> <code>bundle</code></td><td>Disks, shared folders, bundle maintenance</td></tr>
+              <tr><td><code>stream</code> <code>socket</code></td><td>Live event stream and its socket path</td></tr>
+              <tr><td><code>service</code></td><td>Per-VM LaunchDaemons</td></tr>
+              <tr><td><code>serve</code></td><td>The HTTP control-plane API</td></tr>
+              <tr><td><code>doctor</code></td><td>Host readiness checks</td></tr>
+              <tr><td><code>rbac</code> <code>identity</code> <code>iam</code></td><td>Roles, Secure-Enclave-bound keys, cloud IAM bindings</td></tr>
+              <tr><td><code>sign-request</code></td><td>Sign an API request for curl or another client</td></tr>
+              <tr><td><code>security-controls</code></td><td>Inventory of shipped controls, with code references</td></tr>
+              <tr><td><code>rosetta</code></td><td>Rosetta 2 utilities for Linux guests</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="btn-row" style="margin-top:1.5rem">
+          <a class="btn primary" href="/api/documentation/spooktacularkit/clireference">Full CLI reference</a>
+          <a class="btn" href="/api/documentation/spooktacularkit/instantcreate">How instant create works</a>
+        </div>
+      </section>
+
+    </div>
+  </div>
 </div>
-<pre><span class="dim">$</span> <span class="cmd">git clone https://github.com/Spooky-Labs/spooktacular.git</span>
-<span class="dim">$</span> <span class="cmd">cd spooktacular &amp;&amp; ./build-app.sh release</span></pre>
-</div>
-
-<p style="color: var(--dim); font-size: 0.95rem; margin-bottom: 0.75rem;">Drag the built <strong style="color: var(--fg);">Spooktacular.app</strong> to your Applications folder and launch it.</p>
-
-<div class="alt-note">
-<strong>Prefer the CLI?</strong> Install just the <code>spook</code> command-line tool:<br>
-<code>brew install spooktacular</code> <span style="font-size:0.78rem;">(planned)</span>
-</div>
-</section>
-
-<!-- Step 2: Create Your First VM -->
-<section class="step-section" id="step-2" aria-labelledby="step2-heading">
-<div class="step-label">Step 2</div>
-<h2 id="step2-heading">Create Your First VM</h2>
-<p class="sub">Create a fresh macOS virtual machine with one command. It pulls the latest IPSW and installs it automatically.</p>
-
-<div class="code-example">
-<div class="code-header">
-<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
-<span class="title">Terminal</span>
-</div>
-<pre><span class="dim">$</span> <span class="cmd">spook create my-first-vm --from-ipsw latest</span>
-
-<span class="ok">&#10003;</span> Fetching latest compatible macOS restore image...
-<span class="ok">&#10003;</span> Downloading IPSW (this may take a while)...
-<span class="ok">&#10003;</span> Installing macOS (10-20 minutes)...
-<span class="ok">&#10003;</span> VM 'my-first-vm' created successfully.
-
-Run 'spook start my-first-vm' to boot the VM.
-
-<span class="cmt"># Total time: ~15-20 minutes (mostly IPSW download)</span></pre>
-</div>
-
-<div class="explain">
-<h4>What just happened?</h4>
-<p>Spooktacular downloaded the latest macOS restore image (IPSW) from Apple and installed it into a Virtualization.framework VM. Run <code>spook start my-first-vm</code> to boot it and complete Setup Assistant yourself, same as a physical Mac's first boot -- no automation runs here. (GitHub Actions runner VMs are different: see Step 4, which uses native macOS 27+ guest provisioning to create the account and skip Setup Assistant with zero interaction.)</p>
-</div>
-</section>
-
-<!-- Step 3: Clone a VM -->
-<section class="step-section" id="step-3" aria-labelledby="step3-heading">
-<div class="step-label">Step 3</div>
-<h2 id="step3-heading">Clone a VM</h2>
-<p class="sub">Create an identical copy of your base VM. APFS copy-on-write makes this nearly instant.</p>
-
-<div class="code-example">
-<div class="code-header">
-<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
-<span class="title">Terminal</span>
-</div>
-<pre><span class="dim">$</span> <span class="cmd">spook clone my-first-vm runner-01</span>
-
-<span class="ok">&#10003;</span> Cloned "my-first-vm" &#8594; "runner-01" <span class="warn">(48ms)</span>
-<span class="ok">&#10003;</span> New machine identity assigned
-<span class="ok">&#10003;</span> Disk: copy-on-write (shared blocks, ~0 bytes additional)</pre>
-</div>
-
-<div class="explain">
-<h4>Why is it so fast?</h4>
-<p>APFS copy-on-write cloning shares disk blocks between the source and the clone. Only modified blocks consume additional storage. A fresh clone takes 48 milliseconds and starts at approximately zero additional disk usage. Each clone gets a unique machine identity so it appears as a distinct Mac.</p>
-</div>
-</section>
-
-<!-- Step 4: Run Your CI Pipeline -->
-<section class="step-section" id="step-4" aria-labelledby="step4-heading">
-<div class="step-label">Step 4</div>
-<h2 id="step4-heading">Run Your CI Pipeline</h2>
-<p class="sub">Create a GitHub Actions runner VM with a single command. Store a personal access token (PAT) in the Keychain first -- Spooktacular mints a short-lived runner registration token from it automatically, seconds before the VM boots.</p>
-
-<div class="code-example">
-<div class="code-header">
-<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
-<span class="title">Terminal</span>
-</div>
-<pre><span class="dim">$</span> <span class="cmd">security add-generic-password -s com.spooktacular.github \</span>
-<span class="cmd">    -a your-org -w &lt;PAT&gt; -U</span>
-
-<span class="dim">$</span> <span class="cmd">spook create runner-01 --github-runner \</span>
-<span class="cmd">    --github-repo your-org/your-repo \</span>
-<span class="cmd">    --github-token-keychain your-org --ephemeral</span>
-
-<span class="ok">&#10003;</span> Installing macOS (10-20 minutes)...
-<span class="ok">&#10003;</span> VM "runner-01" created successfully
-<span class="ok">&#10003;</span> Minting GitHub Actions runner registration token...
-<span class="ok">&#10003;</span> Script injected. The provisioner runs it automatically on first boot.
-<span class="ok">&#10003;</span> Starting "runner-01" headless for runner registration...
-<span class="ok">&#10003;</span> Runner "runner-01" is online</pre>
-</div>
-
-<div class="explain">
-<h4>What's happening inside?</h4>
-<p>One command creates the VM, installs macOS, injects the runner setup script, boots the VM without a display, and polls GitHub every 10 seconds (up to 10 minutes) until the runner reports online -- no separate registration step. The PAT never touches a CLI flag, environment variable, or file; only the Keychain.</p>
-</div>
-</section>
-
-<!-- Step 5: Double Your Capacity -->
-<section class="step-section" id="step-5" aria-labelledby="step5-heading">
-<div class="step-label">Step 5</div>
-<h2 id="step5-heading">Double Your Capacity</h2>
-<p class="sub">Apple Silicon supports 2 VMs per Mac. Create a second runner and run both simultaneously. Ephemeral mode auto-destroys after each job for a clean slate.</p>
-
-<div class="code-example">
-<div class="code-header">
-<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
-<span class="title">Terminal</span>
-</div>
-<pre><span class="dim">$</span> <span class="cmd">spook create runner-02 --github-runner \</span>
-<span class="cmd">    --github-repo your-org/your-repo \</span>
-<span class="cmd">    --github-token-keychain your-org --ephemeral</span>
-
-<span class="ok">&#10003;</span> VM "runner-02" created successfully
-<span class="ok">&#10003;</span> Starting "runner-02" headless for runner registration...
-<span class="ok">&#10003;</span> Runner "runner-02" is online</pre>
-</div>
-
-<div class="explain">
-<h4>Why ephemeral?</h4>
-<p>Ephemeral runners auto-destroy the moment they stop, after completing a single job -- no leftover state, no cache poisoning, no stale artifacts from previous builds. Cloning doesn't yet carry forward the <code>--github-runner</code> template, so each new runner today is its own <code>spook create --github-runner --ephemeral</code> rather than a clone of an earlier runner.</p>
-</div>
-</section>
-
-<!-- Step 6: Run as a Service -->
-<section class="step-section" id="step-6" aria-labelledby="step6-heading">
-<div class="step-label">Step 6</div>
-<h2 id="step6-heading">Run as a Service</h2>
-<p class="sub">Make your runner survive reboots and run headless in the background. Install it as a system service and forget about it.</p>
-
-<div class="code-example">
-<div class="code-header">
-<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
-<span class="title">Terminal</span>
-</div>
-<pre><span class="dim">$</span> <span class="cmd">sudo spook service install runner-01</span>
-
-<span class="ok">&#10003;</span> Created launchd service: com.spooky-labs.spooktacular.runner-01
-<span class="ok">&#10003;</span> Service enabled (starts on boot)
-<span class="ok">&#10003;</span> Runner-01 is now a persistent service
-
-<span class="cmt"># Manage the service</span>
-<span class="dim">$</span> <span class="cmd">spook service status runner-01</span>    <span class="cmt"># check status</span>
-<span class="dim">$</span> <span class="cmd">spook service stop runner-01</span>      <span class="cmt"># stop service</span>
-<span class="dim">$</span> <span class="cmd">spook service uninstall runner-01</span> <span class="cmt"># remove service</span></pre>
-</div>
-
-<div class="explain">
-<h4>What does this do?</h4>
-<p>This installs a launchd plist that starts your runner automatically when the Mac boots. The VM runs headless in the background -- no display, no logged-in user required. Your runner persists through power cycles and macOS updates.</p>
-</div>
-</section>
-
-<!-- Step 7: Connect & Monitor -->
-<section class="step-section" id="step-7" aria-labelledby="step7-heading">
-<div class="step-label">Step 7</div>
-<h2 id="step7-heading">Connect &amp; Monitor</h2>
-<p class="sub">SSH into your running VM, stream live metrics, and share the clipboard via Guest Tools. Spooktacular handles all the plumbing.</p>
-
-<div class="code-example">
-<div class="code-header">
-<div class="dot-r"></div><div class="dot-y"></div><div class="dot-g"></div>
-<span class="title">Terminal</span>
-</div>
-<pre><span class="cmt"># Resolve the VM's IP address</span>
-<span class="dim">$</span> <span class="cmd">spook ip runner-01</span>
-<span class="file">192.168.1.42</span>
-
-<span class="cmt"># SSH into the VM (requires Remote Login enabled on the guest)</span>
-<span class="dim">$</span> <span class="cmd">spook ssh runner-01</span>
-<span class="ok">Connecting to admin@192.168.1.42...</span>
-<span class="dim">runner-01:~$</span> <span class="cmd">sw_vers</span>
-<span class="file">ProductName:      macOS</span>
-<span class="file">ProductVersion:   15.4</span>
-
-<span class="cmt"># Stream live VM metrics (CPU, memory, load)</span>
-<span class="dim">$</span> <span class="cmd">spook stream runner-01 --topic metrics</span>
-<span class="file">{"topic":"metrics","event":{"at":"2026-07-02T14:31:07Z","cpuUsage":0.15,"diskBytesRead":184320000,"diskBytesWritten":52428800,"energyNanoJoules":98765432100,"loadAverage1m":1.42,"memoryTotalBytes":17179869184,"memoryUsedBytes":7247757312,"pageIns":184203,"processCount":312,"uptime":41523.7}}</span>
-<span class="file">{"topic":"metrics","event":{"at":"2026-07-02T14:31:12Z","cpuUsage":0.18,"diskBytesRead":184320000,"diskBytesWritten":52428800,"energyNanoJoules":98766210400,"loadAverage1m":1.39,"memoryTotalBytes":17179869184,"memoryUsedBytes":7268962304,"pageIns":184219,"processCount":312,"uptime":41528.7}}</span></pre>
-</div>
-
-<div class="explain">
-<h4>How does this work?</h4>
-<p>Spooktacular creates each VM with Remote Login (SSH) enabled. <code style="color: var(--accent);">spook ip</code> resolves the VM's IP by matching its MAC address against the host's DHCP lease table. <code style="color: var(--accent);">spook ssh</code> wraps this lookup and opens an interactive shell. <code style="color: var(--accent);">spook stream</code> subscribes to the host-API Unix-domain socket for live metrics (CPU/memory/load/lifecycle events). Guest Tools, installed automatically, provides clipboard sharing via SPICE when the guest UI is in use.</p>
-</div>
-</section>
-
-</div>
-
-<!-- Next Steps CTA -->
-<section class="next-cta">
-<div class="container">
-<h2>You're up and running</h2>
-<p>Two runners, same hardware, 48ms clones. Explore the full feature set or dive into the API.</p>
-<div class="cta-row">
-<a href="features.html" class="btn-primary">Explore Features</a>
-<a href="api/documentation/spooktacularkit/" class="btn-secondary">API Reference</a>
-</div>
-</div>
-</section>
-
 </main>
 
-<footer role="contentinfo">
-<div class="foot-inner">
-<div class="foot-grid">
-<div class="foot-col">
-<h4>Product</h4>
-<a href="features.html">Features</a>
-<a href="compare.html">Compare</a>
-<a href="roadmap.html">Roadmap</a>
-<a href="versioning.html">Versioning</a>
-<a href="download.html">Downloads</a>
-</div>
-<div class="foot-col">
-<h4>Resources</h4>
-<a href="api/documentation/spooktacularkit/">API Reference</a>
-<a href="get-started.html">Get Started</a>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">Source Code</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/issues" target="_blank">Report an Issue</a>
-</div>
-<div class="foot-col">
-<h4>Legal</h4>
-<a href="privacy.html">Privacy Policy</a>
-<a href="terms.html">Terms of Use</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/blob/main/LICENSE" target="_blank">MIT License</a>
-</div>
-<div class="foot-col">
-<h4>Community</h4>
-<a href="https://github.com/Spooky-Labs/spooktacular" target="_blank">GitHub</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/discussions" target="_blank">Discussions</a>
-<a href="https://github.com/Spooky-Labs/spooktacular/stargazers" target="_blank">Star on GitHub</a>
-</div>
-</div>
-<div class="foot-bottom">
-<p>&copy; 2026. Apple, macOS, and Xcode are trademarks of Apple Inc.</p>
-<p>Made with &#127794;&#127794;&#127794; in Cascadia</p>
-</div>
-</div>
+<footer class="site">
+  <div class="container">
+    <div class="cols">
+      <div class="brand">
+        <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+        <p>Apple-native macOS virtualization for the Mac you already have.</p>
+      </div>
+      <div>
+        <h2>Product</h2>
+        <a href="/features.html">Features</a>
+        <a href="/get-started.html">Get started</a>
+        <a href="/compare.html">Compare</a>
+        <a href="/roadmap.html">Roadmap</a>
+      </div>
+      <div>
+        <h2>Docs</h2>
+        <a href="/api/documentation/spooktacularkit/">API reference</a>
+        <a href="/api/documentation/spooktacularkit/instantcreate">Instant create</a>
+        <a href="/api/documentation/spooktacularkit/githubactionsguide">GitHub Actions</a>
+        <a href="/versioning.html">Versioning</a>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+        <a href="/security.html">Security</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    </div>
+    <p class="legal">
+      MIT licensed. Apple, macOS, Apple silicon and Xcode are trademarks of
+      Apple Inc. Spooktacular is not affiliated with or endorsed by Apple.
+    </p>
+  </div>
 </footer>
+
+<script>
+/* Copy buttons. */
+document.addEventListener('click', function (event) {
+  var button = event.target.closest && event.target.closest('.copy');
+  if (!button || !navigator.clipboard) { return; }
+  var code = button.parentElement.querySelector('code');
+  if (!code) { return; }
+  navigator.clipboard.writeText(code.textContent.trim()).then(function () {
+    button.textContent = 'copied';
+    button.dataset.done = 'true';
+    setTimeout(function () {
+      button.textContent = 'copy';
+      delete button.dataset.done;
+    }, 1600);
+  });
+});
+
+/* Highlight the contents entry for the section being read. */
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var watched = links
+    .map(function (link) {
+      var target = document.querySelector(link.getAttribute('href'));
+      return target ? { link: link, target: target } : null;
+    })
+    .filter(Boolean);
+  if (!watched.length || !('IntersectionObserver' in window)) { return; }
+
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) { return; }
+      watched.forEach(function (item) {
+        item.link.classList.toggle('here', item.target === entry.target);
+      });
+    });
+  }, { rootMargin: '-15% 0px -75% 0px' });
+
+  watched.forEach(function (item) { observer.observe(item.target); });
+})();
+</script>
 </body>
 </html>

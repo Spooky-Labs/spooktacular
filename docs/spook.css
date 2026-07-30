@@ -23,7 +23,10 @@
 
   --ink:        light-dark(oklch(23% 0.020 275),   oklch(97% 0.004 275));
   --ink-2:      light-dark(oklch(44% 0.014 275),   oklch(74% 0.006 275));
-  --ink-3:      light-dark(oklch(58% 0.012 275),   oklch(58% 0.010 275));
+  /* ink-3 carries captions, legal microtext and dim terminal output, all of
+     which are small — so it is tuned to clear WCAG AA (4.5:1) against
+     --paper in both themes, measured rather than eyeballed. */
+  --ink-3:      light-dark(oklch(51% 0.015 275),   oklch(65% 0.012 275));
 
   --line:       light-dark(oklch(23% 0.02 275 / 0.11), oklch(100% 0 0 / 0.11));
   --line-2:     light-dark(oklch(23% 0.02 275 / 0.06), oklch(100% 0 0 / 0.06));
@@ -399,7 +402,8 @@ table.data th, table.data td {
   border-bottom: 1px solid var(--line-2);
 }
 table.data thead th {
-  position: sticky; top: 0;
+  /* Offset by the sticky nav so a pinned header is not hidden behind it. */
+  position: sticky; top: calc(var(--u) * 9);
   background: var(--surface-2); color: var(--ink-3);
   font-family: var(--mono); font-size: 0.6875rem; font-weight: 400;
   text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap;
@@ -447,10 +451,12 @@ footer.site .cols {
   gap: 2rem; margin-bottom: 2.5rem;
 }
 @media (max-width: 760px) { footer.site .cols { grid-template-columns: repeat(2, 1fr); } }
-footer.site h4 {
+/* Footer column labels are h2 so the heading outline never skips a level
+   from a page's h2/h3 straight to an h4. */
+footer.site h2, footer.site h4 {
   margin-bottom: 0.7rem; color: var(--ink-3);
   font-family: var(--mono); font-size: var(--t-micro); font-weight: 400;
-  text-transform: uppercase; letter-spacing: 0.09em;
+  letter-spacing: 0.09em; text-transform: uppercase;
 }
 footer.site a {
   display: block; padding: 0.2rem 0;
