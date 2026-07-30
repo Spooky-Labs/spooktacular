@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spooktacular on EC2 Mac — Spooktacular</title>
+<meta name="description" content="Run Spooktacular on Amazon EC2 Mac: which instance families work, the Dedicated Host and 24-hour minimum, resizing the APFS root volume, installing from user data, and the networking model that works behind a Nitro ENI.">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#fafafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0f16" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Spooktacular on EC2 Mac">
+<meta property="og:description" content="Two macOS guests per Dedicated Host, installed from user data, with a networking model that works behind a Nitro ENI.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://spooktacular.app/ec2-mac.html">
+<link rel="canonical" href="https://spooktacular.app/ec2-mac.html">
+<link rel="stylesheet" href="/spook.css">
+<style>
+/* Same documentation shell as get-started: sticky contents beside one measure. */
+.doc { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 3.5rem); align-items: start; }
+@media (max-width: 940px) { .doc { grid-template-columns: minmax(0, 1fr); } .toc { position: static !important; } }
+
+.toc { position: sticky; top: calc(var(--u) * 12); }
+.toc h2 {
+  margin-bottom: 0.6rem; color: var(--ink-3);
+  font-family: var(--mono); font-size: var(--t-micro); font-weight: 400;
+  text-transform: uppercase; letter-spacing: 0.09em;
+}
+.toc a {
+  display: block; padding: 0.24rem 0 0.24rem 0.7rem;
+  border-left: 1.5px solid var(--line);
+  color: var(--ink-2); font-size: var(--t-small);
+  transition: color var(--quick) var(--out), border-color var(--quick) var(--out);
+}
+.toc a:hover { color: var(--ink); text-decoration: none; }
+.toc a.here { color: var(--accent); border-left-color: var(--accent); }
+
+.doc section { padding-block: 2.25rem; border-top: 1px solid var(--line); }
+.doc section:first-of-type { padding-top: 0; border-top: 0; }
+.doc section h2 { font-size: clamp(1.5rem, 1.25rem + 1vw, 1.875rem); }
+.doc section h3 { margin-top: 1.75rem; }
+.doc p { max-width: 68ch; color: var(--ink-2); margin-top: 0.7rem; }
+.doc p strong, .doc li strong { color: var(--ink); }
+.doc ul, .doc ol { max-width: 68ch; margin: 0.8rem 0 0; padding-left: 1.15rem; color: var(--ink-2); }
+.doc li { margin: 0.35rem 0; }
+.doc .cmd, .doc .note, .doc .term, .doc .table-scroll { margin-top: 1rem; }
+.doc .note { max-width: 68ch; }
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+
+<nav class="site">
+  <div class="inner">
+    <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle sr-only" aria-label="Menu">
+    <label class="hamburger" for="nav-toggle"><span></span><span></span><span></span></label>
+    <div class="nav-links">
+      <a href="/ec2-mac.html" aria-current="page">EC2 Mac</a>
+      <a href="/get-started.html">Get started</a>
+      <a href="/features.html">Features</a>
+      <a href="/security.html">Security</a>
+      <a href="/compare.html">Compare</a>
+      <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+<div class="container">
+
+  <section class="band" style="padding-block:clamp(2rem,1rem+3vw,3.25rem) clamp(2rem,1rem+3vw,3rem)">
+    <p class="eyebrow">Deployment · <span class="n">Amazon EC2 Mac</span></p>
+    <h1 style="max-width:26ch;font-size:clamp(2rem,1.6rem+2vw,3rem)">Two macOS guests on every Dedicated Host you already pay for</h1>
+    <p style="margin-top:1.1rem;max-width:58ch;font-size:var(--t-lede);line-height:1.45;color:var(--ink-2)">
+      An EC2 Mac Dedicated Host is one Mac, billed for a minimum of 24 hours
+      whether you use it or not. Apple's licence permits two macOS virtual
+      machines on that host. This is how you get them, and how to make the
+      networking behave behind a Nitro ENI.
+    </p>
+    <div class="btn-row" style="margin-top:1.6rem">
+      <a class="btn primary" href="#user-data">Jump to the install script</a>
+      <a class="btn" href="#local-first">Try it locally first</a>
+    </div>
+  </section>
+
+  <div class="doc" style="padding-bottom:var(--section)">
+    <aside class="toc" aria-label="On this page">
+      <h2>On this page</h2>
+      <a href="#why">Why bother</a>
+      <a href="#local-first">Try it locally first</a>
+      <a href="#instances">Choosing an instance</a>
+      <a href="#host">Allocating the host</a>
+      <a href="#volume">Sizing the volume</a>
+      <a href="#user-data">Installing from user data</a>
+      <a href="#networking">Networking that works</a>
+      <a href="#runners">Wiring up runners</a>
+      <a href="#reset">Resetting between jobs</a>
+      <a href="#gotchas">EC2-specific gotchas</a>
+    </aside>
+
+    <div>
+
+      <section id="why">
+        <h2>Why bother</h2>
+        <p>
+          EC2 Mac bills per <strong>Dedicated Host</strong>, not per instance,
+          and there is a one-to-one mapping between a host and the instance on
+          it — you cannot slice a Mac host the way you slice a Linux one. Apple's
+          software licence agreement also imposes a <strong>24-hour minimum
+          allocation</strong>, and that clock starts when the host is allocated,
+          not when you launch an instance.
+        </p>
+        <p>
+          So the unit of cost is a whole Mac for at least a day. Running one
+          build agent on it leaves the licence's second and third macOS guests
+          unused. Spooktacular turns that host into a small pool: the host
+          itself, plus two macOS VMs that reset to a clean base in seconds.
+        </p>
+        <div class="note">
+          <b>The limit is Apple's, and it is enforced</b>
+          macOS permits two virtual machines per host. Spooktacular refuses to
+          start a third rather than letting you discover the limit in the middle
+          of a build. Linux guests are unlimited and are not covered by that
+          clause, so a mixed fleet of two macOS VMs plus Linux runners on one
+          host is legitimate.
+        </div>
+      </section>
+
+      <section id="local-first">
+        <h2>Try it locally first</h2>
+        <p>
+          Do not let a 24-hour host allocation be the place you learn the tool.
+          Everything except the instance metadata works identically on a Mac on
+          your desk, and the first run is the slow one either way, so rehearse
+          locally:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>git clone https://github.com/Spooky-Labs/spooktacular.git &amp;&amp; cd spooktacular</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="cmd">
+          <span class="sigil">$</span><code>./build-app.sh release &amp;&amp; sudo spook create dev</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          That builds the shared base image once — 10 to 20 minutes — and then
+          every later create takes seconds. Once you have seen
+          <code>spook create</code>, <code>spook start</code>,
+          <code>spook ip</code> and <code>spook list</code> behave on your own
+          machine, the EC2 path below is the same commands with the install
+          moved into user data. Full local walkthrough:
+          <a href="/get-started.html">Get started</a>.
+        </p>
+      </section>
+
+      <section id="instances">
+        <h2>Choosing an instance</h2>
+        <p>
+          Spooktacular needs <strong>Apple silicon</strong>, so the
+          <code>mac1</code> family is out — those are Intel Mac minis. Use an
+          Apple silicon family, and pick on memory, because memory is what caps
+          how many guests you can run comfortably:
+        </p>
+        <div class="table-scroll">
+          <table class="data">
+            <thead>
+              <tr>
+                <th scope="col">Family</th><th scope="col">Silicon</th>
+                <th scope="col">CPU</th><th scope="col">Memory</th>
+                <th scope="col">Suits</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>mac2</code></td><td>M1</td><td>8 cores</td><td>16 GiB</td><td>Tight for two macOS guests; fine for one plus Linux</td></tr>
+              <tr><td><code>mac2-m2</code></td><td>M2</td><td>8 cores</td><td>24 GiB</td><td>Two modest guests</td></tr>
+              <tr><td><code>mac2-m2pro</code></td><td>M2 Pro</td><td>12 cores</td><td>32 GiB</td><td>A comfortable two-guest runner host</td></tr>
+              <tr><td><code>mac-m4</code></td><td>M4</td><td>10 cores</td><td>24 GiB</td><td>Faster builds at mac2-m2 memory</td></tr>
+              <tr><td><code>mac-m4pro</code></td><td>M4 Pro</td><td>14 cores</td><td>48 GiB</td><td>Best fit — and a 2 TB instance store per host</td></tr>
+              <tr><td><code>mac2-m1ultra</code></td><td>M1 Ultra</td><td>20 cores</td><td>128 GiB</td><td>Memory-heavy guests</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          <strong>Check the host's macOS support before you allocate.</strong>
+          macOS guests need macOS 27 on the host, because the base-and-overlay
+          disk format uses DiskImageKit. AWS exposes what each host can run:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>aws ec2 describe-mac-hosts --query 'MacHosts[].{Host:HostId,macOS:MacOSLatestSupportedVersions}'</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="note">
+          <b>mac-m4pro has a card worth playing</b>
+          The M4 Pro family ships a 2 TB instance store volume per Dedicated
+          Host. That is the right home for the base-image cache and for VM
+          overlays: it is local storage rather than network-attached EBS, so the
+          first base build and every subsequent boot get lower latency. It is
+          ephemeral, which suits a cache exactly.
+        </div>
+      </section>
+
+      <section id="host">
+        <h2>Allocating the host</h2>
+        <p>An EC2 Mac instance only runs on a Dedicated Host, so allocate one first:</p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>aws ec2 allocate-hosts --instance-type mac-m4pro.metal --availability-zone us-east-1a --auto-placement on --quantity 1</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          Note the returned host ID. The 24-hour clock starts now. Launch onto
+          it, into the subnet you allocated the host in:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>aws ec2 run-instances --instance-type mac-m4pro.metal --placement HostId=h-0123456789abcdef0 --image-id ami-&lt;macos-27-arm64&gt; --subnet-id subnet-abc123 --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=500,VolumeType=gp3,Iops=5000,Throughput=200}' --user-data file://install-spooktacular.sh</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <div class="note">
+          <b>Do not skimp on the EBS volume</b>
+          APFS is the default macOS filesystem and is tuned for SSDs, so AWS
+          recommends an SSD-backed volume — <code>gp3</code> or
+          <code>io2</code> — and suggests starting at <strong>5000 IOPS and 200
+          MB/s throughput</strong>. Spooktacular is disk-heavy in exactly the
+          way that matters here: a base image is roughly 40 GB, every overlay
+          grows from near zero, and a warm-pool reset is a file operation. An
+          undersized volume shows up as slow boots, not as an error.
+        </div>
+      </section>
+
+      <section id="volume">
+        <h2>Sizing the volume</h2>
+        <p>
+          This is the step people miss. Asking EC2 for a 500 GB root volume does
+          <em>not</em> give macOS 500 GB — the AMI's APFS container stays its
+          original size, and the extra space sits unallocated until you grow the
+          container. A 40 GB base image plus overlays will fill the default and
+          fail in confusing ways.
+        </p>
+        <p>Grow it on first boot, before anything else runs:</p>
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><b>expand the APFS container</b></div>
+<pre><span class="dim">PDISK=$(diskutil list physical external | head -n1 | cut -d" " -f1)</span>
+<span class="dim">APFSCONT=$(diskutil list physical external | grep "Apple_APFS" | tr -s " " | cut -d" " -f8)</span>
+<span class="dim">yes | diskutil repairDisk "$PDISK"</span>
+<span class="dim">diskutil apfs resizeContainer "$APFSCONT" 0</span></pre>
+        </div>
+        <p>
+          <code>0</code> means "use all available space". <code>repairDisk</code>
+          is what makes the newly visible space usable; skipping it is why the
+          resize sometimes appears to do nothing.
+        </p>
+      </section>
+
+      <section id="user-data">
+        <h2>Installing from user data</h2>
+        <p>
+          User data runs as <strong>root</strong> on first boot, which is exactly
+          the privilege the one privileged step needs — writing the provisioner
+          into the shared base image. Put the whole install there and the host
+          comes up ready, with no interactive step and no <code>sudo</code>
+          prompt to answer.
+        </p>
+        <div class="term">
+          <div class="term-bar"><i></i><i></i><i></i><b>install-spooktacular.sh — EC2 user data</b></div>
+<pre><span class="acc">#!/bin/zsh</span>
+<span class="dim">set -euo pipefail</span>
+
+<span class="em"># 1. Give macOS the whole EBS volume.</span>
+<span class="dim">PDISK=$(diskutil list physical external | head -n1 | cut -d" " -f1)</span>
+<span class="dim">APFSCONT=$(diskutil list physical external | grep "Apple_APFS" | tr -s " " | cut -d" " -f8)</span>
+<span class="dim">yes | diskutil repairDisk "$PDISK"</span>
+<span class="dim">diskutil apfs resizeContainer "$APFSCONT" 0</span>
+
+<span class="em"># 2. Build Spooktacular. Homebrew on Apple silicon lives in /opt.</span>
+<span class="dim">su ec2-user -c '/opt/homebrew/bin/brew update'</span>
+<span class="dim">su ec2-user -c 'git clone https://github.com/Spooky-Labs/spooktacular.git ~/spooktacular'</span>
+<span class="dim">su ec2-user -c 'cd ~/spooktacular &amp;&amp; ./build-app.sh release'</span>
+<span class="dim">ln -sf /Users/ec2-user/spooktacular/Spooktacular.app/Contents/MacOS/spook /usr/local/bin/spook</span>
+
+<span class="em"># 3. Runner credentials go in the SYSTEM keychain: this service is root,</span>
+<span class="em">#    and root cannot read a user's login keychain.</span>
+<span class="dim">security add-generic-password -s com.spooktacular.github -a my-org \</span>
+<span class="dim">  -w "$(aws secretsmanager get-secret-value --secret-id github-pat --query SecretString --output text)" \</span>
+<span class="dim">  -U /Library/Keychains/System.keychain</span>
+
+<span class="em"># 4. Build the shared base image once. This is the slow step, and the only</span>
+<span class="em">#    privileged one — it happens here, at launch, not on someone's first job.</span>
+<span class="dim">spook create warm-01 --no-start</span>
+
+<span class="ok">✓ host ready: base image built, one VM staged</span></pre>
+        </div>
+        <div class="note">
+          <b>Why the System keychain, specifically</b>
+          A personal access token is the only accepted source for runner
+          registration — never a flag, an environment variable, or a file on
+          disk. On a workstation it lives in your login keychain. On EC2 Mac,
+          where Spooktacular runs as a root service, root cannot read a user's
+          login keychain, so it must be the System keychain. Getting this wrong
+          produces a runner that never registers and an error that looks like a
+          missing token.
+        </div>
+        <p>
+          Pull the token from Secrets Manager or SSM Parameter Store as above
+          rather than baking it into user data — user data is readable from the
+          instance metadata service by anything running on the host.
+        </p>
+      </section>
+
+      <section id="networking">
+        <h2>Networking that works behind a Nitro ENI</h2>
+        <p>
+          This is where EC2 Mac differs most from a Mac on a desk, and where a
+          virtualization tool most easily goes wrong.
+        </p>
+        <p>
+          An EC2 instance reaches the VPC through a Nitro elastic network
+          interface. That interface is bound to the addresses and MAC that EC2
+          assigned it. A guest VM in <strong>bridged</strong> mode puts its own
+          MAC address on the wire, which the VPC does not know about — so
+          bridged guests are the wrong model on EC2 even when they appear to
+          come up. Do not reach for it.
+        </p>
+        <p>
+          Spooktacular's default is the model that does work: every VM gets its
+          own private subnet with a DHCP-reserved address behind host NAT, and
+          anything the guest should expose is <strong>published</strong> onto a
+          host port:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create web --publish 8080:80 --publish 2222:22</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          Outbound traffic from a guest leaves through the host's ENI, so it
+          inherits the instance's route table, NAT gateway and VPC endpoints
+          with nothing extra to configure. Inbound reaches a guest only through
+          a published port, which means the thing you already use to control
+          access — the <strong>security group on the host</strong> — controls
+          access to your guests too. There is no second, VM-shaped firewall to
+          keep in sync.
+        </p>
+        <div class="note">
+          <b>Consequences worth designing around</b>
+          <ul style="margin:0.5rem 0 0 1.05rem">
+            <li>Two guests cannot publish the same host port. That fails
+                immediately and loudly rather than silently picking a winner.</li>
+            <li>Guests are not directly addressable from elsewhere in the VPC.
+                If a peer service must reach a guest, it reaches the host's
+                private address on the published port.</li>
+            <li><code>spook ip</code> returns the guest's address on its private
+                subnet. It is a metadata read — the address is reserved when the
+                VM is created — so orchestration never has to poll for it.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="runners">
+        <h2>Wiring up runners</h2>
+        <p>
+          With the base image built at launch, a runner is one command. A
+          short-lived registration token is minted from the Keychain-stored PAT
+          seconds before the guest boots, so no long-lived credential ever
+          reaches the VM:
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook create runner-01 --github-runner --github-repo my-org/my-repo --github-token-keychain my-org --ephemeral</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          <code>--ephemeral</code> means the runner accepts one job and exits.
+          Pair it with a reset and each job starts from a base image that has
+          never run anyone else's code — which is the property that makes a
+          shared Mac host defensible for CI in the first place.
+        </p>
+      </section>
+
+      <section id="reset">
+        <h2>Resetting between jobs</h2>
+        <p>
+          A reset discards the VM's overlay and puts a fresh one back on the
+          untouched base. The base image is sealed read-only and is never
+          booted, so its layer identity cannot drift — which means a pool can
+          <em>prove</em> its base is pristine rather than assume it.
+        </p>
+        <div class="cmd">
+          <span class="sigil">$</span><code>spook delete runner-01 --force &amp;&amp; spook create runner-01 --github-runner --github-repo my-org/my-repo --github-token-keychain my-org --ephemeral</code>
+          <button class="copy" type="button" aria-label="Copy command">copy</button>
+        </div>
+        <p>
+          Because the create is an overlay layer plus two APFS clones, this
+          costs seconds, not another macOS install. Cloning a 5 GB VM measures at
+          30 ms and consumes no additional disk.
+        </p>
+      </section>
+
+      <section id="gotchas">
+        <h2>EC2-specific gotchas</h2>
+
+        <h3>Apple silicon hosts allow one bootable volume</h3>
+        <p>
+          AWS documents that Apple silicon Mac instances must have only one
+          bootable volume, and that each attached volume supports only one
+          additional admin user. Plan on a single root volume and keep extra
+          capacity as data volumes.
+        </p>
+
+        <h3>SIP is per-volume, and slow to change</h3>
+        <p>
+          On Apple silicon Mac instances, System Integrity Protection settings
+          apply at the <em>volume</em> level, not the instance level, so a newly
+          attached root volume does not inherit them. Changing SIP can take up
+          to 90 minutes, during which the instance is unreachable, and the
+          setting does not carry into AMIs or snapshots you create afterwards.
+          Spooktacular does not require SIP changes — this matters only if
+          something else in your image does.
+        </p>
+
+        <h3>The 24-hour clock is on the host, not the instance</h3>
+        <p>
+          Stopping or terminating the instance does not release the host, and
+          you cannot release the host until 24 hours after allocation. Automate
+          release explicitly, or you will pay for idle Macs.
+        </p>
+
+        <h3>Homebrew is not where you expect</h3>
+        <p>
+          On Apple silicon it lives at <code>/opt/homebrew/bin/brew</code>, not
+          <code>/usr/local/bin/brew</code>. Scripts copied from Intel-era EC2
+          Mac guides fail on this line first.
+        </p>
+
+        <h3>Screen Sharing needs a password set</h3>
+        <p>
+          The <code>ec2-user</code> account has no password initially, so set one
+          before enabling Screen Sharing on the host. Guests are separate: a
+          <code>--remote-desktop</code> VM provisions its own admin account and
+          enables Screen Sharing itself on first boot, reachable through a
+          published port.
+        </p>
+
+        <div class="btn-row" style="margin-top:1.75rem">
+          <a class="btn primary" href="/get-started.html">Full command reference</a>
+          <a class="btn" href="/api/documentation/spooktacularkit/ec2macdeployment">EC2 deployment article</a>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+</main>
+
+<footer class="site">
+  <div class="container">
+    <div class="cols">
+      <div class="brand">
+        <a href="/" class="wordmark"><img src="/favicon.png" alt="">Spooktacular</a>
+        <p>Apple-native macOS virtualization for Macs in a data center.</p>
+      </div>
+      <div>
+        <h2>Product</h2>
+        <a href="/features.html">Features</a>
+        <a href="/get-started.html">Get started</a>
+        <a href="/compare.html">Compare</a>
+        <a href="/roadmap.html">Roadmap</a>
+      </div>
+      <div>
+        <h2>Docs</h2>
+        <a href="/ec2-mac.html">EC2 Mac</a>
+        <a href="/api/documentation/spooktacularkit/">API reference</a>
+        <a href="/api/documentation/spooktacularkit/instantcreate">Instant create</a>
+        <a href="/versioning.html">Versioning</a>
+      </div>
+      <div>
+        <h2>Project</h2>
+        <a href="https://github.com/Spooky-Labs/spooktacular">GitHub</a>
+        <a href="/security.html">Security</a>
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+      </div>
+    </div>
+    <p class="legal">
+      MIT licensed. Apple, macOS and Apple silicon are trademarks of Apple Inc.;
+      Amazon EC2 and AWS are trademarks of Amazon.com, Inc. Spooktacular is not
+      affiliated with or endorsed by either. Instance specifications and AWS
+      behaviour described here come from AWS documentation read in July 2026 and
+      may change.
+    </p>
+  </div>
+</footer>
+
+<script>
+document.addEventListener('click', function (event) {
+  var button = event.target.closest && event.target.closest('.copy');
+  if (!button || !navigator.clipboard) { return; }
+  var code = button.parentElement.querySelector('code');
+  if (!code) { return; }
+  navigator.clipboard.writeText(code.textContent.trim()).then(function () {
+    button.textContent = 'copied';
+    button.dataset.done = 'true';
+    setTimeout(function () { button.textContent = 'copy'; delete button.dataset.done; }, 1600);
+  });
+});
+
+(function () {
+  var watched = Array.prototype.slice.call(document.querySelectorAll('.toc a'))
+    .map(function (link) {
+      var target = document.querySelector(link.getAttribute('href'));
+      return target ? { link: link, target: target } : null;
+    })
+    .filter(Boolean);
+  if (!watched.length || !('IntersectionObserver' in window)) { return; }
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) { return; }
+      watched.forEach(function (item) { item.link.classList.toggle('here', item.target === entry.target); });
+    });
+  }, { rootMargin: '-15% 0px -75% 0px' });
+  watched.forEach(function (item) { observer.observe(item.target); });
+})();
+</script>
+</body>
+</html>
