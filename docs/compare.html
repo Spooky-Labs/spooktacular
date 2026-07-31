@@ -111,8 +111,8 @@ table.matrix tbody td { white-space: normal; }
               <td>Full source available</td>
               <td class="yes mark">Yes</td>
               <td class="yes">Yes</td>
-              <td class="no">. </td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
+              <td class="no">&mdash; </td>
             </tr>
             <tr>
               <td>Runs on hardware you own</td>
@@ -126,7 +126,7 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Shared base image with per-VM overlay</td>
               <td class="yes mark">Yes<small>one macOS install per build</small></td>
-              <td class="no">, <small>an image per VM</small></td>
+              <td class="no">&mdash; <small>an image per VM</small></td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
@@ -140,7 +140,7 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Disk snapshots</td>
               <td class="yes mark">Yes<small>save, restore, list, delete</small></td>
-              <td class="no">. </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
@@ -161,18 +161,18 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Licence-capacity enforcement</td>
               <td class="yes mark">Yes<small>two macOS guests per host</small></td>
-              <td class="no">, </td>
-              <td class="no">, </td>
-              <td class="no">. </td>
+              <td class="no">&mdash; </td>
+              <td class="no">&mdash; </td>
+              <td class="no">&mdash; </td>
             </tr>
 
             <tr class="group"><td colspan="5">Provisioning</td></tr>
             <tr>
               <td>Native guest provisioning</td>
               <td class="yes mark">Yes<small>VZMacGuestProvisioningOptions, macOS 27</small></td>
-              <td class="no">, </td>
-              <td class="no">, </td>
-              <td class="no">. </td>
+              <td class="no">&mdash; </td>
+              <td class="no">&mdash; </td>
+              <td class="no">&mdash; </td>
             </tr>
             <tr>
               <td>Provisioning without guest networking</td>
@@ -214,7 +214,7 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Publish a guest port on the host</td>
               <td class="yes mark">Yes<small><code>--publish 8080:80</code></small></td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
@@ -228,7 +228,7 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Fully isolated networking</td>
               <td class="yes mark">Yes</td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
@@ -244,9 +244,9 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Audio output and microphone</td>
               <td class="yes mark">Yes</td>
-              <td class="no">. </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
             </tr>
             <tr>
               <td>Shared folders</td>
@@ -258,7 +258,7 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Clipboard sync</td>
               <td>Partial<small>SPICE clipboard only</small></td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
@@ -266,15 +266,15 @@ table.matrix tbody td { white-space: normal; }
               <td>Linux guests</td>
               <td class="yes mark">Yes<small>cloud image plus cloud-init</small></td>
               <td class="yes">Yes</td>
-              <td class="no">. </td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
+              <td class="no">&mdash; </td>
             </tr>
 
             <tr class="group"><td colspan="5">Interfaces</td></tr>
             <tr>
               <td>Native Mac app</td>
               <td class="yes mark">Yes<small>SwiftUI, on the CLI's own core</small></td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="no">Web UI</td>
             </tr>
@@ -288,7 +288,7 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>HTTP API</td>
               <td class="yes mark">Yes<small>with signed requests</small></td>
-              <td class="no">. </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
@@ -304,41 +304,41 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Runner pool orchestration</td>
               <td class="yes mark">Yes<small>a ten-state lifecycle machine</small></td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
             <tr>
               <td>Mutual TLS, control plane to node</td>
               <td class="yes mark">Yes<small>optional, mutual certificate auth</small></td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
               <td class="no">Server TLS only</td>
               <td class="yes">Yes</td>
             </tr>
             <tr>
               <td>Certificate rotation without a restart</td>
               <td class="yes mark">Yes<small>file-watch hot reload</small></td>
-              <td class="no">. </td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
+              <td class="no">&mdash; </td>
               <td>Unstated</td>
             </tr>
             <tr>
               <td>Role-based access control</td>
               <td class="yes mark">Yes<small>plus Secure-Enclave-bound keys</small></td>
-              <td class="no">, </td>
+              <td class="no">&mdash; </td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
             </tr>
             <tr>
               <td>Fleet autoscaling</td>
-              <td class="no">. <small>not implemented</small></td>
-              <td class="no">, </td>
+              <td class="no">&mdash; <small>not implemented</small></td>
+              <td class="no">&mdash; </td>
               <td>Partial<small>manual pools</small></td>
               <td class="yes">Yes</td>
             </tr>
             <tr>
               <td>OCI registry push and pull</td>
-              <td class="no">, <small>planned</small></td>
+              <td class="no">&mdash; <small>planned</small></td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
@@ -346,7 +346,7 @@ table.matrix tbody td { white-space: normal; }
             <tr>
               <td>Supply-chain attestations</td>
               <td class="yes mark">Yes<small>SBOM and artifact attestations</small></td>
-              <td class="no">. </td>
+              <td class="no">&mdash; </td>
               <td>Unstated</td>
               <td>Unstated</td>
             </tr>
@@ -359,7 +359,7 @@ table.matrix tbody td { white-space: normal; }
             </tr>
             <tr>
               <td>Commercial support contract</td>
-              <td class="no">, <small>community only</small></td>
+              <td class="no">&mdash; <small>community only</small></td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
               <td class="yes">Yes</td>
