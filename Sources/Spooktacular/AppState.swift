@@ -1288,19 +1288,21 @@ final class AppState {
         // guard in `Create.swift`, which runs before its own install
         // begins — without this, a non-root GUI launch burns the
         // whole install before failing.
-        if request.runnerSpec != nil {
-            do {
-                try DirectPrivilegedFileOps().preflight()
-            } catch {
-                failCreation(
-                    name: name,
-                    message: "Runner provisioning requires Spooktacular to run as root; this "
-                        + "is supported for the root-service/EC2 Mac deployment, not an "
-                        + "ordinary desktop launch."
-                )
-                return
-            }
-        }
+        // No privilege gate here. A runner create needs none: the provisioner
+        // LaunchDaemon lives in the shared base image, injected once when that
+        // base was built, so this VM only stacks an overlay on it.
+        //
+        // There used to be a `DirectPrivilegedFileOps().preflight()` guard on
+        // this path, from before the base-and-overlay change. It required the
+        // app itself to be root, which a desktop launch never is, so it failed
+        // every GUI runner create outright — while the code that does the work
+        // states, correctly, that the path needs no privileges of its own.
+        //
+        // The case it was guarding against — burning a 20-minute install before
+        // discovering we cannot write the provisioner — is handled where it
+        // belongs: `BaseImageBuilder.ensureBase` calls `injector.preflight()`
+        // before the installer runs, and the GUI's injector routes through the
+        // approved privileged helper rather than requiring root.
 
         do {
             // Restore-image resolution is source-dependent.
