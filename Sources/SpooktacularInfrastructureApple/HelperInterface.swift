@@ -28,28 +28,6 @@ import Security
 ///   check, never a hardcoded team.
 @objc public protocol SpooktacularHelperXPC {
 
-    /// Injects the Spooktacular provisioner LaunchDaemon into the VM
-    /// bundle's guest disk (mounts the disk; root-only).
-    ///
-    /// - Parameters:
-    ///   - vmBundlePath: Absolute path to a `.vm` bundle directory.
-    ///   - reply: `nil` on success, or the failure.
-    func installProvisionerDaemon(
-        vmBundlePath: String,
-        reply: @escaping (NSError?) -> Void
-    )
-
-    /// Installs Spooktacular Guest Tools into the VM bundle's guest
-    /// disk (mounts the disk; root-only).
-    ///
-    /// - Parameters:
-    ///   - vmBundlePath: Absolute path to a `.vm` bundle directory.
-    ///   - reply: `nil` on success, or the failure.
-    func installGuestTools(
-        vmBundlePath: String,
-        reply: @escaping (NSError?) -> Void
-    )
-
     /// Injects the provisioner LaunchDaemon into a **shared base
     /// image** in the base-image cache (mounts the image; root-only).
     ///

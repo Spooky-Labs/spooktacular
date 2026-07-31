@@ -19,19 +19,16 @@ import SpooktacularInfrastructureApple
 /// same signed assets the app would — a connecting client never
 /// supplies asset paths to a root process.
 
-/// Serves the two-verb contract. Runs every request on a serial queue —
+/// Serves the helper contract: one privileged verb, plus a version probe.
+///
+/// The verb count is the point. This process runs as root, so every method it
+/// exposes is attack surface, and it should expose exactly the privileged
+/// operations the app actually performs — which is one: writing the
+/// provisioner into a base image. Requests run on a serial queue because
 /// disk-image mounts must not interleave.
 final class HelperService: NSObject, SpooktacularHelperXPC {
 
     private let queue = DispatchQueue(label: "com.spooktacular.app.helper.work")
-
-    private func loadBundle(at path: String) throws -> VirtualMachineBundle {
-        let url = URL(fileURLWithPath: path).standardizedFileURL
-        guard url.pathExtension == "vm" else {
-            throw HelperServiceError.notAVMBundle(path)
-        }
-        return try VirtualMachineBundle.load(from: url)
-    }
 
     /// Validates a base-image path handed over by the app.
     ///
@@ -74,50 +71,6 @@ final class HelperService: NSObject, SpooktacularHelperXPC {
                     runner: assets.runner,
                     signal: assets.signal,
                     privileged: DirectPrivilegedFileOps()
-                )
-                reply(nil)
-            } catch {
-                reply(error as NSError)
-            }
-        }
-    }
-
-    func installProvisionerDaemon(
-        vmBundlePath: String,
-        reply: @escaping (NSError?) -> Void
-    ) {
-        queue.async {
-            do {
-                let bundle = try self.loadBundle(at: vmBundlePath)
-                guard let assets = ProvisionerAssets.locate() else {
-                    throw HelperServiceError.assetsMissing
-                }
-                try DiskInjector.installProvisionerDaemon(
-                    into: bundle,
-                    plist: assets.plist,
-                    runner: assets.runner,
-                    privileged: DirectPrivilegedFileOps()
-                )
-                reply(nil)
-            } catch {
-                reply(error as NSError)
-            }
-        }
-    }
-
-    func installGuestTools(
-        vmBundlePath: String,
-        reply: @escaping (NSError?) -> Void
-    ) {
-        queue.async {
-            do {
-                let bundle = try self.loadBundle(at: vmBundlePath)
-                guard let guestTools = AppBundleBootstrapTemplate.locateGuestToolsBundle() else {
-                    throw HelperServiceError.assetsMissing
-                }
-                try DiskInjector.installGuestTools(
-                    appBundle: guestTools,
-                    into: bundle
                 )
                 reply(nil)
             } catch {

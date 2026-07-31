@@ -80,21 +80,6 @@ final class PrivilegedHelper {
         }
     }
 
-    /// Root-injects the provisioner LaunchDaemon into the guest disk
-    /// via the helper.
-    func installProvisionerDaemon(vmBundleURL: URL) async throws {
-        try await call { proxy, done in
-            proxy.installProvisionerDaemon(vmBundlePath: vmBundleURL.path, reply: done)
-        }
-    }
-
-    /// Root-installs Guest Tools into the guest disk via the helper.
-    func installGuestTools(vmBundleURL: URL) async throws {
-        try await call { proxy, done in
-            proxy.installGuestTools(vmBundlePath: vmBundleURL.path, reply: done)
-        }
-    }
-
     // MARK: - Connection plumbing
 
     /// One-shot pinned connection per call: builds the `.privileged`
