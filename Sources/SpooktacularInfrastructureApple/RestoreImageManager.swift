@@ -125,6 +125,46 @@ public final class RestoreImageManager: Sendable {
         return image
     }
 
+    /// Returns a cached IPSW whose major version matches this host, if one
+    /// exists.
+    ///
+    /// `VZMacOSRestoreImage.latestSupported` resolves against Apple's software
+    /// catalog, which does not carry beta releases. On a macOS 27 host it
+    /// therefore answers with the newest *shipping* release — 26.6 — and
+    /// installing that guest fails immediately with nothing but "An error
+    /// occurred during installation". Apple confirmed the mirror of this on
+    /// the developer forums: "a late incompatibility between the
+    /// VZMacOSInstaller API on macOS 26.6 and the macOS 27 IPSW". The 26/27
+    /// boundary is broken in both directions, and it broke every third-party
+    /// virtualizer the same way.
+    ///
+    /// So before trusting the catalog, prefer a locally cached image that
+    /// matches the host's major version. This is deliberately not a general
+    /// "major versions must match" rule — installing an older guest on a newer
+    /// host is normally fine, and forbidding it would break legitimate setups.
+    /// It only expresses a preference the catalog cannot.
+    ///
+    /// - Returns: A matching restore image, or `nil` when the cache holds none.
+    public func locallyCachedImageMatchingHost() async -> VZMacOSRestoreImage? {
+        let hostMajor = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        let fileManager = FileManager.default
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: nil
+        ) else { return nil }
+
+        for url in contents where url.pathExtension == "ipsw" {
+            guard let image = try? await VZMacOSRestoreImage.image(from: url) else { continue }
+            guard image.operatingSystemVersion.majorVersion == hostMajor else { continue }
+            guard image.mostFeaturefulSupportedConfiguration != nil else { continue }
+            Log.ipsw.info(
+                "Preferring cached IPSW matching host major \(hostMajor, privacy: .public): \(url.lastPathComponent, privacy: .public)"
+            )
+            return image
+        }
+        return nil
+    }
+
     /// Downloads the IPSW file for a restore image.
     ///
     /// Implements HTTP Range (RFC 7233) resumption keyed by SHA256

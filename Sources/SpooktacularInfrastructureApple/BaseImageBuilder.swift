@@ -137,7 +137,10 @@ public final class BaseImageBuilder {
             let stagedModel = staging.appendingPathComponent("hardware-model.bin")
             let stagedIdentifier = staging.appendingPathComponent("machine-identifier.bin")
 
-            let layerUUID = try DiskStack.createBase(at: stagedImage, sizeInBytes: sizeInBytes)
+            // The UUID this returns describes the *empty* image. Apple's
+            // installer rewrites the layer, so it is not the identity a VM
+            // will later see; the real one is read back after the install.
+            _ = try DiskStack.createBase(at: stagedImage, sizeInBytes: sizeInBytes)
 
             let hardwareModel = supported.hardwareModel
             try hardwareModel.dataRepresentation.write(to: stagedModel, options: .atomic)
@@ -176,6 +179,14 @@ public final class BaseImageBuilder {
 
             progress(.injectingProvisioner)
             try await injector.injectProvisioner(intoDiskImageAt: stagedImage)
+
+            // Read the layer identity from the finished image, not the empty
+            // one created above. VZMacOSInstaller regenerates it while writing
+            // the guest, so recording the pre-install value made every VM fail
+            // its lineage check on first start with "The base image changed
+            // since this VM was created" — the guard working correctly against
+            // a value that was wrong the moment it was written.
+            let layerUUID = try DiskStack.baseLayerUUID(at: stagedImage)
 
             progress(.sealing)
             try seal(at: stagedImage)

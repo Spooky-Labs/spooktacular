@@ -571,7 +571,22 @@ extension Spooktacular {
                 let ipswURL: URL
                 if fromIpsw == "latest" {
                     if !json { print(Style.info("Fetching latest compatible macOS restore image...")) }
-                    restoreImage = try await manager.fetchLatestSupported()
+                    // Apple's catalog carries no betas, so on a beta host
+                    // `latestSupported` answers with the previous major and the
+                    // install then fails with an error that explains nothing.
+                    // A cached image matching this host wins when one exists.
+                    if let matched = await manager.locallyCachedImageMatchingHost() {
+                        restoreImage = matched
+                        if !json {
+                            let v = matched.operatingSystemVersion
+                            print(Style.info(
+                                "Using cached macOS \(v.majorVersion).\(v.minorVersion)"
+                                + " (build \(matched.buildVersion)) — matches this host."
+                            ))
+                        }
+                    } else {
+                        restoreImage = try await manager.fetchLatestSupported()
+                    }
                     let version = restoreImage.operatingSystemVersion
                     if !json {
                         print(

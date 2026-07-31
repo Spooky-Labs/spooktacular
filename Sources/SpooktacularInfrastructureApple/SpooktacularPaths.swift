@@ -25,9 +25,30 @@ import SpooktacularApplication
 public enum SpooktacularPaths {
 
     /// The root data directory: `~/.spooktacular/`.
+    ///
+    /// Under `sudo`, `homeDirectoryForCurrentUser` is `/var/root`, so a
+    /// privileged command would build an entirely separate tree — its own VM
+    /// bundles, base images and IPSW cache — invisible to the same user's
+    /// unprivileged `spook list`. The documented first run is
+    /// `sudo spook create`, so that split is the common path, not an edge
+    /// case: the VM is created, and then appears not to exist.
+    ///
+    /// `SUDO_USER` names the invoking account, so a sudo'd command resolves to
+    /// the human's home and both views agree. When it is absent — a root
+    /// service on an EC2 Mac, or a plain user session — the current user's
+    /// home is already the right answer.
     public static let root: URL = {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".spooktacular")
+        let home: URL
+        if let sudoUser = ProcessInfo.processInfo.environment["SUDO_USER"],
+           !sudoUser.isEmpty,
+           sudoUser != "root",
+           let passwd = getpwnam(sudoUser),
+           let dir = passwd.pointee.pw_dir {
+            home = URL(fileURLWithPath: String(cString: dir))
+        } else {
+            home = FileManager.default.homeDirectoryForCurrentUser
+        }
+        return home.appendingPathComponent(".spooktacular")
     }()
 
     /// The VM bundles directory: `~/.spooktacular/vms/`.
