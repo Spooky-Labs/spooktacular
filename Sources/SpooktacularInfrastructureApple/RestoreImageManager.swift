@@ -272,6 +272,9 @@ public final class RestoreImageManager: Sendable {
                 if fileManager.fileExists(atPath: partFile.path) {
                     let size = (try? fileManager.attributesOfItem(atPath: partFile.path))?[.size] as? NSNumber
                     offset = size?.int64Value ?? 0
+                    // `offset >= contentLength` also covers contentLength == 0,
+                    // i.e. a HEAD that told us nothing: resuming against an
+                    // unknown total cannot be validated, so start clean.
                     if !probe.acceptsRanges || offset == 0 || offset >= probe.contentLength {
                         // Can't resume — start over.
                         try? fileManager.removeItem(at: partFile)
@@ -286,6 +289,23 @@ public final class RestoreImageManager: Sendable {
                     startOffset: offset,
                     progress: progress
                 )
+
+                // A stream that ends early is not an error on its own: the
+                // loop above simply stops receiving bytes. Without this
+                // check the partial was returned as a finished download,
+                // promoted to the cache, and handed to VZMacOSInstaller,
+                // which failed at 0% with "An error occurred during
+                // installation" — an error that says nothing about the real
+                // cause. Measure the file instead of trusting the loop.
+                if probe.contentLength > 0 {
+                    let finalSize = ((try? fileManager.attributesOfItem(atPath: partFile.path))?[.size] as? NSNumber)?.int64Value ?? 0
+                    guard finalSize == probe.contentLength else {
+                        // Keep the partial: the next attempt resumes from here.
+                        throw RestoreImageError.downloadFailed(
+                            message: "Incomplete download: got \(finalSize) of \(probe.contentLength) bytes"
+                        )
+                    }
+                }
 
                 return partFile
             } catch is CancellationError {

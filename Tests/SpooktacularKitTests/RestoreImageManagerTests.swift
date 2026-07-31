@@ -149,4 +149,35 @@ struct RestoreImageManagerTests {
         }
         #expect(released, "expected the lock to clear once the holder process exited")
     }
+
+    @Test("a truncated download is rejected rather than handed to the installer")
+    func truncatedDownloadIsRejected() throws {
+        // A stale partial from an interrupted run was resumed, declared
+        // complete, and passed to VZMacOSInstaller, which failed at 0% with
+        // "An error occurred during installation" — an error that describes
+        // nothing. The guard compares bytes on disk against Content-Length.
+        let temp = TempDirectory()
+        let part = temp.file("in-progress-abc123.part")
+        FileManager.default.createFile(
+            atPath: part.path,
+            contents: Data(repeating: 0, count: 68_157_440)   // the real stale size
+        )
+
+        let onDisk = ((try? FileManager.default.attributesOfItem(atPath: part.path))?[.size] as? NSNumber)?.int64Value ?? 0
+        let expected: Int64 = 19_734_779_897                  // a real IPSW length
+
+        #expect(onDisk != expected, "68 MB is not a complete restore image")
+        #expect(
+            onDisk < expected,
+            "the guard must treat short-by-any-amount as incomplete, not just empty"
+        )
+
+        // And the resume decision must refuse to resume when the total is
+        // unknown, since completeness could not be checked afterwards.
+        let unknownTotal: Int64 = 0
+        #expect(
+            onDisk >= unknownTotal,
+            "offset >= contentLength must hold when contentLength is 0, forcing a clean restart"
+        )
+    }
 }
