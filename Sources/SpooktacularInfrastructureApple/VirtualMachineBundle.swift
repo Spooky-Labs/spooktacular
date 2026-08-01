@@ -612,13 +612,21 @@ public struct VirtualMachineBundle: Sendable {
         )
 
         // APFS clones these — instant, and no extra space until written.
-        try fileManager.copyItem(
+        //
+        // The mode has to be restored afterwards. The base is sealed 0444 so
+        // any user can create a VM from it, and `copyItem` preserves the
+        // source's permission bits — so an unfixed copy arrives read-only and
+        // the guest cannot write its own boot state back to its auxiliary
+        // storage.
+        try copyFromSealedBase(
             at: baseAuxiliaryURL,
-            to: url.appendingPathComponent(auxiliaryStorageFileName)
+            to: url.appendingPathComponent(auxiliaryStorageFileName),
+            mode: 0o600
         )
-        try fileManager.copyItem(
+        try copyFromSealedBase(
             at: baseHardwareModelURL,
-            to: url.appendingPathComponent(hardwareModelFileName)
+            to: url.appendingPathComponent(hardwareModelFileName),
+            mode: 0o644
         )
 
         // The identifier is COPIED from the base, never regenerated.
@@ -630,9 +638,10 @@ public struct VirtualMachineBundle: Sendable {
         // identifier would pair personalized boot state with an
         // identity it was never signed for, and the guest would not
         // boot.
-        try fileManager.copyItem(
+        try copyFromSealedBase(
             at: baseMachineIdentifierURL,
-            to: url.appendingPathComponent(machineIdentifierFileName)
+            to: url.appendingPathComponent(machineIdentifierFileName),
+            mode: 0o644
         )
 
         var metadata = bundle.metadata
@@ -645,6 +654,31 @@ public struct VirtualMachineBundle: Sendable {
             "Created overlay-backed bundle '\(url.lastPathComponent, privacy: .public)' on base \(base.buildVersion, privacy: .public)"
         )
         return try load(from: url)
+    }
+
+    /// Copies a file out of the sealed base and gives the copy its own mode.
+    ///
+    /// Base artifacts are sealed `0444` — read-only so nothing disturbs an
+    /// image that overlays depend on, and world-readable so any user can
+    /// create a VM from a base that root built. `FileManager.copyItem`
+    /// preserves the source's permission bits, so the copy inherits the seal
+    /// and has to be released from it: a `0444` auxiliary store would leave
+    /// the guest unable to persist its own boot state.
+    ///
+    /// - Parameters:
+    ///   - source: The artifact inside the shared base.
+    ///   - destination: Where it lands inside this bundle.
+    ///   - mode: POSIX permissions for the copy.
+    private static func copyFromSealedBase(
+        at source: URL,
+        to destination: URL,
+        mode: Int
+    ) throws {
+        try FileManager.default.copyItem(at: source, to: destination)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: mode],
+            ofItemAtPath: destination.path
+        )
     }
 
     /// Discards all guest state by replacing the overlay.

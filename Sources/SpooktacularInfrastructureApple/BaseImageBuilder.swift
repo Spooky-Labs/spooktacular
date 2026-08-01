@@ -189,7 +189,17 @@ public final class BaseImageBuilder {
             let layerUUID = try DiskStack.baseLayerUUID(at: stagedImage)
 
             progress(.sealing)
-            try seal(at: stagedImage)
+            // Seal every artifact, not just the disk. All four are immutable
+            // template files that each new VM copies out of, and the first
+            // build runs as root — so anything left owner-only is unreadable
+            // to the unprivileged creates that follow. VZMacAuxiliaryStorage
+            // creates its file 0600, which made `spook create` fail with
+            // "auxiliary.bin couldn't be copied" for every user but root, and
+            // falsified the promise in `BaseImageBuildError.requiresRoot` that
+            // only the first create needs privileges.
+            for name in Self.artifactNames {
+                try seal(at: staging.appendingPathComponent(name))
+            }
             try Self.promote(from: staging, to: directory)
 
             let descriptor = BaseImageDescriptor(
@@ -210,9 +220,19 @@ public final class BaseImageBuilder {
     /// Building into `staging/` and renaming at the end means an
     /// interrupted build leaves no half-written base that a later run
     /// might mistake for a complete one.
+    /// The files that constitute a base image.
+    ///
+    /// Every one is part of the shared, immutable template: a VM overlaid on
+    /// this base copies its auxiliary storage, hardware model and machine
+    /// identifier out of here, so all of them must be readable by whoever
+    /// creates that VM — not only by the root that built the base.
+    static let artifactNames = [
+        "base.asif", "auxiliary.bin", "hardware-model.bin", "machine-identifier.bin",
+    ]
+
     private static func promote(from staging: URL, to directory: URL) throws {
         let fileManager = FileManager.default
-        for name in ["base.asif", "auxiliary.bin", "hardware-model.bin", "machine-identifier.bin"] {
+        for name in artifactNames {
             let source = staging.appendingPathComponent(name)
             let destination = directory.appendingPathComponent(name)
             try? fileManager.removeItem(at: destination)
