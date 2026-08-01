@@ -90,6 +90,18 @@ settings:
 packages:
   SpooktacularPackage:
     path: .
+  # `SpooktacularApp` below compiles `Sources/Spooktacular` itself rather than
+  # consuming the package's `Spooktacular` executable target, so it needs that
+  # target's dependencies spelled out here too. Package.swift gives those
+  # sources BOTH SpooktacularKit and SFSymbolsKit; this file listed only the
+  # first, so the app compiled and then failed to link with ~40 "Undefined
+  # symbols … (extension in SFSymbolsKit):Swift.String.SFSymbols.*".
+  #
+  # The version must track the `from:` in Package.swift — two files naming one
+  # dependency is the drift this comment exists to flag.
+  SFSymbolsKit:
+    url: https://github.com/WikipediaBrown/SFSymbolsKit.git
+    from: 1.0.9
 
 targets:
   # Target is named `SpooktacularApp` (not `Spooktacular`) to
@@ -125,6 +137,8 @@ targets:
     dependencies:
       - package: SpooktacularPackage
         product: SpooktacularKit
+      - package: SFSymbolsKit
+        product: SFSymbolsKit
     # NOTE: intentionally no `info:` or `entitlements:` keys.
     # Those directives tell xcodegen to GENERATE (and overwrite!)
     # the file — wiping our hand-authored `Resources/Info.plist`

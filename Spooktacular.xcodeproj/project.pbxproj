@@ -16,6 +16,7 @@
 		4598DD34E4189745E80113A7 /* ErrorExplainerIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = E635EF0A233ABB56EC5DAFA0 /* ErrorExplainerIntent.swift */; };
 		55968FEF1DE5DB4AB058565F /* WorkspaceWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A520609D2216DEFDED4073B /* WorkspaceWindow.swift */; };
 		63C4BB5E8603A1107BEBF708 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E560C6641F0973B725E0355 /* MenuBarView.swift */; };
+		6C04C1A849D8F78E633F643B /* AuroraBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C88A176C71B25544A1DAD7E /* AuroraBackground.swift */; };
 		7441C53478A107C63C8B9EBE /* SnapshotInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1760CF6EBFD6F04B1D4BBAEE /* SnapshotInspector.swift */; };
 		77F048ED33AD2C3C4DEEFC24 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F84FCD987FE554279F129289 /* ContentView.swift */; };
 		7C8468A3D58CC4D08B9A5A4F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207F9CC0084057F2421187AA /* SettingsView.swift */; };
@@ -23,11 +24,15 @@
 		9EE6D1D0F9970F81C9BFAD08 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17FA3F07523B486DFEB8683C /* EmptyStateView.swift */; };
 		A26798B6A62F0BA27EBC0A2E /* SpooktacularKit in Frameworks */ = {isa = PBXBuildFile; productRef = 7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */; };
 		AB0C53B28CC0E7CECDF884C7 /* VMDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */; };
+		BA225E76F2FE8B4F0D0E79A4 /* SFSymbolsKit in Frameworks */ = {isa = PBXBuildFile; productRef = CC04A1719A1831BD33B3712B /* SFSymbolsKit */; };
 		C05389CFD2A1D625412F8C7E /* IntentAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CC3E504199300206ED3DEE /* IntentAppState.swift */; };
+		C2620816E23FA2C3F758B2A3 /* HelperProvisionerInjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7CD752CFE0C86ACB17341D /* HelperProvisionerInjector.swift */; };
+		CC80CB4C1CF3E2ACC0E1D8ED /* PrivilegedHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780CAD88D6C9F111259F083E /* PrivilegedHelper.swift */; };
 		CDF60EAB9D46349ADA598E18 /* ScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96BFBC66E8E9CDB1DD1A16EE /* ScreenshotTests.swift */; };
 		D42F083B9D5C4A4D68363B4A /* CommandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26D27700B1B6DAD63A434D2 /* CommandPalette.swift */; };
 		D65289EB73FEE4A1D643212F /* GlassModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */; };
 		D872974CDE16D2A672353A63 /* CloneVMSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE12342A082CE1CBC7DAA5CA /* CloneVMSheet.swift */; };
+		E51A43711B9B590D3580BEA1 /* Apparition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9800551ECBE2E6B04EC83705 /* Apparition.swift */; };
 		E98BFDBBE2935C71B43D09EB /* SpooktacularApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A885B9AEFD358C772209C45B /* SpooktacularApp.swift */; };
 		EBC9ADE343EA2BA7049963C1 /* VMIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77E47F4B98E46DCA9ABE7BE4 /* VMIntents.swift */; };
 		ECC2BE2D93914AB4E31B77D6 /* CreateVMSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C426447ED063F011A1BBBD /* CreateVMSheet.swift */; };
@@ -53,14 +58,18 @@
 		3739A7E977269073B8D943AC /* SpooktacularUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SpooktacularUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		44CC3E504199300206ED3DEE /* IntentAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentAppState.swift; sourceTree = "<group>"; };
 		4A520609D2216DEFDED4073B /* WorkspaceWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceWindow.swift; sourceTree = "<group>"; };
+		4A7CD752CFE0C86ACB17341D /* HelperProvisionerInjector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperProvisionerInjector.swift; sourceTree = "<group>"; };
+		4C88A176C71B25544A1DAD7E /* AuroraBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraBackground.swift; sourceTree = "<group>"; };
 		4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMDetailView.swift; sourceTree = "<group>"; };
 		5627882CC8850EFC4D63A51D /* SpooktacularApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SpooktacularApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		63B82AD7DE1FEF88AC12BE83 /* ClipboardStatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardStatusPill.swift; sourceTree = "<group>"; };
 		689A9670C9498270B7933BDC /* WorkspaceIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceIcon.swift; sourceTree = "<group>"; };
 		77E47F4B98E46DCA9ABE7BE4 /* VMIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMIntents.swift; sourceTree = "<group>"; };
+		780CAD88D6C9F111259F083E /* PrivilegedHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivilegedHelper.swift; sourceTree = "<group>"; };
 		7911BC1B28464A4C00C6D83D /* VMNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VMNotifications.swift; sourceTree = "<group>"; };
 		95B12BAC54EC9D9DD73CDD8C /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		96BFBC66E8E9CDB1DD1A16EE /* ScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotTests.swift; sourceTree = "<group>"; };
+		9800551ECBE2E6B04EC83705 /* Apparition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Apparition.swift; sourceTree = "<group>"; };
 		9C016368570D79D59A2504F3 /* Spooktacular */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Spooktacular; path = .; sourceTree = SOURCE_ROOT; };
 		9E560C6641F0973B725E0355 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		A465F9A8249ED35AE053499A /* HardwareEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareEditor.swift; sourceTree = "<group>"; };
@@ -80,12 +89,22 @@
 			buildActionMask = 2147483647;
 			files = (
 				A26798B6A62F0BA27EBC0A2E /* SpooktacularKit in Frameworks */,
+				BA225E76F2FE8B4F0D0E79A4 /* SFSymbolsKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		097A3EBDBF4EB29E456ED0B4 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				9800551ECBE2E6B04EC83705 /* Apparition.swift */,
+				4C88A176C71B25544A1DAD7E /* AuroraBackground.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
 		3592A37B079988982DA72A27 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -133,6 +152,7 @@
 			children = (
 				3B396D1141120D188932E0A5 /* Intents */,
 				7D636FC547AEC997A8264E47 /* Notifications */,
+				097A3EBDBF4EB29E456ED0B4 /* Theme */,
 				E361A7B1B81302EF16B46B1E /* Views */,
 				7D5A13B8E333B1AD70A53DB3 /* Windows */,
 				BDF357AB41E6D507D72596E2 /* AddImageSheet.swift */,
@@ -141,7 +161,9 @@
 				F84FCD987FE554279F129289 /* ContentView.swift */,
 				B4C426447ED063F011A1BBBD /* CreateVMSheet.swift */,
 				D563FB5F43D632DE55F4C892 /* GlassModifiers.swift */,
+				4A7CD752CFE0C86ACB17341D /* HelperProvisionerInjector.swift */,
 				9E560C6641F0973B725E0355 /* MenuBarView.swift */,
+				780CAD88D6C9F111259F083E /* PrivilegedHelper.swift */,
 				207F9CC0084057F2421187AA /* SettingsView.swift */,
 				A885B9AEFD358C772209C45B /* SpooktacularApp.swift */,
 				4FA0EA04634DAE358D0EA89E /* VMDetailView.swift */,
@@ -216,6 +238,7 @@
 			name = SpooktacularApp;
 			packageProductDependencies = (
 				7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */,
+				CC04A1719A1831BD33B3712B /* SFSymbolsKit */,
 			);
 			productName = SpooktacularApp;
 			productReference = 5627882CC8850EFC4D63A51D /* SpooktacularApp.app */;
@@ -269,6 +292,7 @@
 			mainGroup = A58B7B4108A3181DB593B06C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				BDF2EF2EA71BE8BCCCF3D970 /* XCRemoteSwiftPackageReference "SFSymbolsKit" */,
 				511C9009CADA570B5CFA00EC /* XCLocalSwiftPackageReference "." */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -297,6 +321,8 @@
 			files = (
 				3909AD26FD26ABE1214D452E /* AddImageSheet.swift in Sources */,
 				FB9D1A5D8F71D85C45856E39 /* AppState.swift in Sources */,
+				E51A43711B9B590D3580BEA1 /* Apparition.swift in Sources */,
+				6C04C1A849D8F78E633F643B /* AuroraBackground.swift in Sources */,
 				332D9DE0A5140C3126D9455E /* ClipboardStatusPill.swift in Sources */,
 				D872974CDE16D2A672353A63 /* CloneVMSheet.swift in Sources */,
 				D42F083B9D5C4A4D68363B4A /* CommandPalette.swift in Sources */,
@@ -306,8 +332,10 @@
 				4598DD34E4189745E80113A7 /* ErrorExplainerIntent.swift in Sources */,
 				D65289EB73FEE4A1D643212F /* GlassModifiers.swift in Sources */,
 				41B170CCEC0F6D530F2EAF1A /* HardwareEditor.swift in Sources */,
+				C2620816E23FA2C3F758B2A3 /* HelperProvisionerInjector.swift in Sources */,
 				C05389CFD2A1D625412F8C7E /* IntentAppState.swift in Sources */,
 				63C4BB5E8603A1107BEBF708 /* MenuBarView.swift in Sources */,
+				CC80CB4C1CF3E2ACC0E1D8ED /* PrivilegedHelper.swift in Sources */,
 				20A10DAE7AB839110C3768FC /* ProvisioningPane.swift in Sources */,
 				7C8468A3D58CC4D08B9A5A4F /* SettingsView.swift in Sources */,
 				7441C53478A107C63C8B9EBE /* SnapshotInspector.swift in Sources */,
@@ -575,10 +603,26 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		BDF2EF2EA71BE8BCCCF3D970 /* XCRemoteSwiftPackageReference "SFSymbolsKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/WikipediaBrown/SFSymbolsKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.9;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		7C9DDDDA7A25651E136F25D6 /* SpooktacularKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = SpooktacularKit;
+		};
+		CC04A1719A1831BD33B3712B /* SFSymbolsKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BDF2EF2EA71BE8BCCCF3D970 /* XCRemoteSwiftPackageReference "SFSymbolsKit" */;
+			productName = SFSymbolsKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
