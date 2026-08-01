@@ -23,8 +23,18 @@ public enum ProvisionerAssets {
     /// image built without it still provisions, it just leaves the host to
     /// read the first-boot logs instead of receiving an exit code. Making it
     /// non-optional would turn a missing convenience into a create failure.
-    public static func locate() -> (plist: URL, runner: URL, signal: URL?)? {
-        let env = ProcessInfo.processInfo.environment
+    /// - Parameter environment: Process environment, injected for testability
+    ///   the same way ``AdminPresenceGate/requirePresence(reason:environment:context:bypassVerifier:auditSink:metricsCounter:hostname:tenant:)``
+    ///   takes it. A test exercising the override must pass it here rather
+    ///   than call `setenv`: that mutates process-global state, and under
+    ///   `swift test --parallel` it leaks into whatever else is running at the
+    ///   time. That is exactly how "locate returns nil outside an app bundle"
+    ///   came to fail in CI while passing locally — the two tests in that
+    ///   suite were racing for one environment variable.
+    public static func locate(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> (plist: URL, runner: URL, signal: URL?)? {
+        let env = environment
         let fm = FileManager.default
 
         // Directories that may hold `Resources/SpookProvisioner/`.
