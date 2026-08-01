@@ -69,8 +69,14 @@ claimed_tests=$(
 )
 # Secondary claim: the "Run 424 tests" line in the Building
 # from Source section.
+#
+# Matches `fastlane test` as well as `swift test`, because the total this
+# script computes is not what a bare `swift test` runs. SwiftPM never reaches
+# into a path-dependency's own test targets, so the three SPICE packages under
+# `Packages/` are invoked separately by the fastlane lane — the README used to
+# attribute their tests to `swift test`, which overstated that command by 36.
 claimed_tests_docs=$(
-    grep -oE 'swift test[[:space:]]+#[[:space:]]*Run[[:space:]]+[0-9]+[[:space:]]+tests' "$readme" \
+    grep -oE '(swift|fastlane) test[[:space:]]+#[[:space:]]*Run[[:space:]]+[0-9]+[[:space:]]+tests' "$readme" \
         | grep -oE '[0-9]+' \
         | head -n 1 \
         || true
