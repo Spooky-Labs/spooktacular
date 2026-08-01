@@ -37,6 +37,19 @@ check() {
     else echo "  ✗ $1"; FAIL=$((FAIL+1)); fi
 }
 
+# Runs an assertion and records it, without aborting.
+#
+# The previous form — a bare `test ...` followed by `check "..." "$?"` — could
+# never report a failure: under `set -e` the failing test exits the script
+# before `check` runs. A run that failed its very first assertion printed no ✗,
+# no RESULT line, and looked exactly like a run that had been killed. Reporting
+# which gate failed is the only reason this script exists.
+assert() {
+    local description="$1"; shift
+    if "$@"; then echo "  ✓ $description"; PASS=$((PASS+1));
+    else echo "  ✗ $description"; FAIL=$((FAIL+1)); fi
+}
+
 cleanup() {
     "$SPOOK" delete ov-smoke-1 --force >/dev/null 2>&1 || true
     "$SPOOK" delete ov-smoke-2 --force >/dev/null 2>&1 || true
@@ -50,11 +63,13 @@ FIRST_ELAPSED=$(( $(date +%s) - START ))
 echo "  first create took ${FIRST_ELAPSED}s"
 
 BUILD=$(ls "$BASE_DIR" 2>/dev/null | head -1)
-test -n "$BUILD" && test -f "$BASE_DIR/$BUILD/base.asif"
-check "base image exists (macOS build $BUILD)" "$?"
+assert "base image exists (macOS build ${BUILD:-none})" test -f "$BASE_DIR/$BUILD/base.asif"
 
-test ! -w "$BASE_DIR/$BUILD/base.asif"
-check "base image is sealed read-only" "$?"
+# Ask for the mode rather than for writability. The first build runs as root,
+# and root may write any file whatever its permission bits say, so `test -w`
+# answers "yes" for a correctly sealed image and `test ! -w` fails every time.
+SEAL_MODE=$(stat -f "%OLp" "$BASE_DIR/$BUILD/base.asif" 2>/dev/null || echo "missing")
+assert "base image is sealed read-only (mode $SEAL_MODE)" test "$SEAL_MODE" = "444"
 
 BASE_UUID_BEFORE=$(python3 -c "import json;print(json.load(open('$BASE_DIR/$BUILD/base.json'))['layerUUID'])")
 
@@ -63,19 +78,16 @@ START=$(date +%s)
 "$SPOOK" create ov-smoke-2 --no-start --json > /tmp/ov2.json
 SECOND_ELAPSED=$(( $(date +%s) - START ))
 echo "  second create took ${SECOND_ELAPSED}s"
-[ "$SECOND_ELAPSED" -lt 60 ]
-check "second create completed in under 60s (was ${SECOND_ELAPSED}s)" "$?"
+assert "second create completed in under 60s (was ${SECOND_ELAPSED}s)" \
+    test "$SECOND_ELAPSED" -lt 60
 
 BUNDLE=$(python3 -c 'import json;print(json.load(open("/tmp/ov2.json"))["path"])')
-test -f "$BUNDLE/disk-overlay.asif"
-check "per-VM overlay present" "$?"
-test ! -f "$BUNDLE/disk.img"
-check "no standalone disk image (the base is shared)" "$?"
+assert "per-VM overlay present" test -f "$BUNDLE/disk-overlay.asif"
+assert "no standalone disk image (the base is shared)" test ! -f "$BUNDLE/disk.img"
 
 # The overlay must be a small delta, not a copy of the base.
-OVERLAY_BYTES=$(stat -f%z "$BUNDLE/disk-overlay.asif")
-[ "$OVERLAY_BYTES" -lt 104857600 ]
-check "overlay is sparse (${OVERLAY_BYTES} bytes)" "$?"
+OVERLAY_BYTES=$(stat -f%z "$BUNDLE/disk-overlay.asif" 2>/dev/null || echo 0)
+assert "overlay is sparse (${OVERLAY_BYTES} bytes)" test "$OVERLAY_BYTES" -lt 104857600
 
 echo "== boot VM #1 and wait for the guest's readiness signal =="
 # `spook start` prints '✓ Provisioning completed.' when the guest dials the
@@ -114,8 +126,8 @@ echo "== reset and verify the base is untouched =="
 wait "$START_PID" 2>/dev/null || true
 
 BASE_UUID_AFTER=$(python3 -c "import json;print(json.load(open('$BASE_DIR/$BUILD/base.json'))['layerUUID'])")
-[ "$BASE_UUID_BEFORE" = "$BASE_UUID_AFTER" ]
-check "base layerUUID unchanged after a guest wrote to its overlay" "$?"
+assert "base layerUUID unchanged after a guest wrote to its overlay" \
+    test "$BASE_UUID_BEFORE" = "$BASE_UUID_AFTER"
 
 echo ""
 echo "RESULT: $PASS passed, $FAIL failed"
