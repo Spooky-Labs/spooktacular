@@ -32,6 +32,12 @@ REAL_HOME="$(eval echo ~${SUDO_USER:-$(id -un)})"
 BASE_DIR="$REAL_HOME/.spooktacular/cache/base"
 PASS=0; FAIL=0
 
+# Run-scoped scratch. Fixed /tmp paths made the first (privileged) run leave
+# root-owned files that a later unprivileged run could not overwrite — and only
+# the first run needs root, so every run after it should be unprivileged.
+WORK="$(mktemp -d)"
+echo "scratch: $WORK"
+
 check() {
     if [ "$2" = "0" ]; then echo "  ✓ $1"; PASS=$((PASS+1));
     else echo "  ✗ $1"; FAIL=$((FAIL+1)); fi
@@ -50,17 +56,34 @@ assert() {
     else echo "  ✗ $description"; FAIL=$((FAIL+1)); fi
 }
 
+# Deliberately does not delete. `spook delete` requires per-action presence
+# verification, so an unattended cleanup raises a Touch ID sheet in the middle
+# of a run and then fails when nobody is at the console — which is how two
+# same-named VMs came to exist and made `spook start ov-smoke-1` ambiguous.
+# Report what was left instead, with the command to remove it.
 cleanup() {
-    "$SPOOK" delete ov-smoke-1 --force >/dev/null 2>&1 || true
-    "$SPOOK" delete ov-smoke-2 --force >/dev/null 2>&1 || true
+    local leftovers="${VM1_ID:-} ${VM2_ID:-}"
+    if [ -n "${leftovers// /}" ]; then
+        echo ""
+        echo "Smoke VMs left behind (deleting them needs presence verification):"
+        for id in $leftovers; do echo "  $SPOOK delete $id --force"; done
+    fi
 }
 trap cleanup EXIT
 
 echo "== create #1 (builds the base image if absent) =="
 START=$(date +%s)
-"$SPOOK" create ov-smoke-1 --openclaw --publish 18789:18789 --no-start --json > /tmp/ov1.json
+"$SPOOK" create ov-smoke-1 --openclaw --publish 18789:18789 --no-start --json > "$WORK/ov1.json"
 FIRST_ELAPSED=$(( $(date +%s) - START ))
 echo "  first create took ${FIRST_ELAPSED}s"
+
+# Address VMs by the UUID `create --json` just handed back, never by name.
+# Names are not unique: a leftover from an earlier run made `ov-smoke-1` match
+# two VMs, `spook start` refused the ambiguous selector, and the script then
+# waited ten minutes for a readiness signal from a guest it had never booted —
+# reporting a GATE 2 failure that was nothing of the kind.
+VM1_ID=$(python3 -c "import json;print(json.load(open('$WORK/ov1.json'))['id'])")
+echo "  VM #1 is $VM1_ID"
 
 BUILD=$(ls "$BASE_DIR" 2>/dev/null | head -1)
 assert "base image exists (macOS build ${BUILD:-none})" test -f "$BASE_DIR/$BUILD/base.asif"
@@ -75,13 +98,14 @@ BASE_UUID_BEFORE=$(python3 -c "import json;print(json.load(open('$BASE_DIR/$BUIL
 
 echo "== create #2 (must be instant and need no privileges) =="
 START=$(date +%s)
-"$SPOOK" create ov-smoke-2 --no-start --json > /tmp/ov2.json
+"$SPOOK" create ov-smoke-2 --no-start --json > "$WORK/ov2.json"
 SECOND_ELAPSED=$(( $(date +%s) - START ))
 echo "  second create took ${SECOND_ELAPSED}s"
 assert "second create completed in under 60s (was ${SECOND_ELAPSED}s)" \
     test "$SECOND_ELAPSED" -lt 60
 
-BUNDLE=$(python3 -c 'import json;print(json.load(open("/tmp/ov2.json"))["path"])')
+VM2_ID=$(python3 -c "import json;print(json.load(open('$WORK/ov2.json'))['id'])")
+BUNDLE=$(python3 -c "import json;print(json.load(open('$WORK/ov2.json'))['path'])")
 assert "per-VM overlay present" test -f "$BUNDLE/disk-overlay.asif"
 assert "no standalone disk image (the base is shared)" test ! -f "$BUNDLE/disk.img"
 
@@ -92,13 +116,13 @@ assert "overlay is sparse (${OVERLAY_BYTES} bytes)" test "$OVERLAY_BYTES" -lt 10
 echo "== boot VM #1 and wait for the guest's readiness signal =="
 # `spook start` prints '✓ Provisioning completed.' when the guest dials the
 # host's vsock listener. No polling loop here by design — the signal is pushed.
-"$SPOOK" start ov-smoke-1 --headless > /tmp/ov-start.log 2>&1 &
+"$SPOOK" start "$VM1_ID" --headless > "$WORK/ov-start.log" 2>&1 &
 START_PID=$!
 
 READY=1
 for _ in $(seq 1 120); do
-    if grep -q "Provisioning completed" /tmp/ov-start.log 2>/dev/null; then READY=0; break; fi
-    if grep -q "Provisioning failed" /tmp/ov-start.log 2>/dev/null; then READY=2; break; fi
+    if grep -q "Provisioning completed" "$WORK/ov-start.log" 2>/dev/null; then READY=0; break; fi
+    if grep -q "Provisioning failed" "$WORK/ov-start.log" 2>/dev/null; then READY=2; break; fi
     sleep 5
 done
 check "GATE 2 — guest booted from cloned aux and reported readiness" "$READY"
@@ -122,7 +146,7 @@ if [ "$GATEWAY" != "0" ]; then
 fi
 
 echo "== reset and verify the base is untouched =="
-"$SPOOK" stop ov-smoke-1 >/dev/null 2>&1 || kill "$START_PID" 2>/dev/null || true
+"$SPOOK" stop "$VM1_ID" >/dev/null 2>&1 || kill "$START_PID" 2>/dev/null || true
 wait "$START_PID" 2>/dev/null || true
 
 BASE_UUID_AFTER=$(python3 -c "import json;print(json.load(open('$BASE_DIR/$BUILD/base.json'))['layerUUID'])")
