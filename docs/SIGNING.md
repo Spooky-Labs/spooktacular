@@ -39,16 +39,28 @@ only be done by a maintainer — the steps are below.
 
 3. **Populate the cert repo locally** (run-write mode; needs the API key + a
    `MATCH_PASSWORD` you choose and keep):
+   Prefer `fastlane/.env` (gitignored) over `export`, so nothing lands in
+   shell history:
+
    ```bash
-   export MATCH_PASSWORD='<a-strong-passphrase>'
-   export APPLE_API_KEY_ID='<key id>'
-   export APPLE_API_ISSUER_ID='<issuer id>'
-   export APPLE_API_KEY_P8="$(cat AuthKey_XXXX.p8)"
-   # Generates + encrypts both profiles project.yml references
-   # ("match Development com.spooktacular.app macos" and the AppStore one):
-   bundle exec fastlane match development --platform macos --readonly false
-   bundle exec fastlane match appstore    --platform macos --readonly false
+   MATCH_PASSWORD=<a-strong-passphrase>
+   APPLE_API_KEY_ID=<key id>
+   APPLE_API_ISSUER_ID=<issuer id>
+   # Locally, point at the .p8 directly — `ensure_api_key_on_disk` checks this
+   # before it requires the base64 form, so there is nothing to encode:
+   APPLE_API_KEY_FILEPATH=/absolute/path/to/AuthKey_XXXX.p8
    ```
+
+   Then run the lane CI runs, rather than raw `match`:
+
+   ```bash
+   bundle exec fastlane signing      # appstore + mac_installer_distribution
+   bundle exec fastlane signing_dev  # development cert + profile
+   ```
+
+   `signing` passes `additional_cert_types: ["mac_installer_distribution"]`,
+   which a bare `fastlane match appstore` does not — and the `package` lane
+   needs that installer certificate to run `productbuild`.
 
 4. **Set the GitHub repo secrets** (Settings → Secrets and variables → Actions):
    | Secret | Value |
@@ -57,7 +69,7 @@ only be done by a maintainer — the steps are below.
    | `MATCH_GIT_BASIC_AUTHORIZATION` | `base64` of `<gh-user>:<PAT with repo scope>` for the cert repo |
    | `APPLE_API_KEY_ID` | Key ID from step 2 |
    | `APPLE_API_ISSUER_ID` | Issuer ID from step 2 |
-   | `APPLE_API_KEY_P8` | full contents of the `.p8` |
+   | `APPLE_API_KEY_P8` | **base64** of the `.p8`: `cat AuthKey_XXXX.p8 \| openssl base64 -A` — not the raw PEM, which `ensure_api_key_on_disk` will base64-decode into garbage and reject |
    | `FASTLANE_CONTACT_PHONE` | a real reachable number (Apple rejects fictional ones in beta review) |
 
    `MATCH_GIT_BASIC_AUTHORIZATION`:
