@@ -25,7 +25,11 @@
 set -euo pipefail
 
 SPOOK="${SPOOK:-./Spooktacular.app/Contents/MacOS/spook}"
-BASE_DIR="$HOME/.spooktacular/cache/base"
+# `spook` resolves its data root from SUDO_USER, so the invoking user's home
+# is the right place to look even when this script runs under sudo. Using
+# $HOME here would check /var/root and never find the base.
+REAL_HOME="$(eval echo ~${SUDO_USER:-$(id -un)})"
+BASE_DIR="$REAL_HOME/.spooktacular/cache/base"
 PASS=0; FAIL=0
 
 check() {
