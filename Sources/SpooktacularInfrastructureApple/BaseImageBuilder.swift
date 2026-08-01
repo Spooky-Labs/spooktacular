@@ -285,6 +285,8 @@ public final class BaseImageBuilder {
         try configuration.validate()
 
         let machine = VZVirtualMachine(configuration: configuration)
+        let observer = InstallerVMObserver()
+        machine.delegate = observer
         let installer = VZMacOSInstaller(
             virtualMachine: machine,
             restoringFromImageAt: restoreURL
@@ -302,6 +304,40 @@ public final class BaseImageBuilder {
                 continuation.resume(with: result)
             }
         }
+
+        // `install` returns immediately and reports through its completion
+        // handler, which captures neither the machine nor the installer. Their
+        // last *use* is the call itself, so ARC is free to release both while
+        // the restore is still running — and a virtual machine deallocated
+        // out from under a restore is reported by MobileDevice as "RestoreOS
+        // device removed before restored completed", nowhere near the real
+        // cause. Apple's own sample holds the machine in a property for the
+        // duration of the install; extending the lifetime past the suspension
+        // point is the local-scope equivalent. `observer` is included because
+        // `VZVirtualMachine.delegate` is a weak reference.
+        withExtendedLifetime((machine, installer, observer)) {}
+    }
+}
+
+/// Records why an installer virtual machine stopped.
+///
+/// `VZMacOSInstaller` reports failures as "An error occurred during
+/// installation." and nothing more. When the guest dies part-way through a
+/// restore, the reason arrives at the virtual machine's delegate instead — and
+/// with no delegate attached it is discarded, leaving a twenty-minute build
+/// that failed for reasons only Apple's `MobileDevice` log knows. These are
+/// logged at `error` level deliberately: `Logger.info` is memory-only and does
+/// not survive into the log archive, so a post-mortem `log show` finds nothing.
+private final class InstallerVMObserver: NSObject, VZVirtualMachineDelegate {
+
+    func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: Error) {
+        Log.vm.error(
+            "Installer VM stopped mid-restore: \(error.localizedDescription, privacy: .public)"
+        )
+    }
+
+    func guestDidStop(_ virtualMachine: VZVirtualMachine) {
+        Log.vm.error("Installer VM guest stopped before the restore completed")
     }
 }
 
