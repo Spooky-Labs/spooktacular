@@ -1311,8 +1311,11 @@ final class AppState {
             //     `VZMacOSRestoreImage.image(from:)`. No network
             //     I/O; `fetchLatestSupported()`'s call to Apple's
             //     catalog is not required here.
-            //   - `.latest` — fetch from Apple's catalog to learn
-            //     the current IPSW URL, then resume-download.
+            //   - `.latest` — prefer a cached IPSW whose major version
+            //     matches this host, and consult Apple's catalog only
+            //     when there is none. See
+            //     `RestoreImageManager.resolveLatest(progress:)`, which
+            //     owns that policy for the app and the CLI alike.
             //
             // Previously this path unconditionally called
             // `fetchLatestSupported()` before branching, which
@@ -1342,17 +1345,8 @@ final class AppState {
                     status: "Using macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion) from \(candidate.lastPathComponent)…"
                 )
             case .latest:
-                updateCreation(name: name, progress: 0, status: "Fetching restore image info…")
-                restoreImage = try await manager.fetchLatestSupported()
-                try Task.checkCancellation()
-                let v = restoreImage.operatingSystemVersion
-                updateCreation(
-                    name: name,
-                    progress: 0.05,
-                    status: "Found macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
-                )
-                updateCreation(name: name, progress: 0.05, status: "Downloading kernel and firmware…")
-                ipswURL = try await manager.downloadIPSW(from: restoreImage) { [weak self] snap in
+                updateCreation(name: name, progress: 0, status: "Resolving a restore image…")
+                let resolved = try await manager.resolveLatest { [weak self] snap in
                     Task { @MainActor in
                         let pct = Int(snap.fraction * 100)
                         let msg = snap.resumed
@@ -1364,6 +1358,21 @@ final class AppState {
                             status: msg
                         )
                     }
+                }
+                try Task.checkCancellation()
+                restoreImage = resolved.image
+                ipswURL = resolved.ipswURL
+                let v = restoreImage.operatingSystemVersion
+                let described = "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+                switch resolved {
+                case .cached:
+                    updateCreation(
+                        name: name,
+                        progress: 0.5,
+                        status: "Using cached \(described) — matches this host."
+                    )
+                case .downloaded:
+                    updateCreation(name: name, progress: 0.5, status: "Downloaded \(described)")
                 }
             }
             try Task.checkCancellation()

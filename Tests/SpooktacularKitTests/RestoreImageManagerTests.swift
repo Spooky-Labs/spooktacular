@@ -180,4 +180,48 @@ struct RestoreImageManagerTests {
             "offset >= contentLength must hold when contentLength is 0, forcing a clean restart"
         )
     }
+
+    @Test("a file that only looks like an IPSW is never offered to the installer")
+    func unreadableCacheEntryIsNotAMatch() async {
+        let temp = TempDirectory()
+        FileManager.default.createFile(
+            atPath: temp.file("not-really.ipsw").path,
+            contents: Data("this is not a restore image".utf8)
+        )
+        let manager = RestoreImageManager(cacheDirectory: temp.url)
+
+        let match = await manager.locallyCachedImageMatchingHost()
+
+        #expect(
+            match?.ipswURL == nil,
+            "the extension is not evidence; only an image VZMacOSRestoreImage can read counts"
+        )
+    }
+
+    @Test("a cache hit carries the local file it was loaded from")
+    func cacheHitCarriesItsLocalFile() async {
+        // The regression this guards: the match used to be returned as a bare
+        // VZMacOSRestoreImage, its origin discarded, and the caller then passed
+        // it to downloadIPSW — whose HEAD probe gets a plain URLResponse back
+        // from a file:// URL, never an HTTPURLResponse, so a create with the
+        // correct image already cached died at "HEAD probe returned non-HTTP
+        // response". A match must arrive with somewhere to install *from*.
+        //
+        // Reads the real cache and never downloads: on a miss there is simply
+        // nothing to assert, which is why this makes no claim about finding one.
+        let manager = RestoreImageManager(cacheDirectory: SpooktacularPaths.ipswCache)
+
+        guard let hit = await manager.locallyCachedImageMatchingHost() else { return }
+
+        #expect(hit.ipswURL.isFileURL, "an installable image is a file, not a fetch")
+        #expect(
+            FileManager.default.fileExists(atPath: hit.ipswURL.path),
+            "the returned path must exist — it is handed straight to VZMacOSInstaller"
+        )
+        #expect(
+            hit.image.operatingSystemVersion.majorVersion
+                == ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
+            "the whole point of the preference is that the guest major matches the host"
+        )
+    }
 }

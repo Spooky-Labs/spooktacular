@@ -144,8 +144,12 @@ public final class RestoreImageManager: Sendable {
     /// host is normally fine, and forbidding it would break legitimate setups.
     /// It only expresses a preference the catalog cannot.
     ///
-    /// - Returns: A matching restore image, or `nil` when the cache holds none.
-    public func locallyCachedImageMatchingHost() async -> VZMacOSRestoreImage? {
+    /// - Returns: The matching image together with the local file it was
+    ///   loaded from, or `nil` when the cache holds none. The URL is handed
+    ///   back rather than recovered later from `VZMacOSRestoreImage.url`, so a
+    ///   caller can never be left holding an image without knowing whether its
+    ///   bytes are already on disk. A cache hit has nothing left to download.
+    public func locallyCachedImageMatchingHost() async -> (image: VZMacOSRestoreImage, ipswURL: URL)? {
         let hostMajor = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
         let fileManager = FileManager.default
         guard let contents = try? fileManager.contentsOfDirectory(
@@ -160,9 +164,66 @@ public final class RestoreImageManager: Sendable {
             Log.ipsw.info(
                 "Preferring cached IPSW matching host major \(hostMajor, privacy: .public): \(url.lastPathComponent, privacy: .public)"
             )
-            return image
+            return (image, url)
         }
         return nil
+    }
+
+    /// The outcome of resolving "the latest macOS" to an installable IPSW.
+    ///
+    /// Both cases carry a **local** file URL, because resolution is not
+    /// finished until there is a file to hand to `VZMacOSInstaller`. The two
+    /// cases differ only in what the caller can honestly say happened.
+    public enum ResolvedRestoreImage {
+        /// A cached IPSW matching the host's major version was used. Apple's
+        /// catalog was never consulted and nothing was transferred.
+        case cached(image: VZMacOSRestoreImage, ipswURL: URL)
+        /// Apple's catalog named the image, which was then downloaded into the
+        /// cache (resuming a partial when one was present).
+        case downloaded(image: VZMacOSRestoreImage, ipswURL: URL)
+
+        /// The restore image to install.
+        public var image: VZMacOSRestoreImage {
+            switch self {
+            case let .cached(image, _), let .downloaded(image, _): image
+            }
+        }
+
+        /// The IPSW on disk, ready for the installer.
+        public var ipswURL: URL {
+            switch self {
+            case let .cached(_, ipswURL), let .downloaded(_, ipswURL): ipswURL
+            }
+        }
+    }
+
+    /// Resolves "the latest macOS" to an IPSW on disk, preferring the cache.
+    ///
+    /// This is the only place the preference described in
+    /// ``locallyCachedImageMatchingHost()`` is applied. It lives here rather
+    /// than at each call site because that is exactly how it went wrong: the
+    /// CLI grew the cache preference and the app did not, so the app kept
+    /// offering a macOS 26 guest on a macOS 27 host. And the CLI's own version
+    /// then passed its cache hit to ``downloadIPSW(from:progress:)`` anyway —
+    /// a HEAD probe against a `file://` URL, which yields a plain
+    /// `URLResponse` and never an `HTTPURLResponse`, so every create died at
+    /// "HEAD probe returned non-HTTP response" while the right image sat in
+    /// the cache. One resolver, and neither mistake can be made again.
+    ///
+    /// - Parameter progress: Called periodically while downloading. Never
+    ///   called for a cache hit, because nothing is transferred.
+    /// - Returns: The image and a local IPSW ready for the installer.
+    public func resolveLatest(
+        progress: @escaping @Sendable (DownloadProgress) -> Void = { _ in }
+    ) async throws -> ResolvedRestoreImage {
+        if let hit = await locallyCachedImageMatchingHost() {
+            return .cached(image: hit.image, ipswURL: hit.ipswURL)
+        }
+        let image = try await fetchLatestSupported()
+        return .downloaded(
+            image: image,
+            ipswURL: try await downloadIPSW(from: image, progress: progress)
+        )
     }
 
     /// Downloads the IPSW file for a restore image.

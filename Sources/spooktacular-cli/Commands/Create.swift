@@ -554,8 +554,11 @@ extension Spooktacular {
                 //     `VZMacOSRestoreImage.image(from:)`. No network
                 //     I/O; `fetchLatestSupported()`'s call to Apple's
                 //     catalog is not required here.
-                //   - `latest`   — fetch from Apple's catalog to
-                //     learn the current IPSW URL, then resume-download.
+                //   - `latest`   — prefer a cached IPSW whose major
+                //     version matches this host, and consult Apple's
+                //     catalog only when there is none. See
+                //     `RestoreImageManager.resolveLatest(progress:)`,
+                //     which owns that policy for the CLI and app alike.
                 //
                 // Previously this path unconditionally called
                 // `fetchLatestSupported()` before branching, which
@@ -570,45 +573,35 @@ extension Spooktacular {
                 let restoreImage: VZMacOSRestoreImage
                 let ipswURL: URL
                 if fromIpsw == "latest" {
-                    if !json { print(Style.info("Fetching latest compatible macOS restore image...")) }
-                    // Apple's catalog carries no betas, so on a beta host
-                    // `latestSupported` answers with the previous major and the
-                    // install then fails with an error that explains nothing.
-                    // A cached image matching this host wins when one exists.
-                    if let matched = await manager.locallyCachedImageMatchingHost() {
-                        restoreImage = matched
-                        if !json {
-                            let v = matched.operatingSystemVersion
-                            print(Style.info(
-                                "Using cached macOS \(v.majorVersion).\(v.minorVersion)"
-                                + " (build \(matched.buildVersion)) — matches this host."
-                            ))
-                        }
-                    } else {
-                        restoreImage = try await manager.fetchLatestSupported()
-                    }
-                    let version = restoreImage.operatingSystemVersion
-                    if !json {
-                        print(
-                            "Found macOS \(version.majorVersion).\(version.minorVersion)"
-                            + ".\(version.patchVersion)"
-                            + " (build \(restoreImage.buildVersion))"
-                        )
-                    }
-                    if !json { print(Style.info("Downloading IPSW (this may take a while)...")) }
-                    ipswURL = try await manager.downloadIPSW(
-                        from: restoreImage
-                    ) { snapshot in
-                        // Only render terminal progress when stdout
-                        // is a TTY and we're not in JSON mode —
-                        // keeps pipelines clean.
+                    if !json { print(Style.info("Resolving a macOS restore image...")) }
+                    // `resolveLatest` prefers a cached IPSW matching this
+                    // host's major version and downloads only when there is
+                    // none. Both the preference and the "a cache hit has
+                    // nothing to download" rule live there, not here — see
+                    // ``RestoreImageManager/resolveLatest(progress:)``.
+                    let resolved = try await manager.resolveLatest { snapshot in
+                        // Only render terminal progress when we're not in
+                        // JSON mode — keeps pipelines clean.
                         guard !json else { return }
                         let percentage = Int(snapshot.fraction * 100)
-                        let label = snapshot.resumed ? "Resuming" : "Progress"
+                        let label = snapshot.resumed ? "Resuming IPSW" : "Downloading IPSW"
                         print("\r  \(label): \(percentage)%", terminator: "")
                         fflush(stdout)
                     }
-                    if !json { print() }
+                    restoreImage = resolved.image
+                    ipswURL = resolved.ipswURL
+                    if !json {
+                        let v = restoreImage.operatingSystemVersion
+                        let described = "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+                            + " (build \(restoreImage.buildVersion))"
+                        switch resolved {
+                        case .cached:
+                            print(Style.info("Using cached \(described) — matches this host."))
+                        case .downloaded:
+                            print()   // terminate the in-place progress line
+                            print("Downloaded \(described)")
+                        }
+                    }
                 } else {
                     ipswURL = URL(filePath: fromIpsw)
                     guard FileManager.default.fileExists(atPath: ipswURL.path) else {
