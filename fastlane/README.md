@@ -103,13 +103,29 @@ Build, notarize, and submit to the App Store
 
 Promote an existing TestFlight build to App Store review (no rebuild)
 
-### mac homebrew
+### mac signing_developer_id
 
 ```sh
-[bundle exec] fastlane mac homebrew
+[bundle exec] fastlane mac signing_developer_id
 ```
 
-Build, notarize, and package for Homebrew distribution
+Sync the Developer ID Application certificate used for notarized builds
+
+### mac dist
+
+```sh
+[bundle exec] fastlane mac dist
+```
+
+Build, notarize, tag, publish to GitHub Releases, and update the Homebrew cask
+
+### mac verify_notarization_prerequisites
+
+```sh
+[bundle exec] fastlane mac verify_notarization_prerequisites
+```
+
+Verify the .app satisfies Apple's notarization prerequisites
 
 ### mac ui_tests
 
