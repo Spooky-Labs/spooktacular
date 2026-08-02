@@ -1,0 +1,42 @@
+# Deliverfile — configuration for `deliver` (upload_to_app_store).
+#
+# Loaded automatically by deliver. Two lanes drive it and share everything
+# below: `release` uploads a fresh binary, `promote` points App Store review at
+# a build already on TestFlight.
+#
+# Precedence is Fastfile / CLI > env var > THIS FILE > default (Appfile) >
+# prompt. So only genuinely invariant values belong here; anything that
+# differs per lane — the binary, whether to upload one at all, the version and
+# build being promoted, whether to submit for review — stays in the Fastfile,
+# where it can differ.
+#
+# `app_identifier` and `team_id` are deliberately absent: the Appfile already
+# supplies them as defaults, and repeating a value in two files is how they
+# drift apart.
+
+# `platform`, NOT `app_platform` — the latter is pilot's spelling and deliver
+# has no such option, so `deliver(app_platform: "osx")` (which both lanes used
+# to pass) is not a valid call. Left unset, this defaults to "ios", which is
+# the wrong platform for a Mac app.
+platform("osx")
+
+# Both paths are relative to fastlane/.
+metadata_path("./metadata")
+screenshots_path("./screenshots")
+app_rating_config_path("./metadata/age_rating_config.json")
+
+# Metadata and screenshots ship on every upload — the App Store listing should
+# never lag the binary it describes.
+skip_metadata(false)
+skip_screenshots(false)
+overwrite_screenshots(true)
+
+primary_category("DEVELOPER_TOOLS")
+secondary_category("BUSINESS")
+
+# Roll a release out gradually rather than to everyone at once.
+phased_release(true)
+
+# Skip deliver's interactive confirmation. Both lanes run unattended in CI,
+# where a prompt is a hang rather than a question.
+force(true)

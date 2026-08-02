@@ -1,0 +1,41 @@
+# Scanfile — configuration for `scan` (run_tests).
+#
+# Read automatically by scan (scan/lib/scan/module.rb declares "Scanfile").
+# Only the `ui_tests` lane drives scan: it builds the xcodegen-generated
+# project and runs the XCUITest bundle to capture App Store screenshots.
+#
+# Precedence, per fastlane's documented order, is:
+#
+#   Fastfile / CLI  >  environment variable  >  THIS FILE  >  default  >  prompt
+#
+# so anything the Fastfile passes to `scan(...)` silently overrides what is
+# written here. Values live here precisely so they are NOT repeated inline —
+# adding them back to the lane would make this file dead weight.
+
+# The XCUITest bundle needs a real app to attach to, which SwiftPM cannot host
+# (`XCUIApplication().launch()` aborts with SIGABRT — there is no test-host
+# application bundle). `project.yml` generates the .xcodeproj that can.
+project("Spooktacular.xcodeproj")
+scheme("SpooktacularApp")
+destination("platform=macOS")
+
+# Screenshot capture only. The unit suite runs through `swift test` in the
+# `test` lane, which is far faster than routing it through xcodebuild.
+only_testing(["SpooktacularUITests"])
+
+# Screenshots are extracted from the .xcresult afterwards by
+# `scripts/extract-xcresult-screenshots.sh`, so the bundle is required.
+result_bundle(true)
+output_directory("./fastlane/test_output")
+output_types("html,junit")
+
+# Capturing screenshots neither installs nor distributes the app, so it needs
+# no signing at all. Forcing it off keeps the job runnable on a CI machine with
+# no certificates and no secrets — see beta.yml's "UI Tests" job, which
+# deliberately holds none.
+xcargs("CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO " \
+       "CODE_SIGN_IDENTITY='' PROVISIONING_PROFILE_SPECIFIER=''")
+
+# A failing UI test must fail the lane; screenshots from a broken build are
+# worse than none.
+fail_build(true)

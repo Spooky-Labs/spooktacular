@@ -433,31 +433,17 @@ platform :mac do
 
     api_key = get_api_key
 
+    # Shared, invariant options live in `fastlane/Deliverfile`; app_identifier
+    # and team_id come from the Appfile. What remains here is what genuinely
+    # varies between `release` and `promote`.
     deliver(
       api_key: api_key,
-      app_identifier: APP_IDENTIFIER,
-      app_platform: "osx",
-      team_id: TEAM_ID,
-
-      metadata_path: "./metadata",
-      screenshots_path: "./screenshots",
 
       pkg: PKG_FILE,
       skip_binary_upload: false,
 
-      skip_metadata: false,
-      skip_screenshots: false,
-      overwrite_screenshots: true,
-
-      app_rating_config_path: "./metadata/age_rating_config.json",
-
-      primary_category: "DEVELOPER_TOOLS",
-      secondary_category: "BUSINESS",
-
       submit_for_review: options[:submit] || false,
       automatic_release: options[:auto_release] || false,
-      phased_release: true,
-      force: true,
 
       app_review_information: {
         first_name: CONTACT_FIRST_NAME,
@@ -512,37 +498,21 @@ platform :mac do
 
     deliver(
       api_key: api_key,
-      app_identifier: APP_IDENTIFIER,
-      app_platform: "osx",
-      team_id: TEAM_ID,
 
       # Point at the existing TestFlight binary — no re-upload.
       app_version: version.to_s,
       build_number: build_number.to_s,
       skip_binary_upload: true,
 
-      # Refresh metadata + screenshots on every promotion so App
-      # Store copy stays in sync with the repo. The `promote`
-      # workflow runs `bundle exec fastlane ui_tests` immediately
-      # before this action, which populates
-      # `fastlane/screenshots/en-US/` from the XCUITest run, so
-      # `overwrite_screenshots: true` is a full refresh every time
-      # — never stale App Store artwork.
-      skip_metadata: false,
-      skip_screenshots: false,
-      overwrite_screenshots: true,
-
-      metadata_path: "./metadata",
-      screenshots_path: "./screenshots",
-      app_rating_config_path: "./metadata/age_rating_config.json",
-
-      primary_category: "DEVELOPER_TOOLS",
-      secondary_category: "BUSINESS",
+      # Metadata and screenshots refresh on every promotion — the Deliverfile
+      # sets skip_metadata/skip_screenshots false and overwrite_screenshots
+      # true for both lanes. The `promote` workflow runs `fastlane ui_tests`
+      # immediately before this action, repopulating
+      # `fastlane/screenshots/en-US/` from the XCUITest run, so the upload is
+      # a full refresh rather than stale App Store artwork.
 
       submit_for_review: true,
       automatic_release: options[:auto_release] || false,
-      phased_release: true,
-      force: true,
 
       app_review_information: {
         first_name: CONTACT_FIRST_NAME,
@@ -761,18 +731,10 @@ platform :mac do
     # `spooktacular-certificates` match repo being populated. Only
     # the signed `beta`/`release` lanes need match certs + the
     # App Store Connect API key. See docs/SIGNING.md.
-    scan(
-      project: "Spooktacular.xcodeproj",
-      scheme: "SpooktacularApp",
-      destination: "platform=macOS",
-      only_testing: ["SpooktacularUITests"],
-      result_bundle: true,
-      output_directory: "./fastlane/test_output",
-      output_types: "html,junit",
-      xcargs: "CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO " \
-              "CODE_SIGN_IDENTITY='' PROVISIONING_PROFILE_SPECIFIER=''",
-      fail_build: true
-    )
+    # Every option lives in `fastlane/Scanfile`. Passing them here as well
+    # would override the file — Fastfile args outrank tool config files — and
+    # leave two places to edit for one behaviour.
+    scan
 
     Dir.chdir(PROJECT_ROOT) do
       xcresult = Dir.glob("fastlane/test_output/*.xcresult").first
