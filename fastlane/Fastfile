@@ -282,9 +282,16 @@ platform :mac do
       type: "development",
       readonly: is_ci
     }
+    # The key material may arrive either way: CI supplies base64 in
+    # APPLE_API_KEY_P8, a developer points APPLE_API_KEY_FILEPATH at the .p8
+    # on disk. `ensure_api_key_on_disk` accepts both, so this gate has to as
+    # well — it previously insisted on P8, silently rejected a perfectly good
+    # FILEPATH setup, fell through to Apple-ID auth and failed with
+    # "Unauthorized Access", which says nothing about the real cause.
     if !(ENV["APPLE_API_KEY_ID"] || "").empty? &&
        !(ENV["APPLE_API_ISSUER_ID"] || "").empty? &&
-       !(ENV["APPLE_API_KEY_P8"] || "").empty?
+       (!(ENV["APPLE_API_KEY_P8"] || "").empty? ||
+        !(ENV["APPLE_API_KEY_FILEPATH"] || "").empty?)
       args[:api_key] = get_api_key
     else
       # No API creds → fall through to Apple-ID interactive auth
